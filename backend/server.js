@@ -93,6 +93,7 @@ const protectedKeys = new Set([
   "adminProducts",
   "heroBanner",
   "ctaBanner",
+  "__backendStorage_test__",
 ]);
 
 app.post(
