@@ -18,7 +18,7 @@ const supabase = supabaseUrl && supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } })
   : null;
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "https://herenciapp-market-itppl0pes-daniels-projects-b54d9ed6.vercel.app")
+const allowedOrigins = (process.env.CORS_ORIGIN || "https://herenciapp-market.vercel.app")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
