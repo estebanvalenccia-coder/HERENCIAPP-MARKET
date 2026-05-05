@@ -1,0 +1,57 @@
+sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:127 [Hydrated]
+carrito:1 Access to fetch at 'https://eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent' from origin 'https://www.herenciamarket.es' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent:1  Failed to load resource: net::ERR_FAILED
+c3e8affbc58a29eb0f83837829890134143ed038.js:12493 TypeError: Failed to fetch
+    at u (c3e8affbc58a29eb0f83837829890134143ed038.js:12457:128)
+    at Object.lW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:9858)
+    at cW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10012)
+    at dW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10069)
+    at SN (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31464)
+    at KA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31881)
+    at sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:36794
+    at sS (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:8:36897)
+    at EA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:8991)
+    at ST (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:33168)
+u @ c3e8affbc58a29eb0f83837829890134143ed038.js:12493
+carrito:1 Access to fetch at 'https://eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent' from origin 'https://www.herenciamarket.es' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent:1  Failed to load resource: net::ERR_FAILED
+c3e8affbc58a29eb0f83837829890134143ed038.js:12493 TypeError: Failed to fetch
+    at u (c3e8affbc58a29eb0f83837829890134143ed038.js:12457:128)
+    at Object.lW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:9858)
+    at cW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10012)
+    at dW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10069)
+    at SN (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31464)
+    at KA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31881)
+    at sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:36794
+    at sS (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:8:36897)
+    at EA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:8991)
+    at ST (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:33168)
+u @ c3e8affbc58a29eb0f83837829890134143ed038.js:12493
+carrito:1 Access to fetch at 'https://eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent' from origin 'https://www.herenciamarket.es' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent:1  Failed to load resource: net::ERR_FAILED
+c3e8affbc58a29eb0f83837829890134143ed038.js:12493 TypeError: Failed to fetch
+    at u (c3e8affbc58a29eb0f83837829890134143ed038.js:12457:128)
+    at Object.lW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:9858)
+    at cW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10012)
+    at dW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10069)
+    at SN (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31464)
+    at KA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31881)
+    at sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:36794
+    at sS (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:8:36897)
+    at EA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:8991)
+    at ST (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:33168)
+u @ c3e8affbc58a29eb0f83837829890134143ed038.js:12493
+carrito:1 Access to fetch at 'https://eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent' from origin 'https://www.herenciamarket.es' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+eqfuckonnndbffnxbuak.supabase.co/functions/v1/create-payment-intent:1  Failed to load resource: net::ERR_FAILED
+c3e8affbc58a29eb0f83837829890134143ed038.js:12493 TypeError: Failed to fetch
+    at u (c3e8affbc58a29eb0f83837829890134143ed038.js:12457:128)
+    at Object.lW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:9858)
+    at cW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10012)
+    at dW (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:10069)
+    at SN (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31464)
+    at KA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:31881)
+    at sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:36794
+    at sS (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:8:36897)
+    at EA (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:8991)
+    at ST (sites-runtime.5a51d59d237e2d01b01d02e2e2ad08a52cf92b1a2a5d97b2160c2a324680e208.js:5:33168)
+u @ c3e8affbc58a29eb0f83837829890134143ed038.js:12493
