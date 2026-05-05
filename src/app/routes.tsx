@@ -7,6 +7,7 @@ import { Services } from "./pages/Services";
 import { Contact } from "./pages/Contact";
 import { HerencIA } from "./pages/HerencIA";
 import { Cart } from "./pages/Cart";
+import { Checkout } from "./pages/Checkout";
 import { Profile } from "./pages/Profile";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Login } from "./pages/Login";
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: "contacto", Component: Contact },
       { path: "herencia", Component: HerencIA },
       { path: "carrito", Component: Cart },
+      { path: "checkout", Component: Checkout },
       { path: "perfil", Component: Profile },
       { path: "login", Component: Login },
       { path: "privacidad", Component: Privacy },
