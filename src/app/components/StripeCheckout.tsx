@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { loadStripe, Stripe, StripeElements } from "@stripe/stripe-js";
 import { CreditCard, Lock, AlertCircle, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ export function StripeCheckout({
   const [email, setEmail] = useState(customerEmail);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const mountedElement = useRef<any>(null);
 
   useEffect(() => {
     const initStripe = async () => {
@@ -73,11 +74,10 @@ export function StripeCheckout({
           },
         });
 
-        const paymentElement = elementsInstance.create("payment", {
-          layout: "accordion",
-        });
-
+        const paymentElement = elementsInstance.create("payment", { layout: "accordion" });
         paymentElement.mount("#payment-element");
+        mountedElement.current = paymentElement;
+
         setStripe(stripeInstance);
         setElements(elementsInstance);
       } catch (error: any) {
@@ -90,10 +90,18 @@ export function StripeCheckout({
     };
 
     initStripe();
+
+    return () => {
+      try {
+        mountedElement.current?.unmount?.();
+      } catch {}
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowError(false);
+    setErrorMessage("");
 
     if (!stripe || !elements) return toast.error("Stripe no está listo todavía");
     if (!cardholderName || !email) return toast.error("Completa nombre y email");
@@ -101,6 +109,9 @@ export function StripeCheckout({
     setLoading(true);
 
     try {
+      const submitResult = await elements.submit();
+      if (submitResult.error) throw new Error(submitResult.error.message);
+
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -112,18 +123,24 @@ export function StripeCheckout({
             },
           },
         },
+        redirect: "if_required",
       });
 
       if (error) throw new Error(error.message);
 
-      if (paymentIntent?.status === "succeeded") {
+      if (!paymentIntent || paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
         backendStorage.setItem("cart", JSON.stringify([]));
-        toast.success("Pago confirmado correctamente. Te enviaremos confirmación por email.");
+        toast.success("Pago enviado correctamente. Te enviaremos confirmación por email.");
         onSuccess();
         return;
       }
 
-      toast.info("Pago pendiente de confirmación. No se marcará como pagado hasta que Stripe lo confirme.");
+      if (paymentIntent.status === "requires_action") {
+        toast.info("Completa la autorización en tu banco para confirmar el pago.");
+        return;
+      }
+
+      throw new Error(`Stripe devolvió estado: ${paymentIntent.status}`);
     } catch (error: any) {
       const errorMsg = error.message || "Error al procesar el pago";
       setErrorMessage(errorMsg);
