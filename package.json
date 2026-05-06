@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite",
     "dev:backend": "node --import ./backend/orderEmailPatch.js backend/server.js",
     "dev:full": "concurrently \"vite\" \"node --import ./backend/orderEmailPatch.js backend/server.js\"",
+    "start": "node --import ./backend/orderEmailPatch.js backend/server.js",
     "start:backend": "node --import ./backend/orderEmailPatch.js backend/server.js"
   },
   "dependencies": {
