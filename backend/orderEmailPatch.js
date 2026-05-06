@@ -8,6 +8,40 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
 
+function mapAdminOrder(order) {
+  return {
+    id: order.id,
+    customerName: order.customer_name || "Cliente",
+    customerEmail: order.customer_email || "",
+    items: order.items || [],
+    subtotal: Number(order.subtotal || 0),
+    shipping: Number(order.shipping || 0),
+    total: Number(order.total || 0),
+    paymentMethod: order.payment_method,
+    deliveryMethod: order.delivery_method,
+    status: order.status,
+    date: order.created_at,
+    metadata: order.metadata || {},
+    stripePaymentIntentId: order.stripe_payment_intent_id || null,
+  };
+}
+
+async function enrichOrdersResponse(body) {
+  if (!supabase || !body?.orders) return body;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("No se pudieron enriquecer pedidos admin:", error);
+    return body;
+  }
+
+  return { orders: (data || []).map(mapAdminOrder) };
+}
+
 async function saveStripeOrderDetails(req, body) {
   if (!supabase || !body?.orderId) return;
 
@@ -17,12 +51,7 @@ async function saveStripeOrderDetails(req, body) {
 
   await supabase
     .from("orders")
-    .update({
-      metadata,
-      payment_method: paymentMethod,
-      delivery_method: deliveryMethod,
-      status: "payment_pending",
-    })
+    .update({ metadata, payment_method: paymentMethod, delivery_method: deliveryMethod, status: "payment_pending" })
     .eq("id", body.orderId);
 }
 
@@ -43,11 +72,7 @@ async function notifyPaidStripeOrder(req) {
   const orderId = event.data?.object?.metadata?.orderId;
   if (!orderId) return;
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", orderId)
-    .maybeSingle();
+  const { data, error } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
 
   if (error || !data) {
     console.error("No se pudo cargar el pedido Stripe pagado para emails:", error);
@@ -59,6 +84,16 @@ async function notifyPaidStripeOrder(req) {
 
 express.response.json = function patchedJson(body) {
   const req = this.req;
+
+  if (req?.method === "GET" && req?.path === "/api/orders" && body?.orders) {
+    enrichOrdersResponse(body)
+      .then((enhancedBody) => originalJson.call(this, enhancedBody))
+      .catch((error) => {
+        console.error("No se pudo devolver pedidos enriquecidos:", error);
+        originalJson.call(this, body);
+      });
+    return this;
+  }
 
   if (req?.method === "POST" && req?.path === "/api/orders" && body?.order) {
     notifyOrder(body.order).catch((error) => {
