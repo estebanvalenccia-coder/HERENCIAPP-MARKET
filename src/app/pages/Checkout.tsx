@@ -10,6 +10,7 @@ export function Checkout() {
 
   const paymentMethod = location.state?.paymentMethod || "tarjeta";
   const deliveryMethod = location.state?.deliveryMethod || "envio";
+  const isStripePayment = paymentMethod === "tarjeta" || paymentMethod === "bizum";
 
   const cartItems = useMemo(() => JSON.parse(backendStorage.getItem("cart") || "[]"), []);
 
@@ -49,7 +50,7 @@ export function Checkout() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
-    if (paymentMethod === "tarjeta") {
+    if (isStripePayment) {
       setShowStripe(true);
       return;
     }
@@ -62,7 +63,7 @@ export function Checkout() {
         customerEmail: form.email,
         paymentMethod,
         deliveryMethod,
-        status: paymentMethod === "bizum" ? "pending_bizum_review" : "pending_manual_review",
+        status: paymentMethod === "transferencia" ? "pending_transfer_review" : "pending_store_confirmation",
         subtotal,
         shipping,
         total,
@@ -80,7 +81,7 @@ export function Checkout() {
       });
 
       backendStorage.setItem("cart", JSON.stringify([]));
-      toast.success("Pedido realizado correctamente 🌿");
+      toast.success("Pedido recibido. Queda pendiente de confirmación 🌿");
       navigate("/");
     } catch (error) {
       console.error(error);
@@ -134,7 +135,7 @@ export function Checkout() {
 
           {!showStripe && (
             <button onClick={handleSubmit} disabled={loading} className="w-full mt-6 bg-primary text-primary-foreground py-3 rounded-xl font-medium">
-              {loading ? "Procesando..." : paymentMethod === "tarjeta" ? "Continuar al pago" : "Confirmar pedido"}
+              {loading ? "Procesando..." : isStripePayment ? "Continuar al pago seguro" : "Confirmar pedido"}
             </button>
           )}
         </div>
@@ -148,6 +149,7 @@ export function Checkout() {
             subtotal={subtotal}
             shipping={shipping}
             metadata={{
+              requestedPaymentMethod: paymentMethod,
               phone: form.phone,
               notes: form.notes,
               shippingAddress: {
