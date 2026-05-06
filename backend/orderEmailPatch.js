@@ -8,30 +8,35 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
 
-async function notifyStripeOrder(req, body) {
-  if (!supabase || !body?.orderId) return;
+async function notifyPaidStripeOrder(req) {
+  if (!supabase) return;
 
-  const metadata = req.body?.metadata || {};
-
-  if (Object.keys(metadata).length) {
-    await supabase.from("orders").update({ metadata }).eq("id", body.orderId);
+  let event;
+  try {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body || {});
+    event = JSON.parse(rawBody);
+  } catch (error) {
+    console.error("No se pudo leer evento Stripe para emails:", error);
+    return;
   }
+
+  if (event?.type !== "payment_intent.succeeded") return;
+
+  const orderId = event.data?.object?.metadata?.orderId;
+  if (!orderId) return;
 
   const { data, error } = await supabase
     .from("orders")
     .select("*")
-    .eq("id", body.orderId)
+    .eq("id", orderId)
     .maybeSingle();
 
   if (error || !data) {
-    console.error("No se pudo cargar el pedido Stripe para emails:", error);
+    console.error("No se pudo cargar el pedido Stripe pagado para emails:", error);
     return;
   }
 
-  await notifyOrder({
-    ...data,
-    metadata: Object.keys(metadata).length ? metadata : data.metadata,
-  });
+  await notifyOrder({ ...data, status: "paid" });
 }
 
 express.response.json = function patchedJson(body) {
@@ -43,9 +48,9 @@ express.response.json = function patchedJson(body) {
     });
   }
 
-  if (req?.method === "POST" && req?.path === "/api/stripe/create-payment-intent" && body?.orderId) {
-    notifyStripeOrder(req, body).catch((error) => {
-      console.error("No se pudieron enviar los emails del pedido Stripe:", error);
+  if (req?.method === "POST" && req?.path === "/api/stripe/webhook" && body?.received) {
+    notifyPaidStripeOrder(req).catch((error) => {
+      console.error("No se pudieron enviar los emails del pedido Stripe pagado:", error);
     });
   }
 
