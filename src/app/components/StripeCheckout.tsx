@@ -104,7 +104,7 @@ export function StripeCheckout({
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/checkout`,
+          return_url: `${window.location.origin}/pedido-confirmado`,
           payment_method_data: {
             billing_details: {
               name: cardholderName,
@@ -112,16 +112,18 @@ export function StripeCheckout({
             },
           },
         },
-        redirect: "if_required",
       });
 
       if (error) throw new Error(error.message);
 
-      if (!paymentIntent || paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
+      if (paymentIntent?.status === "succeeded") {
         backendStorage.setItem("cart", JSON.stringify([]));
-        toast.success("Pago iniciado correctamente. Te enviaremos confirmación por email.");
+        toast.success("Pago confirmado correctamente. Te enviaremos confirmación por email.");
         onSuccess();
+        return;
       }
+
+      toast.info("Pago pendiente de confirmación. No se marcará como pagado hasta que Stripe lo confirme.");
     } catch (error: any) {
       const errorMsg = error.message || "Error al procesar el pago";
       setErrorMessage(errorMsg);
@@ -181,7 +183,7 @@ export function StripeCheckout({
             <Lock className="w-4 h-4 text-primary mt-0.5" />
             <div>
               <p className="text-sm font-medium text-foreground">Pago seguro</p>
-              <p className="text-xs text-muted-foreground mt-1">El pago se confirma con Stripe. Si eliges Bizum, aprobarás el pago desde tu banco.</p>
+              <p className="text-xs text-muted-foreground mt-1">Si eliges Bizum, Stripe abrirá el flujo del banco. El pedido solo se confirma cuando Stripe confirme el pago real.</p>
             </div>
           </div>
         </div>
