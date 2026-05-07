@@ -1,0 +1,413 @@
+import { useMemo, useState } from "react";
+import { motion } from "motion/react";
+import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler } from "lucide-react";
+import { toast } from "sonner";
+import { products as initialProducts } from "../../data/products";
+import { backendStorage } from "../../lib/backendStorage";
+
+interface Product {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  image: string;
+  description: string;
+  featured?: boolean;
+  active?: boolean;
+  onSale?: boolean;
+  salePrice?: number;
+}
+
+const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
+
+const flowerSuggestions = [
+  { name: "Rosa Roja", price: 1.8, image: "🌹" },
+  { name: "Rosa Blanca", price: 1.8, image: "🤍" },
+  { name: "Tulipán Rosa", price: 1.5, image: "🌷" },
+  { name: "Lirio Blanco", price: 2.2, image: "🌼" },
+  { name: "Paniculata", price: 0.6, image: "✨" },
+  { name: "Eucalipto", price: 1.2, image: "🌿" },
+];
+
+const styles = ["Romántico", "Elegante", "Natural", "Moderno", "Colorido", "Premium"];
+const colors = ["Rojo", "Rosa", "Blanco", "Crema", "Amarillo", "Lila", "Mix"];
+const sizes = [
+  { id: "S", label: "Pequeño" },
+  { id: "M", label: "Mediano" },
+  { id: "L", label: "Grande" },
+  { id: "XL", label: "Extra grande" },
+];
+
+function getGeminiApiKey() {
+  return import.meta.env.VITE_GEMINI_API_KEY || "";
+}
+
+function buildPrompt({ description, budget, style, color, size }: any) {
+  return `Crea una imagen fotorealista y premium para ecommerce de floristería llamada Herencia Market.
+Ramo solicitado: ${description}
+Presupuesto aproximado: ${budget} euros.
+Estilo: ${style}.
+Color principal: ${color}.
+Tamaño: ${size}.
+Debe verse como una foto profesional de catálogo, ramo centrado sobre mesa elegante, iluminación cálida natural, fondo limpio, muy bonito y comercial, sin texto, sin logos, sin marcas de agua, sin manos, sin personas.`;
+}
+
+async function generateImage(prompt: string) {
+  const apiKey = getGeminiApiKey();
+
+  if (!apiKey) {
+    throw new Error("Falta configurar VITE_GEMINI_API_KEY en Railway/Vercel");
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || "No se pudo generar la imagen");
+  }
+
+  const data = await response.json();
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const imagePart = parts.find((part: any) => part.inlineData || part.inline_data);
+  const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+
+  if (!inlineData?.data) {
+    throw new Error("La IA no devolvió imagen. Prueba con otra descripción más clara.");
+  }
+
+  return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
+}
+
+function suggestedName(description: string, color: string) {
+  const clean = description.trim().replace(/^quiero\s+/i, "");
+  if (!clean) return `Ramo ${color} Herencia`;
+  return clean.length > 34 ? `${clean.slice(0, 34)}...` : clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+export function AdminAIBouquetDesigner() {
+  const [description, setDescription] = useState("Ramo elegante de rosas rojas, eucalipto y paniculata con toque romántico");
+  const [budget, setBudget] = useState(49.9);
+  const [style, setStyle] = useState("Romántico");
+  const [color, setColor] = useState("Rojo");
+  const [size, setSize] = useState("M");
+  const [generatedImage, setGeneratedImage] = useState("");
+  const [history, setHistory] = useState<Array<{ name: string; image: string; price: number; style: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  const productName = useMemo(() => suggestedName(description, color), [description, color]);
+  const productDescription = useMemo(
+    () => `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado con IA para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`,
+    [style, color]
+  );
+
+  const handleGenerate = async () => {
+    if (!description.trim()) {
+      toast.error("Describe el ramo que quieres generar");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const prompt = buildPrompt({ description, budget, style, color, size });
+      const image = await generateImage(prompt);
+      setGeneratedImage(image);
+      setHistory((prev) => [{ name: productName, image, price: budget, style }, ...prev].slice(0, 6));
+      toast.success("Ramo generado con IA 🌸");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message || "No se pudo generar el ramo");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveAsProduct = () => {
+    if (!generatedImage) {
+      toast.error("Primero genera una imagen del ramo");
+      return;
+    }
+
+    const saved = backendStorage.getItem("adminProducts");
+    const currentProducts: Product[] = saved
+      ? JSON.parse(saved)
+      : initialProducts.map((p) => ({ ...p, active: true }));
+
+    const nextId = Math.max(0, ...currentProducts.map((p) => Number(p.id) || 0)) + 1;
+
+    const newProduct: Product = {
+      id: nextId,
+      name: productName,
+      category: "flores",
+      price: Number(budget) || 0,
+      image: generatedImage,
+      description: productDescription,
+      featured: true,
+      active: true,
+      onSale: false,
+    };
+
+    backendStorage.setItem("adminProducts", JSON.stringify([newProduct, ...currentProducts]));
+    toast.success("Ramo guardado como producto del catálogo ✨");
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-bold text-foreground">Diseñador IA de Ramos</h2>
+            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">NUEVO</span>
+          </div>
+          <p className="text-muted-foreground mt-1">Crea ramos, genera imágenes y guárdalos directamente en tu catálogo.</p>
+        </div>
+        <button className="px-4 py-2 bg-muted hover:bg-accent rounded-xl text-sm font-medium">
+          Guía rápida
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr_360px] gap-6">
+        <div className="space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">1</span>
+              <h3 className="font-bold text-foreground">Describe tu ramo</h3>
+            </div>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+              className="w-full bg-background border border-border rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              placeholder="Ej: quiero un ramo de rosas rosas y blancas, elegante y romántico"
+            />
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-5">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">2</span>
+              <h3 className="font-bold text-foreground">Personaliza</h3>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium mb-2"><Euro className="w-4 h-4" />Presupuesto</label>
+              <div className="flex gap-3">
+                <input
+                  type="range"
+                  min="20"
+                  max="200"
+                  step="5"
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <input
+                  type="number"
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value) || 0)}
+                  className="w-24 bg-background border border-border rounded-xl px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium mb-2"><Sparkles className="w-4 h-4" />Estilo</label>
+              <div className="grid grid-cols-2 gap-2">
+                {styles.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setStyle(item)}
+                    className={`px-3 py-2 rounded-xl border text-sm ${style === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium mb-2"><Palette className="w-4 h-4" />Color principal</label>
+              <div className="flex flex-wrap gap-2">
+                {colors.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setColor(item)}
+                    className={`px-3 py-2 rounded-xl border text-sm ${color === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium mb-2"><Ruler className="w-4 h-4" />Tamaño</label>
+              <div className="grid grid-cols-4 gap-2">
+                {sizes.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSize(item.id)}
+                    className={`px-3 py-3 rounded-xl border text-sm ${size === item.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
+                  >
+                    <span className="block font-bold">{item.id}</span>
+                    <span className="block text-[10px] opacity-80">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-bold disabled:opacity-60"
+            >
+              {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+              {loading ? "Generando ramo..." : "Generar ramo con IA"}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-foreground">Resultado generado por IA</h3>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">Nano Banana / Gemini</span>
+            </div>
+
+            <div className="aspect-[4/3] rounded-2xl bg-muted overflow-hidden border border-border flex items-center justify-center">
+              {generatedImage ? (
+                <motion.img
+                  key={generatedImage}
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  src={generatedImage}
+                  alt={productName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="text-center px-8">
+                  <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado por IA.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 p-5 bg-muted/40 rounded-2xl border border-border">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">{productName}</h3>
+                  <p className="text-sm text-muted-foreground mt-2">{productDescription}</p>
+                  <p className="text-3xl font-bold mt-4">{Number(budget || 0).toFixed(2)} €</p>
+                </div>
+                <span className="px-2 py-1 bg-amber-500/10 text-amber-600 rounded-full text-xs font-semibold">Sugerido por IA</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+                <button
+                  onClick={saveAsProduct}
+                  className="flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 font-medium"
+                >
+                  <Plus className="w-4 h-4" /> Usar como producto
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading}
+                  className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium disabled:opacity-60"
+                >
+                  <RefreshCw className="w-4 h-4" /> Otra versión
+                </button>
+                <button
+                  onClick={() => generatedImage ? toast.success("Imagen lista para guardar en el producto") : toast.error("Primero genera una imagen")}
+                  className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium"
+                >
+                  <Save className="w-4 h-4" /> Guardar imagen
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <h3 className="font-bold text-foreground mb-4">Flores sugeridas para este ramo</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {flowerSuggestions.map((flower) => (
+                <div key={flower.name} className="flex items-center gap-3 bg-muted/40 border border-border rounded-xl p-3">
+                  <div className="w-12 h-12 bg-background rounded-xl flex items-center justify-center text-2xl">
+                    {flower.image}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{flower.name}</p>
+                    <p className="text-xs text-muted-foreground">{flower.price.toFixed(2)} € / ud</p>
+                  </div>
+                  <button className="w-8 h-8 rounded-lg bg-background border border-border hover:bg-primary hover:text-primary-foreground transition-colors">
+                    +
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-foreground">Historial de generaciones</h3>
+              <button className="text-primary text-sm">Ver todas</button>
+            </div>
+            <div className="space-y-3">
+              {history.length === 0 && (
+                <p className="text-sm text-muted-foreground">Todavía no has generado ramos en esta sesión.</p>
+              )}
+              {history.map((item, index) => (
+                <button
+                  key={`${item.name}-${index}`}
+                  onClick={() => setGeneratedImage(item.image)}
+                  className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-muted text-left"
+                >
+                  <img src={item.image} alt={item.name} className="w-16 h-16 rounded-xl object-cover" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.style}</p>
+                    <p className="font-bold text-sm">{item.price.toFixed(2)} €</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Flower2 className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-foreground">Acciones rápidas</h3>
+            </div>
+            <div className="grid gap-3">
+              <button onClick={saveAsProduct} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left">
+                <Plus className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold">Importar al catálogo</p>
+                  <p className="text-xs text-muted-foreground">Crear producto con imagen IA</p>
+                </div>
+              </button>
+              <button onClick={handleGenerate} disabled={loading} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left disabled:opacity-60">
+                <Wand2 className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold">Generar otra propuesta</p>
+                  <p className="text-xs text-muted-foreground">Nueva versión del ramo</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
