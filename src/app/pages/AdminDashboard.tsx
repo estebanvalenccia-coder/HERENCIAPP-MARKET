@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Package, Plus, Tag, ShoppingBag,
   Image as ImageIcon, Settings, Lock, LogOut,
-  Search, Bell, Menu, X, Calculator, Flower2
+  Search, Bell, Menu, X, Calculator, Flower2, Sparkles
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -17,8 +17,9 @@ import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
 import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
 import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
+import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
 
-type AdminSection = "dashboard" | "products" | "add-product" | "offers" | "orders" | "calculator" | "flower-costs" | "content" | "settings";
+type AdminSection = "dashboard" | "products" | "add-product" | "ai-bouquet-designer" | "offers" | "orders" | "calculator" | "flower-costs" | "content" | "settings";
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -59,6 +60,7 @@ export function AdminDashboard() {
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
     { id: "products" as AdminSection, label: "Productos", icon: Package },
     { id: "add-product" as AdminSection, label: "Añadir Producto", icon: Plus },
+    { id: "ai-bouquet-designer" as AdminSection, label: "Diseñador IA de Ramos", icon: Sparkles, badge: "NUEVO" },
     { id: "offers" as AdminSection, label: "Ofertas", icon: Tag },
     { id: "orders" as AdminSection, label: "Pedidos", icon: ShoppingBag },
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
@@ -70,17 +72,12 @@ export function AdminDashboard() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 px-4 relative overflow-hidden">
-        {/* Background decorations */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/10 rounded-full blur-3xl" />
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md relative z-10"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
           <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-3xl p-8 shadow-2xl">
             <div className="flex items-center justify-center mb-8">
               <div className="bg-gradient-to-br from-primary to-secondary p-5 rounded-2xl shadow-lg">
@@ -88,18 +85,12 @@ export function AdminDashboard() {
               </div>
             </div>
 
-            <h2 className="text-3xl font-bold text-foreground text-center mb-2">
-              Bienvenido
-            </h2>
-            <p className="text-muted-foreground text-center mb-8">
-              Panel de Administración - Herencia Floristería
-            </p>
+            <h2 className="text-3xl font-bold text-foreground text-center mb-2">Bienvenido</h2>
+            <p className="text-muted-foreground text-center mb-8">Panel de Administración - Herencia Floristería</p>
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Usuario
-                </label>
+                <label className="block text-sm font-medium text-foreground mb-2">Usuario</label>
                 <input
                   type="text"
                   value={username}
@@ -111,9 +102,7 @@ export function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Contraseña
-                </label>
+                <label className="block text-sm font-medium text-foreground mb-2">Contraseña</label>
                 <input
                   type="password"
                   value={password}
@@ -124,18 +113,13 @@ export function AdminDashboard() {
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium"
-              >
+              <button type="submit" className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium">
                 Iniciar Sesión
               </button>
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-xs text-muted-foreground">
-                Acceso restringido solo para administradores
-              </p>
+              <p className="text-xs text-muted-foreground">Acceso restringido solo para administradores</p>
             </div>
           </div>
         </motion.div>
@@ -145,32 +129,20 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-card to-muted/30 border-r border-border/50 shadow-xl transform transition-transform duration-300 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-      >
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-card to-muted/30 border-r border-border/50 shadow-xl transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div className="h-full flex flex-col">
-          {/* Logo */}
           <div className="p-6 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Admin Panel
-                </h1>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Admin Panel</h1>
                 <p className="text-xs text-muted-foreground mt-1">Herencia Floristería</p>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors"
-              >
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* User Profile */}
           <div className="p-6 border-b border-border/50">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shadow-lg">
@@ -183,11 +155,8 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* Menu */}
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-2">
-              Menú Principal
-            </p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-2">Menú Principal</p>
             {menuItems.map((item) => (
               <motion.button
                 key={item.id}
@@ -197,31 +166,22 @@ export function AdminDashboard() {
                 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  currentSection === item.id
-                    ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg shadow-primary/20"
-                    : "text-foreground hover:bg-muted/50"
-                }`}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentSection === item.id ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg shadow-primary/20" : "text-foreground hover:bg-muted/50"}`}
               >
                 <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
-                {currentSection === item.id && (
-                  <motion.div
-                    layoutId="activeSection"
-                    className="ml-auto w-1.5 h-1.5 bg-white rounded-full"
-                    initial={false}
-                  />
+                <span className="font-medium text-left flex-1">{item.label}</span>
+                {"badge" in item && item.badge && (
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${currentSection === item.id ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>
+                    {item.badge}
+                  </span>
                 )}
+                {currentSection === item.id && <motion.div layoutId="activeSection" className="w-1.5 h-1.5 bg-white rounded-full" initial={false} />}
               </motion.button>
             ))}
           </nav>
 
-          {/* Logout */}
           <div className="p-4 border-t border-border/50 bg-gradient-to-r from-destructive/5 to-transparent">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
-            >
+            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-xl transition-colors">
               <LogOut className="w-5 h-5" />
               <span className="font-medium">Cerrar Sesión</span>
             </button>
@@ -229,51 +189,33 @@ export function AdminDashboard() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen">
-        {/* Header */}
         <header className="bg-card/80 backdrop-blur-lg border-b border-border/50 sticky top-0 z-40 shadow-sm">
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors"
-                >
+                <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors">
                   <Menu className="w-5 h-5" />
                 </button>
                 <div>
                   <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-foreground">
-                      {menuItems.find(item => item.id === currentSection)?.label || "Dashboard"}
-                    </h2>
-                    <span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-                      v1.0
-                    </span>
+                    <h2 className="text-xl font-bold text-foreground">{menuItems.find(item => item.id === currentSection)?.label || "Dashboard"}</h2>
+                    <span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">v1.0</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Gestiona tu floristería desde aquí
-                  </p>
+                  <p className="text-sm text-muted-foreground">Gestiona tu floristería desde aquí</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-64"
-                  />
+                  <input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-64" />
                 </div>
                 <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
                   <Bell className="w-5 h-5 text-foreground" />
                   <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
                 </button>
-                <button
-                  onClick={() => navigate("/")}
-                  className="hidden sm:flex items-center gap-2 px-4 py-2 bg-muted hover:bg-accent rounded-lg transition-colors text-sm font-medium"
-                >
+                <button onClick={() => navigate("/")} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-muted hover:bg-accent rounded-lg transition-colors text-sm font-medium">
                   Ver Sitio
                 </button>
               </div>
@@ -281,11 +223,11 @@ export function AdminDashboard() {
           </div>
         </header>
 
-        {/* Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
           {currentSection === "dashboard" && <AdminDashboardHome onNavigate={setCurrentSection} />}
           {currentSection === "products" && <AdminProducts onAddNew={() => setCurrentSection("add-product")} />}
           {currentSection === "add-product" && <AdminAddProduct onBack={() => setCurrentSection("products")} />}
+          {currentSection === "ai-bouquet-designer" && <AdminAIBouquetDesigner />}
           {currentSection === "offers" && <AdminOffers />}
           {currentSection === "orders" && <AdminOrders />}
           {currentSection === "calculator" && <AdminSalesCalculator />}
@@ -295,13 +237,7 @@ export function AdminDashboard() {
         </main>
       </div>
 
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
     </div>
   );
 }
