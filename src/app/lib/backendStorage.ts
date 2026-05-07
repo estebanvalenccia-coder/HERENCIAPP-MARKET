@@ -1,5 +1,5 @@
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-const HAS_BACKEND = Boolean(API_BASE);
+let backendAvailable = Boolean(API_BASE);
 
 type StoredValue = string | null;
 const cache = new Map<string, string>();
@@ -39,34 +39,45 @@ const emitChange = () => {
   window.dispatchEvent(new Event("storage"));
 };
 
+function disableBackendFallback() {
+  backendAvailable = false;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!HAS_BACKEND) {
-    throw new Error("Backend no configurado. Define VITE_API_URL para activar la API.");
+  if (!backendAvailable) {
+    throw new Error("Backend no disponible. Se está usando almacenamiento local.");
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      credentials: "include",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Error HTTP ${response.status}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || `Error HTTP ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    disableBackendFallback();
+    throw error;
   }
-
-  return response.json();
 }
 
 export const backendApi = {
   baseUrl: API_BASE,
-  enabled: HAS_BACKEND,
+  get enabled() {
+    return backendAvailable;
+  },
 
   async preload() {
-    if (!HAS_BACKEND) {
+    if (!backendAvailable) {
       preloadPromise = Promise.resolve();
       return preloadPromise;
     }
@@ -76,8 +87,9 @@ export const backendApi = {
         .then(({ data }) => {
           Object.entries(data || {}).forEach(([key, value]) => cache.set(key, sanitizeForClient(key, value)));
         })
-        .catch((error) => {
-          console.warn("No se pudo conectar con el backend. La tienda seguirá usando datos locales.", error);
+        .catch(() => {
+          disableBackendFallback();
+          // Silencioso a propósito: si la API falla por CORS o está caída, la tienda sigue en modo local.
         });
     }
     return preloadPromise;
@@ -151,13 +163,13 @@ export const backendStorage = {
     cache.set(key, sanitizeForClient(key, value));
     writeLocalStorage(key, value);
 
-    if (HAS_BACKEND) {
+    if (backendAvailable) {
       fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
         credentials: "include",
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value }),
-      }).catch((error) => console.warn(`No se pudo guardar ${key} en backend`, error));
+      }).catch(() => disableBackendFallback());
     }
 
     emitChange();
@@ -167,11 +179,11 @@ export const backendStorage = {
     cache.delete(key);
     removeLocalStorage(key);
 
-    if (HAS_BACKEND) {
+    if (backendAvailable) {
       fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
         credentials: "include",
         method: "DELETE",
-      }).catch((error) => console.warn(`No se pudo eliminar ${key} del backend`, error));
+      }).catch(() => disableBackendFallback());
     }
 
     emitChange();
