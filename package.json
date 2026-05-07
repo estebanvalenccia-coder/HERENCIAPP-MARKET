@@ -9,10 +9,10 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "dev:backend": "node --import ./backend/orderEmailPatch.js backend/server.js",
-    "dev:full": "concurrently \"vite\" \"node --import ./backend/orderEmailPatch.js backend/server.js\"",
-    "start": "node --import ./backend/orderEmailPatch.js backend/server.js",
-    "start:backend": "node --import ./backend/orderEmailPatch.js backend/server.js"
+    "dev:backend": "node backend/server.js",
+    "dev:full": "concurrently \"vite\" \"node backend/server.js\"",
+    "start": "node backend/server.js",
+    "start:backend": "node backend/server.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
