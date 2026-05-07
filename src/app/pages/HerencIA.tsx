@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Bot, ExternalLink, Lock, Mail, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
   getHerenciaIaAccessMessage,
   getHerenciaIaDailyLimit,
@@ -31,6 +31,8 @@ export function HerencIA() {
   const [totalPaid, setTotalPaid] = useState(0);
   const [usedMessages, setUsedMessages] = useState(0);
   const [accessStarted, setAccessStarted] = useState(false);
+  const [checkingCustomer, setCheckingCustomer] = useState(false);
+  const [automaticStatus, setAutomaticStatus] = useState(false);
 
   useEffect(() => {
     const settings = backendStorage.getItem("herenciaSettings");
@@ -45,11 +47,45 @@ export function HerencIA() {
     setUsedMessages(readUsage(savedEmail));
   }, []);
 
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setTotalPaid(0);
+      setAutomaticStatus(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCheckingCustomer(true);
+
+    backendApi.getHerenciaIaCustomerStatus(normalizedEmail)
+      .then(({ totalPaid }) => {
+        if (cancelled) return;
+        setTotalPaid(Number(totalPaid || 0));
+        setAutomaticStatus(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTotalPaid(0);
+        setAutomaticStatus(false);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingCustomer(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
+
   const dailyLimit = getHerenciaIaDailyLimit(email);
   const remainingMessages = Math.max(0, dailyLimit - usedMessages);
   const isVip = !email || totalPaid >= HERENCIA_IA_ACCESS_RULES.vipMinimumSpend;
-  const canOpenIa = remainingMessages > 0 && isVip;
-  const accessMessage = getHerenciaIaAccessMessage({ email, totalPaid, remainingMessages });
+  const canOpenIa = remainingMessages > 0 && isVip && !checkingCustomer;
+  const accessMessage = checkingCustomer
+    ? "Comprobando compras pagadas del cliente..."
+    : getHerenciaIaAccessMessage({ email, totalPaid, remainingMessages });
 
   const handleEmailChange = (value: string) => {
     setEmail(value);
@@ -127,7 +163,7 @@ export function HerencIA() {
               <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
                 <p className="text-sm opacity-80">VIP</p>
                 <p className="text-2xl font-bold">+50 €</p>
-                <p className="text-xs opacity-80">en compras</p>
+                <p className="text-xs opacity-80">en compras pagadas</p>
               </div>
             </div>
           </motion.div>
@@ -166,21 +202,16 @@ export function HerencIA() {
             </label>
 
             {email && (
-              <label className="mb-4 block">
-                <span className="mb-2 block text-sm font-medium text-foreground">
-                  Total comprado pagado (€)
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  value={totalPaid}
-                  onChange={(event) => setTotalPaid(Number(event.target.value) || 0)}
-                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 outline-none transition focus:ring-2 focus:ring-primary/50"
-                />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Temporalmente manual. El siguiente paso será comprobarlo automáticamente con pedidos pagados.
+              <div className="mb-4 rounded-2xl bg-muted/50 p-4">
+                <p className="text-sm font-medium text-foreground">Estado del cliente</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {checkingCustomer
+                    ? "Comprobando pedidos pagados..."
+                    : automaticStatus
+                      ? `Compras pagadas detectadas: ${totalPaid.toFixed(2)} €`
+                      : "No se pudo comprobar automáticamente todavía. El acceso premium queda bloqueado por seguridad."}
                 </p>
-              </label>
+              </div>
             )}
 
             <div className={`mb-5 rounded-2xl p-4 ${canOpenIa ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
