@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 
 interface Product {
   id: number;
@@ -51,6 +51,17 @@ function suggestedName(description: string, color: string) {
   return clean.length > 34 ? `${clean.slice(0, 34)}...` : clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
+async function readJsonSafely(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 300) || `Respuesta no válida del servidor (${response.status})`);
+  }
+}
+
 export function AdminAIBouquetDesigner() {
   const [description, setDescription] = useState("Ramo elegante de rosas rojas, eucalipto y paniculata con toque romántico");
   const [budget, setBudget] = useState(49.9);
@@ -77,17 +88,18 @@ export function AdminAIBouquetDesigner() {
       setGeneratedImage("");
       setProposal(null);
 
-      const response = await fetch("/api/ai/bouquet-full", {
+      const apiUrl = `${backendApi.baseUrl}/api/ai/bouquet-full`;
+      const response = await fetch(apiUrl, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description, budget, style, color, size }),
       });
 
-      const data = await response.json();
+      const data = await readJsonSafely(response);
 
       if (!response.ok) {
-        throw new Error(data?.error || "No se pudo generar el ramo");
+        throw new Error(data?.error || `Error HTTP ${response.status}`);
       }
 
       const nextProposal: AIBouquetProposal = data.proposal || {};
@@ -185,21 +197,8 @@ export function AdminAIBouquetDesigner() {
             <div>
               <label className="flex items-center gap-2 text-sm font-medium mb-2"><Euro className="w-4 h-4" />Presupuesto</label>
               <div className="flex gap-3">
-                <input
-                  type="range"
-                  min="20"
-                  max="200"
-                  step="5"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value))}
-                  className="flex-1"
-                />
-                <input
-                  type="number"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value) || 0)}
-                  className="w-24 bg-background border border-border rounded-xl px-3 py-2"
-                />
+                <input type="range" min="20" max="200" step="5" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="flex-1" />
+                <input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value) || 0)} className="w-24 bg-background border border-border rounded-xl px-3 py-2" />
               </div>
             </div>
 
@@ -207,13 +206,7 @@ export function AdminAIBouquetDesigner() {
               <label className="flex items-center gap-2 text-sm font-medium mb-2"><Sparkles className="w-4 h-4" />Estilo</label>
               <div className="grid grid-cols-2 gap-2">
                 {styles.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setStyle(item)}
-                    className={`px-3 py-2 rounded-xl border text-sm ${style === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
-                  >
-                    {item}
-                  </button>
+                  <button key={item} onClick={() => setStyle(item)} className={`px-3 py-2 rounded-xl border text-sm ${style === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}>{item}</button>
                 ))}
               </div>
             </div>
@@ -222,13 +215,7 @@ export function AdminAIBouquetDesigner() {
               <label className="flex items-center gap-2 text-sm font-medium mb-2"><Palette className="w-4 h-4" />Color principal</label>
               <div className="flex flex-wrap gap-2">
                 {colors.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setColor(item)}
-                    className={`px-3 py-2 rounded-xl border text-sm ${color === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
-                  >
-                    {item}
-                  </button>
+                  <button key={item} onClick={() => setColor(item)} className={`px-3 py-2 rounded-xl border text-sm ${color === item ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}>{item}</button>
                 ))}
               </div>
             </div>
@@ -237,11 +224,7 @@ export function AdminAIBouquetDesigner() {
               <label className="flex items-center gap-2 text-sm font-medium mb-2"><Ruler className="w-4 h-4" />Tamaño</label>
               <div className="grid grid-cols-4 gap-2">
                 {sizes.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setSize(item.id)}
-                    className={`px-3 py-3 rounded-xl border text-sm ${size === item.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}
-                  >
+                  <button key={item.id} onClick={() => setSize(item.id)} className={`px-3 py-3 rounded-xl border text-sm ${size === item.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:bg-muted"}`}>
                     <span className="block font-bold">{item.id}</span>
                     <span className="block text-[10px] opacity-80">{item.label}</span>
                   </button>
@@ -249,11 +232,7 @@ export function AdminAIBouquetDesigner() {
               </div>
             </div>
 
-            <button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-bold disabled:opacity-60"
-            >
+            <button onClick={handleGenerate} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-bold disabled:opacity-60">
               {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
               {loading ? "Generando con Llama + Nano Banana..." : "Generar ramo con IA"}
             </button>
@@ -269,19 +248,9 @@ export function AdminAIBouquetDesigner() {
 
             <div className="aspect-[4/3] rounded-2xl bg-muted overflow-hidden border border-border flex items-center justify-center">
               {generatedImage ? (
-                <motion.img
-                  key={generatedImage}
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  src={generatedImage}
-                  alt={productName}
-                  className="w-full h-full object-cover"
-                />
+                <motion.img key={generatedImage} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} src={generatedImage} alt={productName} className="w-full h-full object-cover" />
               ) : (
-                <div className="text-center px-8">
-                  <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado por Nano Banana.</p>
-                </div>
+                <div className="text-center px-8"><ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado por Nano Banana.</p></div>
               )}
             </div>
 
@@ -297,15 +266,9 @@ export function AdminAIBouquetDesigner() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
-                <button onClick={saveAsProduct} className="flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 font-medium">
-                  <Plus className="w-4 h-4" /> Usar como producto
-                </button>
-                <button onClick={handleGenerate} disabled={loading} className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium disabled:opacity-60">
-                  <RefreshCw className="w-4 h-4" /> Otra versión
-                </button>
-                <button onClick={() => generatedImage ? toast.success("Imagen lista para guardar en el producto") : toast.error("Primero genera una imagen")} className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium">
-                  <Save className="w-4 h-4" /> Guardar imagen
-                </button>
+                <button onClick={saveAsProduct} className="flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 font-medium"><Plus className="w-4 h-4" /> Usar como producto</button>
+                <button onClick={handleGenerate} disabled={loading} className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium disabled:opacity-60"><RefreshCw className="w-4 h-4" /> Otra versión</button>
+                <button onClick={() => generatedImage ? toast.success("Imagen lista para guardar en el producto") : toast.error("Primero genera una imagen")} className="flex items-center justify-center gap-2 py-3 bg-background border border-border rounded-xl hover:bg-muted font-medium"><Save className="w-4 h-4" /> Guardar imagen</button>
               </div>
             </div>
           </div>
@@ -316,10 +279,7 @@ export function AdminAIBouquetDesigner() {
               {recommendedFlowers.map((flower) => (
                 <div key={flower.name} className="flex items-center gap-3 bg-muted/40 border border-border rounded-xl p-3">
                   <div className="w-12 h-12 bg-background rounded-xl flex items-center justify-center text-2xl">{flower.image}</div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{flower.name}</p>
-                    <p className="text-xs text-muted-foreground">{flower.price ? `${flower.price.toFixed(2)} € / ud` : "Sugerida por IA"}</p>
-                  </div>
+                  <div className="flex-1"><p className="font-semibold text-sm">{flower.name}</p><p className="text-xs text-muted-foreground">{flower.price ? `${flower.price.toFixed(2)} € / ud` : "Sugerida por IA"}</p></div>
                   <button className="w-8 h-8 rounded-lg bg-background border border-border hover:bg-primary hover:text-primary-foreground transition-colors">+</button>
                 </div>
               ))}
@@ -329,45 +289,23 @@ export function AdminAIBouquetDesigner() {
 
         <div className="space-y-6">
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground">Historial de generaciones</h3>
-              <button className="text-primary text-sm">Ver todas</button>
-            </div>
+            <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-foreground">Historial de generaciones</h3><button className="text-primary text-sm">Ver todas</button></div>
             <div className="space-y-3">
               {history.length === 0 && <p className="text-sm text-muted-foreground">Todavía no has generado ramos en esta sesión.</p>}
               {history.map((item, index) => (
                 <button key={`${item.name}-${index}`} onClick={() => setGeneratedImage(item.image)} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-muted text-left">
                   <img src={item.image} alt={item.name} className="w-16 h-16 rounded-xl object-cover" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.style}</p>
-                    <p className="font-bold text-sm">{item.price.toFixed(2)} €</p>
-                  </div>
+                  <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate">{item.name}</p><p className="text-xs text-muted-foreground">{item.style}</p><p className="font-bold text-sm">{item.price.toFixed(2)} €</p></div>
                 </button>
               ))}
             </div>
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Flower2 className="w-5 h-5 text-primary" />
-              <h3 className="font-bold text-foreground">Acciones rápidas</h3>
-            </div>
+            <div className="flex items-center gap-2 mb-4"><Flower2 className="w-5 h-5 text-primary" /><h3 className="font-bold text-foreground">Acciones rápidas</h3></div>
             <div className="grid gap-3">
-              <button onClick={saveAsProduct} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left">
-                <Plus className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="font-semibold">Importar al catálogo</p>
-                  <p className="text-xs text-muted-foreground">Crear producto con imagen IA</p>
-                </div>
-              </button>
-              <button onClick={handleGenerate} disabled={loading} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left disabled:opacity-60">
-                <Wand2 className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="font-semibold">Generar otra propuesta</p>
-                  <p className="text-xs text-muted-foreground">Nueva versión del ramo</p>
-                </div>
-              </button>
+              <button onClick={saveAsProduct} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left"><Plus className="w-5 h-5 text-primary" /><div><p className="font-semibold">Importar al catálogo</p><p className="text-xs text-muted-foreground">Crear producto con imagen IA</p></div></button>
+              <button onClick={handleGenerate} disabled={loading} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left disabled:opacity-60"><Wand2 className="w-5 h-5 text-primary" /><div><p className="font-semibold">Generar otra propuesta</p><p className="text-xs text-muted-foreground">Nueva versión del ramo</p></div></button>
             </div>
           </div>
         </div>
