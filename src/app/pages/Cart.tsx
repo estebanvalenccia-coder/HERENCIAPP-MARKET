@@ -103,8 +103,11 @@ export function Cart() {
         </select>
         <div className="space-y-2 border-t pt-4">
           <div className="flex justify-between"><span>Subtotal</span><span>€{subtotal.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>Envío</span><span>{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span></div>
-          <div className="flex justify-between font-bold text-lg"><span>Total</span><span>€{total.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span>Envío desde</span><span>{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span></div>
+          {deliveryMethod === "envio" && (
+            <p className="text-xs text-muted-foreground">El precio final del envío se calcula con tu dirección en el siguiente paso.</p>
+          )}
+          <div className="flex justify-between font-bold text-lg"><span>Total estimado</span><span>€{total.toFixed(2)}</span></div>
         </div>
         <button onClick={goCheckout} className="w-full mt-6 bg-primary text-primary-foreground py-3 rounded-xl font-medium">Continuar con datos de entrega</button>
       </div>
