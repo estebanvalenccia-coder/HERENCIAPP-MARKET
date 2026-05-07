@@ -21,19 +21,19 @@ Devuelve SOLO JSON válido con esta estructura exacta:
 }`;
 }
 
-async function generateBouquetWithGrok(payload) {
-  if (!process.env.XAI_API_KEY) {
-    throw new Error("Falta XAI_API_KEY en Railway");
+async function generateBouquetWithAI(payload) {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("Falta GROQ_API_KEY en Railway");
   }
 
-  const response = await fetch("https://api.x.ai/v1/chat/completions", {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.XAI_MODEL || "grok-4.3",
+      model: process.env.LLAMA_MODEL || "llama-3.3-70b-versatile",
       temperature: 0.7,
       stream: false,
       messages: [
@@ -51,7 +51,7 @@ async function generateBouquetWithGrok(payload) {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Error de Grok: ${detail}`);
+    throw new Error(`Error de Groq/Llama: ${detail}`);
   }
 
   const data = await response.json();
@@ -92,7 +92,7 @@ async function generateImageWithNanoBanana(prompt) {
 export function setupAIBouquetRoutes(app, requireAdmin) {
   app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
     try {
-      const result = await generateBouquetWithGrok(req.body || {});
+      const result = await generateBouquetWithAI(req.body || {});
       res.json({ result });
     } catch (error) {
       res.status(500).json({ error: error.message || "No se pudo generar la propuesta del ramo" });
@@ -112,7 +112,7 @@ export function setupAIBouquetRoutes(app, requireAdmin) {
 
   app.post("/api/ai/bouquet-full", requireAdmin, async (req, res) => {
     try {
-      const proposal = await generateBouquetWithGrok(req.body || {});
+      const proposal = await generateBouquetWithAI(req.body || {});
       const image = await generateImageWithNanoBanana(proposal.imagePrompt);
       res.json({ proposal, image });
     } catch (error) {
