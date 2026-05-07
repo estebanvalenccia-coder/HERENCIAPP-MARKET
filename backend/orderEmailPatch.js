@@ -1,12 +1,68 @@
 import express from "express";
+import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { notifyOrder } from "./emailNotifications.js";
+import { setupAIBouquetRoutes } from "./aiBouquetRoutes.js";
 
 const originalJson = express.response.json;
+const originalListen = express.application.listen;
+let aiBouquetRoutesMounted = false;
 
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
+
+const sessionSecret =
+  process.env.ADMIN_SESSION_SECRET ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "change-me-in-production";
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    (req.headers.cookie || "")
+      .split(";")
+      .filter(Boolean)
+      .map((part) => {
+        const [name, ...rest] = part.trim().split("=");
+        return [decodeURIComponent(name), decodeURIComponent(rest.join("="))];
+      })
+  );
+}
+
+function sign(value) {
+  return crypto.createHmac("sha256", sessionSecret).update(value).digest("hex");
+}
+
+function isValidAdminToken(token) {
+  if (!token || !token.includes(".")) return false;
+  const [payload, signature] = token.split(".");
+  if (signature !== sign(payload)) return false;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const maxAgeMs = 1000 * 60 * 60 * 12;
+    return decoded.role === "admin" && Date.now() - decoded.iat < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+function requireAdminForAI(req, res, next) {
+  if (!isValidAdminToken(parseCookies(req).admin_session)) {
+    return res.status(401).json({ error: "Acceso de administrador requerido" });
+  }
+  next();
+}
+
+express.application.listen = function patchedListen(...args) {
+  if (!aiBouquetRoutesMounted) {
+    setupAIBouquetRoutes(this, requireAdminForAI);
+    aiBouquetRoutesMounted = true;
+    console.log("Rutas IA de ramos conectadas");
+  }
+
+  return originalListen.apply(this, args);
+};
 
 function mapAdminOrder(order) {
   return {
