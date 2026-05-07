@@ -688,16 +688,23 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
   }
 
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalCents,
-      currency,
-      receipt_email: customerEmail || undefined,
-      metadata: {
-        orderId,
-        requestedPaymentMethod: selectedPaymentMethod,
-      },
-      payment_method_types: paymentMethodTypes,
-    });
+    const paymentIntentParams = {
+  amount: totalCents,
+  currency,
+  receipt_email: customerEmail || undefined,
+  metadata: {
+    orderId,
+    requestedPaymentMethod: selectedPaymentMethod,
+  },
+};
+
+if (selectedPaymentMethod === "bizum") {
+  paymentIntentParams.payment_method_types = ["bizum"];
+} else {
+  paymentIntentParams.automatic_payment_methods = { enabled: true };
+}
+
+const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
     await supabase
       .from("orders")
