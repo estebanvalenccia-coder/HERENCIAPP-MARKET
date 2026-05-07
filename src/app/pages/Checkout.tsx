@@ -10,7 +10,7 @@ export function Checkout() {
 
   const paymentMethod = location.state?.paymentMethod || "tarjeta";
   const deliveryMethod = location.state?.deliveryMethod || "envio";
-  const isStripePayment = paymentMethod === "tarjeta" || paymentMethod === "bizum";
+  const isStripePayment = ["tarjeta", "bizum", "alternativos"].includes(paymentMethod);
 
   const cartItems = useMemo(() => JSON.parse(backendStorage.getItem("cart") || "[]"), []);
 
