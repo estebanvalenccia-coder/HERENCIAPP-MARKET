@@ -1,12 +1,36 @@
 import { useState, useEffect } from "react";
-import { Bot, ExternalLink } from "lucide-react";
+import { Bot, ExternalLink, Lock, Mail, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
+import {
+  getHerenciaIaAccessMessage,
+  getHerenciaIaDailyLimit,
+  HERENCIA_IA_ACCESS_RULES,
+} from "../lib/herenciaIaAccess";
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+function getUsageKey(email: string) {
+  const identity = email.trim().toLowerCase() || "visitor";
+  return `herencia-ia-usage:${todayKey()}:${identity}`;
+}
+
+function readUsage(email: string) {
+  return Number(localStorage.getItem(getUsageKey(email)) || 0);
+}
+
+function writeUsage(email: string, value: number) {
+  localStorage.setItem(getUsageKey(email), String(value));
+}
 
 export function HerencIA() {
   const [iaUrl, setIaUrl] = useState("");
   const [isEnabled, setIsEnabled] = useState(false);
+  const [email, setEmail] = useState("");
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [usedMessages, setUsedMessages] = useState(0);
+  const [accessStarted, setAccessStarted] = useState(false);
 
   useEffect(() => {
     const settings = backendStorage.getItem("herenciaSettings");
@@ -15,7 +39,32 @@ export function HerencIA() {
       setIaUrl(parsed.url || "");
       setIsEnabled(parsed.enabled || false);
     }
+
+    const savedEmail = localStorage.getItem("herencia-ia-email") || "";
+    setEmail(savedEmail);
+    setUsedMessages(readUsage(savedEmail));
   }, []);
+
+  const dailyLimit = getHerenciaIaDailyLimit(email);
+  const remainingMessages = Math.max(0, dailyLimit - usedMessages);
+  const isVip = !email || totalPaid >= HERENCIA_IA_ACCESS_RULES.vipMinimumSpend;
+  const canOpenIa = remainingMessages > 0 && isVip;
+  const accessMessage = getHerenciaIaAccessMessage({ email, totalPaid, remainingMessages });
+
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    localStorage.setItem("herencia-ia-email", value);
+    setUsedMessages(readUsage(value));
+  };
+
+  const startHerenciaIa = () => {
+    if (!canOpenIa) return;
+
+    const nextUsage = usedMessages + 1;
+    writeUsage(email, nextUsage);
+    setUsedMessages(nextUsage);
+    setAccessStarted(true);
+  };
 
   if (!isEnabled || !iaUrl) {
     return (
@@ -45,9 +94,121 @@ export function HerencIA() {
     );
   }
 
+  if (!accessStarted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/10 px-4 py-12">
+        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_420px]">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-3xl border border-border bg-card p-8 shadow-xl"
+          >
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
+              <Sparkles className="h-4 w-4" />
+              Acceso premium controlado
+            </div>
+
+            <h1 className="mb-4 text-4xl font-bold text-foreground">Herenc(IA)</h1>
+            <p className="mb-8 max-w-2xl text-lg text-muted-foreground">
+              Tu asistente de flores, plantas, ramos y regalos. Para proteger el servicio, cada visitante tiene mensajes limitados y los mejores clientes tienen acceso preferente.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl bg-muted/50 p-5">
+                <p className="text-sm text-muted-foreground">Visitante</p>
+                <p className="text-2xl font-bold text-foreground">2</p>
+                <p className="text-xs text-muted-foreground">mensajes/día</p>
+              </div>
+              <div className="rounded-2xl bg-muted/50 p-5">
+                <p className="text-sm text-muted-foreground">Cliente</p>
+                <p className="text-2xl font-bold text-foreground">5</p>
+                <p className="text-xs text-muted-foreground">mensajes/día</p>
+              </div>
+              <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
+                <p className="text-sm opacity-80">VIP</p>
+                <p className="text-2xl font-bold">+50 €</p>
+                <p className="text-xs opacity-80">en compras</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="rounded-3xl border border-border bg-card p-6 shadow-xl"
+          >
+            <div className="mb-6 flex items-center gap-3">
+              <div className="rounded-2xl bg-primary p-3 text-primary-foreground">
+                <Bot className="h-7 w-7" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Entrar a Herenc(IA)</h2>
+                <p className="text-sm text-muted-foreground">Control de uso diario</p>
+              </div>
+            </div>
+
+            <label className="mb-4 block">
+              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <Mail className="h-4 w-4" />
+                Email de cliente opcional
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => handleEmailChange(event.target.value)}
+                placeholder="cliente@email.com"
+                className="w-full rounded-2xl border border-border bg-background px-4 py-3 outline-none transition focus:ring-2 focus:ring-primary/50"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Si no escribes email, entras como visitante con 2 mensajes diarios.
+              </p>
+            </label>
+
+            {email && (
+              <label className="mb-4 block">
+                <span className="mb-2 block text-sm font-medium text-foreground">
+                  Total comprado pagado (€)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={totalPaid}
+                  onChange={(event) => setTotalPaid(Number(event.target.value) || 0)}
+                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 outline-none transition focus:ring-2 focus:ring-primary/50"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Temporalmente manual. El siguiente paso será comprobarlo automáticamente con pedidos pagados.
+                </p>
+              </label>
+            )}
+
+            <div className={`mb-5 rounded-2xl p-4 ${canOpenIa ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
+              <div className="mb-1 flex items-center gap-2 font-semibold">
+                {!canOpenIa && <Lock className="h-4 w-4" />}
+                {canOpenIa ? "Acceso disponible" : "Acceso limitado"}
+              </div>
+              <p className="text-sm">{accessMessage}</p>
+              <p className="mt-2 text-sm font-medium">
+                Te quedan {remainingMessages} de {dailyLimit} mensajes hoy.
+              </p>
+            </div>
+
+            <button
+              onClick={startHerenciaIa}
+              disabled={!canOpenIa}
+              className="w-full rounded-2xl bg-primary px-5 py-4 font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Abrir Herenc(IA)
+            </button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
-      {/* Header */}
       <div className="bg-gradient-to-r from-primary/10 to-secondary/10 border-b border-border">
         <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-6">
           <motion.div
@@ -64,7 +225,7 @@ export function HerencIA() {
                   Herenc(IA)
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Asistente de Inteligencia Artificial
+                  Te quedan {Math.max(0, dailyLimit - usedMessages)} mensajes hoy
                 </p>
               </div>
             </div>
@@ -81,7 +242,6 @@ export function HerencIA() {
         </div>
       </div>
 
-      {/* IA Iframe */}
       <div className="flex-1 overflow-hidden bg-background">
         <iframe
           src={iaUrl}
