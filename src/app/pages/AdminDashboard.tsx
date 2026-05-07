@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Package, Plus, Tag, ShoppingBag, Users,
-  Warehouse, Image as ImageIcon, Settings, Lock, LogOut,
-  Search, Bell, Menu, X, Calculator
+  LayoutDashboard, Package, Plus, Tag, ShoppingBag,
+  Image as ImageIcon, Settings, Lock, LogOut,
+  Search, Bell, Menu, X, Calculator, Flower2
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -16,8 +16,9 @@ import { AdminSettings } from "../components/admin/AdminSettings";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
 import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
+import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 
-type AdminSection = "dashboard" | "products" | "add-product" | "offers" | "orders" | "calculator" | "content" | "settings";
+type AdminSection = "dashboard" | "products" | "add-product" | "offers" | "orders" | "calculator" | "flower-costs" | "content" | "settings";
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -61,6 +62,7 @@ export function AdminDashboard() {
     { id: "offers" as AdminSection, label: "Ofertas", icon: Tag },
     { id: "orders" as AdminSection, label: "Pedidos", icon: ShoppingBag },
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
+    { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
@@ -287,6 +289,7 @@ export function AdminDashboard() {
           {currentSection === "offers" && <AdminOffers />}
           {currentSection === "orders" && <AdminOrders />}
           {currentSection === "calculator" && <AdminSalesCalculator />}
+          {currentSection === "flower-costs" && <AdminFlowerCosts />}
           {currentSection === "content" && <AdminContent />}
           {currentSection === "settings" && <AdminSettings />}
         </main>
