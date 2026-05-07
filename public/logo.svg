@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img" aria-labelledby="title desc">
+  <title id="title">Herencia Floristería</title>
+  <desc id="desc">Logo de Herencia Floristería</desc>
+  <rect width="800" height="360" fill="#f6f2e8"/>
+  <g transform="translate(400 82)" fill="none" stroke="#426047" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 108 C-2 72 2 38 0 0"/>
+    <path d="M-6 38 C-84 10 -138 44 -164 91 C-105 100 -46 88 -6 38Z" fill="#426047" opacity=".95"/>
+    <path d="M8 38 C86 10 140 44 166 91 C108 100 48 88 8 38Z" fill="#426047" opacity=".95"/>
+    <path d="M0 18 C-24 -28 -72 -40 -105 -20 C-58 14 -26 24 0 18Z" fill="#426047" opacity=".95"/>
+    <path d="M0 18 C24 -28 72 -40 105 -20 C58 14 26 24 0 18Z" fill="#426047" opacity=".95"/>
+  </g>
+  <text x="400" y="230" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="82" font-weight="700" letter-spacing="4" fill="#426047">HERENCIA</text>
+  <text x="400" y="286" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="34" font-style="italic" letter-spacing="13" fill="#426047">floristeria</text>
+</svg>
