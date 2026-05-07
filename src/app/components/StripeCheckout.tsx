@@ -17,6 +17,14 @@ interface StripeCheckoutProps {
   metadata?: any;
 }
 
+const alternativePaymentBadges = [
+  { label: "Klarna", className: "bg-pink-100 text-pink-950" },
+  { label: "amazon pay", className: "bg-white text-foreground" },
+  { label: " Pay", className: "bg-white text-foreground" },
+  { label: "G Pay", className: "bg-white text-foreground" },
+  { label: "link", className: "bg-white text-foreground" },
+];
+
 export function StripeCheckout({
   amount,
   onSuccess,
@@ -165,7 +173,7 @@ export function StripeCheckout({
         <div className="bg-primary/10 p-2 rounded-lg"><CreditCard className="w-5 h-5 text-primary" /></div>
         <div>
           <h3 className="text-lg font-semibold text-foreground">Pago seguro con Stripe</h3>
-          <p className="text-sm text-muted-foreground">{isBizum ? "Pago con Bizum" : "Pago con tarjeta"}</p>
+          <p className="text-sm text-muted-foreground">{isBizum ? "Pago con Bizum" : "Tarjeta y pagos rápidos disponibles"}</p>
         </div>
       </div>
 
@@ -197,10 +205,36 @@ export function StripeCheckout({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">Método de pago</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-foreground">Método de pago</label>
+            <div className="hidden sm:flex items-center gap-1 text-xs font-medium text-primary">
+              <Lock className="w-3.5 h-3.5" />
+              Pago seguro con Stripe
+            </div>
+          </div>
           <div id="payment-element" className="min-h-[80px]" />
           {initializing && <p className="text-sm text-muted-foreground mt-2">Cargando métodos de pago...</p>}
         </div>
+
+        {!isBizum && (
+          <div className="pt-2">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+              <div className="h-px bg-border flex-1" />
+              <span>También disponible</span>
+              <div className="h-px bg-border flex-1" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {alternativePaymentBadges.map((badge) => (
+                <div key={badge.label} className={`h-12 rounded-xl border border-border flex items-center justify-center text-sm font-bold shadow-sm ${badge.className}`}>
+                  {badge.label}
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Los métodos disponibles pueden variar según tu dispositivo, navegador y configuración de Stripe.
+            </p>
+          </div>
+        )}
 
         <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
           <div className="flex items-start gap-2">
