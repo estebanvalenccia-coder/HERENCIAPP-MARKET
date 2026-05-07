@@ -1,4 +1,5 @@
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+const HAS_BACKEND = Boolean(API_BASE);
 
 type StoredValue = string | null;
 const cache = new Map<string, string>();
@@ -6,6 +7,31 @@ const cache = new Map<string, string>();
 function sanitizeForClient(_key: string, value: string) {
   return value;
 }
+
+function readLocalStorage(key: string): StoredValue {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // No hacemos nada: puede fallar si el navegador bloquea localStorage.
+  }
+}
+
+function removeLocalStorage(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // No hacemos nada: puede fallar si el navegador bloquea localStorage.
+  }
+}
+
 let preloadPromise: Promise<void> | null = null;
 
 const emitChange = () => {
@@ -14,6 +40,10 @@ const emitChange = () => {
 };
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  if (!HAS_BACKEND) {
+    throw new Error("Backend no configurado. Define VITE_API_URL para activar la API.");
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     ...options,
@@ -33,15 +63,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const backendApi = {
   baseUrl: API_BASE,
+  enabled: HAS_BACKEND,
 
   async preload() {
+    if (!HAS_BACKEND) {
+      preloadPromise = Promise.resolve();
+      return preloadPromise;
+    }
+
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")
         .then(({ data }) => {
           Object.entries(data || {}).forEach(([key, value]) => cache.set(key, sanitizeForClient(key, value)));
         })
         .catch((error) => {
-          console.error("No se pudo precargar el backend", error);
+          console.warn("No se pudo conectar con el backend. La tienda seguirá usando datos locales.", error);
         });
     }
     return preloadPromise;
@@ -108,26 +144,36 @@ export const backendApi = {
 
 export const backendStorage = {
   getItem(key: string): StoredValue {
-    return cache.get(key) ?? null;
+    return cache.get(key) ?? readLocalStorage(key);
   },
 
   setItem(key: string, value: string) {
     cache.set(key, sanitizeForClient(key, value));
-    fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
-      credentials: "include",
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    }).catch((error) => console.error(`No se pudo guardar ${key} en backend`, error));
+    writeLocalStorage(key, value);
+
+    if (HAS_BACKEND) {
+      fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
+        credentials: "include",
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      }).catch((error) => console.warn(`No se pudo guardar ${key} en backend`, error));
+    }
+
     emitChange();
   },
 
   removeItem(key: string) {
     cache.delete(key);
-    fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
-      credentials: "include",
-      method: "DELETE",
-    }).catch((error) => console.error(`No se pudo eliminar ${key} del backend`, error));
+    removeLocalStorage(key);
+
+    if (HAS_BACKEND) {
+      fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
+        credentials: "include",
+        method: "DELETE",
+      }).catch((error) => console.warn(`No se pudo eliminar ${key} del backend`, error));
+    }
+
     emitChange();
   },
 
