@@ -142,6 +142,7 @@ export function Checkout() {
 
         {showStripe && (
           <StripeCheckout
+            paymentMethod={paymentMethod}
             amount={total}
             customerName={form.name}
             customerEmail={form.email}
