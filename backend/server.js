@@ -268,6 +268,10 @@ function sanitizeValueForClient(key, value, admin = false) {
   return value;
 }
 
+function isValidEmail(email) {
+  return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function readStorageValue(key) {
   const { data, error } = await supabase
     .from("app_storage")
@@ -643,12 +647,20 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     deliveryMethod = "envio",
     shipping = 0,
     subtotal = 0,
+    paymentMethod = "tarjeta",
+    metadata = {},
   } = req.body;
 
+  const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
+  const paymentMethodTypes = selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"];
   const totalCents = Math.round(Number(amount) * 100);
 
   if (!Number.isFinite(totalCents) || totalCents < 50) {
     return res.status(400).json({ error: "Importe inválido para Stripe" });
+  }
+
+  if (customerEmail && !isValidEmail(customerEmail)) {
+    return res.status(400).json({ error: "Email inválido" });
   }
 
   const orderId = crypto.randomUUID();
@@ -657,38 +669,65 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     id: orderId,
     customer_email: customerEmail || null,
     customer_name: customerName || null,
-    payment_method: "stripe",
+    payment_method: selectedPaymentMethod,
     delivery_method: deliveryMethod,
     status: "payment_pending",
     subtotal,
     shipping,
     total: Number(amount),
     items,
-    metadata: { source: "frontend_checkout" },
+    metadata: {
+      ...metadata,
+      source: "frontend_checkout",
+      requestedPaymentMethod: selectedPaymentMethod,
+    },
   });
 
   if (orderError) {
     return res.status(500).json({ error: orderError.message });
   }
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: totalCents,
-    currency,
-    receipt_email: customerEmail || undefined,
-    metadata: { orderId },
-    automatic_payment_methods: { enabled: true },
-  });
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalCents,
+      currency,
+      receipt_email: customerEmail || undefined,
+      metadata: {
+        orderId,
+        requestedPaymentMethod: selectedPaymentMethod,
+      },
+      payment_method_types: paymentMethodTypes,
+    });
 
-  await supabase
-    .from("orders")
-    .update({ stripe_payment_intent_id: paymentIntent.id })
-    .eq("id", orderId);
+    await supabase
+      .from("orders")
+      .update({ stripe_payment_intent_id: paymentIntent.id })
+      .eq("id", orderId);
 
-  res.json({
-    clientSecret: paymentIntent.client_secret,
-    paymentIntentId: paymentIntent.id,
-    orderId,
-  });
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      orderId,
+    });
+  } catch (error) {
+    await supabase
+      .from("orders")
+      .update({
+        status: "payment_error",
+        metadata: {
+          ...metadata,
+          source: "frontend_checkout",
+          requestedPaymentMethod: selectedPaymentMethod,
+          stripeError: error.message,
+        },
+      })
+      .eq("id", orderId);
+
+    res.status(error.statusCode || 500).json({
+      error: error.message || "Error al crear el pago en Stripe",
+      code: error.code || "stripe_error",
+    });
+  }
 });
 
 app.listen(port, () => {
