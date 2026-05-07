@@ -216,25 +216,25 @@ export function StripeCheckout({
           {initializing && <p className="text-sm text-muted-foreground mt-2">Cargando métodos de pago...</p>}
         </div>
 
-        {!isBizum && (
-          <div className="pt-2">
-            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-              <div className="h-px bg-border flex-1" />
-              <span>También disponible</span>
-              <div className="h-px bg-border flex-1" />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <div className="group pt-1">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+            <div className="h-px bg-border flex-1" />
+            <span>Más formas de pago</span>
+            <div className="h-px bg-border flex-1" />
+          </div>
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20 transition-all duration-300 max-h-10 group-hover:max-h-32 group-focus-within:max-h-32">
+            <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto">
               {alternativePaymentBadges.map((badge) => (
-                <div key={badge.label} className={`h-12 rounded-xl border border-border flex items-center justify-center text-sm font-bold shadow-sm ${badge.className}`}>
+                <div key={badge.label} className={`min-w-fit px-3 h-7 rounded-lg border border-border flex items-center justify-center text-xs font-bold shadow-sm ${badge.className}`}>
                   {badge.label}
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-center text-xs text-muted-foreground">
-              Los métodos disponibles pueden variar según tu dispositivo, navegador y configuración de Stripe.
+            <p className="px-3 pb-3 text-center text-xs text-muted-foreground">
+              Disponibles según método elegido, dispositivo, navegador y configuración de Stripe.
             </p>
           </div>
-        )}
+        </div>
 
         <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
           <div className="flex items-start gap-2">
