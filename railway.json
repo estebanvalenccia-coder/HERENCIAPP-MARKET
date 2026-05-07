@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "deploy": {
-    "startCommand": "node backend/server.js"
+    "startCommand": "sh -c 'if [ -f backend/server.js ]; then node backend/server.js; else node server.js; fi'"
   }
 }
