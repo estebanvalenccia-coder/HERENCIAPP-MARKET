@@ -23,20 +23,35 @@ type AdminSection = "dashboard" | "products" | "add-product" | "ai-bouquet-desig
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => backendStorage.getItem("adminLocalSession") === "true");
+  const [isCheckingSession, setIsCheckingSession] = useState(backendApi.enabled);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [currentSection, setCurrentSection] = useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    if (!backendApi.enabled) {
+      setIsCheckingSession(false);
+      return;
+    }
+
     backendApi.adminSession()
-      .then(({ authenticated }) => setIsAuthenticated(authenticated))
-      .catch(() => setIsAuthenticated(false));
+      .then(({ authenticated }) => setIsAuthenticated(authenticated || backendStorage.getItem("adminLocalSession") === "true"))
+      .catch(() => setIsAuthenticated(backendStorage.getItem("adminLocalSession") === "true"))
+      .finally(() => setIsCheckingSession(false));
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!backendApi.enabled) {
+      backendStorage.setItem("adminLocalSession", "true");
+      setIsAuthenticated(true);
+      toast.success("Bienvenido al panel local");
+      return;
+    }
+
     try {
       await backendApi.adminLogin(username, password);
       await backendStorage.refresh();
@@ -49,6 +64,7 @@ export function AdminDashboard() {
 
   const handleLogout = async () => {
     await backendApi.adminLogout().catch(() => null);
+    backendStorage.removeItem("adminLocalSession");
     setIsAuthenticated(false);
     setUsername("");
     setPassword("");
@@ -69,6 +85,17 @@ export function AdminDashboard() {
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando panel...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 px-4 relative overflow-hidden">
@@ -88,6 +115,12 @@ export function AdminDashboard() {
             <h2 className="text-3xl font-bold text-foreground text-center mb-2">Bienvenido</h2>
             <p className="text-muted-foreground text-center mb-8">Panel de Administración - Herencia Floristería</p>
 
+            {!backendApi.enabled && (
+              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Backend no conectado. Puedes entrar en modo local para editar contenido guardado en este navegador.
+              </div>
+            )}
+
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Usuario</label>
@@ -95,8 +128,8 @@ export function AdminDashboard() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ingresa tu usuario"
-                  required
+                  placeholder={backendApi.enabled ? "Ingresa tu usuario" : "Modo local"}
+                  required={backendApi.enabled}
                   className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                 />
               </div>
@@ -107,14 +140,14 @@ export function AdminDashboard() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ingresa tu contraseña"
-                  required
+                  placeholder={backendApi.enabled ? "Ingresa tu contraseña" : "Modo local"}
+                  required={backendApi.enabled}
                   className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                 />
               </div>
 
               <button type="submit" className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium">
-                Iniciar Sesión
+                {backendApi.enabled ? "Iniciar Sesión" : "Entrar al Panel"}
               </button>
             </form>
 
