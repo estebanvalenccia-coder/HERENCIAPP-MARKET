@@ -91,6 +91,13 @@ export const backendApi = {
     });
   },
 
+  async getHerenciaIaCustomerStatus(email: string) {
+    return request<{ totalPaid: number; isVip: boolean }>("/api/herencia-ia/customer-status", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
       method: "POST",
