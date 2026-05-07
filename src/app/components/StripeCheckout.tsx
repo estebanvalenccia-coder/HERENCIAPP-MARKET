@@ -8,6 +8,7 @@ interface StripeCheckoutProps {
   amount: number;
   onSuccess: () => void;
   onCancel: () => void;
+  paymentMethod?: string;
   customerName?: string;
   customerEmail?: string;
   deliveryMethod?: string;
@@ -20,6 +21,7 @@ export function StripeCheckout({
   amount,
   onSuccess,
   onCancel,
+  paymentMethod = "tarjeta",
   customerName = "",
   customerEmail = "",
   deliveryMethod = "envio",
@@ -36,6 +38,7 @@ export function StripeCheckout({
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const mountedElement = useRef<any>(null);
+  const isBizum = paymentMethod === "bizum";
 
   useEffect(() => {
     const initStripe = async () => {
@@ -59,7 +62,11 @@ export function StripeCheckout({
           shipping,
           items: cart,
           currency: "eur",
-          metadata,
+          paymentMethod,
+          metadata: {
+            ...metadata,
+            requestedPaymentMethod: paymentMethod,
+          },
         });
 
         const elementsInstance = stripeInstance.elements({
@@ -158,7 +165,7 @@ export function StripeCheckout({
         <div className="bg-primary/10 p-2 rounded-lg"><CreditCard className="w-5 h-5 text-primary" /></div>
         <div>
           <h3 className="text-lg font-semibold text-foreground">Pago seguro con Stripe</h3>
-          <p className="text-sm text-muted-foreground">Tarjeta y Bizum si está activado en Stripe</p>
+          <p className="text-sm text-muted-foreground">{isBizum ? "Pago con Bizum" : "Pago con tarjeta"}</p>
         </div>
       </div>
 
@@ -200,7 +207,7 @@ export function StripeCheckout({
             <Lock className="w-4 h-4 text-primary mt-0.5" />
             <div>
               <p className="text-sm font-medium text-foreground">Pago seguro</p>
-              <p className="text-xs text-muted-foreground mt-1">Si eliges Bizum, Stripe abrirá el flujo del banco. El pedido solo se confirma cuando Stripe confirme el pago real.</p>
+              <p className="text-xs text-muted-foreground mt-1">{isBizum ? "Stripe abrirá el flujo de Bizum. El pedido solo se confirma cuando Stripe confirme el pago real." : "El pedido solo se confirma cuando Stripe confirme el pago real."}</p>
             </div>
           </div>
         </div>
