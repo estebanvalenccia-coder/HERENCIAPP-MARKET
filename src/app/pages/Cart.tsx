@@ -95,12 +95,19 @@ export function Cart() {
           <option value="recoger">Recoger en tienda</option>
         </select>
         <label className="block mb-2 font-medium">Pago</label>
-        <select className="w-full border rounded-xl p-3 mb-4" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+        <select className="w-full border rounded-xl p-3 mb-2" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
           <option value="bizum">Bizum</option>
           <option value="tarjeta">Tarjeta</option>
+          <option value="alternativos">Pagos alternativos: Klarna, Amazon Pay, Apple Pay, Google Pay y Link</option>
           <option value="transferencia">Transferencia</option>
           <option value="efectivo">Efectivo</option>
         </select>
+        {paymentMethod === "alternativos" && (
+          <p className="text-xs text-muted-foreground mb-4">
+            Stripe mostrará automáticamente los métodos disponibles según el dispositivo, país, moneda e importe.
+          </p>
+        )}
+        {paymentMethod !== "alternativos" && <div className="mb-4" />}
         <div className="space-y-2 border-t pt-4">
           <div className="flex justify-between"><span>Subtotal</span><span>€{subtotal.toFixed(2)}</span></div>
           <div className="flex justify-between"><span>Envío</span><span>{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span></div>
