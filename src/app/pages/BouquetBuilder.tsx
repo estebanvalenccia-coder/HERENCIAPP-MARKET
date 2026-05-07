@@ -1,0 +1,223 @@
+import { useMemo, useState } from "react";
+import { ShoppingCart, Sparkles, Plus, Minus, Wand2, Flower2 } from "lucide-react";
+import { toast } from "sonner";
+import { backendStorage } from "../lib/backendStorage";
+
+const flowers = [
+  { id: "rosa-roja", name: "Rosa Roja", price: 1.8, category: "Rosas", image: "https://images.unsplash.com/photo-1548094967-e25a127d1f6d?q=80&w=600&auto=format&fit=crop" },
+  { id: "rosa-blanca", name: "Rosa Blanca", price: 1.8, category: "Rosas", image: "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=600&auto=format&fit=crop" },
+  { id: "rosa-rosa", name: "Rosa Rosa", price: 1.8, category: "Rosas", image: "https://images.unsplash.com/photo-1559563362-c667ba5f5480?q=80&w=600&auto=format&fit=crop" },
+  { id: "tulipan", name: "Tulipán", price: 1.5, category: "Tulipanes", image: "https://images.unsplash.com/photo-1520763185298-1b434c919102?q=80&w=600&auto=format&fit=crop" },
+  { id: "lirio", name: "Lirio Blanco", price: 2.2, category: "Lirios", image: "https://images.unsplash.com/photo-1597848212624-a19eb35e2651?q=80&w=600&auto=format&fit=crop" },
+  { id: "girasol", name: "Girasol", price: 2.0, category: "Girasoles", image: "https://images.unsplash.com/photo-1597848212624-e6fdf940b40b?q=80&w=600&auto=format&fit=crop" },
+  { id: "paniculata", name: "Paniculata", price: 0.6, category: "Verdes y relleno", image: "https://images.unsplash.com/photo-1525310072745-f49212b5ac6d?q=80&w=600&auto=format&fit=crop" },
+  { id: "eucalipto", name: "Eucalipto", price: 1.2, category: "Verdes y relleno", image: "https://images.unsplash.com/photo-1598512752271-33f913a5af13?q=80&w=600&auto=format&fit=crop" },
+];
+
+const finishPrices: Record<string, number> = {
+  S: 8,
+  M: 12,
+  L: 18,
+  XL: 25,
+};
+
+const sizes = ["S", "M", "L", "XL"];
+const styles = ["Romántico", "Elegante", "Colorido", "Natural", "Premium"];
+const categories = ["Todas", ...Array.from(new Set(flowers.map((f) => f.category)))];
+
+function generateDescription(selectedFlowers: any[], style: string, size: string) {
+  if (!selectedFlowers.length) return "Selecciona flores para crear tu ramo personalizado.";
+  const names = selectedFlowers.map((item) => `${item.quantity} ${item.name}`).join(", ");
+  return `Ramo ${style.toLowerCase()} tamaño ${size}, compuesto por ${names}. Preparado artesanalmente por Herencia Market.`;
+}
+
+export function BouquetBuilder() {
+  const [selected, setSelected] = useState<Record<string, number>>({});
+  const [category, setCategory] = useState("Todas");
+  const [style, setStyle] = useState("Romántico");
+  const [size, setSize] = useState("M");
+
+  const filteredFlowers = category === "Todas" ? flowers : flowers.filter((flower) => flower.category === category);
+
+  const selectedFlowers = useMemo(
+    () => flowers
+      .filter((flower) => selected[flower.id] > 0)
+      .map((flower) => ({ ...flower, quantity: selected[flower.id] })),
+    [selected]
+  );
+
+  const flowersSubtotal = selectedFlowers.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const laborCost = finishPrices[size] || finishPrices.M;
+  const total = flowersSubtotal + laborCost;
+  const description = generateDescription(selectedFlowers, style, size);
+
+  const updateFlower = (id: string, delta: number) => {
+    setSelected((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
+  };
+
+  const addToCart = () => {
+    if (!selectedFlowers.length) {
+      toast.error("Elige al menos una flor para crear tu ramo");
+      return;
+    }
+
+    const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+    const bouquet = {
+      id: Date.now(),
+      name: `Ramo personalizado ${style}`,
+      price: Number(total.toFixed(2)),
+      image: selectedFlowers[0]?.image || flowers[0].image,
+      quantity: 1,
+      description,
+      customBouquet: true,
+      bouquetDetails: {
+        style,
+        size,
+        flowers: selectedFlowers.map((item) => ({ name: item.name, quantity: item.quantity, unitPrice: item.price })),
+      },
+    };
+
+    backendStorage.setItem("cart", JSON.stringify([...cart, bouquet]));
+    toast.success("Ramo personalizado añadido al carrito 🌸");
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
+      <section className="max-w-7xl mx-auto px-4 py-10">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-semibold mb-4">
+            <Sparkles className="w-4 h-4" /> Creador inteligente de ramos
+          </div>
+          <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-4">Crea tu ramo personalizado</h1>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Elige flores, estilo y tamaño. Ves el precio en tiempo real y lo añades al carrito como un producto único.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_360px] gap-6">
+          <aside className="bg-card border border-border rounded-2xl p-5 h-fit sticky top-24">
+            <h2 className="font-bold text-lg mb-4">Categorías</h2>
+            <div className="space-y-2">
+              {categories.map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setCategory(item)}
+                  className={`w-full text-left px-4 py-3 rounded-xl transition-colors ${category === item ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-border mt-6 pt-6">
+              <h3 className="font-bold mb-3">Estilo</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {styles.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setStyle(item)}
+                    className={`px-3 py-2 rounded-xl border text-sm ${style === item ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-border mt-6 pt-6">
+              <h3 className="font-bold mb-3">Tamaño</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {sizes.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setSize(item)}
+                    className={`px-3 py-3 rounded-xl border ${size === item ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                  >
+                    <span className="block font-bold">{item}</span>
+                    <span className="block text-xs opacity-80">+{finishPrices[item]}€</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          <main className="space-y-6">
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <div className="flex items-center justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-2xl font-bold">Listado de flores</h2>
+                  <p className="text-muted-foreground text-sm">Selecciona unidades para montar tu ramo.</p>
+                </div>
+                <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-muted rounded-xl text-sm">
+                  <Flower2 className="w-4 h-4" /> {selectedFlowers.length} tipos elegidos
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredFlowers.map((flower) => (
+                  <div key={flower.id} className="bg-background border border-border rounded-2xl overflow-hidden hover:shadow-lg transition-shadow">
+                    <img src={flower.image} alt={flower.name} className="h-40 w-full object-cover" />
+                    <div className="p-4">
+                      <p className="text-xs text-muted-foreground mb-1">{flower.category}</p>
+                      <h3 className="font-bold text-lg">{flower.name}</h3>
+                      <p className="text-primary font-bold mt-1">{flower.price.toFixed(2)} € / unidad</p>
+
+                      <div className="flex items-center gap-3 mt-4">
+                        <button onClick={() => updateFlower(flower.id, -1)} className="w-10 h-10 rounded-xl bg-muted hover:bg-accent flex items-center justify-center">
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="font-bold min-w-[24px] text-center">{selected[flower.id] || 0}</span>
+                        <button onClick={() => updateFlower(flower.id, 1)} className="w-10 h-10 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center">
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </main>
+
+          <aside className="space-y-6">
+            <div className="bg-card border border-border rounded-2xl p-5 h-fit sticky top-24">
+              <h2 className="text-2xl font-bold mb-4">Resumen del ramo</h2>
+
+              <div className="aspect-square rounded-2xl overflow-hidden bg-muted mb-5 flex items-center justify-center">
+                {selectedFlowers.length ? (
+                  <img src={selectedFlowers[0].image} alt="Ramo personalizado" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center px-6 text-muted-foreground">
+                    <Wand2 className="w-14 h-14 mx-auto mb-3" />
+                    Tu ramo aparecerá aquí
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 max-h-64 overflow-auto pr-1">
+                {selectedFlowers.length === 0 && <p className="text-sm text-muted-foreground">Aún no has elegido flores.</p>}
+                {selectedFlowers.map((item) => (
+                  <div key={item.id} className="flex justify-between gap-3 text-sm">
+                    <span>{item.name} x{item.quantity}</span>
+                    <span>{(item.price * item.quantity).toFixed(2)} €</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-border mt-5 pt-5 space-y-2">
+                <div className="flex justify-between"><span>Flores</span><span>{flowersSubtotal.toFixed(2)} €</span></div>
+                <div className="flex justify-between"><span>Montaje {size}</span><span>{laborCost.toFixed(2)} €</span></div>
+                <div className="flex justify-between text-xl font-bold pt-2"><span>Total</span><span>{total.toFixed(2)} €</span></div>
+              </div>
+
+              <p className="text-sm text-muted-foreground mt-4">{description}</p>
+
+              <button onClick={addToCart} className="w-full mt-6 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors">
+                <ShoppingCart className="w-5 h-5" /> Añadir al carrito
+              </button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div>
+  );
+}
