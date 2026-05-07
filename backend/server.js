@@ -1,4 +1,3 @@
-import ws from "ws";
 import express from "express";
 import cors from "cors";
 import Stripe from "stripe";
@@ -652,7 +651,6 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
   } = req.body;
 
   const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
-  const paymentMethodTypes = selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"];
   const totalCents = Math.round(Number(amount) * 100);
 
   if (!Number.isFinite(totalCents) || totalCents < 50) {
@@ -689,22 +687,22 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
   try {
     const paymentIntentParams = {
-  amount: totalCents,
-  currency,
-  receipt_email: customerEmail || undefined,
-  metadata: {
-    orderId,
-    requestedPaymentMethod: selectedPaymentMethod,
-  },
-};
+      amount: totalCents,
+      currency,
+      receipt_email: customerEmail || undefined,
+      metadata: {
+        orderId,
+        requestedPaymentMethod: selectedPaymentMethod,
+      },
+    };
 
-if (selectedPaymentMethod === "bizum") {
-  paymentIntentParams.payment_method_types = ["bizum"];
-} else {
-  paymentIntentParams.automatic_payment_methods = { enabled: true };
-}
+    if (selectedPaymentMethod === "bizum") {
+      paymentIntentParams.payment_method_types = ["bizum"];
+    } else {
+      paymentIntentParams.automatic_payment_methods = { enabled: true };
+    }
 
-const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
     await supabase
       .from("orders")
