@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Package, Plus, Tag, ShoppingBag, Users,
   Warehouse, Image as ImageIcon, Settings, Lock, LogOut,
-  Search, Bell, Menu, X
+  Search, Bell, Menu, X, Calculator
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -15,8 +15,9 @@ import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
+import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
 
-type AdminSection = "dashboard" | "products" | "add-product" | "offers" | "orders" | "content" | "settings";
+type AdminSection = "dashboard" | "products" | "add-product" | "offers" | "orders" | "calculator" | "content" | "settings";
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -59,6 +60,7 @@ export function AdminDashboard() {
     { id: "add-product" as AdminSection, label: "Añadir Producto", icon: Plus },
     { id: "offers" as AdminSection, label: "Ofertas", icon: Tag },
     { id: "orders" as AdminSection, label: "Pedidos", icon: ShoppingBag },
+    { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
@@ -284,6 +286,7 @@ export function AdminDashboard() {
           {currentSection === "add-product" && <AdminAddProduct onBack={() => setCurrentSection("products")} />}
           {currentSection === "offers" && <AdminOffers />}
           {currentSection === "orders" && <AdminOrders />}
+          {currentSection === "calculator" && <AdminSalesCalculator />}
           {currentSection === "content" && <AdminContent />}
           {currentSection === "settings" && <AdminSettings />}
         </main>
