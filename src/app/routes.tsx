@@ -6,6 +6,7 @@ import { ProductDetail } from "./pages/ProductDetail";
 import { Services } from "./pages/Services";
 import { Contact } from "./pages/Contact";
 import { HerencIA } from "./pages/HerencIA";
+import { BouquetBuilder } from "./pages/BouquetBuilder";
 import { Cart } from "./pages/Cart";
 import { Checkout } from "./pages/Checkout";
 import { OrderConfirmed } from "./pages/OrderConfirmed";
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Home },
       { path: "productos", Component: Products },
+      { path: "crear-ramo", Component: BouquetBuilder },
       { path: "producto/:id", Component: ProductDetail },
       { path: "servicios", Component: Services },
       { path: "contacto", Component: Contact },
