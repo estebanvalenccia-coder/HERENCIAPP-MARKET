@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
-import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { backendStorage } from "../../lib/backendStorage";
 
 interface Product {
   id: number;
@@ -19,13 +19,20 @@ interface Product {
 }
 
 interface AIBouquetProposal {
-  name?: string;
-  shortDescription?: string;
-  description?: string;
-  recommendedFlowers?: string[];
-  imagePrompt?: string;
-  sellingTip?: string;
+  name: string;
+  shortDescription: string;
+  description: string;
+  recommendedFlowers: string[];
+  sellingTip: string;
 }
+
+const bouquetImages = [
+  "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1525310072745-f49212b5ac6d?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1559563362-c667ba5f5480?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1591886960571-74d43a9d4166?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1562690868-60bbe7293e94?q=80&w=1200&auto=format&fit=crop",
+];
 
 const flowerSuggestions = [
   { name: "Rosa Roja", price: 1.8, image: "🌹" },
@@ -48,18 +55,32 @@ const sizes = [
 function suggestedName(description: string, color: string) {
   const clean = description.trim().replace(/^quiero\s+/i, "");
   if (!clean) return `Ramo ${color} Herencia`;
-  return clean.length > 34 ? `${clean.slice(0, 34)}...` : clean.charAt(0).toUpperCase() + clean.slice(1);
+  const base = clean.length > 34 ? `${clean.slice(0, 34)}...` : clean;
+  return base.charAt(0).toUpperCase() + base.slice(1);
 }
 
-async function readJsonSafely(response: Response) {
-  const text = await response.text();
-  if (!text) return {};
+function createLocalProposal(description: string, budget: number, style: string, color: string, size: string): AIBouquetProposal {
+  const name = suggestedName(description, color);
+  const recommendedFlowers = color === "Rojo"
+    ? ["Rosa Roja", "Eucalipto", "Paniculata", "Ruscus Verde"]
+    : color === "Blanco"
+      ? ["Rosa Blanca", "Lirio Blanco", "Paniculata", "Eucalipto"]
+      : color === "Amarillo"
+        ? ["Girasol", "Rosa Crema", "Eucalipto", "Paniculata"]
+        : ["Rosa Rosa", "Tulipán", "Paniculata", "Eucalipto"];
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(text.slice(0, 300) || `Respuesta no válida del servidor (${response.status})`);
-  }
+  return {
+    name,
+    shortDescription: `Ramo ${style.toLowerCase()} tamaño ${size} desde ${Number(budget || 0).toFixed(2)} €`,
+    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Herencia Market. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
+    recommendedFlowers,
+    sellingTip: "Ideal para vender como ramo premium personalizado.",
+  };
+}
+
+function pickImage(description: string, color: string, style: string) {
+  const seed = `${description}-${color}-${style}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return bouquetImages[seed % bouquetImages.length];
 }
 
 export function AdminAIBouquetDesigner() {
@@ -75,7 +96,7 @@ export function AdminAIBouquetDesigner() {
 
   const fallbackName = useMemo(() => suggestedName(description, color), [description, color]);
   const productName = proposal?.name || fallbackName;
-  const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado con IA para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`;
+  const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`;
 
   const handleGenerate = async () => {
     if (!description.trim()) {
@@ -83,31 +104,11 @@ export function AdminAIBouquetDesigner() {
       return;
     }
 
-    try {
-      setLoading(true);
-      setGeneratedImage("");
-      setProposal(null);
+    setLoading(true);
 
-      const apiUrl = `${backendApi.baseUrl}/api/ai/bouquet-full`;
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, budget, style, color, size }),
-      });
-
-      const data = await readJsonSafely(response);
-
-      if (!response.ok) {
-        throw new Error(data?.error || `Error HTTP ${response.status}`);
-      }
-
-      const nextProposal: AIBouquetProposal = data.proposal || {};
-      const imageUrl = data.image?.imageUrl || "";
-
-      if (!imageUrl) {
-        throw new Error("Nano Banana no devolvió imagen. Revisa la respuesta del proveedor.");
-      }
+    window.setTimeout(() => {
+      const nextProposal = createLocalProposal(description, budget, style, color, size);
+      const imageUrl = pickImage(description, color, style);
 
       setProposal(nextProposal);
       setGeneratedImage(imageUrl);
@@ -115,13 +116,10 @@ export function AdminAIBouquetDesigner() {
         { name: nextProposal.name || fallbackName, image: imageUrl, price: budget, style },
         ...prev,
       ].slice(0, 6));
-      toast.success("Ramo generado con Llama + Nano Banana 🌸");
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error?.message || "No se pudo generar el ramo");
-    } finally {
+
       setLoading(false);
-    }
+      toast.success("Ramo generado correctamente 🌸");
+    }, 650);
   };
 
   const saveAsProduct = () => {
@@ -163,9 +161,9 @@ export function AdminAIBouquetDesigner() {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold text-foreground">Diseñador IA de Ramos</h2>
-            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">LLAMA + NANO BANANA</span>
+            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">PRO</span>
           </div>
-          <p className="text-muted-foreground mt-1">Crea ramos con Llama 3.3 70B, genera imágenes con Nano Banana y guárdalos directamente en tu catálogo.</p>
+          <p className="text-muted-foreground mt-1">Crea ramos, genera propuestas visuales y guárdalas directamente en tu catálogo.</p>
         </div>
         <button className="px-4 py-2 bg-muted hover:bg-accent rounded-xl text-sm font-medium">
           Guía rápida
@@ -234,7 +232,7 @@ export function AdminAIBouquetDesigner() {
 
             <button onClick={handleGenerate} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-bold disabled:opacity-60">
               {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-              {loading ? "Generando con Llama + Nano Banana..." : "Generar ramo con IA"}
+              {loading ? "Generando ramo..." : "Generar ramo"}
             </button>
           </div>
         </div>
@@ -242,15 +240,15 @@ export function AdminAIBouquetDesigner() {
         <div className="space-y-6">
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground">Resultado generado por IA</h3>
-              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">Nano Banana</span>
+              <h3 className="font-bold text-foreground">Resultado generado</h3>
+              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">Catálogo</span>
             </div>
 
             <div className="aspect-[4/3] rounded-2xl bg-muted overflow-hidden border border-border flex items-center justify-center">
               {generatedImage ? (
                 <motion.img key={generatedImage} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} src={generatedImage} alt={productName} className="w-full h-full object-cover" />
               ) : (
-                <div className="text-center px-8"><ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado por Nano Banana.</p></div>
+                <div className="text-center px-8"><ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado.</p></div>
               )}
             </div>
 
@@ -262,7 +260,7 @@ export function AdminAIBouquetDesigner() {
                   {proposal?.sellingTip && <p className="text-sm text-primary font-semibold mt-3">{proposal.sellingTip}</p>}
                   <p className="text-3xl font-bold mt-4">{Number(budget || 0).toFixed(2)} €</p>
                 </div>
-                <span className="px-2 py-1 bg-amber-500/10 text-amber-600 rounded-full text-xs font-semibold">Sugerido por IA</span>
+                <span className="px-2 py-1 bg-amber-500/10 text-amber-600 rounded-full text-xs font-semibold">Sugerido</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
@@ -279,7 +277,7 @@ export function AdminAIBouquetDesigner() {
               {recommendedFlowers.map((flower) => (
                 <div key={flower.name} className="flex items-center gap-3 bg-muted/40 border border-border rounded-xl p-3">
                   <div className="w-12 h-12 bg-background rounded-xl flex items-center justify-center text-2xl">{flower.image}</div>
-                  <div className="flex-1"><p className="font-semibold text-sm">{flower.name}</p><p className="text-xs text-muted-foreground">{flower.price ? `${flower.price.toFixed(2)} € / ud` : "Sugerida por IA"}</p></div>
+                  <div className="flex-1"><p className="font-semibold text-sm">{flower.name}</p><p className="text-xs text-muted-foreground">{flower.price ? `${flower.price.toFixed(2)} € / ud` : "Sugerida"}</p></div>
                   <button className="w-8 h-8 rounded-lg bg-background border border-border hover:bg-primary hover:text-primary-foreground transition-colors">+</button>
                 </div>
               ))}
@@ -304,7 +302,7 @@ export function AdminAIBouquetDesigner() {
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4"><Flower2 className="w-5 h-5 text-primary" /><h3 className="font-bold text-foreground">Acciones rápidas</h3></div>
             <div className="grid gap-3">
-              <button onClick={saveAsProduct} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left"><Plus className="w-5 h-5 text-primary" /><div><p className="font-semibold">Importar al catálogo</p><p className="text-xs text-muted-foreground">Crear producto con imagen IA</p></div></button>
+              <button onClick={saveAsProduct} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left"><Plus className="w-5 h-5 text-primary" /><div><p className="font-semibold">Importar al catálogo</p><p className="text-xs text-muted-foreground">Crear producto con imagen</p></div></button>
               <button onClick={handleGenerate} disabled={loading} className="flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted rounded-xl text-left disabled:opacity-60"><Wand2 className="w-5 h-5 text-primary" /><div><p className="font-semibold">Generar otra propuesta</p><p className="text-xs text-muted-foreground">Nueva versión del ramo</p></div></button>
             </div>
           </div>
