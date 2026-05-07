@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon } from "lucide-react";
+import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
@@ -18,14 +18,73 @@ interface Product {
   salePrice?: number;
 }
 
+const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
+
+function getGeminiApiKey() {
+  return import.meta.env.VITE_GEMINI_API_KEY || "";
+}
+
+function buildBouquetPrompt(productName: string, description: string, customPrompt: string) {
+  const idea = customPrompt.trim() || `${productName}. ${description}`;
+
+  return `Crea una imagen fotorealista, premium y comercial para una floristería elegante llamada Herencia Market.
+Producto o ramo: ${idea}
+Estilo: ramo de flores bonito, moderno, colorido, juvenil y elegante, con iluminación natural, fondo limpio tipo estudio, composición centrada, alta calidad, sin texto, sin logos, sin marcas de agua, apta para ecommerce.`;
+}
+
+async function generateBouquetImageWithGemini(prompt: string) {
+  const apiKey = getGeminiApiKey();
+
+  if (!apiKey) {
+    throw new Error("Falta configurar VITE_GEMINI_API_KEY");
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || "No se pudo generar la imagen");
+  }
+
+  const data = await response.json();
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const imagePart = parts.find((part: any) => part.inlineData || part.inline_data);
+  const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+
+  if (!inlineData?.data) {
+    throw new Error("La IA no devolvió una imagen. Prueba con una descripción más clara.");
+  }
+
+  return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
+}
+
 export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
     price: 0,
     category: "",
+    image: "",
   });
 
   useEffect(() => {
@@ -83,17 +142,37 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
   const startEdit = (product: Product) => {
     setEditingProduct(product);
+    setAiPrompt("");
     setEditForm({
       name: product.name,
       description: product.description,
       price: product.price,
       category: product.category,
+      image: product.image,
     });
   };
 
   const cancelEdit = () => {
     setEditingProduct(null);
-    setEditForm({ name: "", description: "", price: 0, category: "" });
+    setAiPrompt("");
+    setEditForm({ name: "", description: "", price: 0, category: "", image: "" });
+  };
+
+  const generateAiImage = async () => {
+    if (!editingProduct) return;
+
+    try {
+      setAiGenerating(true);
+      const prompt = buildBouquetPrompt(editForm.name, editForm.description, aiPrompt);
+      const imageUrl = await generateBouquetImageWithGemini(prompt);
+      setEditForm((prev) => ({ ...prev, image: imageUrl }));
+      toast.success("Imagen generada con Nano Banana 🌸");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message || "No se pudo generar la imagen");
+    } finally {
+      setAiGenerating(false);
+    }
   };
 
   const saveEdit = () => {
@@ -107,6 +186,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
             description: editForm.description,
             price: editForm.price,
             category: editForm.category,
+            image: editForm.image,
             salePrice: p.onSale ? editForm.price * 0.8 : p.salePrice,
           }
         : p
@@ -181,14 +261,14 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   <div>
                     <span className="text-sm text-muted-foreground">Precio: </span>
                     <span className={`font-bold ${product.onSale ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                      ${(product.price || 0).toFixed(2)}
+                      €{(product.price || 0).toFixed(2)}
                     </span>
                   </div>
                   {product.onSale && product.salePrice && (
                     <div>
                       <span className="text-sm text-muted-foreground">Oferta: </span>
                       <span className="font-bold text-primary">
-                        ${(product.salePrice || 0).toFixed(2)}
+                        €{(product.salePrice || 0).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -254,13 +334,66 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-card border border-border rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-card border border-border rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
           >
             <h3 className="text-2xl font-bold text-foreground mb-6">
               Editar Producto
             </h3>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 p-4 bg-muted/40 rounded-2xl border border-border">
+                <div className="h-56 rounded-xl overflow-hidden bg-background border border-border">
+                  {editForm.image ? (
+                    <img src={editForm.image} alt={editForm.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+                      Sin imagen
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Imagen del producto
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.image}
+                      onChange={(e) => setEditForm({ ...editForm, image: e.target.value })}
+                      className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="URL de imagen o imagen generada por IA"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Prompt para Nano Banana
+                    </label>
+                    <textarea
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                      placeholder="Ej: ramo juvenil de rosas rosas, tulipanes blancos y eucalipto, muy colorido y elegante"
+                    />
+                  </div>
+
+                  <button
+                    onClick={generateAiImage}
+                    disabled={aiGenerating}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-60"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {aiGenerating ? "Generando imagen..." : "Generar imagen con IA"}
+                  </button>
+
+                  <p className="text-xs text-muted-foreground">
+                    Usa Nano Banana / Gemini para crear fotos de ramos y productos directamente desde el admin.
+                  </p>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Nombre del Producto
@@ -290,13 +423,13 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Precio ($)
+                    Precio (€)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     value={editForm.price}
-                    onChange={(e) => setEditForm({ ...editForm, price: parseFloat(e.target.value) })}
+                    onChange={(e) => setEditForm({ ...editForm, price: parseFloat(e.target.value) || 0 })}
                     className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="0.00"
                   />
@@ -327,7 +460,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   <p className="text-sm text-foreground">
                     <span className="font-medium">Precio de oferta automático: </span>
                     <span className="text-primary font-bold">
-                      ${(editForm.price * 0.8).toFixed(2)}
+                      €{(editForm.price * 0.8).toFixed(2)}
                     </span>
                   </p>
                 </div>
