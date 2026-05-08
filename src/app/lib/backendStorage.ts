@@ -142,6 +142,13 @@ export const backendApi = {
     });
   },
 
+  async confirmStripeOrder(payload: { orderId: string; paymentIntentId: string }) {
+    return request<{ ok: boolean; order: any; emailResults?: any }>("/api/stripe/confirm-order", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async createOrder(payload: any) {
     return request<{ order: any }>("/api/orders", {
       method: "POST",
