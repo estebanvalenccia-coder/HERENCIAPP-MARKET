@@ -23,7 +23,7 @@ type AdminSection = "dashboard" | "products" | "add-product" | "ai-bouquet-desig
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState(() => backendStorage.getItem("adminLocalSession") === "true");
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !backendApi.enabled && backendStorage.getItem("adminLocalSession") === "true");
   const [isCheckingSession, setIsCheckingSession] = useState(backendApi.enabled);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,13 +32,20 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!backendApi.enabled) {
+      setIsAuthenticated(backendStorage.getItem("adminLocalSession") === "true");
       setIsCheckingSession(false);
       return;
     }
 
     backendApi.adminSession()
-      .then(({ authenticated }) => setIsAuthenticated(authenticated || backendStorage.getItem("adminLocalSession") === "true"))
-      .catch(() => setIsAuthenticated(backendStorage.getItem("adminLocalSession") === "true"))
+      .then(({ authenticated }) => {
+        backendStorage.removeItem("adminLocalSession");
+        setIsAuthenticated(Boolean(authenticated));
+      })
+      .catch(() => {
+        backendStorage.removeItem("adminLocalSession");
+        setIsAuthenticated(false);
+      })
       .finally(() => setIsCheckingSession(false));
   }, []);
 
@@ -54,6 +61,15 @@ export function AdminDashboard() {
 
     try {
       await backendApi.adminLogin(username, password);
+      const session = await backendApi.adminSession();
+
+      if (!session.authenticated) {
+        toast.error("Sesión no confirmada. Revisa cookies del backend en Railway.");
+        setIsAuthenticated(false);
+        return;
+      }
+
+      backendStorage.removeItem("adminLocalSession");
       await backendStorage.refresh();
       setIsAuthenticated(true);
       toast.success("Bienvenido");
@@ -124,26 +140,12 @@ export function AdminDashboard() {
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Usuario</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={backendApi.enabled ? "Ingresa tu usuario" : "Modo local"}
-                  required={backendApi.enabled}
-                  className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
+                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={backendApi.enabled ? "Ingresa tu usuario" : "Modo local"} required={backendApi.enabled} className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Contraseña</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={backendApi.enabled ? "Ingresa tu contraseña" : "Modo local"}
-                  required={backendApi.enabled}
-                  className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={backendApi.enabled ? "Ingresa tu contraseña" : "Modo local"} required={backendApi.enabled} className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" />
               </div>
 
               <button type="submit" className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium">
@@ -151,9 +153,7 @@ export function AdminDashboard() {
               </button>
             </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-xs text-muted-foreground">Acceso restringido solo para administradores</p>
-            </div>
+            <div className="mt-6 text-center"><p className="text-xs text-muted-foreground">Acceso restringido solo para administradores</p></div>
           </div>
         </motion.div>
       </div>
@@ -166,59 +166,28 @@ export function AdminDashboard() {
         <div className="h-full flex flex-col">
           <div className="p-6 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Admin Panel</h1>
-                <p className="text-xs text-muted-foreground mt-1">Herencia Floristería</p>
-              </div>
-              <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <div><h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Admin Panel</h1><p className="text-xs text-muted-foreground mt-1">Herencia Floristería</p></div>
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
           </div>
 
           <div className="p-6 border-b border-border/50">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">D</span>
-              </div>
-              <div>
-                <p className="font-semibold text-foreground">Daniel</p>
-                <p className="text-xs text-muted-foreground">Administrador</p>
-              </div>
-            </div>
+            <div className="flex items-center gap-3"><div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shadow-lg"><span className="text-white font-bold text-lg">D</span></div><div><p className="font-semibold text-foreground">Daniel</p><p className="text-xs text-muted-foreground">Administrador</p></div></div>
           </div>
 
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-2">Menú Principal</p>
             {menuItems.map((item) => (
-              <motion.button
-                key={item.id}
-                onClick={() => {
-                  setCurrentSection(item.id);
-                  setSidebarOpen(false);
-                }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentSection === item.id ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg shadow-primary/20" : "text-foreground hover:bg-muted/50"}`}
-              >
+              <motion.button key={item.id} onClick={() => { setCurrentSection(item.id); setSidebarOpen(false); }} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentSection === item.id ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg shadow-primary/20" : "text-foreground hover:bg-muted/50"}`}>
                 <item.icon className="w-5 h-5" />
                 <span className="font-medium text-left flex-1">{item.label}</span>
-                {"badge" in item && item.badge && (
-                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${currentSection === item.id ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>
-                    {item.badge}
-                  </span>
-                )}
+                {"badge" in item && item.badge && <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${currentSection === item.id ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{item.badge}</span>}
                 {currentSection === item.id && <motion.div layoutId="activeSection" className="w-1.5 h-1.5 bg-white rounded-full" initial={false} />}
               </motion.button>
             ))}
           </nav>
 
-          <div className="p-4 border-t border-border/50 bg-gradient-to-r from-destructive/5 to-transparent">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-xl transition-colors">
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Cerrar Sesión</span>
-            </button>
-          </div>
+          <div className="p-4 border-t border-border/50 bg-gradient-to-r from-destructive/5 to-transparent"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 rounded-xl transition-colors"><LogOut className="w-5 h-5" /><span className="font-medium">Cerrar Sesión</span></button></div>
         </div>
       </aside>
 
@@ -227,30 +196,14 @@ export function AdminDashboard() {
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors">
-                  <Menu className="w-5 h-5" />
-                </button>
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-foreground">{menuItems.find(item => item.id === currentSection)?.label || "Dashboard"}</h2>
-                    <span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">v1.0</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">Gestiona tu floristería desde aquí</p>
-                </div>
+                <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-accent rounded-lg transition-colors"><Menu className="w-5 h-5" /></button>
+                <div><div className="flex items-center gap-3"><h2 className="text-xl font-bold text-foreground">{menuItems.find(item => item.id === currentSection)?.label || "Dashboard"}</h2><span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">v1.0</span></div><p className="text-sm text-muted-foreground">Gestiona tu floristería desde aquí</p></div>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="hidden md:flex relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-64" />
-                </div>
-                <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
-                  <Bell className="w-5 h-5 text-foreground" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
-                </button>
-                <button onClick={() => navigate("/")} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-muted hover:bg-accent rounded-lg transition-colors text-sm font-medium">
-                  Ver Sitio
-                </button>
+                <div className="hidden md:flex relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-64" /></div>
+                <button className="relative p-2 hover:bg-accent rounded-lg transition-colors"><Bell className="w-5 h-5 text-foreground" /><span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" /></button>
+                <button onClick={() => navigate("/")} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-muted hover:bg-accent rounded-lg transition-colors text-sm font-medium">Ver Sitio</button>
               </div>
             </div>
           </div>
