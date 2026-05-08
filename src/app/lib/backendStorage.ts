@@ -1,4 +1,5 @@
-const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+const DEFAULT_API_BASE = "https://herenciapp-market-production.up.railway.app";
+const API_BASE = (import.meta.env.VITE_API_URL || DEFAULT_API_BASE).replace(/\/$/, "");
 let backendAvailable = Boolean(API_BASE);
 
 type StoredValue = string | null;
