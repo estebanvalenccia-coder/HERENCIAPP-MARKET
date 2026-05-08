@@ -25,6 +25,36 @@ const alternativePaymentBadges = [
   { label: "link", className: "bg-white text-foreground" },
 ];
 
+function getStripePublishableKey() {
+  const envKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim();
+  if (envKey) return envKey;
+
+  const settings = backendStorage.getItem("stripeSettings");
+  if (!settings) return "";
+
+  try {
+    const parsed = JSON.parse(settings);
+    if (parsed?.enabled === false) return "";
+    return String(parsed?.publishableKey || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function getFriendlyStripeError(error: any) {
+  const message = String(error?.message || error || "No se pudo iniciar Stripe");
+
+  if (message.includes("400") || message.toLowerCase().includes("bad request")) {
+    return [
+      "Stripe rechazó la carga del formulario de pago.",
+      "Revisa que Vercel tenga VITE_STRIPE_PUBLISHABLE_KEY del mismo modo y cuenta que la STRIPE_SECRET_KEY de Railway.",
+      "Ejemplo: pk_test con sk_test, o pk_live con sk_live. No mezclar test/live ni cuentas distintas.",
+    ].join("\n");
+  }
+
+  return message;
+}
+
 export function StripeCheckout({
   amount,
   onSuccess,
@@ -53,11 +83,14 @@ export function StripeCheckout({
   useEffect(() => {
     const initStripe = async () => {
       try {
-        const settings = backendStorage.getItem("stripeSettings");
-        if (!settings) throw new Error("Stripe no está configurado en ajustes");
+        const publishableKey = getStripePublishableKey();
+        if (!publishableKey) {
+          throw new Error("Falta VITE_STRIPE_PUBLISHABLE_KEY en Vercel o la clave pública de Stripe en ajustes.");
+        }
 
-        const { publishableKey, enabled } = JSON.parse(settings);
-        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado");
+        if (!publishableKey.startsWith("pk_")) {
+          throw new Error("La clave pública de Stripe debe empezar por pk_test_ o pk_live_. Nunca uses sk_ en Vercel.");
+        }
 
         const stripeInstance = await loadStripe(publishableKey);
         if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
@@ -109,7 +142,7 @@ export function StripeCheckout({
         setElements(elementsInstance);
       } catch (error: any) {
         console.error(error);
-        setErrorMessage(error.message || "No se pudo iniciar Stripe");
+        setErrorMessage(getFriendlyStripeError(error));
         setShowError(true);
       } finally {
         setInitializing(false);
@@ -176,7 +209,7 @@ export function StripeCheckout({
 
       throw new Error(`Stripe devolvió estado: ${paymentIntent.status}`);
     } catch (error: any) {
-      const errorMsg = error.message || "Error al procesar el pago";
+      const errorMsg = getFriendlyStripeError(error);
       setErrorMessage(errorMsg);
       setShowError(true);
       toast.error("Error al procesar el pago");
