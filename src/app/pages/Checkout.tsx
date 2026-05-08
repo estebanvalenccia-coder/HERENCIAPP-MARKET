@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
@@ -16,6 +16,7 @@ export function Checkout() {
 
   const [loading, setLoading] = useState(false);
   const [showStripe, setShowStripe] = useState(false);
+  const [shippingCost, setShippingCost] = useState(5);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -27,13 +28,33 @@ export function Checkout() {
     notes: "",
   });
 
-  const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
-  const shipping = deliveryMethod === "recoger" ? 0 : 5;
+  useEffect(() => {
+    const savedShipping = backendStorage.getItem("shippingSettings");
+
+    if (savedShipping) {
+      try {
+        const settings = JSON.parse(savedShipping);
+        const cost = Number(settings.cost);
+        if (Number.isFinite(cost) && cost >= 0) setShippingCost(cost);
+      } catch (error) {
+        console.warn("No se pudo leer shippingSettings", error);
+      }
+    }
+  }, []);
+
+  const subtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+  const shipping = deliveryMethod === "recoger" || deliveryMethod === "recogida" ? 0 : shippingCost;
   const total = subtotal + shipping;
 
   const handleChange = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const validateForm = () => {
+    if (!cartItems.length) {
+      toast.error("Tu carrito está vacío");
+      navigate("/cart");
+      return false;
+    }
+
     if (!form.name || !form.email || !form.phone) {
       toast.error("Completa tus datos");
       return false;
@@ -45,6 +66,14 @@ export function Checkout() {
     }
 
     return true;
+  };
+
+  const clearCart = async () => {
+    const result = await backendStorage.setItem("cart", JSON.stringify([]));
+
+    if (!result.ok) {
+      console.warn("El pedido se guardó, pero no se pudo limpiar el carrito remoto:", result.error);
+    }
   };
 
   const handleSubmit = async () => {
@@ -80,12 +109,12 @@ export function Checkout() {
         },
       });
 
-      backendStorage.setItem("cart", JSON.stringify([]));
+      await clearCart();
       toast.success("Pedido recibido. Queda pendiente de confirmación 🌿");
       navigate("/");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("No se pudo procesar el pedido");
+      toast.error(error?.message || "No se pudo procesar el pedido");
     } finally {
       setLoading(false);
     }
@@ -119,12 +148,16 @@ export function Checkout() {
           <h2 className="text-2xl font-bold mb-6">Resumen del pedido</h2>
 
           <div className="space-y-3 mb-6">
-            {cartItems.map((item: any) => (
-              <div key={item.id} className="flex justify-between gap-3">
-                <span>{item.name} x{item.quantity}</span>
-                <span>€{(item.price * item.quantity).toFixed(2)}</span>
-              </div>
-            ))}
+            {cartItems.length ? (
+              cartItems.map((item: any) => (
+                <div key={item.id} className="flex justify-between gap-3">
+                  <span>{item.name} x{item.quantity}</span>
+                  <span>€{(Number(item.price || 0) * Number(item.quantity || 1)).toFixed(2)}</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No hay productos en el carrito.</p>
+            )}
           </div>
 
           <div className="space-y-2 border-t pt-4">
@@ -134,7 +167,7 @@ export function Checkout() {
           </div>
 
           {!showStripe && (
-            <button onClick={handleSubmit} disabled={loading} className="w-full mt-6 bg-primary text-primary-foreground py-3 rounded-xl font-medium">
+            <button onClick={handleSubmit} disabled={loading || !cartItems.length} className="w-full mt-6 bg-primary text-primary-foreground py-3 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? "Procesando..." : isStripePayment ? "Continuar al pago seguro" : "Confirmar pedido"}
             </button>
           )}
