@@ -53,17 +53,20 @@ export function StripeCheckout({
   useEffect(() => {
     const initStripe = async () => {
       try {
-        // Sistema original: la clave pública sale de Admin > Configuración > Stripe.
+        await backendApi.health();
+
         const settings = backendStorage.getItem("stripeSettings");
         if (!settings) throw new Error("Stripe no está configurado en ajustes");
 
         const { publishableKey, enabled } = JSON.parse(settings);
-        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado");
+        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
 
         const stripeInstance = await loadStripe(publishableKey);
         if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
         const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+        if (!Array.isArray(cart) || !cart.length) throw new Error("El carrito está vacío");
+
         const paymentIntentResponse = await backendApi.createPaymentIntent({
           amount,
           customerEmail: email,
@@ -81,8 +84,12 @@ export function StripeCheckout({
         });
 
         const { clientSecret, orderId, paymentIntentId } = paymentIntentResponse;
-        orderIdRef.current = orderId || "";
-        paymentIntentIdRef.current = paymentIntentId || "";
+        if (!clientSecret || !orderId || !paymentIntentId) {
+          throw new Error("El backend no devolvió los datos necesarios para iniciar el pago");
+        }
+
+        orderIdRef.current = orderId;
+        paymentIntentIdRef.current = paymentIntentId;
 
         const elementsInstance = stripeInstance.elements({
           clientSecret,
@@ -156,15 +163,25 @@ export function StripeCheckout({
 
       if (error) throw new Error(error.message);
 
-      if (!paymentIntent || paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
-        const orderId = orderIdRef.current;
-        const paymentIntentId = paymentIntent?.id || paymentIntentIdRef.current;
+      if (!paymentIntent) {
+        throw new Error("Stripe no devolvió confirmación del pago");
+      }
 
-        if (orderId && paymentIntentId) {
-          await backendApi.confirmStripeOrder({ orderId, paymentIntentId });
+      if (paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
+        const orderId = orderIdRef.current;
+        const paymentIntentId = paymentIntent.id || paymentIntentIdRef.current;
+
+        if (!orderId || !paymentIntentId) {
+          throw new Error("Falta el identificador del pedido o del pago para confirmar en Supabase");
         }
 
-        backendStorage.setItem("cart", JSON.stringify([]));
+        await backendApi.confirmStripeOrder({ orderId, paymentIntentId });
+
+        const cartResult = await backendStorage.setItem("cart", JSON.stringify([]));
+        if (!cartResult.ok) {
+          console.warn("Pago confirmado, pero no se pudo limpiar el carrito remoto:", cartResult.error);
+        }
+
         toast.success("Pago confirmado. Te enviaremos la confirmación por email.");
         onSuccess();
         return;
@@ -272,7 +289,7 @@ export function StripeCheckout({
             <span className="text-2xl font-bold text-primary">€{amount.toFixed(2)}</span>
           </div>
           <div className="flex gap-3">
-            <button type="submit" disabled={loading || initializing} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">{loading ? "Procesando..." : `Pagar €${amount.toFixed(2)}`}</button>
+            <button type="submit" disabled={loading || initializing || showError} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">{loading ? "Procesando..." : `Pagar €${amount.toFixed(2)}`}</button>
             <button type="button" onClick={onCancel} disabled={loading} className="px-6 py-3 bg-muted text-foreground rounded-xl hover:bg-accent transition-colors disabled:opacity-50">Cancelar</button>
           </div>
         </div>
