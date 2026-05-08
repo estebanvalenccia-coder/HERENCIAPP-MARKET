@@ -90,10 +90,21 @@ const protectedKeys = new Set([
   "shippingSettings",
   "aiSettings",
   "adminProducts",
+  "adminFlowerCosts",
+  "adminLatestFlowerQuote",
   "heroBanner",
   "ctaBanner",
   "__backendStorage_test__",
 ]);
+
+const adminOnlyStorageKeys = [
+  "supabaseSettings",
+  "aiSettings",
+  "heroBanner",
+  "ctaBanner",
+  "adminFlowerCosts",
+  "adminLatestFlowerQuote",
+];
 
 function parseCookies(req) {
   return Object.fromEntries(
@@ -609,9 +620,7 @@ app.get("/api/storage", async (req, res) => {
     (key) => `visitor:${visitorId}:${key}`
   );
 
-  if (isAdmin(req)) {
-    keys.push("supabaseSettings", "aiSettings", "heroBanner", "ctaBanner");
-  }
+  if (isAdmin(req)) keys.push(...adminOnlyStorageKeys);
 
   const { data, error } = await supabase
     .from("app_storage")
@@ -827,6 +836,112 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   res.json({ order: data });
+});
+
+function pickBouquetImage({ description = "", color = "", style = "" }) {
+  const images = [
+    "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=1200&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1525310072745-f49212b5ac6d?q=80&w=1200&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1559563362-c667ba5f5480?q=80&w=1200&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1591886960571-74d43a9d4166?q=80&w=1200&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1562690868-60bbe7293e94?q=80&w=1200&auto=format&fit=crop",
+  ];
+  const seed = `${description}-${color}-${style}`
+    .split("")
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+  return images[seed % images.length];
+}
+
+function cleanAiJson(content) {
+  return String(content || "{}")
+    .replace(/```json\n?/g, "")
+    .replace(/```\n?/g, "")
+    .trim();
+}
+
+async function getAiSettings() {
+  const { data } = await supabase
+    .from("app_storage")
+    .select("value")
+    .eq("key", "aiSettings")
+    .maybeSingle();
+
+  try {
+    return JSON.parse(data?.value || "{}");
+  } catch {
+    return {};
+  }
+}
+
+app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  const { description = "", budget = 0, style = "Elegante", color = "Mix", size = "M" } = req.body || {};
+
+  if (!String(description).trim()) {
+    return res.status(400).json({ error: "Falta la descripcion del ramo" });
+  }
+
+  const settings = await getAiSettings();
+
+  if (!settings.enabled || !settings.apiKey) {
+    return res.status(400).json({ error: "IA no configurada en el admin" });
+  }
+
+  const provider = settings.provider === "openai" ? "openai" : "groq";
+  const endpoint =
+    provider === "groq"
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+  const model = settings.model || (provider === "groq" ? "llama-3.1-70b-versatile" : "gpt-4o-mini");
+
+  const systemPrompt = `Eres director creativo de una floristeria premium. Responde solo JSON valido con esta estructura exacta:
+{
+  "name": "nombre comercial del ramo",
+  "shortDescription": "frase corta para tarjeta de producto",
+  "description": "descripcion comercial en espanol",
+  "recommendedFlowers": ["flor"],
+  "sellingTip": "consejo breve de venta"
+}`;
+
+  try {
+    const aiResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Crea un ramo para Herencia Market. Idea: ${description}. Presupuesto: ${budget} euros. Estilo: ${style}. Color principal: ${color}. Tamano: ${size}.`,
+          },
+        ],
+        temperature: 0.7,
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const detail = await aiResponse.text();
+      return res.status(502).json({ error: `Error del proveedor de IA: ${detail}` });
+    }
+
+    const json = await aiResponse.json();
+    const content = json.choices?.[0]?.message?.content || "{}";
+    const proposal = JSON.parse(cleanAiJson(content));
+
+    res.json({
+      proposal,
+      image: pickBouquetImage({ description, color, style }),
+      imageGeneratedByAi: false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Error generando ramo con IA" });
+  }
 });
 
 app.post("/api/ai/plant-description", async (req, res) => {

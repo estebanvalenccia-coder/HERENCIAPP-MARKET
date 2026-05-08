@@ -14,6 +14,8 @@ const remotelySyncedKeys = new Set([
   "shippingSettings",
   "aiSettings",
   "adminProducts",
+  "adminFlowerCosts",
+  "adminLatestFlowerQuote",
   "heroBanner",
   "ctaBanner",
   "__backendStorage_test__",
@@ -176,6 +178,13 @@ export const backendApi = {
 
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async generateBouquet(payload: { description: string; budget: number; style: string; color: string; size: string }) {
+    return request<{ proposal: any; image: string; imageGeneratedByAi: boolean }>("/api/ai/bouquet", {
       method: "POST",
       body: JSON.stringify(payload),
     });
