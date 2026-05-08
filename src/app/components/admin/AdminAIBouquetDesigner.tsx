@@ -83,14 +83,41 @@ function pickImage(description: string, color: string, style: string) {
   return bouquetImages[seed % bouquetImages.length];
 }
 
+async function generateBouquetFromBackend(payload: {
+  description: string;
+  budget: number;
+  style: string;
+  color: string;
+  size: string;
+}) {
+  if (!backendApi.baseUrl) {
+    throw new Error("Falta VITE_API_URL para conectar con el backend");
+  }
+
+  const response = await fetch(`${backendApi.baseUrl}/api/ai/bouquet-designer`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(data?.error || `Error HTTP ${response.status}`);
+  }
+
+  if (!data?.image) {
+    throw new Error("La IA respondió, pero no devolvió imagen");
+  }
+
+  return data as { proposal: AIBouquetProposal; image: string; imageGeneratedByAi: boolean };
+}
+
 function extractErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "No se pudo conectar con la IA";
-  try {
-    const parsed = JSON.parse(error.message);
-    return parsed?.error || error.message;
-  } catch {
-    return error.message;
-  }
+  return error.message;
 }
 
 export function AdminAIBouquetDesigner() {
@@ -128,7 +155,7 @@ export function AdminAIBouquetDesigner() {
     setLoading(true);
 
     try {
-      const result = await backendApi.generateBouquet({ description, budget, style, color, size });
+      const result = await generateBouquetFromBackend({ description, budget, style, color, size });
       applyGeneratedBouquet(result.proposal, result.image, result.imageGeneratedByAi);
       toast.success(result.imageGeneratedByAi ? "Imagen generada con IA real 🌸" : "Propuesta generada; imagen de respaldo aplicada 🌸");
     } catch (error) {
