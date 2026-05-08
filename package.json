@@ -9,10 +9,10 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "dev:backend": "node backend/server.js",
-    "dev:full": "concurrently \"vite\" \"node backend/server.js\"",
-    "start": "node backend/server.js",
-    "start:backend": "node backend/server.js"
+    "dev:backend": "node --import ./backend/fixAdminEmail.js backend/server.js",
+    "dev:full": "concurrently \"vite\" \"node --import ./backend/fixAdminEmail.js backend/server.js\"",
+    "start": "node --import ./backend/fixAdminEmail.js backend/server.js",
+    "start:backend": "node --import ./backend/fixAdminEmail.js backend/server.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -89,10 +89,6 @@
     "vite": "^6.4.2"
   },
   "peerDependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "peerDependenciesMeta": {
     "react": {
       "optional": true
     },
