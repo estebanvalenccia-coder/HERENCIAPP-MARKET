@@ -53,6 +53,10 @@ export function StripeCheckout({
   useEffect(() => {
     const initStripe = async () => {
       try {
+        // La clave pública sigue saliendo de Admin > Configuración > Stripe.
+        // Antes de leerla refrescamos desde Railway/Supabase para evitar localStorage vacío o viejo.
+        await backendStorage.refresh().catch(() => null);
+
         const settings = backendStorage.getItem("stripeSettings");
         if (!settings) throw new Error("Stripe no está configurado en ajustes");
 
