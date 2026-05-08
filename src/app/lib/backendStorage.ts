@@ -1,5 +1,17 @@
 const DEFAULT_API_BASE = "https://herenciapp-market-production.up.railway.app";
-const API_BASE = (import.meta.env.VITE_API_URL || DEFAULT_API_BASE).replace(/\/$/, "");
+
+function normalizeApiBase(value?: string) {
+  const rawValue = (value || DEFAULT_API_BASE).trim();
+  const withoutTrailingSlash = rawValue.replace(/\/$/, "");
+
+  if (/^https?:\/\//i.test(withoutTrailingSlash) || withoutTrailingSlash.startsWith("/")) {
+    return withoutTrailingSlash;
+  }
+
+  return `https://${withoutTrailingSlash}`;
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
 let backendAvailable = Boolean(API_BASE);
 
 type StoredValue = string | null;
@@ -72,8 +84,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error("Backend no disponible. Se está usando almacenamiento local.");
   }
 
+  let response: Response;
+
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(`${API_BASE}${path}`, {
       credentials: "include",
       ...options,
       headers: {
@@ -82,16 +96,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       },
     });
 
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(detail || `Error HTTP ${response.status}`);
-    }
-
-    return response.json();
   } catch (error) {
     disableBackendFallback();
     throw error;
   }
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Error HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export const backendApi = {

@@ -17,7 +17,7 @@ Este paquete elimina el uso de almacenamiento crítico en el navegador y mueve c
 Copia `.env.example` a `.env` y rellena los valores reales.
 
 ```env
-VITE_API_URL=https://tu-backend.com
+VITE_API_URL=https://herenciapp-market-production.up.railway.app
 SUPABASE_URL=https://tu-proyecto.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
 STRIPE_SECRET_KEY=sk_live_o_sk_test
@@ -55,7 +55,7 @@ El backend debe ir en Render, Railway, Fly.io, VPS o cualquier servicio Node que
 Después de desplegar el backend, pon en el frontend:
 
 ```env
-VITE_API_URL=https://tu-backend.com
+VITE_API_URL=https://herenciapp-market-production.up.railway.app
 ```
 
 ## Stripe real
@@ -63,7 +63,7 @@ VITE_API_URL=https://tu-backend.com
 Configura en Stripe un webhook hacia:
 
 ```txt
-https://tu-backend.com/api/stripe/webhook
+https://herenciapp-market-production.up.railway.app/api/stripe/webhook
 ```
 
 Evento necesario:

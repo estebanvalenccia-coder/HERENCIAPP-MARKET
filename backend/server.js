@@ -25,18 +25,38 @@ const supabase =
       })
     : null;
 
+const defaultAllowedOrigins = [
+  "https://www.herenciamarket.es",
+  "https://herenciamarket.es",
+  "https://herenciapp-market.vercel.app",
+];
+
 const allowedOrigins = (
-  process.env.CORS_ORIGIN || "https://herenciapp-market.vercel.app"
+  process.env.CORS_ORIGIN || defaultAllowedOrigins.join(",")
 )
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+function isAllowedVercelPreview(origin) {
+  try {
+    const { hostname } = new URL(origin);
+    return (
+      hostname === "herenciapp-market.vercel.app" ||
+      (hostname.startsWith("herenciapp-market-") &&
+        hostname.endsWith(".vercel.app")) ||
+      hostname.endsWith("-daniels-projects-b54d9ed6.vercel.app")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedOrigin(origin) {
   return (
     !origin ||
     allowedOrigins.includes(origin) ||
-    origin.endsWith("-daniels-projects-b54d9ed6.vercel.app")
+    isAllowedVercelPreview(origin)
   );
 }
 
@@ -1134,6 +1154,133 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       code: error.code || "stripe_error",
     });
   }
+});
+
+app.post("/api/stripe/confirm-order", async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  if (!stripe) {
+    return res
+      .status(503)
+      .json({ error: "Stripe no estÃ¡ configurado en el backend" });
+  }
+
+  const { orderId, paymentIntentId } = req.body || {};
+
+  if (!orderId || !paymentIntentId) {
+    return res
+      .status(400)
+      .json({ error: "Falta orderId o paymentIntentId" });
+  }
+
+  let paymentIntent;
+
+  try {
+    paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({
+      error: error.message || "No se pudo verificar el pago en Stripe",
+      code: error.code || "stripe_retrieve_error",
+    });
+  }
+
+  const stripeOrderId = paymentIntent.metadata?.orderId;
+
+  if (stripeOrderId && stripeOrderId !== orderId) {
+    return res.status(409).json({
+      error: "El pago de Stripe no corresponde con este pedido",
+    });
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderError) {
+    return res.status(500).json({ error: orderError.message });
+  }
+
+  if (!order) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+
+  if (
+    order.stripe_payment_intent_id &&
+    order.stripe_payment_intent_id !== paymentIntent.id
+  ) {
+    return res.status(409).json({
+      error: "El pedido ya estÃ¡ asociado a otro pago de Stripe",
+    });
+  }
+
+  const now = new Date().toISOString();
+  const isPaid = paymentIntent.status === "succeeded";
+  const isProcessing = paymentIntent.status === "processing";
+  const nextStatus = isPaid
+    ? "paid"
+    : isProcessing
+    ? "payment_pending"
+    : "payment_error";
+
+  const nextMetadata = {
+    ...(order.metadata || {}),
+    stripeStatus: paymentIntent.status,
+    stripeConfirmedAt: now,
+  };
+
+  if (!isPaid && !isProcessing) {
+    nextMetadata.stripeConfirmationError = `Stripe devolviÃ³ estado: ${paymentIntent.status}`;
+  }
+
+  const { data: updatedOrder, error: updateError } = await supabase
+    .from("orders")
+    .update({
+      status: nextStatus,
+      stripe_payment_intent_id: paymentIntent.id,
+      metadata: nextMetadata,
+      updated_at: now,
+    })
+    .eq("id", orderId)
+    .select("*")
+    .single();
+
+  if (updateError) {
+    return res.status(500).json({ error: updateError.message });
+  }
+
+  if (!isPaid && !isProcessing) {
+    return res.status(409).json({
+      error: `Stripe devolviÃ³ estado: ${paymentIntent.status}`,
+      paymentIntentStatus: paymentIntent.status,
+      order: updatedOrder,
+    });
+  }
+
+  let emailResults = null;
+
+  if (isPaid) {
+    try {
+      emailResults = await sendOrderConfirmationEmails(
+        updatedOrder,
+        "stripe_confirm_order"
+      );
+    } catch (emailError) {
+      console.error(
+        "Error enviando emails de confirmaciÃ³n:",
+        emailError.message
+      );
+      emailResults = { error: emailError.message };
+    }
+  }
+
+  res.json({
+    ok: true,
+    order: updatedOrder,
+    emailResults,
+    paymentIntentStatus: paymentIntent.status,
+  });
 });
 
 app.listen(port, () => {
