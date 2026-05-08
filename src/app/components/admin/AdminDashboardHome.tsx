@@ -13,9 +13,13 @@ import {
   BarChart3,
   Flower2,
   Sprout,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  AlertTriangle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -34,12 +38,53 @@ interface AdminDashboardHomeProps {
   onNavigate?: (section: string) => void;
 }
 
+type ConnectionStatus = "checking" | "backend" | "local" | "error";
+
+interface DashboardStats {
+  totalProducts: number;
+  activeProducts: number;
+  productsOnSale: number;
+  totalOrders: number;
+  pendingOrders: number;
+  paidOrders: number;
+  totalRevenue: number;
+}
+
 function dayLabel(date: Date) {
   return date.toLocaleDateString("es-ES", { weekday: "short" });
 }
 
-function isPaidLike(status: string) {
+function isPaidLike(status = "") {
   return ["paid", "confirmed", "preparing", "ready", "delivered", "completed"].includes(status);
+}
+
+function isPendingLike(status = "") {
+  return [
+    "pending",
+    "payment_pending",
+    "pending_bizum_review",
+    "pending_manual_review",
+    "pending_transfer_review",
+    "pending_store_confirmation",
+  ].includes(status);
+}
+
+function safeProducts() {
+  try {
+    return JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function orderDateKey(order: any) {
+  const rawDate = order?.date || order?.created_at || order?.createdAt;
+  const date = rawDate ? new Date(rawDate) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+}
+
+function itemCategory(item: any) {
+  return item?.category || item?.type || item?.productCategory || "Sin categoría";
 }
 
 const KPI_STYLES = [
@@ -69,56 +114,99 @@ const KPI_STYLES = [
   },
 ];
 
+const COLORS = ["#22c55e", "#14b8a6", "#ec4899", "#f59e0b", "#8b5cf6"];
+
+const emptyStats: DashboardStats = {
+  totalProducts: 0,
+  activeProducts: 0,
+  productsOnSale: 0,
+  totalOrders: 0,
+  pendingOrders: 0,
+  paidOrders: 0,
+  totalRevenue: 0,
+};
+
 export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {}) {
   const [orders, setOrders] = useState<any[]>([]);
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    activeProducts: 0,
-    productsOnSale: 0,
-    totalOrders: 0,
-    pendingOrders: 0,
-    totalRevenue: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats>(emptyStats);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("checking");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    const products = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-    const activeProducts = products.filter((p: any) => p.active !== false);
-    const productsOnSale = products.filter((p: any) => p.onSale === true);
+  const loadDashboard = useCallback(async (refreshBackend = true) => {
+    setIsRefreshing(true);
+    setErrorMessage("");
 
-    backendApi
-      .listOrders()
-      .then(({ orders }) => {
-        setOrders(orders);
-        const paidOrders = orders.filter((order: any) => isPaidLike(order.status));
-        const totalRevenue = paidOrders.reduce((sum: number, order: any) => sum + Number(order.total || 0), 0);
-        const pendingOrders = orders.filter((order: any) => !isPaidLike(order.status) && order.status !== "cancelled").length;
+    try {
+      if (refreshBackend && backendApi.enabled) {
+        await backendStorage.refresh();
+      }
 
-        setStats({
-          totalProducts: products.length,
-          activeProducts: activeProducts.length,
-          productsOnSale,
-          totalOrders: orders.length,
-          pendingOrders,
-          totalRevenue,
-        });
-      })
-      .catch(() => {
-        setStats({
-          totalProducts: products.length,
-          activeProducts: activeProducts.length,
-          productsOnSale,
-          totalOrders: 0,
-          pendingOrders: 0,
-          totalRevenue: 0,
-        });
+      const products = safeProducts();
+      const activeProducts = products.filter((p: any) => p.active !== false);
+      const productsOnSale = products.filter((p: any) => p.onSale === true);
+      let nextOrders: any[] = [];
+      let nextStatus: ConnectionStatus = backendApi.enabled ? "backend" : "local";
+
+      if (backendApi.enabled) {
+        try {
+          const response = await backendApi.listOrders();
+          nextOrders = Array.isArray(response.orders) ? response.orders : [];
+          nextStatus = "backend";
+        } catch (error: any) {
+          nextStatus = "error";
+          setErrorMessage(
+            error?.message ||
+              "No se pudieron leer los pedidos reales. Revisa VITE_API_URL, Railway, CORS, Supabase o la sesión admin."
+          );
+        }
+      }
+
+      const paidOrders = nextOrders.filter((order: any) => isPaidLike(order.status));
+      const totalRevenue = paidOrders.reduce((sum: number, order: any) => sum + Number(order.total || 0), 0);
+      const pendingOrders = nextOrders.filter((order: any) => isPendingLike(order.status)).length;
+
+      setOrders(nextOrders);
+      setStats({
+        totalProducts: products.length,
+        activeProducts: activeProducts.length,
+        productsOnSale: productsOnSale.length,
+        totalOrders: nextOrders.length,
+        pendingOrders,
+        paidOrders: paidOrders.length,
+        totalRevenue,
       });
+      setConnectionStatus(nextStatus);
+      setLastUpdated(new Date());
+    } finally {
+      setIsRefreshing(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadDashboard(true);
+
+    const syncFromStorage = () => loadDashboard(false);
+    window.addEventListener("backend-storage", syncFromStorage);
+    window.addEventListener("storage", syncFromStorage);
+
+    return () => {
+      window.removeEventListener("backend-storage", syncFromStorage);
+      window.removeEventListener("storage", syncFromStorage);
+    };
+  }, [loadDashboard]);
+
   const statsCards = [
-    { label: "Total Productos", value: stats.totalProducts.toString(), icon: Package, trend: "+15%" },
-    { label: "Productos Activos", value: stats.activeProducts.toString(), icon: ShoppingBag, trend: "+12%" },
-    { label: "Pedidos Pendientes", value: stats.pendingOrders.toString(), icon: Tag, trend: stats.pendingOrders > 0 ? "Atender" : "0%" },
-    { label: "Ingresos Pagados", value: `€${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, trend: "Real" },
+    { label: "Total Productos", value: stats.totalProducts.toString(), icon: Package, trend: `${stats.productsOnSale} ofertas` },
+    {
+      label: "Productos Activos",
+      value: stats.activeProducts.toString(),
+      icon: ShoppingBag,
+      trend: stats.totalProducts ? `${Math.round((stats.activeProducts / stats.totalProducts) * 100)}%` : "0%",
+    },
+    { label: "Pedidos Pendientes", value: stats.pendingOrders.toString(), icon: Tag, trend: stats.pendingOrders > 0 ? "Atender" : "0" },
+    { label: "Ingresos Pagados", value: `€${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, trend: `${stats.paidOrders} pagados` },
   ];
 
   const last7Days = Array.from({ length: 7 }).map((_, index) => {
@@ -127,36 +215,53 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
     const dateKey = date.toISOString().slice(0, 10);
     const ventas = orders
       .filter((order) => isPaidLike(order.status))
-      .filter((order) => new Date(order.date).toISOString().slice(0, 10) === dateKey)
+      .filter((order) => orderDateKey(order) === dateKey)
       .reduce((sum, order) => sum + Number(order.total || 0), 0);
     return { name: dayLabel(date), ventas };
   });
 
   const categoryMap = new Map<string, number>();
-  orders.forEach((order) => {
-    (order.items || []).forEach((item: any) => {
-      const category = item.category || item.type || "Productos";
-      categoryMap.set(category, (categoryMap.get(category) || 0) + Number(item.quantity || 1));
+  orders
+    .filter((order) => isPaidLike(order.status))
+    .forEach((order) => {
+      (order.items || []).forEach((item: any) => {
+        const category = itemCategory(item);
+        categoryMap.set(category, (categoryMap.get(category) || 0) + Number(item.quantity || 1));
+      });
     });
-  });
-  const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({ name, value }));
-  const safeCategoryData = categoryData.length
-    ? categoryData
-    : [
-        { name: "Ramos", value: 45 },
-        { name: "Plantas", value: 25 },
-        { name: "Complementos", value: 15 },
-        { name: "Eventos", value: 10 },
-        { name: "Otros", value: 5 },
-      ];
-  const COLORS = ["#22c55e", "#14b8a6", "#ec4899", "#f59e0b", "#8b5cf6"];
 
-  const totalSold = safeCategoryData.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({ name, value }));
+  const totalSold = categoryData.reduce((sum, item) => sum + Number(item.value || 0), 0);
+
+  const statusData = {
+    checking: {
+      icon: RefreshCw,
+      label: "Comprobando backend",
+      className: "border-slate-200 bg-slate-50 text-slate-700",
+    },
+    backend: {
+      icon: Wifi,
+      label: "Backend conectado",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    },
+    local: {
+      icon: WifiOff,
+      label: "Modo local",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+    },
+    error: {
+      icon: AlertTriangle,
+      label: "Backend sin datos",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    },
+  }[connectionStatus];
+
+  const StatusIcon = statusData.icon;
 
   const quickActions = [
     { label: "Añadir Producto", helper: "Nuevo producto", icon: Plus, section: "add-product", color: "from-emerald-400 to-green-600" },
     { label: "Ver Ofertas", helper: "Gestionar ofertas", icon: BadgePercent, section: "offers", color: "from-pink-400 to-rose-600" },
-    { label: "Ver Pedidos", helper: "Pedidos recientes", icon: ShoppingBag, section: "orders", color: "from-amber-400 to-orange-500" },
+    { label: "Ver Pedidos", helper: "Pedidos reales", icon: ShoppingBag, section: "orders", color: "from-amber-400 to-orange-500" },
     { label: "Calculadora", helper: "Herramientas útiles", icon: Calculator, section: "calculator", color: "from-violet-400 to-purple-600" },
   ];
 
@@ -174,16 +279,45 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
           <h1 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
             Dashboard <span className="text-emerald-600">floral</span>
           </h1>
-          <p className="mt-2 text-base text-slate-500">Ventas, pedidos y productos conectados al backend.</p>
+          <p className="mt-2 text-base text-slate-500">Ventas, pedidos y productos sin datos inventados: solo backend real o modo local marcado.</p>
         </div>
 
-        <div className="flex w-fit items-center gap-3 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-xl">
-          <CalendarDays className="h-5 w-5 text-emerald-700" />
-          <span className="text-sm font-bold capitalize text-slate-800">
-            {new Date().toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className={`flex w-fit items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold shadow-sm ${statusData.className}`}>
+            <StatusIcon className={`h-4 w-4 ${connectionStatus === "checking" || isRefreshing ? "animate-spin" : ""}`} />
+            {statusData.label}
+          </div>
+          <button
+            onClick={() => loadDashboard(true)}
+            disabled={isRefreshing}
+            className="flex w-fit items-center gap-2 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 text-sm font-bold text-slate-800 shadow-sm backdrop-blur-xl transition-colors hover:bg-emerald-50 disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 text-emerald-700 ${isRefreshing ? "animate-spin" : ""}`} />
+            Actualizar datos
+          </button>
+          <div className="flex w-fit items-center gap-3 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-xl">
+            <CalendarDays className="h-5 w-5 text-emerald-700" />
+            <span className="text-sm font-bold capitalize text-slate-800">
+              {new Date().toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </span>
+          </div>
         </div>
       </div>
+
+      {(connectionStatus === "local" || connectionStatus === "error") && (
+        <div className="relative rounded-3xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-amber-900 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+            <div>
+              <p className="font-black">Este panel no está leyendo pedidos reales ahora mismo.</p>
+              <p className="mt-1">
+                Revisa que Vercel tenga <strong>VITE_API_URL</strong> apuntando al backend, que Railway tenga Supabase configurado y que la sesión admin esté activa.
+              </p>
+              {errorMessage && <p className="mt-2 text-xs opacity-80">Detalle técnico: {errorMessage}</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {statsCards.map((stat, index) => {
@@ -231,7 +365,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
             </div>
             <div className="flex w-fit items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">
               <Clock className="h-4 w-4 text-emerald-700" />
-              Últimos 7 días
+              {lastUpdated ? `Actualizado ${lastUpdated.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : "Últimos 7 días"}
             </div>
           </div>
 
@@ -247,7 +381,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
               <XAxis dataKey="name" stroke="#64748b" tickLine={false} axisLine={false} />
               <YAxis stroke="#64748b" tickLine={false} axisLine={false} />
               <Tooltip
-                formatter={(value: any) => [`€${Number(value).toFixed(2)}`, "Ventas"]}
+                formatter={(value: any) => [`€${Number(value).toFixed(2)}`, "Ventas pagadas"]}
                 contentStyle={{ borderRadius: 18, border: "1px solid #e2e8f0", boxShadow: "0 12px 30px rgba(15, 23, 42, .12)" }}
               />
               <Area type="monotone" dataKey="ventas" stroke="#15803d" strokeWidth={3} fillOpacity={1} fill="url(#colorVentas)" />
@@ -259,8 +393,8 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
               <Sprout className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-black text-slate-900">¡Vas muy bien! 🌺</p>
-              <p className="text-sm text-slate-600">Tus ventas y pedidos se actualizan desde datos reales.</p>
+              <p className="font-black text-slate-900">Datos limpios 🌺</p>
+              <p className="text-sm text-slate-600">La gráfica solo suma pedidos pagados, confirmados, preparados, listos, entregados o completados.</p>
             </div>
           </div>
         </motion.div>
@@ -279,38 +413,46 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
             <h2 className="text-xl font-black text-slate-950">Productos vendidos</h2>
           </div>
 
-          <div className="grid items-center gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <ResponsiveContainer width="100%" height={235}>
-              <PieChart>
-                <Pie data={safeCategoryData} cx="50%" cy="50%" innerRadius={58} outerRadius={96} paddingAngle={3} dataKey="value">
-                  {safeCategoryData.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+          {categoryData.length > 0 ? (
+            <div className="grid items-center gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <ResponsiveContainer width="100%" height={235}>
+                <PieChart>
+                  <Pie data={categoryData} cx="50%" cy="50%" innerRadius={58} outerRadius={96} paddingAngle={3} dataKey="value">
+                    {categoryData.map((_entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
 
-            <div className="space-y-3">
-              {safeCategoryData.slice(0, 5).map((item, index) => {
-                const percentage = totalSold ? Math.round((Number(item.value) / totalSold) * 100) : 0;
-                return (
-                  <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                      <span className="font-semibold text-slate-700">{item.name}</span>
+              <div className="space-y-3">
+                {categoryData.slice(0, 5).map((item, index) => {
+                  const percentage = totalSold ? Math.round((Number(item.value) / totalSold) * 100) : 0;
+                  return (
+                    <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                        <span className="font-semibold text-slate-700">{item.name}</span>
+                      </div>
+                      <span className="font-black text-slate-900">{percentage}%</span>
                     </div>
-                    <span className="font-black text-slate-900">{percentage}%</span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative flex min-h-[235px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center">
+              <Flower2 className="mb-3 h-10 w-10 text-slate-400" />
+              <p className="font-black text-slate-900">Sin ventas pagadas todavía</p>
+              <p className="mt-1 text-sm text-slate-500">Antes salían porcentajes de ejemplo. Ahora queda vacío hasta que entren pedidos reales.</p>
+            </div>
+          )}
 
           <div className="mt-5 rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50 p-4 ring-1 ring-slate-100">
             <p className="text-sm font-semibold text-slate-500">Total vendidos</p>
             <div className="mt-1 flex items-end gap-3">
-              <span className="text-4xl font-black text-slate-950">{categoryData.length ? totalSold : 0}</span>
+              <span className="text-4xl font-black text-slate-950">{totalSold}</span>
               <span className="mb-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-700">Real</span>
             </div>
           </div>
