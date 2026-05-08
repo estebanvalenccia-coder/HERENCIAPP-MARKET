@@ -46,6 +46,8 @@ export function StripeCheckout({
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const mountedElement = useRef<any>(null);
+  const orderIdRef = useRef<string>("");
+  const paymentIntentIdRef = useRef<string>("");
   const isBizum = paymentMethod === "bizum";
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function StripeCheckout({
         if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
         const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-        const { clientSecret } = await backendApi.createPaymentIntent({
+        const paymentIntentResponse = await backendApi.createPaymentIntent({
           amount,
           customerEmail: email,
           customerName: cardholderName,
@@ -76,6 +78,10 @@ export function StripeCheckout({
             requestedPaymentMethod: paymentMethod,
           },
         });
+
+        const { clientSecret, orderId, paymentIntentId } = paymentIntentResponse;
+        orderIdRef.current = orderId || "";
+        paymentIntentIdRef.current = paymentIntentId || "";
 
         const elementsInstance = stripeInstance.elements({
           clientSecret,
@@ -144,8 +150,15 @@ export function StripeCheckout({
       if (error) throw new Error(error.message);
 
       if (!paymentIntent || paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
+        const orderId = orderIdRef.current;
+        const paymentIntentId = paymentIntent?.id || paymentIntentIdRef.current;
+
+        if (orderId && paymentIntentId) {
+          await backendApi.confirmStripeOrder({ orderId, paymentIntentId });
+        }
+
         backendStorage.setItem("cart", JSON.stringify([]));
-        toast.success("Pago enviado correctamente. Te enviaremos confirmación por email.");
+        toast.success("Pago confirmado. Te enviaremos la confirmación por email.");
         onSuccess();
         return;
       }
