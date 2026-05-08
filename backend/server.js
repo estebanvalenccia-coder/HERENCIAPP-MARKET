@@ -95,47 +95,6 @@ const protectedKeys = new Set([
   "__backendStorage_test__",
 ]);
 
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
-      return res.status(503).send("Stripe webhook no configurado");
-    }
-
-    let event;
-
-    try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        req.headers["stripe-signature"],
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } catch (error) {
-      return res.status(400).send(`Webhook inválido: ${error.message}`);
-    }
-
-    if (event.type === "payment_intent.succeeded") {
-      const paymentIntent = event.data.object;
-      const orderId = paymentIntent.metadata?.orderId;
-
-      if (orderId && supabase) {
-        await supabase
-          .from("orders")
-          .update({
-            status: "paid",
-            stripe_payment_intent_id: paymentIntent.id,
-          })
-          .eq("id", orderId);
-      }
-    }
-
-    res.json({ received: true });
-  }
-);
-
-app.use(express.json({ limit: "10mb" }));
-
 function parseCookies(req) {
   return Object.fromEntries(
     (req.headers.cookie || "")
@@ -271,6 +230,270 @@ function isValidEmail(email) {
   return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+  }).format(Number(value || 0));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function normalizeOrder(order) {
+  const metadata = order.metadata || {};
+
+  return {
+    id: order.id,
+    customerName: order.customer_name || order.customerName || order.name || "Cliente",
+    customerEmail: order.customer_email || order.customerEmail || order.email || "",
+    items: Array.isArray(order.items) ? order.items : [],
+    subtotal: Number(order.subtotal || 0),
+    shipping: Number(order.shipping || 0),
+    total: Number(order.total || 0),
+    paymentMethod: order.payment_method || order.paymentMethod || "manual",
+    deliveryMethod: order.delivery_method || order.deliveryMethod || "envio",
+    status: order.status || "pending",
+    date: order.created_at || order.date || new Date().toISOString(),
+    metadata,
+  };
+}
+
+function renderOrderEmail(order, recipientType = "customer") {
+  const normalized = normalizeOrder(order);
+  const isAdminEmail = recipientType === "admin";
+  const itemsHtml = normalized.items.length
+    ? normalized.items
+        .map((item) => {
+          const name = escapeHtml(item.name || item.title || item.productName || "Producto");
+          const quantity = Number(item.quantity || item.qty || 1);
+          const price = Number(item.price || item.unitPrice || 0);
+          const image = item.image || item.imageUrl || item.photo || "";
+
+          return `
+            <tr>
+              <td style="padding:14px 0;border-bottom:1px solid #f1e7df;">
+                <div style="display:flex;gap:12px;align-items:center;">
+                  ${
+                    image
+                      ? `<img src="${escapeHtml(image)}" alt="${name}" width="56" height="56" style="border-radius:14px;object-fit:cover;border:1px solid #f1e7df;" />`
+                      : `<div style="width:56px;height:56px;border-radius:14px;background:#fff1f5;border:1px solid #f1e7df;text-align:center;line-height:56px;font-size:24px;">🌿</div>`
+                  }
+                  <div>
+                    <div style="font-weight:700;color:#2b1712;font-size:15px;">${name}</div>
+                    <div style="color:#8b6b61;font-size:13px;margin-top:3px;">Cantidad: ${quantity}</div>
+                  </div>
+                </div>
+              </td>
+              <td align="right" style="padding:14px 0;border-bottom:1px solid #f1e7df;font-weight:700;color:#2b1712;white-space:nowrap;">
+                ${formatCurrency(price * quantity)}
+              </td>
+            </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="2" style="padding:16px 0;color:#8b6b61;">Pedido recibido sin detalle de productos.</td></tr>`;
+
+  const deliveryLabel =
+    normalized.deliveryMethod === "recogida" ? "Recogida en tienda" : "Envío a domicilio";
+
+  const paymentLabel =
+    normalized.paymentMethod === "bizum"
+      ? "Bizum"
+      : normalized.paymentMethod === "tarjeta"
+      ? "Tarjeta"
+      : normalized.paymentMethod === "manual"
+      ? "Pago manual"
+      : normalized.paymentMethod;
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Confirmación de compra Herencia Market</title>
+  </head>
+  <body style="margin:0;background:#fff7f2;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+      ${isAdminEmail ? "Nuevo pedido recibido" : "Gracias por tu compra"} en Herencia Market.
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fff7f2;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:28px;overflow:hidden;box-shadow:0 16px 50px rgba(96,46,24,.12);">
+            <tr>
+              <td style="background:linear-gradient(135deg,#ff6f91,#ff9671,#ffc75f);padding:34px 28px;text-align:center;color:#fff;">
+                <div style="font-size:42px;line-height:1;margin-bottom:10px;">🌸</div>
+                <h1 style="margin:0;font-size:28px;line-height:1.15;">${
+                  isAdminEmail ? "Nuevo pedido en Herencia Market" : "¡Gracias por tu compra!"
+                }</h1>
+                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Pedido #${escapeHtml(
+                  normalized.id
+                )}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 28px;">
+                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#4d3128;">
+                  ${
+                    isAdminEmail
+                      ? `Se ha recibido una compra de <strong>${escapeHtml(normalized.customerName)}</strong>. Aquí tienes el detalle completo.`
+                      : `Hola <strong>${escapeHtml(normalized.customerName)}</strong>, hemos recibido tu compra correctamente. Te dejamos el resumen de tu pedido.`
+                  }
+                </p>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fffaf7;border:1px solid #f1e7df;border-radius:20px;padding:18px;margin-bottom:22px;">
+                  <tr>
+                    <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Cliente</td>
+                    <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(normalized.customerName)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Email</td>
+                    <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(normalized.customerEmail || "No indicado")}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Entrega</td>
+                    <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(deliveryLabel)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Método de pago</td>
+                    <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(paymentLabel)}</td>
+                  </tr>
+                </table>
+
+                <h2 style="font-size:18px;margin:0 0 8px;color:#2b1712;">Detalle de la compra</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:22px;">
+                  ${itemsHtml}
+                </table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#2b1712;color:#fff;border-radius:20px;padding:18px;">
+                  <tr>
+                    <td style="padding:5px 0;color:#f8d8cc;">Subtotal</td>
+                    <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.subtotal)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;color:#f8d8cc;">Envío</td>
+                    <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.shipping)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:12px 0 0;font-size:19px;font-weight:800;">Total</td>
+                    <td align="right" style="padding:12px 0 0;font-size:22px;font-weight:900;color:#ffc75f;">${formatCurrency(normalized.total)}</td>
+                  </tr>
+                </table>
+
+                <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#8b6b61;text-align:center;">
+                  ${
+                    isAdminEmail
+                      ? "Revisa el panel de administración para gestionar este pedido."
+                      : "Prepararemos tu pedido con mucho cariño. Si tienes cualquier duda, responde a este correo."
+                  }
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+async function sendResendEmail({ to, subject, html, replyTo }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("Email no enviado: falta RESEND_API_KEY");
+    return { skipped: true, reason: "missing_RESEND_API_KEY" };
+  }
+
+  if (!isValidEmail(to)) {
+    console.warn(`Email no enviado: destinatario inválido (${to})`);
+    return { skipped: true, reason: "invalid_recipient" };
+  }
+
+  const from = process.env.EMAIL_FROM || "Herencia Market <onboarding@resend.dev>";
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject,
+      html,
+      reply_to: replyTo && isValidEmail(replyTo) ? replyTo : undefined,
+    }),
+  });
+
+  const resultText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Resend error ${response.status}: ${resultText}`);
+  }
+
+  try {
+    return JSON.parse(resultText);
+  } catch {
+    return { ok: true };
+  }
+}
+
+async function sendOrderConfirmationEmails(order, reason = "order_created") {
+  const normalized = normalizeOrder(order);
+  const adminEmail = process.env.ADMIN_ORDER_EMAIL || process.env.ADMIN_EMAIL;
+  const metadata = normalized.metadata || {};
+
+  if (metadata.confirmationEmailSentAt) {
+    return { skipped: true, reason: "already_sent" };
+  }
+
+  const results = {};
+
+  if (isValidEmail(normalized.customerEmail)) {
+    results.customer = await sendResendEmail({
+      to: normalized.customerEmail,
+      subject: `Confirmación de compra Herencia Market #${normalized.id}`,
+      html: renderOrderEmail(normalized, "customer"),
+      replyTo: adminEmail,
+    });
+  } else {
+    results.customer = { skipped: true, reason: "missing_customer_email" };
+  }
+
+  if (isValidEmail(adminEmail)) {
+    results.admin = await sendResendEmail({
+      to: adminEmail,
+      subject: `Nuevo pedido Herencia Market #${normalized.id}`,
+      html: renderOrderEmail(normalized, "admin"),
+      replyTo: normalized.customerEmail,
+    });
+  } else {
+    results.admin = { skipped: true, reason: "missing_ADMIN_ORDER_EMAIL" };
+  }
+
+  if (supabase) {
+    await supabase
+      .from("orders")
+      .update({
+        metadata: {
+          ...metadata,
+          confirmationEmailSentAt: new Date().toISOString(),
+          confirmationEmailReason: reason,
+          confirmationEmailResults: results,
+        },
+      })
+      .eq("id", normalized.id);
+  }
+
+  return results;
+}
+
 async function readStorageValue(key) {
   const { data, error } = await supabase
     .from("app_storage")
@@ -292,6 +515,59 @@ async function upsertStorageValue(key, value) {
 
   if (error) throw error;
 }
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(503).send("Stripe webhook no configurado");
+    }
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        req.headers["stripe-signature"],
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (error) {
+      return res.status(400).send(`Webhook inválido: ${error.message}`);
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      const orderId = paymentIntent.metadata?.orderId;
+
+      if (orderId && supabase) {
+        const { data: updatedOrder, error } = await supabase
+          .from("orders")
+          .update({
+            status: "paid",
+            stripe_payment_intent_id: paymentIntent.id,
+          })
+          .eq("id", orderId)
+          .select("*")
+          .single();
+
+        if (error) {
+          console.error("Error actualizando pedido pagado:", error.message);
+        } else {
+          try {
+            await sendOrderConfirmationEmails(updatedOrder, "stripe_payment_succeeded");
+          } catch (emailError) {
+            console.error("Error enviando emails de confirmación:", emailError.message);
+          }
+        }
+      }
+    }
+
+    res.json({ received: true });
+  }
+);
+
+app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
@@ -488,10 +764,14 @@ app.get("/api/orders", requireAdmin, async (_req, res) => {
     customerName: order.customer_name || "Cliente",
     customerEmail: order.customer_email || "",
     items: order.items || [],
+    subtotal: Number(order.subtotal || 0),
+    shipping: Number(order.shipping || 0),
     total: Number(order.total || 0),
     paymentMethod: order.payment_method,
+    deliveryMethod: order.delivery_method,
     status: order.status,
     date: order.created_at,
+    metadata: order.metadata || {},
   }));
 
   res.json({ orders });
@@ -522,6 +802,12 @@ app.post("/api/orders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  try {
+    await sendOrderConfirmationEmails(data, "order_created");
+  } catch (emailError) {
+    console.error("Error enviando emails de confirmación:", emailError.message);
+  }
 
   res.json({ order: data });
 });
