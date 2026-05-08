@@ -477,7 +477,11 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
 
 async function sendOrderConfirmationEmails(order, reason = "order_created") {
   const normalized = normalizeOrder(order);
-  const adminEmail = process.env.ADMIN_ORDER_EMAIL || process.env.ADMIN_EMAIL;
+  const adminEmail =
+    process.env.ADMIN_ORDER_EMAIL ||
+    process.env.ADMIN_EMAIL ||
+    process.env.STORE_EMAIL ||
+    "herenciafloristeria@gmail.com";
   const metadata = normalized.metadata || {};
 
   if (metadata.confirmationEmailSentAt) {

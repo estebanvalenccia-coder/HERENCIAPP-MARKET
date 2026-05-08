@@ -23,10 +23,13 @@ SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
 STRIPE_SECRET_KEY=sk_live_o_sk_test
 STRIPE_WEBHOOK_SECRET=whsec_tu_webhook
 CORS_ORIGIN=https://www.herenciamarket.es,https://herenciamarket.es
+RESEND_API_KEY=re_tu_api_key
+EMAIL_FROM=Herencia Market <email-verificado@tudominio.com>
+ADMIN_ORDER_EMAIL=herenciafloristeria@gmail.com
 PORT=3001
 ```
 
-La `SUPABASE_SERVICE_ROLE_KEY` y `STRIPE_SECRET_KEY` nunca deben ponerse en Vercel como variables públicas del frontend. Deben estar solo en el servicio backend.
+La `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY` y `RESEND_API_KEY` nunca deben ponerse en Vercel como variables públicas del frontend. Deben estar solo en el servicio backend.
 
 ## Supabase
 
