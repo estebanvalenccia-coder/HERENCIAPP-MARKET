@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler } from "lucide-react";
+import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler, Inbox, Eye, CheckCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
@@ -20,10 +20,22 @@ interface Product {
 
 interface AIBouquetProposal {
   name: string;
-  shortDescription: string;
+  shortDescription?: string;
   description: string;
-  recommendedFlowers: string[];
-  sellingTip: string;
+  recommendedFlowers?: string[];
+  sellingTip?: string;
+  sellingTips?: string;
+  title?: string;
+}
+
+interface FlowerRequest {
+  id: string;
+  customerName: string;
+  total: number;
+  status: string;
+  date: string;
+  items: Array<{ name?: string; image?: string; price?: number; quantity?: number }>;
+  metadata?: any;
 }
 
 const bouquetImages = [
@@ -83,6 +95,27 @@ function pickImage(description: string, color: string, style: string) {
   return bouquetImages[seed % bouquetImages.length];
 }
 
+function isFloresRequest(order: FlowerRequest) {
+  return order.metadata?.source === "FLORES_TABLET" || order.metadata?.type === "flower_admin_request";
+}
+
+function proposalFromRequest(request: FlowerRequest): AIBouquetProposal {
+  const meta = request.metadata || {};
+  const rawProposal = meta.proposal || {};
+  const item = request.items?.[0] || {};
+  return {
+    name: rawProposal.name || rawProposal.title || item.name || "Ramo solicitado desde FLORES",
+    shortDescription: rawProposal.shortDescription || meta.selectedSummary || "Solicitud enviada desde la tablet FLORES",
+    description: rawProposal.description || meta.idea || "Solicitud floral enviada desde la tablet de clientes.",
+    recommendedFlowers: rawProposal.recommendedFlowers || meta.flowers || [],
+    sellingTip: rawProposal.sellingTip || rawProposal.sellingTips || "Revisar y ajustar antes de publicar.",
+  };
+}
+
+function imageFromRequest(request: FlowerRequest) {
+  return request.metadata?.image?.imageUrl || request.items?.[0]?.image || "";
+}
+
 async function generateBouquetFromBackend(payload: {
   description: string;
   budget: number;
@@ -119,19 +152,63 @@ export function AdminAIBouquetDesigner() {
   const [history, setHistory] = useState<Array<{ name: string; image: string; price: number; style: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [imageGeneratedByAi, setImageGeneratedByAi] = useState(false);
+  const [flowerRequests, setFlowerRequests] = useState<FlowerRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
   const fallbackName = useMemo(() => suggestedName(description, color), [description, color]);
-  const productName = proposal?.name || fallbackName;
+  const productName = proposal?.name || proposal?.title || fallbackName;
   const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`;
 
-  const applyGeneratedBouquet = (nextProposal: AIBouquetProposal, imageUrl: string, aiImage = false) => {
+  const loadFlowerRequests = () => {
+    setRequestsLoading(true);
+    backendApi.listOrders()
+      .then(({ orders }) => setFlowerRequests((orders || []).filter(isFloresRequest)))
+      .catch((error) => {
+        console.error("No se pudieron cargar las solicitudes FLORES", error);
+        toast.error("No se pudieron cargar las solicitudes FLORES");
+      })
+      .finally(() => setRequestsLoading(false));
+  };
+
+  useEffect(() => {
+    loadFlowerRequests();
+  }, []);
+
+  const applyGeneratedBouquet = (nextProposal: AIBouquetProposal, imageUrl: string, aiImage = false, nextBudget = budget, nextStyle = style) => {
     setProposal(nextProposal);
     setGeneratedImage(imageUrl);
     setImageGeneratedByAi(aiImage);
     setHistory((prev) => [
-      { name: nextProposal.name || fallbackName, image: imageUrl, price: budget, style },
+      { name: nextProposal.name || nextProposal.title || fallbackName, image: imageUrl, price: nextBudget, style: nextStyle },
       ...prev,
     ].slice(0, 6));
+  };
+
+  const openFlowerRequest = (request: FlowerRequest) => {
+    const meta = request.metadata || {};
+    const nextProposal = proposalFromRequest(request);
+    const nextImage = imageFromRequest(request);
+
+    setSelectedRequestId(request.id);
+    setDescription(meta.idea || nextProposal.description || "");
+    setBudget(Number(meta.budget || request.total || 0));
+    setStyle(meta.style || "Romántico");
+    setColor(Array.isArray(meta.colors) ? meta.colors[0] || "Mix" : "Mix");
+    setProposal(nextProposal);
+    setGeneratedImage(nextImage);
+    setImageGeneratedByAi(Boolean(nextImage));
+    toast.success("Solicitud FLORES abierta en el diseñador");
+  };
+
+  const markRequestAsProcessed = async (requestId: string) => {
+    try {
+      await backendApi.updateOrderStatus(requestId, "completed");
+      setFlowerRequests((current) => current.map((item) => item.id === requestId ? { ...item, status: "completed" } : item));
+      toast.success("Solicitud marcada como revisada");
+    } catch {
+      toast.error("No se pudo actualizar la solicitud");
+    }
   };
 
   const handleGenerate = async () => {
@@ -161,7 +238,7 @@ export function AdminAIBouquetDesigner() {
 
   const saveAsProduct = () => {
     if (!generatedImage) {
-      toast.error("Primero genera una imagen del ramo");
+      toast.error("Primero genera o abre una imagen del ramo");
       return;
     }
 
@@ -185,12 +262,19 @@ export function AdminAIBouquetDesigner() {
     };
 
     backendStorage.setItem("adminProducts", JSON.stringify([newProduct, ...currentProducts]));
+
+    if (selectedRequestId) {
+      markRequestAsProcessed(selectedRequestId);
+    }
+
     toast.success("Ramo guardado como producto del catálogo ✨");
   };
 
   const recommendedFlowers = proposal?.recommendedFlowers?.length
     ? proposal.recommendedFlowers.map((name) => ({ name, price: 0, image: "🌸" }))
     : flowerSuggestions;
+
+  const pendingRequests = flowerRequests.filter((request) => request.status !== "completed" && request.status !== "cancelled");
 
   return (
     <div className="space-y-6">
@@ -199,12 +283,73 @@ export function AdminAIBouquetDesigner() {
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold text-foreground">Diseñador IA de Ramos</h2>
             <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">PRO</span>
+            {pendingRequests.length > 0 && <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-semibold">{pendingRequests.length} desde FLORES</span>}
           </div>
-          <p className="text-muted-foreground mt-1">Crea ramos, genera propuestas visuales y guárdalas directamente en tu catálogo.</p>
+          <p className="text-muted-foreground mt-1">Crea ramos, recibe solicitudes desde la tablet FLORES y publícalas en el catálogo.</p>
         </div>
-        <button className="px-4 py-2 bg-muted hover:bg-accent rounded-xl text-sm font-medium">
-          Guía rápida
+        <button onClick={loadFlowerRequests} className="px-4 py-2 bg-muted hover:bg-accent rounded-xl text-sm font-medium">
+          {requestsLoading ? "Actualizando..." : "Actualizar FLORES"}
         </button>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Inbox className="w-5 h-5 text-primary" />
+            <h3 className="font-bold text-foreground">Solicitudes recibidas desde la tablet FLORES</h3>
+          </div>
+          <span className="text-xs px-3 py-1 rounded-full bg-muted text-muted-foreground">No se mezclan con pedidos reales</span>
+        </div>
+
+        {flowerRequests.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Aún no hay solicitudes de la tablet. Cuando el cliente cree un ramo en FLORES y lo envíe, aparecerá aquí.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {flowerRequests.map((request) => {
+              const meta = request.metadata || {};
+              const requestProposal = proposalFromRequest(request);
+              const requestImage = imageFromRequest(request);
+              const reviewed = request.status === "completed";
+
+              return (
+                <article key={request.id} className={`border rounded-2xl p-4 bg-background/60 ${selectedRequestId === request.id ? "border-primary shadow-md" : "border-border"}`}>
+                  <div className="flex gap-3">
+                    <div className="w-20 h-20 rounded-xl bg-muted overflow-hidden flex items-center justify-center shrink-0">
+                      {requestImage ? <img src={requestImage} alt={requestProposal.name} className="w-full h-full object-cover" /> : <Flower2 className="w-8 h-8 text-muted-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full ${reviewed ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                          {reviewed ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                          {reviewed ? "Revisada" : "Pendiente"}
+                        </span>
+                      </div>
+                      <h4 className="font-bold truncate">{requestProposal.name}</h4>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{meta.selectedSummary || requestProposal.description}</p>
+                      <p className="text-sm font-bold mt-2">€{Number(meta.budget || request.total || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs text-muted-foreground space-y-1">
+                    <p><strong>Idea:</strong> {meta.idea || "Sin idea escrita"}</p>
+                    <p><strong>Fecha:</strong> {request.date ? new Date(request.date).toLocaleString("es-ES") : "Sin fecha"}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button onClick={() => openFlowerRequest(request)} className="flex items-center justify-center gap-2 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90">
+                      <Eye className="w-4 h-4" /> Abrir
+                    </button>
+                    <button onClick={() => markRequestAsProcessed(request.id)} className="flex items-center justify-center gap-2 py-2 bg-muted hover:bg-accent rounded-xl text-sm font-medium">
+                      <CheckCircle className="w-4 h-4" /> Revisada
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr_360px] gap-6">
@@ -277,9 +422,9 @@ export function AdminAIBouquetDesigner() {
         <div className="space-y-6">
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground">Resultado generado</h3>
+              <h3 className="font-bold text-foreground">Resultado / solicitud abierta</h3>
               <span className={`text-xs px-2 py-1 rounded-full ${imageGeneratedByAi ? "bg-green-500/10 text-green-700" : "bg-primary/10 text-primary"}`}>
-                {imageGeneratedByAi ? "IA real" : "Catálogo"}
+                {imageGeneratedByAi ? "Imagen IA" : "Catálogo"}
               </span>
             </div>
 
@@ -287,7 +432,7 @@ export function AdminAIBouquetDesigner() {
               {generatedImage ? (
                 <motion.img key={generatedImage} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} src={generatedImage} alt={productName} className="w-full h-full object-cover" />
               ) : (
-                <div className="text-center px-8"><ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado.</p></div>
+                <div className="text-center px-8"><ImageIcon className="w-16 h-16 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aquí aparecerá la foto del ramo generado o enviado desde FLORES.</p></div>
               )}
             </div>
 
@@ -296,7 +441,7 @@ export function AdminAIBouquetDesigner() {
                 <div>
                   <h3 className="text-xl font-bold text-foreground">{productName}</h3>
                   <p className="text-sm text-muted-foreground mt-2">{productDescription}</p>
-                  {proposal?.sellingTip && <p className="text-sm text-primary font-semibold mt-3">{proposal.sellingTip}</p>}
+                  {(proposal?.sellingTip || proposal?.sellingTips) && <p className="text-sm text-primary font-semibold mt-3">{proposal.sellingTip || proposal.sellingTips}</p>}
                   <p className="text-3xl font-bold mt-4">{Number(budget || 0).toFixed(2)} €</p>
                 </div>
                 <span className="px-2 py-1 bg-amber-500/10 text-amber-600 rounded-full text-xs font-semibold">Sugerido</span>
