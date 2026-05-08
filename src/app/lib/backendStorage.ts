@@ -4,6 +4,27 @@ let backendAvailable = Boolean(API_BASE);
 type StoredValue = string | null;
 const cache = new Map<string, string>();
 
+const remotelySyncedKeys = new Set([
+  "chatboxSettings",
+  "herenciaSettings",
+  "customTheme",
+  "menuIcons",
+  "stripeSettings",
+  "supabaseSettings",
+  "shippingSettings",
+  "aiSettings",
+  "adminProducts",
+  "heroBanner",
+  "ctaBanner",
+  "__backendStorage_test__",
+  "cart",
+  "user",
+]);
+
+function shouldSyncWithBackend(key: string) {
+  return backendAvailable && remotelySyncedKeys.has(key);
+}
+
 function sanitizeForClient(_key: string, value: string) {
   return value;
 }
@@ -163,7 +184,7 @@ export const backendStorage = {
     cache.set(key, sanitizeForClient(key, value));
     writeLocalStorage(key, value);
 
-    if (backendAvailable) {
+    if (shouldSyncWithBackend(key)) {
       fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
         credentials: "include",
         method: "PUT",
@@ -179,7 +200,7 @@ export const backendStorage = {
     cache.delete(key);
     removeLocalStorage(key);
 
-    if (backendAvailable) {
+    if (shouldSyncWithBackend(key)) {
       fetch(`${API_BASE}/api/storage/${encodeURIComponent(key)}`, {
         credentials: "include",
         method: "DELETE",
