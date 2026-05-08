@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 
 interface Product {
   id: number;
@@ -83,6 +83,16 @@ function pickImage(description: string, color: string, style: string) {
   return bouquetImages[seed % bouquetImages.length];
 }
 
+function extractErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "No se pudo conectar con la IA";
+  try {
+    const parsed = JSON.parse(error.message);
+    return parsed?.error || error.message;
+  } catch {
+    return error.message;
+  }
+}
+
 export function AdminAIBouquetDesigner() {
   const [description, setDescription] = useState("Ramo elegante de rosas rojas, eucalipto y paniculata con toque romántico");
   const [budget, setBudget] = useState(49.9);
@@ -93,10 +103,21 @@ export function AdminAIBouquetDesigner() {
   const [proposal, setProposal] = useState<AIBouquetProposal | null>(null);
   const [history, setHistory] = useState<Array<{ name: string; image: string; price: number; style: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const [imageGeneratedByAi, setImageGeneratedByAi] = useState(false);
 
   const fallbackName = useMemo(() => suggestedName(description, color), [description, color]);
   const productName = proposal?.name || fallbackName;
   const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`;
+
+  const applyGeneratedBouquet = (nextProposal: AIBouquetProposal, imageUrl: string, aiImage = false) => {
+    setProposal(nextProposal);
+    setGeneratedImage(imageUrl);
+    setImageGeneratedByAi(aiImage);
+    setHistory((prev) => [
+      { name: nextProposal.name || fallbackName, image: imageUrl, price: budget, style },
+      ...prev,
+    ].slice(0, 6));
+  };
 
   const handleGenerate = async () => {
     if (!description.trim()) {
@@ -106,20 +127,21 @@ export function AdminAIBouquetDesigner() {
 
     setLoading(true);
 
-    window.setTimeout(() => {
-      const nextProposal = createLocalProposal(description, budget, style, color, size);
+    try {
+      const result = await backendApi.generateBouquet({ description, budget, style, color, size });
+      applyGeneratedBouquet(result.proposal, result.image, result.imageGeneratedByAi);
+      toast.success(result.imageGeneratedByAi ? "Imagen generada con IA real 🌸" : "Propuesta generada; imagen de respaldo aplicada 🌸");
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      const fallbackProposal = createLocalProposal(description, budget, style, color, size);
       const imageUrl = pickImage(description, color, style);
 
-      setProposal(nextProposal);
-      setGeneratedImage(imageUrl);
-      setHistory((prev) => [
-        { name: nextProposal.name || fallbackName, image: imageUrl, price: budget, style },
-        ...prev,
-      ].slice(0, 6));
-
+      applyGeneratedBouquet(fallbackProposal, imageUrl, false);
+      toast.error(message);
+      toast.message("He dejado una imagen de respaldo para que puedas seguir trabajando.");
+    } finally {
       setLoading(false);
-      toast.success("Ramo generado correctamente 🌸");
-    }, 650);
+    }
   };
 
   const saveAsProduct = () => {
@@ -232,7 +254,7 @@ export function AdminAIBouquetDesigner() {
 
             <button onClick={handleGenerate} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-bold disabled:opacity-60">
               {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-              {loading ? "Generando ramo..." : "Generar ramo"}
+              {loading ? "Generando imagen con IA..." : "Generar ramo"}
             </button>
           </div>
         </div>
@@ -241,7 +263,9 @@ export function AdminAIBouquetDesigner() {
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-foreground">Resultado generado</h3>
-              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">Catálogo</span>
+              <span className={`text-xs px-2 py-1 rounded-full ${imageGeneratedByAi ? "bg-green-500/10 text-green-700" : "bg-primary/10 text-primary"}`}>
+                {imageGeneratedByAi ? "IA real" : "Catálogo"}
+              </span>
             </div>
 
             <div className="aspect-[4/3] rounded-2xl bg-muted overflow-hidden border border-border flex items-center justify-center">
