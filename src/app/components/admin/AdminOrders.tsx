@@ -50,6 +50,10 @@ function getAddress(order: Order) {
     .join(" · ") || "Dirección no indicada";
 }
 
+function isFloresAdminRequest(order: Order) {
+  return order.metadata?.source === "FLORES_TABLET" || order.metadata?.type === "flower_admin_request";
+}
+
 export function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>("all");
@@ -58,7 +62,7 @@ export function AdminOrders() {
 
   const loadOrders = () => {
     backendApi.listOrders()
-      .then(({ orders }) => setOrders(orders))
+      .then(({ orders }) => setOrders(orders.filter((order) => !isFloresAdminRequest(order))))
       .catch((error) => {
         console.error("No se pudieron cargar los pedidos", error);
         toast.error("No se pudieron cargar los pedidos desde backend");
@@ -103,7 +107,7 @@ export function AdminOrders() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Pedidos reales</h2>
-          <p className="text-muted-foreground">Aquí aparecen las compras reales para preparar y entregar</p>
+          <p className="text-muted-foreground">Aquí aparecen las compras reales para preparar y entregar. Las solicitudes de FLORES están en Diseñador IA de Ramos.</p>
         </div>
         <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">
           <Download className="w-4 h-4" />
