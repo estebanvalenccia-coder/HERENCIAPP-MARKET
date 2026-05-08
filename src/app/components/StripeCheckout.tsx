@@ -95,7 +95,13 @@ export function StripeCheckout({
           },
         });
 
-        const paymentElement = elementsInstance.create("payment", { layout: "accordion" });
+        const paymentElement = elementsInstance.create("payment", {
+          layout: "accordion",
+          wallets: {
+            applePay: "never",
+            googlePay: "never",
+          },
+        });
         paymentElement.mount("#payment-element");
         mountedElement.current = paymentElement;
 
@@ -186,7 +192,7 @@ export function StripeCheckout({
         <div className="bg-primary/10 p-2 rounded-lg"><CreditCard className="w-5 h-5 text-primary" /></div>
         <div>
           <h3 className="text-lg font-semibold text-foreground">Pago seguro con Stripe</h3>
-          <p className="text-sm text-muted-foreground">{isBizum ? "Pago con Bizum" : "Tarjeta y pagos rápidos disponibles"}</p>
+          <p className="text-sm text-muted-foreground">{isBizum ? "Pago con Bizum" : "Pago con tarjeta"}</p>
         </div>
       </div>
 
@@ -229,7 +235,7 @@ export function StripeCheckout({
           {initializing && <p className="text-sm text-muted-foreground mt-2">Cargando métodos de pago...</p>}
         </div>
 
-        <div className="group pt-1">
+        <div className="hidden">
           <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
             <div className="h-px bg-border flex-1" />
             <span>Más formas de pago</span>

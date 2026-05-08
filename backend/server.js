@@ -1117,11 +1117,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       },
     };
 
-    if (selectedPaymentMethod === "bizum") {
-      paymentIntentParams.payment_method_types = ["bizum"];
-    } else {
-      paymentIntentParams.automatic_payment_methods = { enabled: true };
-    }
+    paymentIntentParams.payment_method_types =
+      selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"];
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
