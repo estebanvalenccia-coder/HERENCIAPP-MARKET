@@ -94,19 +94,7 @@ async function generateBouquetFromBackend(payload: {
     throw new Error("Falta VITE_API_URL para conectar con el backend");
   }
 
-  const response = await fetch(`${backendApi.baseUrl}/api/ai/bouquet-designer`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-
-  if (!response.ok) {
-    throw new Error(data?.error || `Error HTTP ${response.status}`);
-  }
+  const data = await backendApi.generateBouquet(payload);
 
   if (!data?.image) {
     throw new Error("La IA respondió, pero no devolvió imagen");
