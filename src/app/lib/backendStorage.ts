@@ -203,7 +203,10 @@ async function deleteStorageValue(key: string): Promise<BackendStorageResult> {
 export const backendApi = {
   baseUrl: API_BASE,
   get enabled() {
-    return Boolean(API_BASE) && backendAvailable;
+    return Boolean(API_BASE);
+  },
+  get available() {
+    return backendAvailable;
   },
   get lastError() {
     return lastBackendError;
@@ -226,7 +229,7 @@ export const backendApi = {
         })
         .catch((error) => {
           emitBackendError("precargar", "app_storage", error);
-          // La app puede abrir con copia local, pero ya no se oculta el error.
+          // La app puede abrir con copia local, pero el admin sigue tratando el backend como configurado.
         });
     }
     return preloadPromise;
@@ -336,6 +339,6 @@ export const backendStorage = {
   async verifyConnection() {
     await backendApi.health();
     await backendApi.preload();
-    return { ok: backendApi.enabled, apiBase: API_BASE, lastError: lastBackendError };
+    return { ok: backendApi.available, apiBase: API_BASE, lastError: lastBackendError };
   },
 };
