@@ -56,7 +56,7 @@ function createFallbackProposal(payload = {}) {
     shortDescription: `Ramo ${style.toLowerCase()} tamaño ${size} desde ${budget.toFixed(2)} €`,
     description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Herencia Market. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
     recommendedFlowers,
-    imagePrompt: `Fotografía profesional de un ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}: ${description}. Sin texto, sin logos, luz cálida, fondo elegante.`,
+    imagePrompt: `Fotografía profesional y realista de producto de un ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}: ${description}. Ramo centrado, flores frescas, envoltorio elegante de floristería premium, luz cálida natural, fondo limpio, sin texto, sin logos, sin marcas de agua, sin personas.`,
     sellingTip: "Ideal para vender como ramo premium personalizado.",
   };
 }
@@ -80,6 +80,18 @@ Devuelve SOLO JSON válido con esta estructura exacta:
   "imagePrompt": "prompt fotorealista premium para generar imagen del ramo, sin texto, sin logos, sin marcas de agua, sin personas",
   "sellingTip": "frase breve para venderlo mejor"
 }`;
+}
+
+function extractImageUrl(data) {
+  return (
+    data?.data?.outputImageUrls?.[0] ||
+    data?.outputImageUrls?.[0] ||
+    data?.data?.imageUrl ||
+    data?.imageUrl ||
+    data?.url ||
+    data?.data?.url ||
+    ""
+  );
 }
 
 async function generateProposalWithGroq(payload = {}) {
@@ -119,31 +131,83 @@ async function generateProposalWithGroq(payload = {}) {
   return JSON.parse(cleanJsonContent(content));
 }
 
+async function generateImageWithNanoBanana(prompt) {
+  if (!process.env.NANO_BANANA_API_KEY) {
+    throw new Error("NANO_BANANA_API_KEY no está configurada");
+  }
+
+  const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
+  const response = await fetch("https://www.nananobanana.com/api/v1/generate", {
+    method: "POST",
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.NANO_BANANA_API_KEY}`,
+    },
+    body: JSON.stringify({
+      prompt,
+      selectedModel: process.env.NANO_BANANA_MODEL || "nano-banana",
+      aspectRatio: "1:1",
+      mode: "sync",
+    }),
+  });
+
+  const text = await response.text().catch(() => "");
+
+  if (!response.ok) {
+    throw new Error(`Nano Banana respondió ${response.status}: ${text}`);
+  }
+
+  const data = text ? JSON.parse(text) : {};
+  const imageUrl = extractImageUrl(data);
+
+  if (!imageUrl) {
+    throw new Error("Nano Banana respondió sin URL de imagen");
+  }
+
+  return imageUrl;
+}
+
 async function safeAIBouquetHandler(req, res) {
   const payload = req.body || {};
   const fallbackProposal = createFallbackProposal(payload);
   let proposal = fallbackProposal;
   let source = "fallback";
+  let imageGeneratedByAi = false;
+  let image = pickImage(payload);
+  const warnings = [];
 
   try {
     const aiProposal = await generateProposalWithGroq(payload);
     proposal = {
       ...fallbackProposal,
       ...aiProposal,
-      recommendedFlowers: Array.isArray(aiProposal.recommendedFlowers) && aiProposal.recommendedFlowers.length
-        ? aiProposal.recommendedFlowers
-        : fallbackProposal.recommendedFlowers,
+      recommendedFlowers:
+        Array.isArray(aiProposal.recommendedFlowers) && aiProposal.recommendedFlowers.length
+          ? aiProposal.recommendedFlowers
+          : fallbackProposal.recommendedFlowers,
     };
     source = "groq";
   } catch (error) {
-    console.warn("[AI Bouquet] Usando propuesta local para evitar 502:", error?.message || error);
+    warnings.push(error?.message || String(error));
+    console.warn("[AI Bouquet] Usando propuesta local:", error?.message || error);
+  }
+
+  try {
+    image = await generateImageWithNanoBanana(proposal.imagePrompt || fallbackProposal.imagePrompt);
+    imageGeneratedByAi = true;
+    source = source === "fallback" ? "nano-banana" : `${source}+nano-banana`;
+  } catch (error) {
+    warnings.push(error?.message || String(error));
+    console.warn("[AI Bouquet] Usando imagen de catálogo:", error?.message || error);
   }
 
   res.json({
     proposal,
-    image: pickImage(payload),
-    imageGeneratedByAi: false,
+    image,
+    imageGeneratedByAi,
     source,
+    warnings,
   });
 }
 
@@ -158,4 +222,4 @@ express.application.post = function patchedPost(path, ...handlers) {
   return originalPost.call(this, path, ...handlers);
 };
 
-console.log("Ruta /api/ai/bouquet protegida contra 502 con fallback rápido.");
+console.log("Ruta /api/ai/bouquet preparada con propuesta IA e imagen IA; si falla, usa fallback seguro.");
