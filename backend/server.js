@@ -918,7 +918,11 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
     provider === "groq"
       ? "https://api.groq.com/openai/v1/chat/completions"
       : "https://api.openai.com/v1/chat/completions";
-  const model = settings.model || (provider === "groq" ? "llama-3.1-70b-versatile" : "gpt-4o-mini");
+  const model =
+    settings.model ||
+    (provider === "groq"
+      ? process.env.GROQ_MODEL || "llama-3.3-70b-versatile"
+      : "gpt-4o-mini");
 
   const systemPrompt = `Eres director creativo de una floristeria premium. Responde solo JSON valido con esta estructura exacta:
 {
@@ -997,7 +1001,9 @@ app.post("/api/ai/plant-description", async (req, res) => {
       : "https://api.openai.com/v1/chat/completions";
 
   const model =
-    provider === "groq" ? "llama-3.1-70b-versatile" : "gpt-4o-mini";
+    provider === "groq"
+      ? process.env.GROQ_MODEL || "llama-3.3-70b-versatile"
+      : "gpt-4o-mini";
 
   const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
 {
