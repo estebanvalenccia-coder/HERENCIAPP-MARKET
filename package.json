@@ -9,10 +9,10 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "dev:backend": "node --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
-    "dev:full": "concurrently \"vite\" \"node --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js\"",
-    "start": "node --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
-    "start:backend": "node --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js"
+    "dev:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
+    "dev:full": "concurrently \"vite\" \"node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js\"",
+    "start": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
+    "start:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -83,10 +83,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
     "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.1",
-    "@vitejs/plugin-react": "4.7.0",
-    "tailwindcss": "4.1.12",
-    "vite": "^6.4.2"
+    "@types/react-dom": "18.3.1"
   },
   "peerDependencies": {
     "react": "18.3.1",
