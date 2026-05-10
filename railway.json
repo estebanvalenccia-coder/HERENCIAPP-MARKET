@@ -1,6 +1,6 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "deploy": {
-    "startCommand": "sh -c 'if [ -f backend/server.js ]; then node backend/server.js; else node server.js; fi'"
+    "startCommand": "sh -c 'if [ -f backend/server.js ]; then node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js; else node --import ./fixCors.js --import ./fixAdminEmail.js --import ./fixAIBouquet.js server.js; fi'"
   }
 }
