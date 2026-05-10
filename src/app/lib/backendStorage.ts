@@ -23,6 +23,22 @@ type BackendStorageResult = {
   error?: string;
 };
 
+type BouquetPayload = {
+  description: string;
+  budget: number;
+  style: string;
+  color: string;
+  size: string;
+};
+
+type BouquetResult = {
+  proposal: any;
+  image: string;
+  imageGeneratedByAi: boolean;
+  source?: string;
+  warnings?: string[];
+};
+
 const cache = new Map<string, string>();
 
 const remotelySyncedKeys = new Set([
@@ -43,6 +59,14 @@ const remotelySyncedKeys = new Set([
   "cart",
   "user",
 ]);
+
+const fallbackBouquetImages = [
+  "https://images.unsplash.com/photo-1525310072745-f49212b5ac6d?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1591886960571-74d43a9d4166?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1562690868-60bbe7293e94?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1533616688419-b7a585564566?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1508610048659-a06b669e3321?q=80&w=1200&auto=format&fit=crop",
+];
 
 function shouldSyncWithBackend(key: string) {
   return Boolean(API_BASE) && remotelySyncedKeys.has(key);
@@ -79,6 +103,124 @@ function removeLocalStorage(key: string) {
   } catch {
     // Puede fallar si el navegador bloquea localStorage. El backend sigue siendo la fuente principal.
   }
+}
+
+function getBrowserGeminiApiKey() {
+  return (
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    import.meta.env.VITE_GOOGLE_API_KEY ||
+    import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ||
+    ""
+  );
+}
+
+function normalizeBouquetText(value: unknown, fallback = "") {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function localBouquetName(description: string, color: string) {
+  const clean = normalizeBouquetText(description, `Ramo ${color || "Herencia"}`)
+    .replace(/^quiero\s+/i, "")
+    .trim();
+  const base = clean.length > 42 ? `${clean.slice(0, 42)}...` : clean;
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+function pickFallbackBouquetImage(payload: Partial<BouquetPayload>) {
+  const seed = `${payload.description || ""}-${payload.color || ""}-${payload.style || ""}`
+    .split("")
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return fallbackBouquetImages[Math.abs(seed) % fallbackBouquetImages.length];
+}
+
+function createLocalBouquetProposal(payload: BouquetPayload) {
+  const description = normalizeBouquetText(payload.description, "ramo elegante de flores frescas");
+  const budget = Number(payload.budget || 49.9);
+  const style = normalizeBouquetText(payload.style, "Elegante");
+  const color = normalizeBouquetText(payload.color, "Mix");
+  const size = normalizeBouquetText(payload.size, "M");
+
+  const recommendedFlowers =
+    color.toLowerCase() === "rojo"
+      ? ["Rosa roja", "Eucalipto", "Paniculata", "Ruscus verde"]
+      : color.toLowerCase() === "blanco"
+        ? ["Rosa blanca", "Lirio blanco", "Paniculata", "Eucalipto"]
+        : color.toLowerCase() === "amarillo"
+          ? ["Girasol", "Rosa crema", "Solidago", "Eucalipto"]
+          : ["Rosa", "Tulipán", "Paniculata", "Eucalipto"];
+
+  return {
+    name: localBouquetName(description, color),
+    shortDescription: `Ramo ${style.toLowerCase()} tamaño ${size} desde ${budget.toFixed(2)} €`,
+    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Herencia Market. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
+    recommendedFlowers,
+    imagePrompt: `Fotografía profesional, realista y premium de ecommerce de UN RAMO COMPLETO de flores frescas, estilo ${style.toLowerCase()}, color principal ${color.toLowerCase()}, presupuesto ${budget.toFixed(2)} €, tamaño ${size}. Idea del cliente: ${description}. El ramo debe verse entero, centrado, con envoltorio elegante de floristería, composición abundante y bonita, luz cálida natural, fondo limpio, sin texto, sin logos, sin marcas de agua, sin personas, sin manos, sin jarrón si no se pide.`,
+    sellingTip: "Ideal para vender como ramo premium personalizado.",
+  };
+}
+
+async function generateBouquetImageInBrowser(prompt: string) {
+  const apiKey = getBrowserGeminiApiKey();
+
+  if (!apiKey) {
+    throw new Error("Falta VITE_GEMINI_API_KEY en Vercel para generar imágenes IA en el navegador");
+  }
+
+  const models = [
+    import.meta.env.VITE_GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image-preview",
+    "gemini-2.5-flash-image",
+  ].filter(Boolean);
+
+  let lastError = "";
+
+  for (const model of models) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `${prompt}\n\nGenera SOLO una imagen fotorealista cuadrada de producto para catálogo online. El ramo debe verse completo, bonito, vendible y profesional. Sin texto ni personas.`,
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    const text = await response.text().catch(() => "");
+
+    if (!response.ok) {
+      lastError = text || `Gemini respondió ${response.status}`;
+      continue;
+    }
+
+    const data = text ? JSON.parse(text) : {};
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((part: any) => part.inlineData?.data || part.inline_data?.data);
+    const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+
+    if (inlineData?.data) {
+      return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
+    }
+
+    lastError = "Gemini respondió sin imagen";
+  }
+
+  throw new Error(lastError || "Gemini no devolvió imagen");
+}
+
+function isAiImage(image: string) {
+  return image.startsWith("data:image/") || image.includes("generativelanguage") || image.includes("nananobanana");
 }
 
 let preloadPromise: Promise<void> | null = null;
@@ -300,11 +442,74 @@ export const backendApi = {
     });
   },
 
-  async generateBouquet(payload: { description: string; budget: number; style: string; color: string; size: string }) {
-    return request<{ proposal: any; image: string; imageGeneratedByAi: boolean }>("/api/ai/bouquet", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+  async generateBouquet(payload: BouquetPayload): Promise<BouquetResult> {
+    const warnings: string[] = [];
+    const localProposal = createLocalBouquetProposal(payload);
+
+    try {
+      const backendResult = await request<BouquetResult>("/api/ai/bouquet", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      const proposal = {
+        ...localProposal,
+        ...(backendResult.proposal || {}),
+        imagePrompt: backendResult.proposal?.imagePrompt || localProposal.imagePrompt,
+      };
+
+      warnings.push(...(backendResult.warnings || []));
+
+      if (backendResult.imageGeneratedByAi && backendResult.image && isAiImage(backendResult.image)) {
+        return {
+          ...backendResult,
+          proposal,
+          warnings,
+        };
+      }
+
+      try {
+        const image = await generateBouquetImageInBrowser(proposal.imagePrompt || localProposal.imagePrompt);
+        return {
+          proposal,
+          image,
+          imageGeneratedByAi: true,
+          source: "browser-gemini",
+          warnings,
+        };
+      } catch (imageError) {
+        warnings.push(getErrorMessage(imageError));
+        return {
+          proposal,
+          image: backendResult.image || pickFallbackBouquetImage(payload),
+          imageGeneratedByAi: false,
+          source: backendResult.source || "catalog-fallback",
+          warnings,
+        };
+      }
+    } catch (backendError) {
+      warnings.push(getErrorMessage(backendError));
+
+      try {
+        const image = await generateBouquetImageInBrowser(localProposal.imagePrompt);
+        return {
+          proposal: localProposal,
+          image,
+          imageGeneratedByAi: true,
+          source: "browser-gemini-after-backend-error",
+          warnings,
+        };
+      } catch (imageError) {
+        warnings.push(getErrorMessage(imageError));
+        return {
+          proposal: localProposal,
+          image: pickFallbackBouquetImage(payload),
+          imageGeneratedByAi: false,
+          source: "catalog-fallback-after-backend-error",
+          warnings,
+        };
+      }
+    }
   },
 };
 
