@@ -18,6 +18,7 @@ import {
   Sparkles,
   DollarSign,
   Layers3,
+  CreditCard,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -35,12 +36,14 @@ import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
 import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
 import { AdminFinance } from "../components/admin/AdminFinance";
+import { AdminPOS } from "../components/admin/AdminPOS";
 
 type AdminSection =
   | "dashboard"
   | "products"
   | "add-product"
   | "bulk-product-import"
+  | "pos"
   | "ai-bouquet-designer"
   | "offers"
   | "orders"
@@ -135,6 +138,12 @@ export function AdminDashboard() {
 
   const menuItems = [
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
+    {
+      id: "pos" as AdminSection,
+      label: "TPV / Caja",
+      icon: CreditCard,
+      badge: "CAJA",
+    },
     {
       id: "ai-bouquet-designer" as AdminSection,
       label: "Diseñador IA de Ramos",
@@ -491,6 +500,8 @@ export function AdminDashboard() {
           {currentSection === "bulk-product-import" && (
             <AdminBulkProductImport onBack={() => setCurrentSection("products")} />
           )}
+
+          {currentSection === "pos" && <AdminPOS />}
 
           {currentSection === "ai-bouquet-designer" && (
             <AdminAIBouquetDesigner />
