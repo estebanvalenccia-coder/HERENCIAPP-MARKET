@@ -17,6 +17,7 @@ import {
   Flower2,
   Sparkles,
   DollarSign,
+  Layers3,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -24,6 +25,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { AdminProducts } from "../components/admin/AdminProducts";
 import { AdminAddProduct } from "../components/admin/AdminAddProduct";
+import { AdminBulkProductImport } from "../components/admin/AdminBulkProductImport";
 import { AdminOffers } from "../components/admin/AdminOffers";
 import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
@@ -38,6 +40,7 @@ type AdminSection =
   | "dashboard"
   | "products"
   | "add-product"
+  | "bulk-product-import"
   | "ai-bouquet-designer"
   | "offers"
   | "orders"
@@ -65,6 +68,7 @@ export function AdminDashboard() {
   const [currentSection, setCurrentSection] =
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [productsMenuOpen, setProductsMenuOpen] = useState(true);
 
   useEffect(() => {
     if (!backendApi.enabled) {
@@ -131,8 +135,6 @@ export function AdminDashboard() {
 
   const menuItems = [
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
-    { id: "products" as AdminSection, label: "Productos", icon: Package },
-    { id: "add-product" as AdminSection, label: "Añadir Producto", icon: Plus },
     {
       id: "ai-bouquet-designer" as AdminSection,
       label: "Diseñador IA de Ramos",
@@ -152,6 +154,21 @@ export function AdminDashboard() {
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
+
+  const productMenuItems = [
+    { id: "products" as AdminSection, label: "Ver productos", icon: Package },
+    { id: "add-product" as AdminSection, label: "Añadir uno", icon: Plus },
+    {
+      id: "bulk-product-import" as AdminSection,
+      label: "Importación masiva IA",
+      icon: Layers3,
+      badge: "PRO",
+    },
+  ];
+
+  const sectionLabel =
+    [...productMenuItems, ...menuItems].find((item) => item.id === currentSection)
+      ?.label || "Dashboard";
 
   if (isCheckingSession) {
     return (
@@ -297,6 +314,55 @@ export function AdminDashboard() {
               Menú Principal
             </p>
 
+            <div className="rounded-2xl border border-border/50 bg-background/40 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setProductsMenuOpen((open) => !open)}
+                className={`w-full flex items-center gap-3 px-4 py-3 transition-all ${
+                  productMenuItems.some((item) => item.id === currentSection)
+                    ? "bg-primary/10 text-primary"
+                    : "text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Package className="w-5 h-5" />
+                <span className="font-medium text-left flex-1">Productos</span>
+                <ChevronIcon open={productsMenuOpen} />
+              </button>
+
+              {productsMenuOpen && (
+                <div className="px-2 pb-2 space-y-1">
+                  {productMenuItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setCurrentSection(item.id);
+                        setSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all ${
+                        currentSection === item.id
+                          ? "bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg shadow-primary/20"
+                          : "text-foreground hover:bg-muted/60"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      <span className="font-medium text-left flex-1">{item.label}</span>
+                      {"badge" in item && item.badge && (
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            currentSection === item.id
+                              ? "bg-white/20 text-white"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {menuItems.map((item) => (
               <motion.button
                 key={item.id}
@@ -368,8 +434,7 @@ export function AdminDashboard() {
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold text-foreground">
-                      {menuItems.find((item) => item.id === currentSection)
-                        ?.label || "Dashboard"}
+                      {sectionLabel}
                     </h2>
 
                     <span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
@@ -423,6 +488,10 @@ export function AdminDashboard() {
             <AdminAddProduct onBack={() => setCurrentSection("products")} />
           )}
 
+          {currentSection === "bulk-product-import" && (
+            <AdminBulkProductImport onBack={() => setCurrentSection("products")} />
+          )}
+
           {currentSection === "ai-bouquet-designer" && (
             <AdminAIBouquetDesigner />
           )}
@@ -450,5 +519,22 @@ export function AdminDashboard() {
         />
       )}
     </div>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+        clipRule="evenodd"
+      />
+    </svg>
   );
 }
