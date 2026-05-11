@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, ImagePlus, Sparkles, Trash2, UploadCloud } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  Flower2,
+  ImagePlus,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { backendStorage } from "../../lib/backendStorage";
@@ -31,6 +40,62 @@ type ProductDraft = {
 };
 
 const taxonomy: TaxonomyOption[] = [
+  {
+    department: "Ramos de flores",
+    area: "Clásicos",
+    family: "Rosas",
+    category: "flores",
+    keywords: ["rosa", "rosas", "red rose", "ramo rosas", "roses"],
+    description: "Ramo de rosas elegante y fresco, ideal para regalar en ocasiones especiales.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Clásicos",
+    family: "Rosas con paniculata",
+    category: "flores",
+    keywords: ["paniculata", "gypsophila", "rosas paniculata", "baby breath"],
+    description: "Ramo de rosas con paniculata, romántico, delicado y muy comercial.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Clásicos",
+    family: "Lirios y flores mixtas",
+    category: "flores",
+    keywords: ["lirio", "lirios", "lily", "margarita", "margaritas", "clavel", "claveles", "gerbera", "mix flores"],
+    description: "Ramo mixto con flores frescas de temporada, alegre y colorido.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Temporada",
+    family: "Tulipanes y peonías",
+    category: "flores",
+    keywords: ["tulipan", "tulipanes", "tulip", "peonia", "peonias", "peony", "peonies"],
+    description: "Ramo de temporada con estilo delicado, fresco y elegante.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Estilo",
+    family: "Silvestres y campestres",
+    category: "flores",
+    keywords: ["silvestre", "campestre", "wildflower", "matricaria", "limonium", "statice", "solidago", "eucalipto"],
+    description: "Ramo silvestre de aspecto natural, fresco y con encanto mediterráneo.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Eventos",
+    family: "Ramos de novia",
+    category: "flores",
+    keywords: ["novia", "boda", "bridal", "wedding", "bouquet novia", "ramo novia"],
+    description: "Ramo de novia elegante, diseñado para bodas y eventos especiales.",
+  },
+  {
+    department: "Ramos de flores",
+    area: "Premium",
+    family: "Ramos premium",
+    category: "flores",
+    keywords: ["premium", "lujo", "luxury", "elegante", "exclusivo", "ramo grande"],
+    description: "Ramo premium de gran presencia, ideal para regalos especiales y escaparate.",
+  },
   {
     department: "Plantas",
     area: "Interior",
@@ -162,10 +227,10 @@ const taxonomy: TaxonomyOption[] = [
 ];
 
 function getDefaultTaxonomy() {
-  return taxonomy[1];
+  return taxonomy[8];
 }
 
-function cleanPlantName(value: string) {
+function cleanProductName(value: string) {
   return value
     .replace(/\.[a-z0-9]+$/i, "")
     .replace(/[_-]+/g, " ")
@@ -174,10 +239,14 @@ function cleanPlantName(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function normalizeForSearch(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function guessFromFileName(fileName: string): TaxonomyOption {
-  const normalized = fileName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const normalized = normalizeForSearch(fileName);
   return (
-    taxonomy.find((item) => item.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()))) ||
+    taxonomy.find((item) => item.keywords.some((keyword) => normalized.includes(normalizeForSearch(keyword)))) ||
     getDefaultTaxonomy()
   );
 }
@@ -209,18 +278,9 @@ function getGeminiApiKey() {
 }
 
 function normalizeAiTaxonomy(result: any, fallback: TaxonomyOption) {
-  const category = String(result?.category || fallback.category);
   const family = String(result?.family || result?.subcategory || fallback.family);
-  const area = String(result?.area || fallback.area);
-  const department = String(result?.department || fallback.department);
-
-  const matching = taxonomy.find(
-    (item) =>
-      item.category === category &&
-      item.family.toLowerCase() === family.toLowerCase()
-  );
-
-  return matching || { ...fallback, department, area, family, category };
+  const matching = taxonomy.find((item) => item.family.toLowerCase() === family.toLowerCase());
+  return matching || fallback;
 }
 
 async function classifyWithGemini(draft: ProductDraft): Promise<Partial<ProductDraft>> {
@@ -233,18 +293,18 @@ async function classifyWithGemini(draft: ProductDraft): Promise<Partial<ProductD
     .join("\n");
 
   const prompt = `Eres una IA experta en catálogo de floristería y garden center en Barcelona.
-Analiza esta imagen de UNA planta o producto vegetal y responde SOLO JSON válido.
-No inventes precios.
-Usa una de estas rutas de clasificación:
+Analiza esta imagen. Puede ser UNA planta individual o UN ramo de flores.
+Responde SOLO JSON válido. No inventes precios.
+Usa una de estas rutas:
 ${allowedFamilies}
 
 Formato obligatorio:
 {
   "name": "Nombre comercial en español",
-  "department": "Plantas",
-  "area": "Interior/Exterior/Tropicales/Orquídeas/Cactus y suculentas/Palmeras",
+  "department": "Ramos de flores/Plantas",
+  "area": "Área exacta de la lista",
   "family": "Familia exacta de la lista",
-  "category": "plantas-interior/plantas-exterior/orquideas/cactus/suculentas",
+  "category": "flores/plantas-interior/plantas-exterior/orquideas/cactus/suculentas",
   "description": "Descripción breve para tienda online, máximo 18 palabras",
   "confidence": 0.0
 }`;
@@ -282,7 +342,7 @@ Formato obligatorio:
   const selected = normalizeAiTaxonomy(json, fallback);
 
   return {
-    name: json.name || cleanPlantName(draft.fileName),
+    name: json.name || cleanProductName(draft.fileName),
     description: json.description || selected.description,
     department: selected.department,
     area: selected.area,
@@ -295,13 +355,12 @@ Formato obligatorio:
 
 function createDraftFromImage(fileName: string, image: string): ProductDraft {
   const selected = guessFromFileName(fileName);
-  const name = cleanPlantName(fileName) || selected.family;
 
   return {
     tempId: crypto.randomUUID(),
     fileName,
     image,
-    name,
+    name: cleanProductName(fileName) || selected.family,
     description: selected.description,
     department: selected.department,
     area: selected.area,
@@ -382,7 +441,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
         updateDraft(draft.tempId, { aiStatus: "pending" });
         const result = await classifyWithGemini(draft);
         updateDraft(draft.tempId, result);
-      } catch (error) {
+      } catch {
         errors += 1;
         const selected = guessFromFileName(draft.fileName);
         updateDraft(draft.tempId, {
@@ -455,9 +514,9 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               <Sparkles className="w-3.5 h-3.5" />
               Importación masiva IA
             </div>
-            <h2 className="text-2xl font-bold text-foreground">Subir muchas fotos y clasificarlas</h2>
+            <h2 className="text-2xl font-bold text-foreground">Subir fotos y clasificarlas por familias</h2>
             <p className="text-muted-foreground mt-2 max-w-2xl">
-              Arrastra fotos de plantas. La IA propone nombre, familia y ruta visual sin llenar el admin de información.
+              Sirve para plantas y también para ramos. Todo queda agrupado en desplegables para que el admin no se vea cargado.
             </p>
           </div>
 
@@ -486,7 +545,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
         <label className="flex flex-col items-center justify-center min-h-64 border-2 border-dashed border-border rounded-3xl cursor-pointer hover:bg-accent/40 transition-colors text-center px-6">
           <UploadCloud className="w-12 h-12 text-primary mb-4" />
           <p className="font-semibold text-foreground">Suelta aquí una carpeta o muchas fotos</p>
-          <p className="text-sm text-muted-foreground mt-1">Cada imagen se convertirá en un producto individual.</p>
+          <p className="text-sm text-muted-foreground mt-1">Una foto = un producto: planta, cactus, suculenta, orquídea o ramo.</p>
           <input
             type="file"
             className="hidden"
@@ -560,7 +619,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                             className="w-full px-3 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                           >
                             {taxonomy.map((item) => (
-                              <option key={`${item.area}-${item.family}`} value={item.family}>
+                              <option key={`${item.department}-${item.area}-${item.family}`} value={item.family}>
                                 {item.department} / {item.area} / {item.family}
                               </option>
                             ))}
@@ -619,9 +678,9 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
             <p className="text-sm text-muted-foreground mt-1">Evita collages. Ideal para catálogo real de venta.</p>
           </div>
           <div className="bg-card border border-border rounded-2xl p-5">
-            <Sparkles className="w-6 h-6 text-primary mb-3" />
-            <p className="font-semibold">IA para clasificar</p>
-            <p className="text-sm text-muted-foreground mt-1">Nombre, categoría, familia y descripción se proponen automáticamente.</p>
+            <Flower2 className="w-6 h-6 text-primary mb-3" />
+            <p className="font-semibold">También ramos</p>
+            <p className="text-sm text-muted-foreground mt-1">Rosas, novia, silvestres, premium, tulipanes, peonías y mixtos.</p>
           </div>
           <div className="bg-card border border-border rounded-2xl p-5">
             <CheckCircle2 className="w-6 h-6 text-primary mb-3" />
