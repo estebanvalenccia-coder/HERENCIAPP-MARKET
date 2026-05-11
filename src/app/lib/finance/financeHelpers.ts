@@ -1,35 +1,73 @@
 import type { DailyExpense, DailySale } from "./financeTypes";
 
-export const formatCurrency = (value: number) => {
+export const todayISO = () => new Date().toISOString().split("T")[0];
+
+export const currentTime = () =>
+  new Date().toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+export const money = (value: number) => {
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
     currency: "EUR",
-  }).format(value || 0);
+  }).format(Number(value || 0));
 };
 
-export const calculateProfit = (sale: DailySale) => {
-  return (sale.amount || 0) - (sale.cost || 0);
-};
+export function calculateTotals(sales: DailySale[], expenses: DailyExpense[]) {
+  const salesTotal = sales.reduce((acc, sale) => acc + Number(sale.amount || 0), 0);
+  const costsTotal = sales.reduce((acc, sale) => acc + Number(sale.cost || 0), 0);
+  const expensesTotal = expenses.reduce((acc, expense) => acc + Number(expense.amount || 0), 0);
+  const profit = salesTotal - costsTotal - expensesTotal;
 
-export const getTotalSales = (sales: DailySale[]) => {
-  return sales.reduce((acc, sale) => acc + (sale.amount || 0), 0);
-};
+  const expectedCash = sales
+    .filter((sale) => sale.payment_method === "Efectivo")
+    .reduce((acc, sale) => acc + Number(sale.amount || 0), 0);
 
-export const getTotalCosts = (sales: DailySale[]) => {
-  return sales.reduce((acc, sale) => acc + (sale.cost || 0), 0);
-};
+  return {
+    salesTotal,
+    costsTotal,
+    expensesTotal,
+    profit,
+    expectedCash,
+    averageTicket: sales.length ? salesTotal / sales.length : 0,
+  };
+}
 
-export const getTotalExpenses = (expenses: DailyExpense[]) => {
-  return expenses.reduce((acc, expense) => acc + (expense.amount || 0), 0);
-};
+export function buildDailyIncomeChart(sales: DailySale[]) {
+  const grouped = new Map<string, { income: number; profit: number }>();
 
-export const getNetProfit = (
-  sales: DailySale[],
-  expenses: DailyExpense[]
-) => {
-  return (
-    getTotalSales(sales) -
-    getTotalCosts(sales) -
-    getTotalExpenses(expenses)
-  );
-};
+  sales.forEach((sale) => {
+    const day = sale.sale_date?.split("-")[2] || "00";
+
+    const current = grouped.get(day) || { income: 0, profit: 0 };
+
+    current.income += Number(sale.amount || 0);
+    current.profit += Number(sale.amount || 0) - Number(sale.cost || 0);
+
+    grouped.set(day, current);
+  });
+
+  return Array.from(grouped.entries()).map(([day, values]) => ({
+    day,
+    income: values.income,
+    profit: values.profit,
+  }));
+}
+
+export function buildPaymentChart(sales: DailySale[]) {
+  const methods = new Map<string, number>();
+
+  sales.forEach((sale) => {
+    methods.set(
+      sale.payment_method,
+      (methods.get(sale.payment_method) || 0) + Number(sale.amount || 0)
+    );
+  });
+
+  return Array.from(methods.entries()).map(([name, value]) => ({
+    name,
+    value,
+  }));
+}
