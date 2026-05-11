@@ -9,10 +9,10 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "dev:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
-    "dev:full": "concurrently \"vite\" \"node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js\"",
-    "start": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js",
-    "start:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js backend/server.js"
+    "dev:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js backend/server.js",
+    "dev:full": "concurrently \"vite\" \"node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js backend/server.js\"",
+    "start": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js backend/server.js",
+    "start:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js backend/server.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
