@@ -1,68 +1,71 @@
-import type {
-  CashClosure,
-  DailyExpense,
-  DailySale,
-} from "./financeTypes";
+import type { CashClosure, DailyExpense, DailySale } from "./financeTypes";
 
 const SALES_KEY = "herencia_finance_sales";
 const EXPENSES_KEY = "herencia_finance_expenses";
 const CLOSURES_KEY = "herencia_finance_closures";
 
-export const financeApi = {
-  getSales(): DailySale[] {
-    return JSON.parse(localStorage.getItem(SALES_KEY) || "[]");
-  },
+function safeRead<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(key) || "[]") as T[];
+  } catch {
+    return [];
+  }
+}
 
-  saveSales(data: DailySale[]) {
-    localStorage.setItem(SALES_KEY, JSON.stringify(data));
-  },
+function safeWrite<T>(key: string, data: T[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(data));
+}
 
-  addSale(sale: DailySale) {
-    const sales = this.getSales();
-    sales.unshift({
-      ...sale,
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-    });
-    this.saveSales(sales);
-    return sales;
-  },
+const makeId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-  getExpenses(): DailyExpense[] {
-    return JSON.parse(localStorage.getItem(EXPENSES_KEY) || "[]");
-  },
+export async function getSalesByDate(date: string): Promise<DailySale[]> {
+  return safeRead<DailySale>(SALES_KEY).filter((sale) => sale.sale_date === date);
+}
 
-  saveExpenses(data: DailyExpense[]) {
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(data));
-  },
+export async function getExpensesByDate(date: string): Promise<DailyExpense[]> {
+  return safeRead<DailyExpense>(EXPENSES_KEY).filter((expense) => expense.expense_date === date);
+}
 
-  addExpense(expense: DailyExpense) {
-    const expenses = this.getExpenses();
-    expenses.unshift({
-      ...expense,
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-    });
-    this.saveExpenses(expenses);
-    return expenses;
-  },
+export async function getMonthSales(year: number, month: number): Promise<DailySale[]> {
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  return safeRead<DailySale>(SALES_KEY).filter((sale) => sale.sale_date?.startsWith(prefix));
+}
 
-  getClosures(): CashClosure[] {
-    return JSON.parse(localStorage.getItem(CLOSURES_KEY) || "[]");
-  },
+export async function getMonthExpenses(year: number, month: number): Promise<DailyExpense[]> {
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  return safeRead<DailyExpense>(EXPENSES_KEY).filter((expense) => expense.expense_date?.startsWith(prefix));
+}
 
-  saveClosures(data: CashClosure[]) {
-    localStorage.setItem(CLOSURES_KEY, JSON.stringify(data));
-  },
+export async function createSale(sale: Omit<DailySale, "id" | "created_at">): Promise<DailySale> {
+  const sales = safeRead<DailySale>(SALES_KEY);
+  const newSale: DailySale = { ...sale, id: makeId(), created_at: new Date().toISOString() };
+  safeWrite(SALES_KEY, [newSale, ...sales]);
+  return newSale;
+}
 
-  addClosure(closure: CashClosure) {
-    const closures = this.getClosures();
-    closures.unshift({
-      ...closure,
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-    });
-    this.saveClosures(closures);
-    return closures;
-  },
-};
+export async function createExpense(expense: Omit<DailyExpense, "id" | "created_at">): Promise<DailyExpense> {
+  const expenses = safeRead<DailyExpense>(EXPENSES_KEY);
+  const newExpense: DailyExpense = { ...expense, id: makeId(), created_at: new Date().toISOString() };
+  safeWrite(EXPENSES_KEY, [newExpense, ...expenses]);
+  return newExpense;
+}
+
+export async function createCashClosure(closure: Omit<CashClosure, "id" | "created_at">): Promise<CashClosure> {
+  const closures = safeRead<CashClosure>(CLOSURES_KEY);
+  const newClosure: CashClosure = { ...closure, id: makeId(), created_at: new Date().toISOString() };
+  safeWrite(CLOSURES_KEY, [newClosure, ...closures]);
+  return newClosure;
+}
+
+export async function deleteSale(id: string): Promise<void> {
+  safeWrite(SALES_KEY, safeRead<DailySale>(SALES_KEY).filter((sale) => sale.id !== id));
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  safeWrite(EXPENSES_KEY, safeRead<DailyExpense>(EXPENSES_KEY).filter((expense) => expense.id !== id));
+}
