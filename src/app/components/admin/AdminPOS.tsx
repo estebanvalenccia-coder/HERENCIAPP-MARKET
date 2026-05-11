@@ -1,0 +1,240 @@
+import { useMemo, useState } from "react";
+import { CreditCard, PackageCheck, Printer, Receipt, Search, ShieldCheck, ShoppingCart, Trash2, UserRound, Wallet } from "lucide-react";
+import { motion } from "motion/react";
+import { toast } from "sonner";
+
+type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; emoji: string };
+type CartLine = PosItem & { qty: number };
+type Customer = { id: string; name: string; nif: string; email: string; address: string };
+
+const demoProducts: PosItem[] = [
+  { id: "p1", name: "Ramo temporada premium", sku: "RAM-001", price: 45, iva: 21, stock: 12, category: "Ramos", emoji: "💐" },
+  { id: "p2", name: "Rosa roja unidad", sku: "FLO-101", price: 4.5, iva: 10, stock: 80, category: "Flor cortada", emoji: "🌹" },
+  { id: "p3", name: "Monstera Deliciosa", sku: "PLA-210", price: 39.95, iva: 21, stock: 6, category: "Plantas", emoji: "🪴" },
+  { id: "p4", name: "Orquídea Phalaenopsis", sku: "PLA-211", price: 29.95, iva: 21, stock: 9, category: "Plantas", emoji: "🌸" },
+  { id: "p5", name: "Maceta cerámica blanca", sku: "MAC-030", price: 12.5, iva: 21, stock: 18, category: "Macetas", emoji: "🏺" },
+  { id: "p6", name: "Sustrato universal 10L", sku: "SUB-010", price: 6.95, iva: 21, stock: 30, category: "Sustratos", emoji: "🌱" },
+  { id: "p7", name: "Fertilizante universal", sku: "FER-100", price: 9.9, iva: 21, stock: 22, category: "Fertilizantes", emoji: "🧴" },
+  { id: "p8", name: "Tarjeta dedicatoria", sku: "ACC-001", price: 2.5, iva: 21, stock: 100, category: "Accesorios", emoji: "💌" },
+];
+
+const demoCustomers: Customer[] = [
+  { id: "c1", name: "Cliente mostrador", nif: "", email: "", address: "" },
+  { id: "c2", name: "María García", nif: "12345678A", email: "maria@email.com", address: "Barcelona" },
+  { id: "c3", name: "Empresa Jardines BCN", nif: "B12345678", email: "facturas@jardinesbcn.es", address: "Barcelona" },
+];
+
+function money(n: number) {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(n || 0);
+}
+
+export function AdminPOS() {
+  const [query, setQuery] = useState("");
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [customer, setCustomer] = useState<Customer>(demoCustomers[0]);
+  const [payment, setPayment] = useState("Efectivo");
+  const [received, setReceived] = useState(0);
+  const [documentType, setDocumentType] = useState<"ticket" | "invoice">("ticket");
+  const [notes, setNotes] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("HF-2026-000128");
+
+  const products = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    if (!q) return demoProducts;
+    return demoProducts.filter((p) => `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(q));
+  }, [query]);
+
+  const totals = useMemo(() => {
+    const subtotal = cart.reduce((s, l) => s + (l.price / (1 + l.iva / 100)) * l.qty, 0);
+    const iva = cart.reduce((s, l) => s + (l.price - l.price / (1 + l.iva / 100)) * l.qty, 0);
+    const total = subtotal + iva;
+    return { subtotal, iva, total, change: Math.max(0, Number(received || 0) - total) };
+  }, [cart, received]);
+
+  function addItem(item: PosItem) {
+    setCart((current) => {
+      const found = current.find((line) => line.id === item.id);
+      if (found) return current.map((line) => (line.id === item.id ? { ...line, qty: line.qty + 1 } : line));
+      return [...current, { ...item, qty: 1 }];
+    });
+  }
+
+  function changeQty(id: string, delta: number) {
+    setCart((current) => current.map((line) => (line.id === id ? { ...line, qty: Math.max(1, line.qty + delta) } : line)));
+  }
+
+  function removeLine(id: string) {
+    setCart((current) => current.filter((line) => line.id !== id));
+  }
+
+  function clearSale() {
+    setCart([]);
+    setNotes("");
+    setReceived(0);
+    setCustomer(demoCustomers[0]);
+    setDocumentType("ticket");
+  }
+
+  function completeSale() {
+    if (!cart.length) {
+      toast.error("Añade artículos antes de cobrar");
+      return;
+    }
+
+    const sale = {
+      id: crypto.randomUUID(),
+      invoiceNumber,
+      documentType,
+      customer,
+      payment,
+      items: cart,
+      subtotal: totals.subtotal,
+      iva: totals.iva,
+      total: totals.total,
+      notes,
+      verifactuStatus: "Pendiente: falta configurar certificado digital/API VeriFactu",
+      financeStatus: "Preparado para contabilizar en ventas, caja, gastos y mermas",
+      createdAt: new Date().toISOString(),
+    };
+
+    const stored = JSON.parse(localStorage.getItem("herencia_pos_sales") || "[]");
+    localStorage.setItem("herencia_pos_sales", JSON.stringify([sale, ...stored]));
+    toast.success(documentType === "invoice" ? "Factura guardada y preparada para VeriFactu" : "Ticket guardado e imprimible");
+    setInvoiceNumber((prev) => prev.replace(/(\d+)$/, (n) => String(Number(n) + 1).padStart(n.length, "0")));
+    clearSale();
+  }
+
+  function printTicket() {
+    if (!cart.length) {
+      toast.error("No hay nada para imprimir");
+      return;
+    }
+    window.print();
+  }
+
+  const quickKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", "."];
+
+  return (
+    <div className="relative -m-4 min-h-screen overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-50 via-white to-rose-50 p-4 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8 print:bg-white">
+      <div className="pointer-events-none absolute -left-14 top-20 text-9xl opacity-10 print:hidden">🪴</div>
+      <div className="pointer-events-none absolute right-5 bottom-20 text-9xl opacity-10 print:hidden">💐</div>
+
+      <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[280px_1fr_430px]">
+        <aside className="space-y-5 print:hidden">
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
+            <div className="flex items-center gap-3 border-b border-emerald-50 pb-5">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-2xl">🌿</div>
+              <div>
+                <h2 className="text-xl font-black text-emerald-950">TPV Herencia</h2>
+                <p className="text-xs font-bold text-emerald-600">Caja 01 · Admin</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 text-sm font-bold text-zinc-700">
+              <Status icon={PackageCheck} label="Stock real" value="Preparado" />
+              <Status icon={Wallet} label="Finanzas" value="Preparado" />
+              <Status icon={Receipt} label="Tickets / facturas" value="Activo" />
+              <Status icon={ShieldCheck} label="VeriFactu" value="Conexión pendiente" />
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
+            <p className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-500">Teclado numérico</p>
+            <div className="mb-4 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-right text-3xl font-black">{money(totals.total)}</div>
+            <div className="grid grid-cols-3 gap-2">
+              {quickKeys.map((k) => <button key={k} className="rounded-2xl border border-zinc-100 bg-white py-4 text-xl font-black shadow-sm hover:bg-emerald-50">{k}</button>)}
+              <button className="rounded-2xl bg-rose-100 py-4 font-black text-rose-600">Borrar</button>
+              <button className="rounded-2xl bg-emerald-100 py-4 font-black text-emerald-700">+</button>
+              <button className="rounded-2xl bg-emerald-600 py-4 font-black text-white">Enter</button>
+            </div>
+          </section>
+        </aside>
+
+        <main className="space-y-5 print:hidden">
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV + facturación + finanzas</div>
+                <h1 className="text-4xl font-black tracking-tight text-zinc-950">Venta de artículos</h1>
+                <p className="mt-2 text-zinc-500">Artículos, clientes, tickets, facturas, IVA, stock, gastos, mermas y conexión preparada para VeriFactu.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDocumentType("ticket")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "ticket" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Ticket</button>
+                <button onClick={() => setDocumentType("invoice")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "invoice" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Factura</button>
+              </div>
+            </div>
+            <div className="relative mt-6">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar artículo, código, SKU o descripción..." className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 py-4 pl-12 pr-4 font-semibold outline-none focus:border-emerald-400" />
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            {products.map((product) => (
+              <motion.button key={product.id} whileHover={{ y: -4 }} onClick={() => addItem(product)} className="rounded-[1.7rem] border border-emerald-100 bg-white/90 p-5 text-left shadow-lg transition hover:border-emerald-300">
+                <div className="mb-4 grid h-24 place-items-center rounded-3xl bg-gradient-to-br from-emerald-50 to-rose-50 text-5xl">{product.emoji}</div>
+                <p className="text-xs font-black uppercase text-emerald-600">{product.category} · {product.sku}</p>
+                <h3 className="mt-1 min-h-12 font-black text-zinc-900">{product.name}</h3>
+                <div className="mt-4 flex items-center justify-between"><span className="text-xl font-black text-emerald-700">{money(product.price)}</span><span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-600">Stock {product.stock}</span></div>
+              </motion.button>
+            ))}
+          </section>
+        </main>
+
+        <aside className="space-y-5">
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-6 shadow-2xl backdrop-blur-xl print:shadow-none">
+            <div className="mb-5 flex items-center justify-between border-b border-emerald-50 pb-4">
+              <div><h2 className="text-2xl font-black text-zinc-950">Venta actual</h2><p className="text-sm font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p></div>
+              <ShoppingCart className="h-7 w-7 text-emerald-600" />
+            </div>
+
+            <label className="mb-4 block print:hidden">
+              <span className="mb-2 flex items-center gap-2 text-sm font-black text-zinc-600"><UserRound className="h-4 w-4" /> Cliente</span>
+              <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 font-bold outline-none">
+                {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
+              </select>
+            </label>
+
+            <div className="max-h-[330px] space-y-3 overflow-auto pr-1">
+              {cart.map((line) => (
+                <div key={line.id} className="rounded-3xl border border-zinc-100 bg-zinc-50/70 p-4">
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-black text-zinc-900">{line.emoji} {line.name}</p><p className="text-xs font-bold text-zinc-500">IVA {line.iva}% · {line.sku}</p></div><button onClick={() => removeLine(line.id)} className="text-rose-500 print:hidden"><Trash2 className="h-4 w-4" /></button></div>
+                  <div className="mt-3 flex items-center justify-between"><div className="flex items-center rounded-2xl bg-white print:hidden"><button onClick={() => changeQty(line.id, -1)} className="px-3 py-2 font-black">−</button><span className="px-3 font-black">{line.qty}</span><button onClick={() => changeQty(line.id, 1)} className="px-3 py-2 font-black">+</button></div><p className="text-lg font-black text-emerald-700">{money(line.price * line.qty)}</p></div>
+                </div>
+              ))}
+              {!cart.length && <div className="rounded-3xl border border-dashed border-emerald-200 p-8 text-center text-zinc-400">Añade artículos para empezar la venta.</div>}
+            </div>
+
+            <div className="mt-5 space-y-3 border-t border-emerald-50 pt-5 text-sm">
+              <TotalRow label="Base imponible" value={money(totals.subtotal)} />
+              <TotalRow label="IVA incluido" value={money(totals.iva)} />
+              <TotalRow label="Total" value={money(totals.total)} strong />
+            </div>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta, dedicatoria, entrega, merma relacionada..." className="mt-4 w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3 text-sm outline-none print:hidden" />
+          </section>
+
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-6 shadow-xl backdrop-blur-xl print:hidden">
+            <h3 className="mb-4 text-xl font-black text-zinc-950">Pago y emisión</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {["Efectivo", "Tarjeta", "Bizum", "Transferencia"].map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-2xl border px-4 py-4 font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
+            </div>
+            <label className="mt-4 block"><span className="text-sm font-black text-zinc-600">Efectivo recibido</span><input type="number" value={received} onChange={(e) => setReceived(Number(e.target.value))} className="mt-2 w-full rounded-2xl border border-zinc-100 px-4 py-3 text-right text-2xl font-black outline-none" /></label>
+            <TotalRow label="Cambio" value={money(totals.change)} strong />
+            <div className="mt-5 grid grid-cols-2 gap-3"><button onClick={printTicket} className="rounded-2xl border border-emerald-100 bg-white px-4 py-4 font-black text-emerald-700"><Printer className="mx-auto mb-1 h-5 w-5" /> Imprimir</button><button onClick={completeSale} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-4 font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-5 w-5" /> Cobrar</button></div>
+          </section>
+
+          <section className="rounded-[2rem] border border-amber-100 bg-amber-50/80 p-5 text-sm text-amber-900 shadow-xl print:hidden">
+            <div className="flex gap-3"><ShieldCheck className="h-6 w-6 shrink-0" /><div><p className="font-black">VeriFactu / Agencia Tributaria</p><p className="mt-1">Panel preparado para enviar facturas cuando se configure certificado digital, NIF fiscal, endpoint y firma. No se marca como enviada hasta tener respuesta válida.</p></div></div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function Status({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return <div className="flex items-center justify-between rounded-2xl border border-emerald-50 bg-emerald-50/50 p-3"><span className="flex items-center gap-2"><Icon className="h-4 w-4 text-emerald-600" />{label}</span><span className="text-emerald-700">{value}</span></div>;
+}
+
+function TotalRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return <div className={`flex items-center justify-between ${strong ? "text-2xl font-black text-emerald-800" : "font-bold text-zinc-600"}`}><span>{label}</span><span>{value}</span></div>;
+}
