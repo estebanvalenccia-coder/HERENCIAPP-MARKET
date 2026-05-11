@@ -39,6 +39,29 @@ type BouquetResult = {
   warnings?: string[];
 };
 
+type ShippingAddressPayload = {
+  address: string;
+  city?: string;
+  postalCode?: string;
+  province?: string;
+};
+
+type ShippingCalculationResult = {
+  ok: boolean;
+  price: number;
+  currency: string;
+  distanceKm: number;
+  distanceText: string;
+  durationText: string;
+  origin: string;
+  destination: string;
+  pricing?: {
+    basePrice: number;
+    stepKm: number;
+    stepPrice: number;
+  };
+};
+
 const cache = new Map<string, string>();
 
 const remotelySyncedKeys = new Set([
@@ -412,6 +435,13 @@ export const backendApi = {
 
   async createOrder(payload: any) {
     return request<{ order: any }>("/api/orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async calculateShipping(payload: ShippingAddressPayload) {
+    return request<ShippingCalculationResult>("/api/shipping/calculate", {
       method: "POST",
       body: JSON.stringify(payload),
     });
