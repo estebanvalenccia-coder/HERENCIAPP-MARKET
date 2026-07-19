@@ -247,6 +247,8 @@ function isAiImage(image: string) {
 }
 
 let preloadPromise: Promise<void> | null = null;
+let lastBackendConsoleSignature = "";
+let lastBackendConsoleAt = 0;
 
 const emitChange = () => {
   window.dispatchEvent(new Event("backend-storage"));
@@ -258,7 +260,13 @@ function emitBackendError(action: string, key: string, error: unknown) {
   lastBackendError = message;
   backendAvailable = false;
 
-  console.error(`[backendStorage] ${action} falló para ${key}:`, message);
+  const signature = `${action}:${key}:${message}`;
+  const now = Date.now();
+  if (signature !== lastBackendConsoleSignature || now - lastBackendConsoleAt > 10000) {
+    console.error(`[backendStorage] ${action} falló para ${key}:`, message);
+    lastBackendConsoleSignature = signature;
+    lastBackendConsoleAt = now;
+  }
 
   window.dispatchEvent(
     new CustomEvent("backend-storage-error", {
