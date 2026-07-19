@@ -46,6 +46,7 @@ export function AdminPOS() {
   const stripePublishable = env.VITE_STRIPE_PUBLISHABLE_KEY || "";
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Todos");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customer, setCustomer] = useState<Customer>(demoCustomers[0]);
   const [payment, setPayment] = useState<PosPaymentMethod>("Efectivo");
@@ -68,9 +69,24 @@ export function AdminPOS() {
 
   const products = useMemo(() => {
     const q = query.toLowerCase().trim();
-    if (!q) return demoProducts;
-    return demoProducts.filter((p) => `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(q));
-  }, [query]);
+    const byCategory =
+      selectedCategory === "Todos"
+        ? demoProducts
+        : demoProducts.filter((p) => p.category === selectedCategory);
+
+    if (!q) return byCategory;
+    return byCategory.filter((p) =>
+      `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(q)
+    );
+  }, [query, selectedCategory]);
+
+  const categoryOrder = ["Ramos", "Flor cortada", "Plantas", "Macetas", "Sustratos", "Fertilizantes", "Accesorios"];
+  const categories = useMemo(() => {
+    const found = Array.from(new Set(demoProducts.map((p) => p.category)));
+    const ordered = categoryOrder.filter((cat) => found.includes(cat));
+    const extras = found.filter((cat) => !ordered.includes(cat));
+    return ["Todos", ...ordered, ...extras];
+  }, []);
 
   const totals = useMemo(() => {
     const subtotal = cart.reduce((s, l) => s + (l.price / (1 + l.iva / 100)) * l.qty, 0);
@@ -481,9 +497,9 @@ export function AdminPOS() {
           <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV + facturación + finanzas</div>
-                <h1 className="text-4xl font-black tracking-tight text-zinc-950">Venta de artículos</h1>
-                <p className="mt-2 text-zinc-500">Artículos, clientes, tickets, facturas, IVA, stock, gastos, mermas y conexión preparada para VeriFactu.</p>
+                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV floristería · caja ordenada</div>
+                <h1 className="text-4xl font-black tracking-tight text-zinc-950">Catálogo de floristería</h1>
+                <p className="mt-2 text-zinc-500">Ramos, flor cortada, plantas y complementos en un flujo de venta rápido y limpio.</p>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setDocumentType("ticket")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "ticket" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Ticket</button>
@@ -493,6 +509,22 @@ export function AdminPOS() {
             <div className="relative mt-6">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar artículo, código, SKU o descripción..." className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 py-4 pl-12 pr-4 font-semibold outline-none focus:border-emerald-400" />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+                    selectedCategory === cat
+                      ? "bg-emerald-600 text-white"
+                      : "border border-emerald-100 bg-white text-emerald-700"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
           </section>
 
@@ -505,6 +537,11 @@ export function AdminPOS() {
                 <div className="mt-4 flex items-center justify-between"><span className="text-xl font-black text-emerald-700">{money(product.price)}</span><span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-600">Stock {product.stock}</span></div>
               </motion.button>
             ))}
+            {!products.length && (
+              <div className="col-span-full rounded-3xl border border-dashed border-emerald-200 bg-white/80 p-10 text-center text-zinc-500">
+                No hay artículos para el filtro seleccionado.
+              </div>
+            )}
           </section>
         </main>
 
