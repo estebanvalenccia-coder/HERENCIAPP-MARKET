@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, useStripe, useElements, CardElement } from "@stripe/react-stripe-js";
 import { CreditCard, PackageCheck, Printer, Receipt, Search, ShieldCheck, ShoppingCart, Trash2, UserRound, Wallet, Plus, Minus, Eye, EyeOff, Clock, DollarSign, TrendingUp, AlertCircle, CheckCircle, Home, Settings, LogOut } from "lucide-react";
@@ -66,6 +66,15 @@ export function AdminPOS() {
   const [showCardModal, setShowCardModal] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [isSubmittingSale, setIsSubmittingSale] = useState(false);
+  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    backendApi
+      .listOrders()
+      .then(() => setBackendConnected(true))
+      .catch(() => setBackendConnected(false));
+  }, []);
 
   const products = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -214,7 +223,34 @@ export function AdminPOS() {
     localStorage.setItem("herencia_finance_sales", JSON.stringify([financeSale, ...localFinanceSales]));
   }
 
-  function completeSale() {
+  function persistPosAuditOnly(orderPayload: {
+    id: string;
+    customerName: string;
+    customerEmail: string | null;
+    paymentMethod: string;
+  }) {
+    const auditSale = {
+      id: orderPayload.id,
+      invoiceNumber,
+      documentType,
+      customer,
+      payment,
+      items: cart,
+      subtotal: totals.subtotal,
+      iva: totals.iva,
+      total: totals.total,
+      notes,
+      source: "TPV_BACKEND_OK",
+      createdAt: new Date().toISOString(),
+    };
+
+    const localPosSales = safeReadArray<any>("herencia_pos_sales");
+    localStorage.setItem("herencia_pos_sales", JSON.stringify([auditSale, ...localPosSales]));
+  }
+
+  async function completeSale() {
+    if (isSubmittingSale || processingPayment) return;
+
     if (!cart.length) {
       toast.error("Añade artículos antes de cobrar");
       return;
@@ -279,20 +315,20 @@ export function AdminPOS() {
     }
 
     // Otros métodos: guardar pedido en backend (o local si backend no disponible)
-    (async () => {
-      try {
-        await backendApi.createOrder(orderPayload);
-
-        toast.success(documentType === "invoice" ? "Factura guardada en backend" : "Ticket guardado en backend");
-      } catch (err: any) {
-        console.warn("Fallo guardando pedido en backend, guardando localmente:", err.message || err);
-        persistSaleLocally(orderPayload);
-        toast.success(documentType === "invoice" ? "Factura guardada localmente (sin backend)" : "Ticket guardado localmente (sin backend)");
-      } finally {
-        setInvoiceNumber((prev) => prev.replace(/(\d+)$/, (n) => String(Number(n) + 1).padStart(n.length, "0")));
-        clearSale();
-      }
-    })();
+    setIsSubmittingSale(true);
+    try {
+      await backendApi.createOrder(orderPayload);
+      persistPosAuditOnly(orderPayload);
+      toast.success(documentType === "invoice" ? "Factura guardada y registrada" : "Ticket guardado y registrado");
+    } catch (err: any) {
+      console.warn("Fallo guardando pedido en backend, guardando localmente:", err.message || err);
+      persistSaleLocally(orderPayload);
+      toast.success(documentType === "invoice" ? "Factura guardada localmente (sin backend)" : "Ticket guardado localmente (sin backend)");
+    } finally {
+      setIsSubmittingSale(false);
+      setInvoiceNumber((prev) => prev.replace(/(\d+)$/, (n) => String(Number(n) + 1).padStart(n.length, "0")));
+      clearSale();
+    }
   }
 
   function printTicket() {
@@ -447,8 +483,71 @@ export function AdminPOS() {
               <Status icon={PackageCheck} label="Stock real" value="Preparado" />
               <Status icon={Wallet} label="Finanzas" value="Preparado" />
               <Status icon={Receipt} label="Tickets / facturas" value="Activo" />
-              <Status icon={ShieldCheck} label="VeriFactu" value="Conexión pendiente" />
+              <Status icon={ShieldCheck} label="Backend" value={backendConnected === null ? "Comprobando..." : backendConnected ? "Conectado" : "Sin conexión"} />
             </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-2xl backdrop-blur-xl">
+            <div className="mb-4 flex items-center justify-between border-b border-emerald-50 pb-3">
+              <div>
+                <h2 className="text-lg font-black text-zinc-950">Venta actual</h2>
+                <p className="text-xs font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p>
+              </div>
+              <ShoppingCart className="h-5 w-5 text-emerald-600" />
+            </div>
+
+            <label className="mb-3 block">
+              <span className="mb-1 block text-xs font-black uppercase tracking-wide text-zinc-500">Cliente</span>
+              <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2 font-bold outline-none">
+                {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
+              </select>
+            </label>
+
+            <div className="overflow-hidden rounded-xl border border-emerald-100">
+              <div className="grid grid-cols-[1fr_56px_70px] bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">
+                <span>Artículo</span>
+                <span className="text-center">Uds.</span>
+                <span className="text-right">Total</span>
+              </div>
+              <div className="max-h-48 overflow-auto divide-y divide-emerald-50 bg-white">
+                {cart.map((line) => (
+                  <div key={line.id} className="grid grid-cols-[1fr_56px_70px] items-center px-3 py-2 text-sm">
+                    <div className="min-w-0 pr-2">
+                      <p className="truncate font-bold text-zinc-900">{line.name}</p>
+                      <p className="text-[11px] text-zinc-500">{money(line.price)}</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-1">
+                      <button type="button" onClick={() => changeQty(line.id, -1)} className="h-6 w-6 rounded bg-zinc-100 font-black">-</button>
+                      <span className="w-5 text-center font-black">{line.qty}</span>
+                      <button type="button" onClick={() => changeQty(line.id, 1)} className="h-6 w-6 rounded bg-zinc-100 font-black">+</button>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-right font-black text-emerald-700">{money(line.price * line.qty)}</span>
+                      <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
+                ))}
+                {!cart.length && <div className="px-3 py-6 text-center text-xs text-zinc-400">Sin artículos en la venta</div>}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-1 text-sm">
+              <TotalRow label="Base" value={money(totals.subtotal)} />
+              <TotalRow label="IVA" value={money(totals.iva)} />
+              <TotalRow label="Total" value={money(totals.total)} strong />
+            </div>
+
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta" className="mt-3 w-full rounded-xl border border-emerald-100 bg-emerald-50/40 p-2 text-xs outline-none" />
+          </section>
+
+          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-xl backdrop-blur-xl">
+            <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-600">Pago y emisión</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-xl border px-2 py-2 text-sm font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
+            </div>
+            <label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-zinc-500">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-1 w-full rounded-xl border border-zinc-100 bg-gray-50 px-3 py-2 text-right text-xl font-black outline-none cursor-not-allowed" /></label>
+            <div className="mt-2"><TotalRow label="Cambio" value={money(totals.change)} strong /></div>
+            <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={printTicket} className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm font-black text-emerald-700"><Printer className="mx-auto mb-1 h-4 w-4" /> Imprimir</button><button onClick={() => void completeSale()} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-3 text-sm font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-4 w-4" /> {isSubmittingSale ? "Guardando..." : processingPayment ? "Procesando..." : "Cobrar"}</button></div>
           </section>
 
           <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
@@ -529,6 +628,9 @@ export function AdminPOS() {
           </section>
 
           <section className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            <div className="col-span-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm font-bold text-emerald-800">
+              Toca un producto para añadirlo a la venta actual. Puedes ajustar unidades en el panel de la derecha.
+            </div>
             {products.map((product) => (
               <motion.button key={product.id} whileHover={{ y: -4 }} onClick={() => addItem(product)} className="rounded-[1.7rem] border border-emerald-100 bg-white/90 p-5 text-left shadow-lg transition hover:border-emerald-300">
                 <div className="mb-4 grid h-24 place-items-center rounded-3xl bg-gradient-to-br from-emerald-50 to-rose-50 text-5xl">{product.emoji}</div>
@@ -545,52 +647,7 @@ export function AdminPOS() {
           </section>
         </main>
 
-        <aside className="space-y-5">
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-6 shadow-2xl backdrop-blur-xl print:shadow-none">
-            <div className="mb-5 flex items-center justify-between border-b border-emerald-50 pb-4">
-              <div><h2 className="text-2xl font-black text-zinc-950">Venta actual</h2><p className="text-sm font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p></div>
-              <ShoppingCart className="h-7 w-7 text-emerald-600" />
-            </div>
-
-            <label className="mb-4 block print:hidden">
-              <span className="mb-2 flex items-center gap-2 text-sm font-black text-zinc-600"><UserRound className="h-4 w-4" /> Cliente</span>
-              <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 font-bold outline-none">
-                {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
-              </select>
-            </label>
-
-            <div className="max-h-[330px] space-y-3 overflow-auto pr-1">
-              {cart.map((line) => (
-                <div key={line.id} className="rounded-3xl border border-zinc-100 bg-zinc-50/70 p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-black text-zinc-900">{line.emoji} {line.name}</p><p className="text-xs font-bold text-zinc-500">IVA {line.iva}% · {line.sku}</p></div><button onClick={() => removeLine(line.id)} className="text-rose-500 print:hidden"><Trash2 className="h-4 w-4" /></button></div>
-                  <div className="mt-3 flex items-center justify-between"><div className="flex items-center rounded-2xl bg-white print:hidden"><button onClick={() => changeQty(line.id, -1)} className="px-3 py-2 font-black">−</button><span className="px-3 font-black">{line.qty}</span><button onClick={() => changeQty(line.id, 1)} className="px-3 py-2 font-black">+</button></div><p className="text-lg font-black text-emerald-700">{money(line.price * line.qty)}</p></div>
-                </div>
-              ))}
-              {!cart.length && <div className="rounded-3xl border border-dashed border-emerald-200 p-8 text-center text-zinc-400">Añade artículos para empezar la venta.</div>}
-            </div>
-
-            <div className="mt-5 space-y-3 border-t border-emerald-50 pt-5 text-sm">
-              <TotalRow label="Base imponible" value={money(totals.subtotal)} />
-              <TotalRow label="IVA incluido" value={money(totals.iva)} />
-              <TotalRow label="Total" value={money(totals.total)} strong />
-            </div>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta, dedicatoria, entrega, merma relacionada..." className="mt-4 w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3 text-sm outline-none print:hidden" />
-          </section>
-
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-6 shadow-xl backdrop-blur-xl print:hidden">
-            <h3 className="mb-4 text-xl font-black text-zinc-950">Pago y emisión</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-2xl border px-4 py-4 font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
-            </div>
-            <label className="mt-4 block"><span className="text-sm font-black text-zinc-600">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-2 w-full rounded-2xl border border-zinc-100 bg-gray-50 px-4 py-3 text-right text-2xl font-black outline-none cursor-not-allowed" /></label>
-            <TotalRow label="Cambio" value={money(totals.change)} strong />
-            <div className="mt-5 grid grid-cols-2 gap-3"><button onClick={printTicket} className="rounded-2xl border border-emerald-100 bg-white px-4 py-4 font-black text-emerald-700"><Printer className="mx-auto mb-1 h-5 w-5" /> Imprimir</button><button onClick={completeSale} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-4 font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-5 w-5" /> Cobrar</button></div>
-          </section>
-
-          <section className="rounded-[2rem] border border-amber-100 bg-amber-50/80 p-5 text-sm text-amber-900 shadow-xl print:hidden">
-            <div className="flex gap-3"><ShieldCheck className="h-6 w-6 shrink-0" /><div><p className="font-black">VeriFactu / Agencia Tributaria</p><p className="mt-1">Panel preparado para enviar facturas cuando se configure certificado digital, NIF fiscal, endpoint y firma. No se marca como enviada hasta tener respuesta válida.</p></div></div>
-          </section>
-        </aside>
+        <aside className="hidden xl:block" />
       </div>
       {/* Stripe card modal */}
       {showCardModal && clientSecret && stripePromise && (

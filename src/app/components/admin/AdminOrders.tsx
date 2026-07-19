@@ -65,6 +65,40 @@ export function AdminOrders() {
       .then(({ orders }) => setOrders(orders.filter((order) => !isFloresAdminRequest(order))))
       .catch((error) => {
         console.error("No se pudieron cargar los pedidos", error);
+
+        try {
+          const localSales = JSON.parse(localStorage.getItem("herencia_pos_sales") || "[]");
+          const fallbackOrders: Order[] = (Array.isArray(localSales) ? localSales : []).map((sale: any) => ({
+            id: String(sale.id || crypto.randomUUID()),
+            customerName: sale?.customer?.name || "Cliente mostrador",
+            customerEmail: sale?.customer?.email || "",
+            items: Array.isArray(sale.items)
+              ? sale.items.map((item: any) => ({
+                  name: item.name,
+                  quantity: Number(item.qty || item.quantity || 1),
+                  price: Number(item.price || 0),
+                }))
+              : [],
+            total: Number(sale.total || 0),
+            paymentMethod: sale.payment || "manual",
+            deliveryMethod: "mostrador",
+            status: "paid",
+            date: sale.createdAt || new Date().toISOString(),
+            metadata: {
+              notes: sale.notes || "Venta local TPV",
+              source: "LOCAL_TPV_FALLBACK",
+            },
+          }));
+
+          if (fallbackOrders.length > 0) {
+            setOrders(fallbackOrders);
+            toast.warning("Backend no disponible. Mostrando ventas locales del TPV.");
+            return;
+          }
+        } catch {
+          // Ignora errores de parseo local y muestra el mensaje estándar.
+        }
+
         toast.error("No se pudieron cargar los pedidos desde backend");
       });
   };
