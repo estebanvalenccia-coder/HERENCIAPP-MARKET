@@ -1,15 +1,64 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, useStripe, useElements, CardElement } from "@stripe/react-stripe-js";
 import { CreditCard, PackageCheck, Printer, Receipt, Search, ShieldCheck, ShoppingCart, Trash2, UserRound, Wallet, Plus, Minus, Eye, EyeOff, Clock, DollarSign, TrendingUp, AlertCircle, CheckCircle, Home, Settings, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
-import { backendApi } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 
 type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; emoji: string };
 type CartLine = PosItem & { qty: number; discount?: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string };
 type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
+type TpvLeftBlockId = "status" | "currentSale" | "payment" | "keypad";
+type TpvLayoutSettings = {
+  leftBlockOrder: TpvLeftBlockId[];
+  showStatus: boolean;
+  showCurrentSale: boolean;
+  showPayment: boolean;
+  showKeypad: boolean;
+  showCatalogHeader: boolean;
+  showCatalogGrid: boolean;
+  productColumns: 2 | 3 | 4;
+};
+
+const defaultTpvLayout: TpvLayoutSettings = {
+  leftBlockOrder: ["status", "currentSale", "payment", "keypad"],
+  showStatus: true,
+  showCurrentSale: true,
+  showPayment: true,
+  showKeypad: true,
+  showCatalogHeader: true,
+  showCatalogGrid: true,
+  productColumns: 4,
+};
+
+function parseTpvLayout(raw: string | null): TpvLayoutSettings {
+  if (!raw) return defaultTpvLayout;
+
+  try {
+    const parsed = JSON.parse(raw);
+    const blocks = ["status", "currentSale", "payment", "keypad"] as TpvLeftBlockId[];
+    const candidate = Array.isArray(parsed?.leftBlockOrder)
+      ? parsed.leftBlockOrder.filter((value: unknown) => blocks.includes(value as TpvLeftBlockId))
+      : [];
+    const leftBlockOrder = [...candidate, ...blocks.filter((b) => !candidate.includes(b))] as TpvLeftBlockId[];
+    const productColumns = Number(parsed?.productColumns);
+
+    return {
+      leftBlockOrder,
+      showStatus: parsed?.showStatus !== false,
+      showCurrentSale: parsed?.showCurrentSale !== false,
+      showPayment: parsed?.showPayment !== false,
+      showKeypad: parsed?.showKeypad !== false,
+      showCatalogHeader: parsed?.showCatalogHeader !== false,
+      showCatalogGrid: parsed?.showCatalogGrid !== false,
+      productColumns: productColumns === 2 || productColumns === 3 || productColumns === 4 ? productColumns : 4,
+    };
+  } catch {
+    return defaultTpvLayout;
+  }
+}
 
 const demoProducts: PosItem[] = [
   { id: "p1", name: "Ramo temporada premium", sku: "RAM-001", price: 45, iva: 21, stock: 12, category: "Ramos", emoji: "💐" },
@@ -69,12 +118,27 @@ export function AdminPOS() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+  const [layoutSettings, setLayoutSettings] = useState<TpvLayoutSettings>(defaultTpvLayout);
 
   useEffect(() => {
     backendApi
       .listOrders()
       .then(() => setBackendConnected(true))
       .catch(() => setBackendConnected(false));
+  }, []);
+
+  useEffect(() => {
+    const loadLayout = () => {
+      setLayoutSettings(parseTpvLayout(backendStorage.getItem("tpvLayoutSettings")));
+    };
+
+    loadLayout();
+    window.addEventListener("storage", loadLayout);
+    window.addEventListener("backend-storage", loadLayout);
+    return () => {
+      window.removeEventListener("storage", loadLayout);
+      window.removeEventListener("backend-storage", loadLayout);
+    };
   }, []);
 
   const products = useMemo(() => {
@@ -497,6 +561,155 @@ export function AdminPOS() {
     );
   }
 
+  const productGridClass =
+    layoutSettings.productColumns === 2
+      ? "grid grid-cols-1 gap-4 md:grid-cols-2"
+      : layoutSettings.productColumns === 3
+      ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+      : "grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4";
+
+  const statusBlock = (
+    <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
+      <div className="flex items-center gap-3 border-b border-emerald-50 pb-5">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-2xl">🌿</div>
+        <div>
+          <h2 className="text-xl font-black text-emerald-950">TPV Herencia</h2>
+          <p className="text-xs font-bold text-emerald-600">Caja 01 · Admin</p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 text-sm font-bold text-zinc-700">
+        <Status icon={PackageCheck} label="Stock real" value="Preparado" />
+        <Status icon={Wallet} label="Finanzas" value="Preparado" />
+        <Status icon={Receipt} label="Tickets / facturas" value="Activo" />
+        <Status icon={ShieldCheck} label="Backend" value={backendConnected === null ? "Comprobando..." : backendConnected ? "Conectado" : "Sin conexión"} />
+      </div>
+    </section>
+  );
+
+  const currentSaleBlock = (
+    <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-2xl backdrop-blur-xl">
+      <div className="mb-4 flex items-center justify-between border-b border-emerald-50 pb-3">
+        <div>
+          <h2 className="text-lg font-black text-zinc-950">Venta actual</h2>
+          <p className="text-xs font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p>
+        </div>
+        <ShoppingCart className="h-5 w-5 text-emerald-600" />
+      </div>
+
+      <label className="mb-3 block">
+        <span className="mb-1 block text-xs font-black uppercase tracking-wide text-zinc-500">Cliente</span>
+        <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2 font-bold outline-none">
+          {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
+        </select>
+      </label>
+
+      <div className="overflow-hidden rounded-xl border border-emerald-100">
+        <div className="grid grid-cols-[1fr_56px_70px] bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">
+          <span>Artículo</span>
+          <span className="text-center">Uds.</span>
+          <span className="text-right">Total</span>
+        </div>
+        <div className="max-h-48 overflow-auto divide-y divide-emerald-50 bg-white">
+          {cart.map((line) => (
+            <div key={line.id} className="grid grid-cols-[1fr_56px_70px] items-center px-3 py-2 text-sm">
+              <div className="min-w-0 pr-2">
+                <p className="truncate font-bold text-zinc-900">{line.name}</p>
+                <p className="text-[11px] text-zinc-500">{money(line.price)}</p>
+              </div>
+              <div className="flex items-center justify-center gap-1">
+                <button type="button" onClick={() => changeQty(line.id, -1)} className="h-6 w-6 rounded bg-zinc-100 font-black">-</button>
+                <span className="w-5 text-center font-black">{line.qty}</span>
+                <button type="button" onClick={() => changeQty(line.id, 1)} className="h-6 w-6 rounded bg-zinc-100 font-black">+</button>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-right font-black text-emerald-700">{money(line.price * line.qty)}</span>
+                <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            </div>
+          ))}
+          {!cart.length && <div className="px-3 py-6 text-center text-xs text-zinc-400">Sin artículos en la venta</div>}
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-1 text-sm">
+        <TotalRow label="Base" value={money(totals.subtotal)} />
+        <TotalRow label="IVA" value={money(totals.iva)} />
+        <TotalRow label="Total" value={money(totals.total)} strong />
+      </div>
+
+      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta" className="mt-3 w-full rounded-xl border border-emerald-100 bg-emerald-50/40 p-2 text-xs outline-none" />
+    </section>
+  );
+
+  const paymentBlock = (
+    <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-xl backdrop-blur-xl">
+      <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-600">Pago y emisión</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-xl border px-2 py-2 text-sm font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
+      </div>
+      <label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-zinc-500">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-1 w-full rounded-xl border border-zinc-100 bg-gray-50 px-3 py-2 text-right text-xl font-black outline-none cursor-not-allowed" /></label>
+      <div className="mt-2"><TotalRow label="Cambio" value={money(totals.change)} strong /></div>
+      <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={printTicket} className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm font-black text-emerald-700"><Printer className="mx-auto mb-1 h-4 w-4" /> Imprimir</button><button onClick={() => void completeSale()} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-3 text-sm font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-4 w-4" /> {isSubmittingSale ? "Guardando..." : processingPayment ? "Procesando..." : "Cobrar"}</button></div>
+    </section>
+  );
+
+  const keypadBlock = (
+    <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
+      <p className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-500">Teclado numérico</p>
+      <p className="-mt-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Origen TPV: AdminPOS</p>
+      <div className="mb-4 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-right text-3xl font-black">{keypadDisplay(keypadValue, received)}</div>
+      <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Total a pagar: {money(totals.total)}</div>
+      <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Cambio actual: {money(totals.change)}</div>
+      <div className="grid grid-cols-3 gap-2">
+        {quickKeys.map((k) => (
+          <button
+            type="button"
+            key={k}
+            onClick={() => handleKeypadPress(k)}
+            className="rounded-2xl border border-zinc-100 bg-white py-4 text-xl font-black shadow-sm hover:bg-emerald-50"
+          >
+            {k}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setKeypadValue("")}
+          className="rounded-2xl bg-rose-100 py-4 font-black text-rose-600"
+        >
+          Borrar
+        </button>
+        <button
+          type="button"
+          onClick={commitKeypadValue}
+          className="rounded-2xl bg-emerald-100 py-4 font-black text-emerald-700"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={commitKeypadValue}
+          className="rounded-2xl bg-emerald-600 py-4 font-black text-white"
+        >
+          Enter
+        </button>
+      </div>
+    </section>
+  );
+
+  const leftBlocks: Record<TpvLeftBlockId, ReactNode> = {
+    status: statusBlock,
+    currentSale: currentSaleBlock,
+    payment: paymentBlock,
+    keypad: keypadBlock,
+  };
+
+  const visibleLeftBlocks = layoutSettings.leftBlockOrder.filter((id) => {
+    if (id === "status") return layoutSettings.showStatus;
+    if (id === "currentSale") return layoutSettings.showCurrentSale;
+    if (id === "payment") return layoutSettings.showPayment;
+    return layoutSettings.showKeypad;
+  });
+
   return (
     <div className="relative -m-4 min-h-screen overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-50 via-white to-rose-50 p-4 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8 print:bg-white">
       <div className="pointer-events-none absolute -left-14 top-20 text-9xl opacity-10 print:hidden">🪴</div>
@@ -504,163 +717,50 @@ export function AdminPOS() {
 
       <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[280px_1fr_430px]">
         <aside className="space-y-5 print:hidden">
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
-            <div className="flex items-center gap-3 border-b border-emerald-50 pb-5">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-2xl">🌿</div>
-              <div>
-                <h2 className="text-xl font-black text-emerald-950">TPV Herencia</h2>
-                <p className="text-xs font-bold text-emerald-600">Caja 01 · Admin</p>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-3 text-sm font-bold text-zinc-700">
-              <Status icon={PackageCheck} label="Stock real" value="Preparado" />
-              <Status icon={Wallet} label="Finanzas" value="Preparado" />
-              <Status icon={Receipt} label="Tickets / facturas" value="Activo" />
-              <Status icon={ShieldCheck} label="Backend" value={backendConnected === null ? "Comprobando..." : backendConnected ? "Conectado" : "Sin conexión"} />
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-2xl backdrop-blur-xl">
-            <div className="mb-4 flex items-center justify-between border-b border-emerald-50 pb-3">
-              <div>
-                <h2 className="text-lg font-black text-zinc-950">Venta actual</h2>
-                <p className="text-xs font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p>
-              </div>
-              <ShoppingCart className="h-5 w-5 text-emerald-600" />
-            </div>
-
-            <label className="mb-3 block">
-              <span className="mb-1 block text-xs font-black uppercase tracking-wide text-zinc-500">Cliente</span>
-              <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2 font-bold outline-none">
-                {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
-              </select>
-            </label>
-
-            <div className="overflow-hidden rounded-xl border border-emerald-100">
-              <div className="grid grid-cols-[1fr_56px_70px] bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">
-                <span>Artículo</span>
-                <span className="text-center">Uds.</span>
-                <span className="text-right">Total</span>
-              </div>
-              <div className="max-h-48 overflow-auto divide-y divide-emerald-50 bg-white">
-                {cart.map((line) => (
-                  <div key={line.id} className="grid grid-cols-[1fr_56px_70px] items-center px-3 py-2 text-sm">
-                    <div className="min-w-0 pr-2">
-                      <p className="truncate font-bold text-zinc-900">{line.name}</p>
-                      <p className="text-[11px] text-zinc-500">{money(line.price)}</p>
-                    </div>
-                    <div className="flex items-center justify-center gap-1">
-                      <button type="button" onClick={() => changeQty(line.id, -1)} className="h-6 w-6 rounded bg-zinc-100 font-black">-</button>
-                      <span className="w-5 text-center font-black">{line.qty}</span>
-                      <button type="button" onClick={() => changeQty(line.id, 1)} className="h-6 w-6 rounded bg-zinc-100 font-black">+</button>
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-right font-black text-emerald-700">{money(line.price * line.qty)}</span>
-                      <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </div>
-                ))}
-                {!cart.length && <div className="px-3 py-6 text-center text-xs text-zinc-400">Sin artículos en la venta</div>}
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-1 text-sm">
-              <TotalRow label="Base" value={money(totals.subtotal)} />
-              <TotalRow label="IVA" value={money(totals.iva)} />
-              <TotalRow label="Total" value={money(totals.total)} strong />
-            </div>
-
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta" className="mt-3 w-full rounded-xl border border-emerald-100 bg-emerald-50/40 p-2 text-xs outline-none" />
-          </section>
-
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-xl backdrop-blur-xl">
-            <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-600">Pago y emisión</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-xl border px-2 py-2 text-sm font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
-            </div>
-            <label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-zinc-500">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-1 w-full rounded-xl border border-zinc-100 bg-gray-50 px-3 py-2 text-right text-xl font-black outline-none cursor-not-allowed" /></label>
-            <div className="mt-2"><TotalRow label="Cambio" value={money(totals.change)} strong /></div>
-            <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={printTicket} className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm font-black text-emerald-700"><Printer className="mx-auto mb-1 h-4 w-4" /> Imprimir</button><button onClick={() => void completeSale()} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-3 text-sm font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-4 w-4" /> {isSubmittingSale ? "Guardando..." : processingPayment ? "Procesando..." : "Cobrar"}</button></div>
-          </section>
-
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
-            <p className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-500">Teclado numérico</p>
-            <p className="-mt-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Origen TPV: AdminPOS</p>
-            <div className="mb-4 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-right text-3xl font-black">{keypadDisplay(keypadValue, received)}</div>
-            <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Total a pagar: {money(totals.total)}</div>
-            <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Cambio actual: {money(totals.change)}</div>
-            <div className="grid grid-cols-3 gap-2">
-              {quickKeys.map((k) => (
-                <button
-                  type="button"
-                  key={k}
-                  onClick={() => handleKeypadPress(k)}
-                  className="rounded-2xl border border-zinc-100 bg-white py-4 text-xl font-black shadow-sm hover:bg-emerald-50"
-                >
-                  {k}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setKeypadValue("")}
-                className="rounded-2xl bg-rose-100 py-4 font-black text-rose-600"
-              >
-                Borrar
-              </button>
-              <button
-                type="button"
-                onClick={commitKeypadValue}
-                className="rounded-2xl bg-emerald-100 py-4 font-black text-emerald-700"
-              >
-                +
-              </button>
-              <button
-                type="button"
-                onClick={commitKeypadValue}
-                className="rounded-2xl bg-emerald-600 py-4 font-black text-white"
-              >
-                Enter
-              </button>
-            </div>
-          </section>
+          {visibleLeftBlocks.map((id) => (
+            <div key={id}>{leftBlocks[id]}</div>
+          ))}
         </aside>
 
         <main className="space-y-5 print:hidden">
-          <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV floristería · caja ordenada</div>
-                <h1 className="text-4xl font-black tracking-tight text-zinc-950">Catálogo de floristería</h1>
-                <p className="mt-2 text-zinc-500">Ramos, flor cortada, plantas y complementos en un flujo de venta rápido y limpio.</p>
+          {layoutSettings.showCatalogHeader && (
+            <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV floristería · caja ordenada</div>
+                  <h1 className="text-4xl font-black tracking-tight text-zinc-950">Catálogo de floristería</h1>
+                  <p className="mt-2 text-zinc-500">Ramos, flor cortada, plantas y complementos en un flujo de venta rápido y limpio.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setDocumentType("ticket")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "ticket" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Ticket</button>
+                  <button onClick={() => setDocumentType("invoice")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "invoice" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Factura</button>
+                </div>
               </div>
-              <div className="flex gap-3">
-                <button onClick={() => setDocumentType("ticket")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "ticket" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Ticket</button>
-                <button onClick={() => setDocumentType("invoice")} className={`rounded-2xl px-5 py-3 font-black ${documentType === "invoice" ? "bg-emerald-600 text-white" : "bg-white border"}`}>Factura</button>
+              <div className="relative mt-6">
+                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar artículo, código, SKU o descripción..." className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 py-4 pl-12 pr-4 font-semibold outline-none focus:border-emerald-400" />
               </div>
-            </div>
-            <div className="relative mt-6">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar artículo, código, SKU o descripción..." className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 py-4 pl-12 pr-4 font-semibold outline-none focus:border-emerald-400" />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-                    selectedCategory === cat
-                      ? "bg-emerald-600 text-white"
-                      : "border border-emerald-100 bg-white text-emerald-700"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </section>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+                      selectedCategory === cat
+                        ? "bg-emerald-600 text-white"
+                        : "border border-emerald-100 bg-white text-emerald-700"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+          {layoutSettings.showCatalogGrid && (
+            <section className={productGridClass}>
             <div className="col-span-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm font-bold text-emerald-800">
               Toca un producto para añadirlo a la venta actual. Puedes ajustar unidades en el panel de la derecha.
             </div>
@@ -677,7 +777,8 @@ export function AdminPOS() {
                 No hay artículos para el filtro seleccionado.
               </div>
             )}
-          </section>
+            </section>
+          )}
         </main>
 
         <aside className="hidden xl:block" />

@@ -3,6 +3,7 @@ import cors from "cors";
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import createLocalSupabase from "./localSupabase.js";
 import crypto from "crypto";
 
 dotenv.config();
@@ -18,12 +19,16 @@ const stripe = process.env.STRIPE_SECRET_KEY
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase =
-  supabaseUrl && supabaseServiceRoleKey
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: { persistSession: false },
-      })
-    : null;
+let supabase = null;
+
+if (supabaseUrl && supabaseServiceRoleKey) {
+  supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { persistSession: false },
+  });
+} else {
+  supabase = createLocalSupabase({ path: new URL("./local_db.json", import.meta.url).pathname });
+  console.warn("Supabase no configurado: usando almacenamiento local en backend/local_db.json para desarrollo");
+}
 
 const defaultAllowedOrigins = [
   "https://www.herenciamarket.es",
@@ -81,12 +86,18 @@ app.options(
   })
 );
 
-const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
-const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
-const sessionSecret =
-  process.env.ADMIN_SESSION_SECRET ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "change-me-in-production";
+const adminUsername = process.env.ADMIN_USERNAME;
+const adminPassword = process.env.ADMIN_PASSWORD;
+const sessionSecret = process.env.ADMIN_SESSION_SECRET;
+const adminAuthConfigured = Boolean(
+  adminUsername && adminPassword && sessionSecret
+);
+
+if (!adminAuthConfigured) {
+  console.warn(
+    "Admin auth no configurada: define ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET"
+  );
+}
 
 const publicKeys = new Set([
   "chatboxSettings",
@@ -96,6 +107,8 @@ const publicKeys = new Set([
   "stripeSettings",
   "shippingSettings",
   "adminProducts",
+  "heroBanner",
+  "ctaBanner",
 ]);
 
 const privateVisitorKeys = new Set(["cart", "user"]);
@@ -109,6 +122,7 @@ const protectedKeys = new Set([
   "supabaseSettings",
   "shippingSettings",
   "aiSettings",
+  "tpvLayoutSettings",
   "adminProducts",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
@@ -124,6 +138,7 @@ const adminOnlyStorageKeys = [
   "ctaBanner",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
+  "tpvLayoutSettings",
 ];
 
 function parseCookies(req) {
@@ -139,10 +154,13 @@ function parseCookies(req) {
 }
 
 function sign(value) {
+  if (!sessionSecret) return "";
   return crypto.createHmac("sha256", sessionSecret).update(value).digest("hex");
 }
 
 function createAdminToken() {
+  if (!adminAuthConfigured) return "";
+
   const payload = Buffer.from(
     JSON.stringify({ role: "admin", iat: Date.now() })
   ).toString("base64url");
@@ -151,6 +169,7 @@ function createAdminToken() {
 }
 
 function isValidAdminToken(token) {
+  if (!adminAuthConfigured) return false;
   if (!token || !token.includes(".")) return false;
 
   const [payload, signature] = token.split(".");
@@ -609,6 +628,12 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/admin/login", (req, res) => {
+  if (!adminAuthConfigured) {
+    return res
+      .status(503)
+      .json({ error: "Acceso admin no configurado en el servidor" });
+  }
+
   const { username, password } = req.body || {};
 
   if (username !== adminUsername || password !== adminPassword) {
@@ -757,6 +782,8 @@ app.get("/api/settings/public", async (_req, res) => {
     "menuIcons",
     "stripeSettings",
     "shippingSettings",
+    "heroBanner",
+    "ctaBanner",
   ];
 
   const { data, error } = await supabase

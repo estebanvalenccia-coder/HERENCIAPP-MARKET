@@ -7,6 +7,77 @@ import {
 import { backendStorage } from "../../lib/backendStorage";
 import { toast } from "sonner";
 
+type TpvLeftBlockId = "status" | "currentSale" | "payment" | "keypad";
+type TpvLayoutSettings = {
+  leftBlockOrder: TpvLeftBlockId[];
+  showStatus: boolean;
+  showCurrentSale: boolean;
+  showPayment: boolean;
+  showKeypad: boolean;
+  showCatalogHeader: boolean;
+  showCatalogGrid: boolean;
+  productColumns: 2 | 3 | 4;
+};
+
+const defaultTpvLayout: TpvLayoutSettings = {
+  leftBlockOrder: ["status", "currentSale", "payment", "keypad"],
+  showStatus: true,
+  showCurrentSale: true,
+  showPayment: true,
+  showKeypad: true,
+  showCatalogHeader: true,
+  showCatalogGrid: true,
+  productColumns: 4,
+};
+
+function parseTpvLayout(raw: string | null): TpvLayoutSettings {
+  if (!raw) return defaultTpvLayout;
+  try {
+    const parsed = JSON.parse(raw);
+    const nextOrder = Array.isArray(parsed?.leftBlockOrder)
+      ? parsed.leftBlockOrder.filter((id: unknown) =>
+          ["status", "currentSale", "payment", "keypad"].includes(String(id))
+        ) as TpvLeftBlockId[]
+      : [];
+
+    const orderWithFallback = ["status", "currentSale", "payment", "keypad"].filter(
+      (id) => nextOrder.includes(id as TpvLeftBlockId)
+    ) as TpvLeftBlockId[];
+
+    const completedOrder = [
+      ...orderWithFallback,
+      ...(["status", "currentSale", "payment", "keypad"] as TpvLeftBlockId[]).filter(
+        (id) => !orderWithFallback.includes(id)
+      ),
+    ];
+
+    const productColumns = Number(parsed?.productColumns);
+
+    return {
+      leftBlockOrder: completedOrder,
+      showStatus: parsed?.showStatus !== false,
+      showCurrentSale: parsed?.showCurrentSale !== false,
+      showPayment: parsed?.showPayment !== false,
+      showKeypad: parsed?.showKeypad !== false,
+      showCatalogHeader: parsed?.showCatalogHeader !== false,
+      showCatalogGrid: parsed?.showCatalogGrid !== false,
+      productColumns: productColumns === 2 || productColumns === 3 || productColumns === 4 ? productColumns : 4,
+    };
+  } catch {
+    return defaultTpvLayout;
+  }
+}
+
+function parseBannerUrl(raw: string | null): string {
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed?.imageUrl || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 export function AdminSettings() {
   const [chatboxUrl, setChatboxUrl] = useState("");
   const [chatboxEnabled, setChatboxEnabled] = useState(false);
@@ -18,6 +89,10 @@ export function AdminSettings() {
     backgroundColor: "#fdfcfa",
     foregroundColor: "#1f2b1f",
     accentColor: "#c4dfd0",
+    borderColor: "rgba(125, 168, 143, 0.2)",
+    borderRadius: "0.75rem",
+    fontFamily: '"DM Sans", "Segoe UI", sans-serif',
+    headingFont: '"Playfair Display", Georgia, serif',
   });
   const [isDark, setIsDark] = useState(false);
   const [menuIcons, setMenuIcons] = useState({
@@ -35,6 +110,9 @@ export function AdminSettings() {
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiProvider, setAiProvider] = useState<"openai" | "groq">("groq");
+  const [heroBannerUrl, setHeroBannerUrl] = useState("");
+  const [ctaBannerUrl, setCtaBannerUrl] = useState("");
+  const [tpvLayout, setTpvLayout] = useState<TpvLayoutSettings>(defaultTpvLayout);
 
   const availableIcons = [
     { name: "Home", icon: Home, label: "Casa" },
@@ -109,7 +187,23 @@ export function AdminSettings() {
       setAiEnabled(settings.enabled || false);
       setAiProvider(settings.provider || "groq");
     }
+
+    setHeroBannerUrl(parseBannerUrl(backendStorage.getItem("heroBanner")));
+    setCtaBannerUrl(parseBannerUrl(backendStorage.getItem("ctaBanner")));
+    setTpvLayout(parseTpvLayout(backendStorage.getItem("tpvLayoutSettings")));
   }, []);
+
+  const moveLeftBlock = (index: number, direction: -1 | 1) => {
+    setTpvLayout((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.leftBlockOrder.length) return current;
+      const nextOrder = [...current.leftBlockOrder];
+      const temp = nextOrder[index];
+      nextOrder[index] = nextOrder[nextIndex];
+      nextOrder[nextIndex] = temp;
+      return { ...current, leftBlockOrder: nextOrder };
+    });
+  };
 
   const saveChatboxSettings = () => {
     try {
@@ -237,6 +331,9 @@ export function AdminSettings() {
         enabled: aiEnabled,
         provider: aiProvider,
       }));
+      backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: heroBannerUrl.trim() }));
+      backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: ctaBannerUrl.trim() }));
+      backendStorage.setItem("tpvLayoutSettings", JSON.stringify(tpvLayout));
       window.dispatchEvent(new Event("storage"));
       console.log("✅ Toda la configuración guardada correctamente");
       toast.success("✅ Toda la configuración guardada correctamente");
@@ -297,6 +394,10 @@ export function AdminSettings() {
       if (savedTheme) {
         setTheme(JSON.parse(savedTheme));
       }
+
+      setHeroBannerUrl(parseBannerUrl(backendStorage.getItem("heroBanner")));
+      setCtaBannerUrl(parseBannerUrl(backendStorage.getItem("ctaBanner")));
+      setTpvLayout(parseTpvLayout(backendStorage.getItem("tpvLayoutSettings")));
 
       const savedIcons = backendStorage.getItem("menuIcons");
       if (savedIcons) {
@@ -881,6 +982,163 @@ export function AdminSettings() {
             value={theme.accentColor}
             onChange={(v) => setTheme({ ...theme, accentColor: v })}
           />
+          <ColorPicker
+            label="Color de Fondo"
+            value={theme.backgroundColor}
+            onChange={(v) => setTheme({ ...theme, backgroundColor: v })}
+          />
+          <ColorPicker
+            label="Color de Texto"
+            value={theme.foregroundColor}
+            onChange={(v) => setTheme({ ...theme, foregroundColor: v })}
+          />
+          <ColorPicker
+            label="Color de Bordes"
+            value={theme.borderColor}
+            onChange={(v) => setTheme({ ...theme, borderColor: v })}
+          />
+        </div>
+      </div>
+
+      {/* Typography and Radius */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Type className="w-5 h-5 text-primary" />
+          <h3 className="text-xl font-bold text-foreground">Tipografía y Estilo</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Fuente base</label>
+            <select
+              value={theme.fontFamily}
+              onChange={(e) => setTheme({ ...theme, fontFamily: e.target.value })}
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            >
+              <option value='"DM Sans", "Segoe UI", sans-serif'>DM Sans</option>
+              <option value='"Nunito Sans", "Segoe UI", sans-serif'>Nunito Sans</option>
+              <option value='"Poppins", "Segoe UI", sans-serif'>Poppins</option>
+              <option value='"Manrope", "Segoe UI", sans-serif'>Manrope</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Fuente de títulos</label>
+            <select
+              value={theme.headingFont}
+              onChange={(e) => setTheme({ ...theme, headingFont: e.target.value })}
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            >
+              <option value='"Playfair Display", Georgia, serif'>Playfair Display</option>
+              <option value='"Cormorant Garamond", Georgia, serif'>Cormorant Garamond</option>
+              <option value='"Merriweather", Georgia, serif'>Merriweather</option>
+              <option value='"Bodoni Moda", Georgia, serif'>Bodoni Moda</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Redondeado global</label>
+            <select
+              value={theme.borderRadius}
+              onChange={(e) => setTheme({ ...theme, borderRadius: e.target.value })}
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            >
+              <option value="0.5rem">Suave</option>
+              <option value="0.75rem">Equilibrado</option>
+              <option value="1rem">Moderno</option>
+              <option value="1.25rem">Bold</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Home banners */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Palette className="w-5 h-5 text-primary" />
+          <h3 className="text-xl font-bold text-foreground">Imágenes Home</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Hero principal (URL imagen)</label>
+            <input
+              type="url"
+              value={heroBannerUrl}
+              onChange={(e) => setHeroBannerUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Banner CTA inferior (URL imagen)</label>
+            <input
+              type="url"
+              value={ctaBannerUrl}
+              onChange={(e) => setCtaBannerUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* TPV layout editor */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Package className="w-5 h-5 text-primary" />
+          <h3 className="text-xl font-bold text-foreground">Editor de TPV (bloques y columnas)</h3>
+        </div>
+
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ToggleRow label="Mostrar estado" enabled={tpvLayout.showStatus} onToggle={() => setTpvLayout({ ...tpvLayout, showStatus: !tpvLayout.showStatus })} />
+            <ToggleRow label="Mostrar venta actual" enabled={tpvLayout.showCurrentSale} onToggle={() => setTpvLayout({ ...tpvLayout, showCurrentSale: !tpvLayout.showCurrentSale })} />
+            <ToggleRow label="Mostrar panel de pago" enabled={tpvLayout.showPayment} onToggle={() => setTpvLayout({ ...tpvLayout, showPayment: !tpvLayout.showPayment })} />
+            <ToggleRow label="Mostrar teclado" enabled={tpvLayout.showKeypad} onToggle={() => setTpvLayout({ ...tpvLayout, showKeypad: !tpvLayout.showKeypad })} />
+            <ToggleRow label="Mostrar cabecera catálogo" enabled={tpvLayout.showCatalogHeader} onToggle={() => setTpvLayout({ ...tpvLayout, showCatalogHeader: !tpvLayout.showCatalogHeader })} />
+            <ToggleRow label="Mostrar catálogo productos" enabled={tpvLayout.showCatalogGrid} onToggle={() => setTpvLayout({ ...tpvLayout, showCatalogGrid: !tpvLayout.showCatalogGrid })} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Columnas de artículos</label>
+            <select
+              value={tpvLayout.productColumns}
+              onChange={(e) => setTpvLayout({ ...tpvLayout, productColumns: Number(e.target.value) as 2 | 3 | 4 })}
+              className="w-full px-4 py-2 bg-background border border-border rounded-xl"
+            >
+              <option value={2}>2 columnas</option>
+              <option value={3}>3 columnas</option>
+              <option value={4}>4 columnas</option>
+            </select>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-foreground mb-2">Orden de bloques (columna izquierda)</p>
+            <div className="space-y-2">
+              {tpvLayout.leftBlockOrder.map((block, index) => (
+                <div key={block} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                  <span className="text-sm text-foreground">{blockLabel(block)}</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moveLeftBlock(index, -1)}
+                      className="px-3 py-1 rounded-lg bg-muted hover:bg-accent text-sm"
+                    >
+                      Subir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveLeftBlock(index, 1)}
+                      className="px-3 py-1 rounded-lg bg-muted hover:bg-accent text-sm"
+                    >
+                      Bajar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1057,4 +1315,28 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
       </div>
     </div>
   );
+}
+
+function ToggleRow({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`relative w-12 h-6 rounded-full transition-colors ${enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+      >
+        <div
+          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${enabled ? "translate-x-6" : ""}`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function blockLabel(block: TpvLeftBlockId) {
+  if (block === "status") return "Estado";
+  if (block === "currentSale") return "Venta actual";
+  if (block === "payment") return "Pago y emisión";
+  return "Teclado numérico";
 }

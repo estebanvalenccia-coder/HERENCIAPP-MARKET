@@ -56,15 +56,9 @@ type AdminSection =
 export function AdminDashboard() {
   const navigate = useNavigate();
 
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () =>
-      !backendApi.enabled &&
-      backendStorage.getItem("adminLocalSession") === "true"
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [isCheckingSession, setIsCheckingSession] = useState(
-    backendApi.enabled
-  );
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -75,8 +69,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!backendApi.enabled) {
-      setIsAuthenticated(true);
-      backendStorage.setItem("adminLocalSession", "true");
+      setIsAuthenticated(false);
       setIsCheckingSession(false);
       return;
     }
@@ -84,13 +77,10 @@ export function AdminDashboard() {
     backendApi
       .adminSession()
       .then(({ authenticated }) => {
-        backendStorage.removeItem("adminLocalSession");
         setIsAuthenticated(Boolean(authenticated));
       })
       .catch(() => {
-        // Si el backend falla, entra en modo local automáticamente
-        backendStorage.setItem("adminLocalSession", "true");
-        setIsAuthenticated(true);
+        setIsAuthenticated(false);
       })
       .finally(() => setIsCheckingSession(false));
   }, []);
@@ -98,13 +88,11 @@ export function AdminDashboard() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Modo local - entra automáticamente
-    backendStorage.setItem("adminLocalSession", "true");
-    setIsAuthenticated(true);
-    toast.success("Bienvenido al panel");
-    return;
+    if (!backendApi.enabled) {
+      toast.error("Backend no disponible. Configura VITE_API_URL y vuelve a intentar.");
+      return;
+    }
 
-    // El código del backend ya no se ejecuta
     try {
       await backendApi.adminLogin(username, password);
       const session = await backendApi.adminSession();
@@ -117,7 +105,6 @@ export function AdminDashboard() {
         return;
       }
 
-      backendStorage.removeItem("adminLocalSession");
       await backendStorage.refresh();
       setIsAuthenticated(true);
       toast.success("Bienvenido");
@@ -128,7 +115,6 @@ export function AdminDashboard() {
 
   const handleLogout = async () => {
     await backendApi.adminLogout().catch(() => null);
-    backendStorage.removeItem("adminLocalSession");
     setIsAuthenticated(false);
     setUsername("");
     setPassword("");
@@ -219,8 +205,8 @@ export function AdminDashboard() {
             </p>
 
             {!backendApi.enabled && (
-              <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                ✅ Modo local activado. Haz clic en "Entrar al Panel" para acceder.
+              <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                Backend no disponible. El acceso admin está desactivado hasta configurar VITE_API_URL.
               </div>
             )}
 
@@ -231,43 +217,44 @@ export function AdminDashboard() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-5">
-              {backendApi.enabled && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Usuario
-                    </label>
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Ingresa tu usuario"
-                      required
-                      className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                    />
-                  </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Usuario
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Ingresa tu usuario"
+                    required
+                    disabled={!backendApi.enabled}
+                    className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Contraseña
-                    </label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Ingresa tu contraseña"
-                      required
-                      className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                    />
-                  </div>
-                </>
-              )}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Ingresa tu contraseña"
+                    required
+                    disabled={!backendApi.enabled}
+                    className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </>
 
               <button
                 type="submit"
+                disabled={!backendApi.enabled}
                 className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium"
               >
-                {backendApi.enabled ? "Iniciar Sesión" : "Entrar al Panel"}
+                {backendApi.enabled ? "Iniciar Sesión" : "Backend no disponible"}
               </button>
             </form>
 

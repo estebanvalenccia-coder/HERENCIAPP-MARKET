@@ -1,10 +1,47 @@
 import { Link } from "react-router";
+import { useEffect, useState } from "react";
 import { Leaf, Truck, GraduationCap, Heart, ArrowRight, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 import ctaBackground from "figma:asset/d5382b123a27fa7c9d1abc7d1b3ca1c479f8df01.png";
+import { backendStorage } from "../lib/backendStorage";
+
+function readBannerUrl(key: "heroBanner" | "ctaBanner") {
+  try {
+    const raw = backendStorage.getItem(key);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw);
+    return String(parsed?.imageUrl || "").trim();
+  } catch {
+    return "";
+  }
+}
 
 export function Home() {
+  const [heroImage, setHeroImage] = useState(
+    "https://images.unsplash.com/photo-1760618511409-9d80f26e36f4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1920"
+  );
+  const [ctaImage, setCtaImage] = useState(ctaBackground);
+
+  useEffect(() => {
+    const loadBanners = () => {
+      const nextHero = readBannerUrl("heroBanner");
+      const nextCta = readBannerUrl("ctaBanner");
+
+      if (nextHero) setHeroImage(nextHero);
+      if (nextCta) setCtaImage(nextCta);
+    };
+
+    loadBanners();
+    window.addEventListener("storage", loadBanners);
+    window.addEventListener("backend-storage", loadBanners);
+
+    return () => {
+      window.removeEventListener("storage", loadBanners);
+      window.removeEventListener("backend-storage", loadBanners);
+    };
+  }, []);
+
   const features = [
     { icon: Leaf, title: "Productos naturales", desc: "Flores y plantas frescas" },
     { icon: Truck, title: "Entrega a domicilio", desc: "Envío rápido y seguro" },
@@ -25,7 +62,7 @@ export function Home() {
       <section className="relative h-[90vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="https://images.unsplash.com/photo-1760618511409-9d80f26e36f4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1920"
+            src={heroImage}
             alt="Floristería Herencia"
             className="w-full h-full object-cover"
           />
@@ -141,7 +178,7 @@ export function Home() {
       <section className="relative py-20 overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={ctaBackground}
+            src={ctaImage}
             alt="Fondo natural"
             className="w-full h-full object-cover"
           />

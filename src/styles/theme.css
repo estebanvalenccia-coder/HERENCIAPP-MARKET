@@ -31,6 +31,8 @@
   --chart-4: #a3c7b3;
   --chart-5: #5a8369;
   --radius: 0.75rem;
+  --app-font-family: "DM Sans", "Segoe UI", sans-serif;
+  --app-heading-font: "Playfair Display", Georgia, serif;
   --sidebar: #f5faf7;
   --sidebar-foreground: #1f2b1f;
   --sidebar-primary: #2d5f3f;
@@ -126,6 +128,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--app-font-family);
   }
 
   /**
@@ -141,24 +144,28 @@
     font-size: var(--text-2xl);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-family: var(--app-heading-font);
   }
 
   h2 {
     font-size: var(--text-xl);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-family: var(--app-heading-font);
   }
 
   h3 {
     font-size: var(--text-lg);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-family: var(--app-heading-font);
   }
 
   h4 {
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    font-family: var(--app-heading-font);
   }
 
   label {
