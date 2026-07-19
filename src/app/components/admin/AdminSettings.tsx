@@ -113,6 +113,8 @@ export function AdminSettings() {
   const [heroBannerUrl, setHeroBannerUrl] = useState("");
   const [ctaBannerUrl, setCtaBannerUrl] = useState("");
   const [tpvLayout, setTpvLayout] = useState<TpvLayoutSettings>(defaultTpvLayout);
+  const [draggingBlock, setDraggingBlock] = useState<TpvLeftBlockId | null>(null);
+  const [dragOverBlock, setDragOverBlock] = useState<TpvLeftBlockId | null>(null);
 
   const availableIcons = [
     { name: "Home", icon: Home, label: "Casa" },
@@ -203,6 +205,42 @@ export function AdminSettings() {
       nextOrder[nextIndex] = temp;
       return { ...current, leftBlockOrder: nextOrder };
     });
+  };
+
+  const reorderLeftBlock = (source: TpvLeftBlockId, target: TpvLeftBlockId) => {
+    if (source === target) return;
+
+    setTpvLayout((current) => {
+      const nextOrder = [...current.leftBlockOrder];
+      const sourceIndex = nextOrder.indexOf(source);
+      const targetIndex = nextOrder.indexOf(target);
+
+      if (sourceIndex === -1 || targetIndex === -1) return current;
+
+      nextOrder.splice(sourceIndex, 1);
+      nextOrder.splice(targetIndex, 0, source);
+
+      return { ...current, leftBlockOrder: nextOrder };
+    });
+  };
+
+  const handleBlockDragStart = (block: TpvLeftBlockId) => {
+    setDraggingBlock(block);
+    setDragOverBlock(block);
+  };
+
+  const handleBlockDrop = (target: TpvLeftBlockId) => {
+    if (draggingBlock) {
+      reorderLeftBlock(draggingBlock, target);
+    }
+
+    setDraggingBlock(null);
+    setDragOverBlock(null);
+  };
+
+  const handleBlockDragEnd = () => {
+    setDraggingBlock(null);
+    setDragOverBlock(null);
   };
 
   const saveChatboxSettings = () => {
@@ -1117,8 +1155,28 @@ export function AdminSettings() {
             <p className="text-sm font-medium text-foreground mb-2">Orden de bloques (columna izquierda)</p>
             <div className="space-y-2">
               {tpvLayout.leftBlockOrder.map((block, index) => (
-                <div key={block} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                  <span className="text-sm text-foreground">{blockLabel(block)}</span>
+                <div
+                  key={block}
+                  draggable
+                  onDragStart={() => handleBlockDragStart(block)}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverBlock(block);
+                  }}
+                  onDrop={() => handleBlockDrop(block)}
+                  onDragEnd={handleBlockDragEnd}
+                  className={`flex items-center justify-between rounded-xl border px-3 py-3 transition-all ${
+                    draggingBlock === block
+                      ? "border-primary bg-primary/10 opacity-70"
+                      : dragOverBlock === block && draggingBlock
+                      ? "border-emerald-400 bg-emerald-50 shadow-sm"
+                      : "border-border bg-background"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="cursor-grab select-none text-lg text-muted-foreground active:cursor-grabbing">::</span>
+                    <span className="text-sm text-foreground">{blockLabel(block)}</span>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
