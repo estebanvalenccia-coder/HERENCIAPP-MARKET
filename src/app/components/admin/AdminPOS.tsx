@@ -508,6 +508,12 @@ export function AdminPOS() {
     setKeypadValue("");
   }
 
+  function addTenderAmount(amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    setReceived((current) => current + amount);
+    setKeypadValue("");
+  }
+
   // Payment form component for Stripe
   function CardPaymentForm({ clientSecret, onSuccess, onCancel }: { clientSecret: string; onSuccess: () => void; onCancel: () => void; }) {
     const stripe = useStripe();
@@ -607,16 +613,28 @@ export function AdminPOS() {
       ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
       : "grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4";
 
+  const quickTenderOptions = Array.from(
+    new Set(
+      [
+        Number(totals.total.toFixed(2)),
+        Math.ceil(totals.total / 5) * 5,
+        10,
+        20,
+        50,
+      ].filter((value) => Number.isFinite(value) && value > 0)
+    )
+  ).slice(0, 5);
+
   const statusBlock = (
-    <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
-      <div className="flex items-center gap-3 border-b border-emerald-50 pb-5">
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-2xl">🌿</div>
+    <section className="rounded-[1.75rem] border-2 border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60 p-4 shadow-lg">
+      <div className="flex items-center gap-3 border-b border-emerald-100 pb-4">
+        <div className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-100 text-2xl">🌿</div>
         <div>
-          <h2 className="text-xl font-black text-emerald-950">TPV Herencia</h2>
-          <p className="text-xs font-bold text-emerald-600">Caja 01 · Admin</p>
+          <h2 className="text-lg font-black text-zinc-900">TPV Herencia</h2>
+          <p className="text-xs font-bold text-emerald-700">Caja 01 · Admin</p>
         </div>
       </div>
-      <div className="mt-5 grid gap-3 text-sm font-bold text-zinc-700">
+      <div className="mt-4 grid gap-2 text-sm font-bold text-zinc-700">
         <Status icon={PackageCheck} label="Stock real" value="Preparado" />
         <Status icon={Wallet} label="Finanzas" value="Preparado" />
         <Status icon={Receipt} label="Tickets / facturas" value="Activo" />
@@ -626,108 +644,120 @@ export function AdminPOS() {
   );
 
   const currentSaleBlock = (
-    <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-2xl backdrop-blur-xl">
-      <div className="mb-4 flex items-center justify-between border-b border-emerald-50 pb-3">
+    <section className="rounded-[1.75rem] border-2 border-emerald-600 bg-gradient-to-br from-zinc-50 to-white p-4 shadow-xl">
+      <div className="mb-3 flex items-center justify-between border-b-2 border-emerald-200 pb-3">
         <div>
-          <h2 className="text-lg font-black text-zinc-950">Venta actual</h2>
-          <p className="text-xs font-bold text-zinc-500">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p>
+          <h2 className="text-lg font-black text-zinc-900">{documentType === "invoice" ? "FACTURA" : "TICKET"}</h2>
+          <p className="text-[11px] font-bold text-emerald-700">{invoiceNumber} · {documentType === "invoice" ? "Factura" : "Ticket"}</p>
         </div>
         <ShoppingCart className="h-5 w-5 text-emerald-600" />
       </div>
 
       <label className="mb-3 block">
-        <span className="mb-1 block text-xs font-black uppercase tracking-wide text-zinc-500">Cliente</span>
-        <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2 font-bold outline-none">
+        <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-zinc-500">Cliente</span>
+        <select value={customer.id} onChange={(e) => setCustomer(demoCustomers.find((c) => c.id === e.target.value) || demoCustomers[0])} className="w-full rounded-xl border-2 border-zinc-200 bg-white px-3 py-2 text-xs font-bold outline-none focus:border-emerald-500">
           {demoCustomers.map((c) => <option key={c.id} value={c.id}>{c.name} {c.nif ? `· ${c.nif}` : ""}</option>)}
         </select>
       </label>
 
-      <div className="overflow-hidden rounded-xl border border-emerald-100">
-        <div className="grid grid-cols-[1fr_56px_70px] bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-emerald-800">
-          <span>Artículo</span>
-          <span className="text-center">Uds.</span>
-          <span className="text-right">Total</span>
-        </div>
-        <div className="max-h-48 overflow-auto divide-y divide-emerald-50 bg-white">
+      <div className="max-h-64 space-y-2 overflow-y-auto pb-3">
           {cart.map((line) => (
-            <div key={line.id} className="grid grid-cols-[1fr_56px_70px] items-center px-3 py-2 text-sm">
-              <div className="min-w-0 pr-2">
-                <p className="truncate font-bold text-zinc-900">{line.name}</p>
-                <p className="text-[11px] text-zinc-500">{money(line.price)}</p>
-              </div>
-              <div className="flex items-center justify-center gap-1">
-                <button type="button" onClick={() => changeQty(line.id, -1)} className="h-6 w-6 rounded bg-zinc-100 font-black">-</button>
-                <span className="w-5 text-center font-black">{line.qty}</span>
-                <button type="button" onClick={() => changeQty(line.id, 1)} className="h-6 w-6 rounded bg-zinc-100 font-black">+</button>
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <span className="text-right font-black text-emerald-700">{money(line.price * line.qty)}</span>
+            <div key={line.id} className="rounded-xl border-2 border-zinc-200 bg-white p-2 shadow-sm">
+              <div className="mb-1 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black text-zinc-900">{line.emoji} {line.name}</p>
+                  <p className="text-[11px] font-bold text-zinc-500">{money(line.price)} · {line.sku}</p>
+                </div>
                 <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => changeQty(line.id, -1)} className="grid h-6 w-6 place-items-center rounded bg-zinc-100 font-black text-zinc-700">-</button>
+                  <span className="w-5 text-center text-xs font-black">{line.qty}</span>
+                  <button type="button" onClick={() => changeQty(line.id, 1)} className="grid h-6 w-6 place-items-center rounded bg-zinc-100 font-black text-zinc-700">+</button>
+                </div>
+                <span className="text-sm font-black text-emerald-600">{money(line.price * line.qty)}</span>
               </div>
             </div>
           ))}
-          {!cart.length && <div className="px-3 py-6 text-center text-xs text-zinc-400">Sin artículos en la venta</div>}
+          {!cart.length && <div className="rounded-xl border-2 border-dashed border-zinc-200 bg-white px-3 py-6 text-center text-xs text-zinc-400">Sin artículos en la venta</div>}
+      </div>
+
+      <div className="space-y-1 border-t-2 border-zinc-200 pt-3 text-sm">
+        <TotalRow label="Base" value={money(totals.subtotal)} />
+        <TotalRow label="IVA" value={money(totals.iva)} />
+        <div className="mt-2 flex items-center justify-between rounded-xl bg-emerald-600 px-3 py-2 text-lg font-black text-white">
+          <span>TOTAL</span>
+          <span>{money(totals.total)}</span>
         </div>
       </div>
 
-      <div className="mt-3 space-y-1 text-sm">
-        <TotalRow label="Base" value={money(totals.subtotal)} />
-        <TotalRow label="IVA" value={money(totals.iva)} />
-        <TotalRow label="Total" value={money(totals.total)} strong />
-      </div>
-
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta" className="mt-3 w-full rounded-xl border border-emerald-100 bg-emerald-50/40 p-2 text-xs outline-none" />
+      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas de venta" className="mt-3 w-full rounded-xl border-2 border-zinc-200 bg-white p-2 text-xs outline-none focus:border-emerald-500" />
     </section>
   );
 
   const paymentBlock = (
-    <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-5 shadow-xl backdrop-blur-xl">
+    <section className="rounded-[1.75rem] border-2 border-zinc-200 bg-white p-4 shadow-lg">
       <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-600">Pago y emisión</h3>
       <div className="grid grid-cols-2 gap-2">
         {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-xl border px-2 py-2 text-sm font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
       </div>
-      <label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-zinc-500">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-1 w-full rounded-xl border border-zinc-100 bg-gray-50 px-3 py-2 text-right text-xl font-black outline-none cursor-not-allowed" /></label>
-      <div className="mt-2"><TotalRow label="Cambio" value={money(totals.change)} strong /></div>
-      <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={printTicket} className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm font-black text-emerald-700"><Printer className="mx-auto mb-1 h-4 w-4" /> Imprimir</button><button onClick={() => void completeSale()} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-3 text-sm font-black text-white shadow-lg"><CreditCard className="mx-auto mb-1 h-4 w-4" /> {isSubmittingSale ? "Guardando..." : processingPayment ? "Procesando..." : "Cobrar"}</button></div>
+      <label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-zinc-500">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-1 w-full rounded-xl border-2 border-zinc-200 bg-zinc-50 px-3 py-2 text-right text-xl font-black outline-none cursor-not-allowed" /></label>
+      {payment === "Efectivo" && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {quickTenderOptions.map((amount) => (
+            <button
+              key={amount}
+              type="button"
+              onClick={() => addTenderAmount(amount)}
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+            >
+              {money(amount)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 rounded-xl bg-zinc-50 p-3">
+        <div className="flex items-center justify-between text-xs font-bold text-zinc-500"><span>Total</span><span>{money(totals.total)}</span></div>
+        <div className="mt-1 flex items-center justify-between text-lg font-black text-emerald-700"><span>Cambio</span><span>{money(totals.change)}</span></div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={printTicket} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-black text-zinc-700"><Printer className="mx-auto mb-1 h-4 w-4" /> Imprimir</button><button onClick={() => void completeSale()} disabled={!cart.length || isSubmittingSale || processingPayment} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-3 py-3 text-sm font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50"><CreditCard className="mx-auto mb-1 h-4 w-4" /> {isSubmittingSale ? "Guardando..." : processingPayment ? "Procesando..." : "Cobrar"}</button></div>
     </section>
   );
 
   const keypadBlock = (
-    <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-5 shadow-xl backdrop-blur-xl">
-      <p className="mb-3 text-sm font-black uppercase tracking-wide text-zinc-500">Teclado numérico</p>
-      <p className="-mt-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Origen TPV: AdminPOS</p>
-      <div className="mb-4 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-right text-3xl font-black">{keypadDisplay(keypadValue, received)}</div>
-      <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Total a pagar: {money(totals.total)}</div>
-      <div className="mb-3 rounded-2xl border border-zinc-100 bg-white px-4 py-3 text-right text-sm font-bold text-zinc-500">Cambio actual: {money(totals.change)}</div>
-      <div className="grid grid-cols-3 gap-2">
+    <section className="rounded-[1.75rem] border-2 border-zinc-200 bg-zinc-50 p-4 shadow-lg">
+      <p className="mb-2 text-sm font-black uppercase tracking-wide text-zinc-500">Teclado numérico</p>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Origen TPV: AdminPOS</p>
+      <div className="mb-3 rounded-xl bg-white px-4 py-3 text-right shadow-sm">
+        <p className="text-[11px] font-bold text-zinc-500">RECIBIDO</p>
+        <p className="text-3xl font-black text-emerald-600">{keypadDisplay(keypadValue, received)}</p>
+        <p className="mt-1 text-[11px] font-bold text-zinc-500">Cambio: {money(totals.change)}</p>
+      </div>
+      <div className="mb-3 grid grid-cols-3 gap-2">
         {quickKeys.map((k) => (
           <button
             type="button"
             key={k}
             onClick={() => handleKeypadPress(k)}
-            className="rounded-2xl border border-zinc-100 bg-white py-4 text-xl font-black shadow-sm hover:bg-emerald-50"
+            className="rounded-xl border border-zinc-200 bg-white py-3 text-lg font-black shadow-sm hover:bg-emerald-50"
           >
             {k}
           </button>
         ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => setKeypadValue("")}
-          className="rounded-2xl bg-rose-100 py-4 font-black text-rose-600"
+          className="rounded-xl bg-rose-100 py-3 font-black text-rose-600"
         >
           Borrar
         </button>
         <button
           type="button"
           onClick={commitKeypadValue}
-          className="rounded-2xl bg-emerald-100 py-4 font-black text-emerald-700"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={commitKeypadValue}
-          className="rounded-2xl bg-emerald-600 py-4 font-black text-white"
+          className="rounded-xl bg-emerald-600 py-3 font-black text-white"
         >
           Enter
         </button>
@@ -761,8 +791,8 @@ export function AdminPOS() {
       <div className="pointer-events-none absolute -left-14 top-20 text-9xl opacity-10 print:hidden">🪴</div>
       <div className="pointer-events-none absolute right-5 bottom-20 text-9xl opacity-10 print:hidden">💐</div>
 
-      <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[280px_1fr_430px]">
-        <aside className="space-y-5 print:hidden">
+      <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[360px_1fr]">
+        <aside className="sticky top-6 space-y-4 self-start print:hidden">
           {visibleLeftBlocks.map((id) => (
             <div
               key={id}
@@ -808,7 +838,7 @@ export function AdminPOS() {
 
         <main className="space-y-5 print:hidden">
           {layoutSettings.showCatalogHeader && (
-            <section className="rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+            <section className="rounded-[1.75rem] border-2 border-emerald-100 bg-white/90 p-6 shadow-xl">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">TPV floristería · caja ordenada</div>
@@ -849,11 +879,11 @@ export function AdminPOS() {
               Toca un producto para añadirlo a la venta actual. Puedes ajustar unidades en el panel de la derecha.
             </div>
             {products.map((product) => (
-              <motion.button key={product.id} whileHover={{ y: -4 }} onClick={() => addItem(product)} className="rounded-[1.7rem] border border-emerald-100 bg-white/90 p-5 text-left shadow-lg transition hover:border-emerald-300">
-                <div className="mb-4 grid h-24 place-items-center rounded-3xl bg-gradient-to-br from-emerald-50 to-rose-50 text-5xl">{product.emoji}</div>
-                <p className="text-xs font-black uppercase text-emerald-600">{product.category} · {product.sku}</p>
-                <h3 className="mt-1 min-h-12 font-black text-zinc-900">{product.name}</h3>
-                <div className="mt-4 flex items-center justify-between"><span className="text-xl font-black text-emerald-700">{money(product.price)}</span><span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-600">Stock {product.stock}</span></div>
+              <motion.button key={product.id} whileHover={{ y: -4 }} onClick={() => addItem(product)} className={`rounded-[1.4rem] border-2 p-4 text-left shadow-sm transition ${product.stock <= 5 ? "border-red-200 bg-red-50/50 hover:border-red-300" : "border-zinc-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40"}`}>
+                <div className="mb-3 grid h-20 place-items-center rounded-3xl bg-gradient-to-br from-zinc-50 to-rose-50 text-4xl">{product.emoji}</div>
+                <p className="text-[11px] font-black uppercase text-emerald-600">{product.category} · {product.sku}</p>
+                <h3 className="mt-1 min-h-12 text-sm font-black text-zinc-900">{product.name}</h3>
+                <div className="mt-3 flex items-center justify-between"><span className="text-xl font-black text-emerald-700">{money(product.price)}</span><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${product.stock > 10 ? "bg-emerald-100 text-emerald-700" : product.stock > 5 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>Stock {product.stock}</span></div>
               </motion.button>
             ))}
             {!products.length && (
