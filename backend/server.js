@@ -100,16 +100,18 @@ app.options(
   })
 );
 
-const adminUsername = process.env.ADMIN_USERNAME;
-const adminPassword = process.env.ADMIN_PASSWORD;
-const sessionSecret = process.env.ADMIN_SESSION_SECRET;
-const adminAuthConfigured = Boolean(
-  adminUsername && adminPassword && sessionSecret
-);
+const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
+const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
+const sessionSecret =
+  process.env.ADMIN_SESSION_SECRET ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "change-me-in-production";
+const usingDefaultAdminCredentials =
+  !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
 
-if (!adminAuthConfigured) {
+if (usingDefaultAdminCredentials) {
   console.warn(
-    "Admin auth no configurada: define ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET"
+    "Admin auth usando credenciales por defecto. Configura ADMIN_USERNAME y ADMIN_PASSWORD para endurecer producción."
   );
 }
 
@@ -168,13 +170,10 @@ function parseCookies(req) {
 }
 
 function sign(value) {
-  if (!sessionSecret) return "";
   return crypto.createHmac("sha256", sessionSecret).update(value).digest("hex");
 }
 
 function createAdminToken() {
-  if (!adminAuthConfigured) return "";
-
   const payload = Buffer.from(
     JSON.stringify({ role: "admin", iat: Date.now() })
   ).toString("base64url");
@@ -183,7 +182,6 @@ function createAdminToken() {
 }
 
 function isValidAdminToken(token) {
-  if (!adminAuthConfigured) return false;
   if (!token || !token.includes(".")) return false;
 
   const [payload, signature] = token.split(".");
@@ -642,12 +640,6 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/admin/login", (req, res) => {
-  if (!adminAuthConfigured) {
-    return res
-      .status(503)
-      .json({ error: "Acceso admin no configurado en el servidor" });
-  }
-
   const { username, password } = req.body || {};
 
   if (username !== adminUsername || password !== adminPassword) {
