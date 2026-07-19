@@ -119,6 +119,8 @@ export function AdminPOS() {
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   const [layoutSettings, setLayoutSettings] = useState<TpvLayoutSettings>(defaultTpvLayout);
+  const [draggingBlock, setDraggingBlock] = useState<TpvLeftBlockId | null>(null);
+  const [dragOverBlock, setDragOverBlock] = useState<TpvLeftBlockId | null>(null);
 
   useEffect(() => {
     backendApi
@@ -126,6 +128,43 @@ export function AdminPOS() {
       .then(() => setBackendConnected(true))
       .catch(() => setBackendConnected(false));
   }, []);
+
+  function persistLayout(nextLayout: TpvLayoutSettings) {
+    setLayoutSettings(nextLayout);
+    void backendStorage.setItem("tpvLayoutSettings", JSON.stringify(nextLayout));
+  }
+
+  function reorderLeftBlocks(source: TpvLeftBlockId, target: TpvLeftBlockId) {
+    if (source === target) return;
+
+    const nextOrder = [...layoutSettings.leftBlockOrder];
+    const sourceIndex = nextOrder.indexOf(source);
+    const targetIndex = nextOrder.indexOf(target);
+
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    nextOrder.splice(sourceIndex, 1);
+    nextOrder.splice(targetIndex, 0, source);
+
+    persistLayout({
+      ...layoutSettings,
+      leftBlockOrder: nextOrder,
+    });
+  }
+
+  function handleLeftBlockDrop(target: TpvLeftBlockId) {
+    if (draggingBlock) {
+      reorderLeftBlocks(draggingBlock, target);
+    }
+
+    setDraggingBlock(null);
+    setDragOverBlock(null);
+  }
+
+  function handleLeftBlockDragEnd() {
+    setDraggingBlock(null);
+    setDragOverBlock(null);
+  }
 
   useEffect(() => {
     const loadLayout = () => {
@@ -710,6 +749,13 @@ export function AdminPOS() {
     return layoutSettings.showKeypad;
   });
 
+  function leftBlockLabel(id: TpvLeftBlockId) {
+    if (id === "status") return "Estado";
+    if (id === "currentSale") return "Venta actual";
+    if (id === "payment") return "Pago y emisión";
+    return "Teclado numérico";
+  }
+
   return (
     <div className="relative -m-4 min-h-screen overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-50 via-white to-rose-50 p-4 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8 print:bg-white">
       <div className="pointer-events-none absolute -left-14 top-20 text-9xl opacity-10 print:hidden">🪴</div>
@@ -718,7 +764,45 @@ export function AdminPOS() {
       <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[280px_1fr_430px]">
         <aside className="space-y-5 print:hidden">
           {visibleLeftBlocks.map((id) => (
-            <div key={id}>{leftBlocks[id]}</div>
+            <div
+              key={id}
+              draggable
+              onDragStart={() => {
+                setDraggingBlock(id);
+                setDragOverBlock(id);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (dragOverBlock !== id) {
+                  setDragOverBlock(id);
+                }
+              }}
+              onDrop={() => handleLeftBlockDrop(id)}
+              onDragEnd={handleLeftBlockDragEnd}
+              className={`relative transition-all ${
+                draggingBlock === id
+                  ? "scale-[0.98] opacity-70"
+                  : dragOverBlock === id && draggingBlock
+                  ? "-translate-y-0.5"
+                  : ""
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                <span>{leftBlockLabel(id)}</span>
+                <span className="cursor-grab select-none rounded-full bg-white/80 px-2 py-1 text-zinc-500 shadow-sm active:cursor-grabbing">
+                  Arrastrar
+                </span>
+              </div>
+              <div
+                className={`rounded-[2.2rem] ${
+                  dragOverBlock === id && draggingBlock && draggingBlock !== id
+                    ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-transparent"
+                    : ""
+                }`}
+              >
+                {leftBlocks[id]}
+              </div>
+            </div>
           ))}
         </aside>
 
