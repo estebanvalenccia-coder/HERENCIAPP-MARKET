@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   },
   "scripts": {
     "build": "vite build",
@@ -47,6 +47,7 @@
     "@radix-ui/react-toggle-group": "1.1.2",
     "@radix-ui/react-tooltip": "1.1.8",
     "@stripe/stripe-js": "^9.1.0",
+    "@stripe/react-stripe-js": "^2.2.0",
     "@supabase/supabase-js": "^2.103.0",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
