@@ -465,6 +465,124 @@ function renderOrderEmail(order, recipientType = "customer") {
 </html>`;
 }
 
+function statusLabel(status) {
+  const labels = {
+    pending: "Pendiente",
+    payment_pending: "Pago pendiente",
+    pending_bizum_review: "Revisión de Bizum",
+    pending_manual_review: "Revisión manual",
+    pending_transfer_review: "Revisión de transferencia",
+    pending_store_confirmation: "Confirmación en tienda",
+    paid: "Pagado",
+    confirmed: "Confirmado",
+    preparing: "Preparando pedido",
+    processing: "Pedido en camino",
+    ready: "Listo para recoger",
+    delivered: "Entregado",
+    completed: "Completado",
+    cancelled: "Cancelado",
+  };
+
+  return labels[status] || "Actualización de pedido";
+}
+
+function statusMessageForOrder(order) {
+  const normalized = normalizeOrder(order);
+  const isPickup = ["recogida", "recoger", "mostrador"].includes(
+    String(normalized.deliveryMethod || "").toLowerCase()
+  );
+
+  if (normalized.status === "ready") {
+    return isPickup
+      ? "Tu pedido ya está listo para recoger en tienda. Puedes pasar a buscarlo cuando quieras dentro de nuestro horario."
+      : "Tu pedido ya está listo y preparado para su salida.";
+  }
+
+  if (normalized.status === "processing") {
+    return "Tu pedido ha salido y está en camino.";
+  }
+
+  if (normalized.status === "delivered") {
+    return "Tu pedido ha sido entregado correctamente.";
+  }
+
+  if (normalized.status === "confirmed") {
+    return "Hemos confirmado tu pedido y ya está en gestión.";
+  }
+
+  if (normalized.status === "preparing") {
+    return "Estamos preparando tu pedido con mucho cuidado.";
+  }
+
+  return `Tu pedido ahora está en estado: ${statusLabel(normalized.status)}.`;
+}
+
+function renderOrderStatusEmail(order) {
+  const normalized = normalizeOrder(order);
+  const itemsHtml = normalized.items.length
+    ? normalized.items
+        .map((item) => {
+          const name = escapeHtml(item.name || item.title || item.productName || "Producto");
+          const quantity = Number(item.quantity || item.qty || 1);
+          return `<li style="margin-bottom:6px;">${name} x${quantity}</li>`;
+        })
+        .join("")
+    : "<li>Sin detalle de productos.</li>";
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Actualización de pedido Herencia Market</title>
+  </head>
+  <body style="margin:0;background:#fff7f2;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fff7f2;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:28px;overflow:hidden;box-shadow:0 16px 50px rgba(96,46,24,.12);">
+            <tr>
+              <td style="background:linear-gradient(135deg,#2d5f3f,#7fa88f);padding:34px 28px;text-align:center;color:#fff;">
+                <div style="font-size:42px;line-height:1;margin-bottom:10px;">🌿</div>
+                <h1 style="margin:0;font-size:28px;line-height:1.15;">${escapeHtml(statusLabel(normalized.status))}</h1>
+                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Pedido #${escapeHtml(normalized.id)}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 28px;">
+                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#4d3128;">
+                  Hola <strong>${escapeHtml(normalized.customerName)}</strong>, ${escapeHtml(statusMessageForOrder(normalized))}
+                </p>
+
+                <div style="background:#fffaf7;border:1px solid #f1e7df;border-radius:20px;padding:18px;margin-bottom:22px;">
+                  <p style="margin:0 0 10px;font-size:13px;color:#8b6b61;">Resumen del pedido</p>
+                  <ul style="margin:0;padding-left:18px;color:#2b1712;">${itemsHtml}</ul>
+                </div>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#2b1712;color:#fff;border-radius:20px;padding:18px;">
+                  <tr>
+                    <td style="padding:5px 0;color:#f8d8cc;">Estado actual</td>
+                    <td align="right" style="padding:5px 0;font-weight:700;">${escapeHtml(statusLabel(normalized.status))}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;color:#f8d8cc;">Total</td>
+                    <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.total)}</td>
+                  </tr>
+                </table>
+
+                <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#8b6b61;text-align:center;">
+                  Si tienes dudas, responde a este correo y te ayudaremos.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 async function sendResendEmail({ to, subject, html, replyTo }) {
   if (!process.env.RESEND_API_KEY) {
     console.warn("Email no enviado: falta RESEND_API_KEY");
@@ -558,6 +676,51 @@ async function sendOrderConfirmationEmails(order, reason = "order_created") {
   }
 
   return results;
+}
+
+async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated") {
+  const normalized = normalizeOrder(order);
+  const adminEmail =
+    process.env.ADMIN_ORDER_EMAIL ||
+    process.env.ADMIN_EMAIL ||
+    process.env.STORE_EMAIL ||
+    "herenciafloristeria@gmail.com";
+
+  if (!isValidEmail(normalized.customerEmail)) {
+    return { skipped: true, reason: "missing_customer_email" };
+  }
+
+  const metadata = normalized.metadata || {};
+  const alreadySentForStatus = metadata?.statusEmailHistory?.[normalized.status];
+  if (alreadySentForStatus) {
+    return { skipped: true, reason: "status_email_already_sent" };
+  }
+
+  const result = await sendResendEmail({
+    to: normalized.customerEmail,
+    subject: `Actualización de tu pedido Herencia Market #${normalized.id}`,
+    html: renderOrderStatusEmail(normalized),
+    replyTo: adminEmail,
+  });
+
+  if (supabase) {
+    await supabase
+      .from("orders")
+      .update({
+        metadata: {
+          ...metadata,
+          lastStatusEmailSentAt: new Date().toISOString(),
+          lastStatusEmailReason: reason,
+          statusEmailHistory: {
+            ...(metadata.statusEmailHistory || {}),
+            [normalized.status]: new Date().toISOString(),
+          },
+        },
+      })
+      .eq("id", normalized.id);
+  }
+
+  return result;
 }
 
 async function readStorageValue(key) {
@@ -892,7 +1055,19 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  res.json({ order: data });
+  const shouldNotifyCustomer = ["confirmed", "preparing", "processing", "ready", "delivered"].includes(status);
+  let statusEmailResult = null;
+
+  if (shouldNotifyCustomer) {
+    try {
+      statusEmailResult = await sendOrderStatusUpdateEmail(data, "admin_status_change");
+    } catch (emailError) {
+      console.error("Error enviando email de estado:", emailError.message);
+      statusEmailResult = { error: emailError.message };
+    }
+  }
+
+  res.json({ order: data, statusEmailResult });
 });
 
 function pickBouquetImage({ description = "", color = "", style = "" }) {
