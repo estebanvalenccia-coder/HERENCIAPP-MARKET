@@ -452,7 +452,7 @@ export function AdminDashboard() {
                     </h2>
 
                     <span className="hidden sm:inline-flex px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-                      v1.0
+                      v1.1-caja
                     </span>
                   </div>
 
