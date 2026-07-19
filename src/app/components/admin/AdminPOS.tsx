@@ -4,10 +4,12 @@ import { Elements, useStripe, useElements, CardElement } from "@stripe/react-str
 import { CreditCard, PackageCheck, Printer, Receipt, Search, ShieldCheck, ShoppingCart, Trash2, UserRound, Wallet, Plus, Minus, Eye, EyeOff, Clock, DollarSign, TrendingUp, AlertCircle, CheckCircle, Home, Settings, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import { backendApi } from "../../lib/backendStorage";
 
 type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; emoji: string };
 type CartLine = PosItem & { qty: number; discount?: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string };
+type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
 
 const demoProducts: PosItem[] = [
   { id: "p1", name: "Ramo temporada premium", sku: "RAM-001", price: 45, iva: 21, stock: 12, category: "Ramos", emoji: "💐" },
@@ -42,12 +44,11 @@ function keypadDisplay(value: string, fallbackAmount: number) {
 export function AdminPOS() {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
   const stripePublishable = env.VITE_STRIPE_PUBLISHABLE_KEY || "";
-  const apiBase = env.VITE_API_URL || env.VITE_BACKEND_URL || "http://localhost:3001";
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customer, setCustomer] = useState<Customer>(demoCustomers[0]);
-  const [payment, setPayment] = useState("Efectivo");
+  const [payment, setPayment] = useState<PosPaymentMethod>("Efectivo");
   const [received, setReceived] = useState(0);
   const [keypadValue, setKeypadValue] = useState("");
   const keypadAmount = useMemo(() => {
@@ -103,6 +104,100 @@ export function AdminPOS() {
     setDocumentType("ticket");
   }
 
+  function safeReadArray<T>(key: string): T[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function toOrderItems(lines: CartLine[]) {
+    return lines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      sku: line.sku,
+      price: line.price,
+      iva: line.iva,
+      quantity: line.qty,
+      qty: line.qty,
+      category: line.category,
+    }));
+  }
+
+  function persistSaleLocally(orderPayload: {
+    id: string;
+    customerName: string;
+    customerEmail: string | null;
+    items: ReturnType<typeof toOrderItems>;
+    subtotal: number;
+    total: number;
+    paymentMethod: string;
+    metadata: Record<string, unknown>;
+  }) {
+    const now = new Date();
+    const isoNow = now.toISOString();
+
+    const posSale = {
+      id: orderPayload.id,
+      invoiceNumber,
+      documentType,
+      customer,
+      payment,
+      items: cart,
+      subtotal: totals.subtotal,
+      iva: totals.iva,
+      total: totals.total,
+      notes,
+      verifactuStatus: "Pendiente: falta configurar certificado digital/API VeriFactu",
+      financeStatus: "Preparado para contabilizar en ventas, caja, gastos y mermas",
+      createdAt: isoNow,
+    };
+
+    const tpvEngineSale = {
+      id: orderPayload.id,
+      customer: customer.name || "Cliente mostrador",
+      paymentMethod: payment,
+      subtotal: totals.subtotal,
+      iva: totals.iva,
+      total: totals.total,
+      createdAt: isoNow,
+      items: cart.map((line) => ({
+        id: line.id,
+        name: line.name,
+        qty: line.qty,
+        price: line.price,
+        iva: line.iva,
+      })),
+    };
+
+    const financeSale = {
+      id: `tpv-${orderPayload.id}`,
+      sale_date: isoNow.slice(0, 10),
+      time: now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+      client: customer.name || "Cliente mostrador",
+      product:
+        cart.map((line) => `${line.name} x${line.qty}`).join(", ") ||
+        "Venta TPV",
+      category: "TPV Mostrador",
+      payment_method: payment,
+      amount: Number(totals.total || 0),
+      cost: 0,
+      status: "Cobrado",
+      notes: notes || `Venta local ${invoiceNumber}`,
+      created_at: isoNow,
+    };
+
+    const localPosSales = safeReadArray<any>("herencia_pos_sales");
+    const localTpvSales = safeReadArray<any>("herencia_sales");
+    const localFinanceSales = safeReadArray<any>("herencia_finance_sales");
+
+    localStorage.setItem("herencia_pos_sales", JSON.stringify([posSale, ...localPosSales]));
+    localStorage.setItem("herencia_sales", JSON.stringify([tpvEngineSale, ...localTpvSales]));
+    localStorage.setItem("herencia_finance_sales", JSON.stringify([financeSale, ...localFinanceSales]));
+  }
+
   function completeSale() {
     if (!cart.length) {
       toast.error("Añade artículos antes de cobrar");
@@ -114,8 +209,25 @@ export function AdminPOS() {
       toast.error("El efectivo recibido debe ser mayor o igual al total");
       return;
     }
-    // Si es pago con tarjeta, crear PaymentIntent y abrir formulario de tarjeta
-    const backend = env.VITE_BACKEND_URL || "http://localhost:3001";
+    const orderPayload = {
+      id: crypto.randomUUID(),
+      customerName: customer.name,
+      customerEmail: customer.email || null,
+      items: toOrderItems(cart),
+      subtotal: totals.subtotal,
+      shipping: 0,
+      total: totals.total,
+      received: finalReceived,
+      paymentMethod: payment === "Efectivo" ? "cash" : payment.toLowerCase(),
+      deliveryMethod: "mostrador",
+      status: payment === "Tarjeta" ? "payment_pending" : "paid",
+      metadata: {
+        notes,
+        invoiceNumber,
+        documentType,
+        source: "TPV_ADMIN",
+      },
+    };
 
     if (payment === "Tarjeta") {
       const stripeLoader = ensureStripeLoaded();
@@ -124,29 +236,24 @@ export function AdminPOS() {
       }
 
       setProcessingPayment(true);
-      fetch(`${apiBase}/api/stripe/create-payment-intent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      backendApi
+        .createPaymentIntent({
           amount: totals.total,
           currency: "eur",
-          items: cart,
+          items: orderPayload.items,
           customerEmail: customer.email,
           customerName: customer.name,
           deliveryMethod: "mostrador",
           shipping: 0,
           subtotal: totals.subtotal,
           paymentMethod: "tarjeta",
-          metadata: { notes, invoiceNumber, documentType },
-        }),
-      })
-        .then(async (r) => r.json())
+          metadata: { notes, invoiceNumber, documentType, source: "TPV_ADMIN" },
+        })
         .then((data) => {
-          if (data.error) throw new Error(data.error);
           setClientSecret(data.clientSecret || null);
           setShowCardModal(true);
         })
-        .catch((err) => {
+        .catch((err: any) => {
           console.error("Error creando PaymentIntent:", err);
           toast.error("No se pudo iniciar el pago con tarjeta: " + (err.message || err));
         })
@@ -158,52 +265,13 @@ export function AdminPOS() {
     // Otros métodos: guardar pedido en backend (o local si backend no disponible)
     (async () => {
       try {
-        const res = await fetch(`${apiBase}/api/orders`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: crypto.randomUUID(),
-            customerName: customer.name,
-            customerEmail: customer.email || null,
-            items: cart,
-            subtotal: totals.subtotal,
-            shipping: 0,
-            total: totals.total,
-            received: finalReceived,
-            paymentMethod: payment === "Efectivo" ? "manual" : payment.toLowerCase(),
-            metadata: { notes, invoiceNumber, documentType },
-          }),
-        });
-
-        const body = await res.json();
-
-        if (!res.ok) {
-          throw new Error(body.error || "Error creando pedido");
-        }
+        await backendApi.createOrder(orderPayload);
 
         toast.success(documentType === "invoice" ? "Factura guardada en backend" : "Ticket guardado en backend");
       } catch (err: any) {
         console.warn("Fallo guardando pedido en backend, guardando localmente:", err.message || err);
-        const sale = {
-          id: crypto.randomUUID(),
-          invoiceNumber,
-          documentType,
-          customer,
-          payment,
-          items: cart,
-          subtotal: totals.subtotal,
-          iva: totals.iva,
-          total: totals.total,
-          notes,
-          verifactuStatus: "Pendiente: falta configurar certificado digital/API VeriFactu",
-          financeStatus: "Preparado para contabilizar en ventas, caja, gastos y mermas",
-          createdAt: new Date().toISOString(),
-        };
-
-        const stored = JSON.parse(localStorage.getItem("herencia_pos_sales") || "[]");
-        localStorage.setItem("herencia_pos_sales", JSON.stringify([sale, ...stored]));
-
-        toast.success(documentType === "invoice" ? "Factura guardada localmente" : "Ticket guardado localmente");
+        persistSaleLocally(orderPayload);
+        toast.success(documentType === "invoice" ? "Factura guardada localmente (sin backend)" : "Ticket guardado localmente (sin backend)");
       } finally {
         setInvoiceNumber((prev) => prev.replace(/(\d+)$/, (n) => String(Number(n) + 1).padStart(n.length, "0")));
         clearSale();
@@ -238,6 +306,7 @@ export function AdminPOS() {
   }
 
   const quickKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", "."];
+  const paymentMethods: PosPaymentMethod[] = ["Efectivo", "Tarjeta", "Bizum", "Transferencia"];
 
   function handleKeypadPress(key: string) {
     setKeypadValue((current) => {
@@ -316,14 +385,7 @@ export function AdminPOS() {
 
         // Confirm order on backend
         try {
-          const confirmRes = await fetch(`${apiBase}/api/stripe/confirm-order`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: paymentMetadata?.orderId, paymentIntentId: res.paymentIntent.id }),
-          });
-
-          const body = await confirmRes.json();
-          if (!confirmRes.ok) throw new Error(body.error || "Error confirmando pedido");
+          await backendApi.confirmStripeOrder({ orderId: paymentMetadata?.orderId || "", paymentIntentId: res.paymentIntent.id });
         } catch (err: any) {
           console.warn("Error confirmando pedido en backend:", err.message || err);
         }
@@ -481,7 +543,7 @@ export function AdminPOS() {
           <section className="rounded-[2rem] border border-emerald-100 bg-white/95 p-6 shadow-xl backdrop-blur-xl print:hidden">
             <h3 className="mb-4 text-xl font-black text-zinc-950">Pago y emisión</h3>
             <div className="grid grid-cols-2 gap-3">
-              {["Efectivo", "Tarjeta", "Bizum", "Transferencia"].map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-2xl border px-4 py-4 font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
+              {paymentMethods.map((p) => <button key={p} onClick={() => setPayment(p)} className={`rounded-2xl border px-4 py-4 font-black ${payment === p ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-100 bg-white"}`}>{p}</button>)}
             </div>
             <label className="mt-4 block"><span className="text-sm font-black text-zinc-600">Efectivo recibido</span><input type="text" disabled readOnly value={money(effectiveReceived)} className="mt-2 w-full rounded-2xl border border-zinc-100 bg-gray-50 px-4 py-3 text-right text-2xl font-black outline-none cursor-not-allowed" /></label>
             <TotalRow label="Cambio" value={money(totals.change)} strong />
