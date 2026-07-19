@@ -65,6 +65,7 @@ export function AdminPOS() {
   const [invoiceNumber, setInvoiceNumber] = useState("HF-2026-000128");
   const [showCardModal, setShowCardModal] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [pendingCardOrderId, setPendingCardOrderId] = useState<string | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
@@ -302,7 +303,12 @@ export function AdminPOS() {
           metadata: { notes, invoiceNumber, documentType, source: "TPV_ADMIN" },
         })
         .then((data) => {
-          setClientSecret(data.clientSecret || null);
+          if (!data?.clientSecret || !data?.orderId) {
+            throw new Error("Respuesta de Stripe incompleta (falta clientSecret u orderId)");
+          }
+
+          setPendingCardOrderId(data.orderId);
+          setClientSecret(data.clientSecret);
           setShowCardModal(true);
         })
         .catch((err: any) => {
@@ -342,6 +348,7 @@ export function AdminPOS() {
   function closeCardModal() {
     setShowCardModal(false);
     setClientSecret(null);
+    setPendingCardOrderId(null);
   }
 
   function ensureStripeLoaded() {
@@ -434,12 +441,38 @@ export function AdminPOS() {
 
       if (res.paymentIntent && res.paymentIntent.status === "succeeded") {
         const paymentMetadata = (res.paymentIntent as any)?.metadata as Record<string, string> | undefined;
+        const resolvedOrderId = pendingCardOrderId || paymentMetadata?.orderId || "";
+        const localOrderPayload = {
+          id: resolvedOrderId || crypto.randomUUID(),
+          customerName: customer.name,
+          customerEmail: customer.email || null,
+          items: toOrderItems(cart),
+          subtotal: totals.subtotal,
+          total: totals.total,
+          paymentMethod: "tarjeta",
+          metadata: {
+            notes,
+            invoiceNumber,
+            documentType,
+            source: "TPV_ADMIN_CARD",
+            paymentIntentId: res.paymentIntent.id,
+          },
+        };
 
         // Confirm order on backend
         try {
-          await backendApi.confirmStripeOrder({ orderId: paymentMetadata?.orderId || "", paymentIntentId: res.paymentIntent.id });
+          if (!resolvedOrderId) {
+            throw new Error("No llegó orderId para confirmar el pedido de Stripe");
+          }
+
+          await backendApi.confirmStripeOrder({ orderId: resolvedOrderId, paymentIntentId: res.paymentIntent.id });
+          persistPosAuditOnly(localOrderPayload);
+          setBackendConnected(true);
         } catch (err: any) {
           console.warn("Error confirmando pedido en backend:", err.message || err);
+          persistSaleLocally(localOrderPayload);
+          setBackendConnected(false);
+          toast.warning("Pago cobrado, pero backend no confirmó. Venta guardada localmente.");
         }
 
         toast.success("Pago procesado correctamente");
@@ -660,6 +693,7 @@ export function AdminPOS() {
                 onSuccess={() => {
                   setShowCardModal(false);
                   setClientSecret(null);
+                  setPendingCardOrderId(null);
                   setInvoiceNumber((prev) => prev.replace(/(\d+)$/, (n) => String(Number(n) + 1).padStart(n.length, "0")));
                   clearSale();
                 }}
