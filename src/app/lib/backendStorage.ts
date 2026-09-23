@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "/api";
+const DEFAULT_API_BASE = "";
 
 function normalizeApiBase(value?: string) {
   const rawValue = (value || DEFAULT_API_BASE).trim();
