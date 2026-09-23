@@ -1,7 +1,9 @@
 const DEFAULT_API_BASE = "";
 
 function normalizeApiBase(value?: string) {
-  const rawValue = (value || DEFAULT_API_BASE).trim();
+  const rawValue = (value ?? DEFAULT_API_BASE).trim();
+  if (!rawValue) return "";
+
   const withoutTrailingSlash = rawValue.replace(/\/$/, "");
 
   if (/^https?:\/\//i.test(withoutTrailingSlash) || withoutTrailingSlash.startsWith("/")) {
