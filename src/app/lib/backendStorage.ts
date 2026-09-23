@@ -366,7 +366,9 @@ async function deleteStorageValue(key: string): Promise<BackendStorageResult> {
 export const backendApi = {
   baseUrl: API_BASE,
   get enabled() {
-    return Boolean(API_BASE);
+    // El backend siempre está disponible vía el proxy same-origin (/api/*),
+    // no depende de una URL absoluta configurada en API_BASE.
+    return true;
   },
   get available() {
     return backendAvailable;
