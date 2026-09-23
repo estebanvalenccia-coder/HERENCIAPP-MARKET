@@ -1,6 +1,6 @@
 // Browser requests always use the same-origin Vercel proxy.
 // Every endpoint below already starts with /api, so no API base prefix is needed.
-const API_BASE = "";
+const API_BASE = "https://herenciapp-market-production.up.railway.app";
 let backendAvailable = true;
 let lastBackendError: string | null = null;
 
