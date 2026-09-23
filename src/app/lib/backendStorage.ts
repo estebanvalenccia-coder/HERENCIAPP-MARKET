@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "https://herenciapp-market-production.up.railway.app";
+const DEFAULT_API_BASE = "/api";
 
 function normalizeApiBase(value?: string) {
   const rawValue = (value || DEFAULT_API_BASE).trim();
