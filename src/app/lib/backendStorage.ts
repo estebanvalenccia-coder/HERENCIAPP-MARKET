@@ -82,7 +82,7 @@ const fallbackBouquetImages = [
 ];
 
 function shouldSyncWithBackend(key: string) {
-  return Boolean(API_BASE) && remotelySyncedKeys.has(key);
+  return remotelySyncedKeys.has(key);
 }
 
 function sanitizeForClient(_key: string, value: string) {
