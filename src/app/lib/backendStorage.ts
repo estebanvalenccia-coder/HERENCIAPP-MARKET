@@ -1,7 +1,7 @@
 const DEFAULT_API_BASE = "";
 
 function normalizeApiBase(value?: string) {
-  const rawValue = (value ?? DEFAULT_API_BASE).trim();
+  const envValue = (value || "").trim();\n  // Production uses the same-origin Vercel /api proxy. Ignore legacy values like "/api"\n  // because request paths already include the /api prefix.\n  const rawValue = envValue === "/api" ? DEFAULT_API_BASE : envValue || DEFAULT_API_BASE;
   if (!rawValue) return "";
 
   const withoutTrailingSlash = rawValue.replace(/\/$/, "");
@@ -14,7 +14,7 @@ function normalizeApiBase(value?: string) {
 }
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
-let backendAvailable = Boolean(API_BASE);
+let backendAvailable = true;
 let lastBackendError: string | null = null;
 
 type StoredValue = string | null;
