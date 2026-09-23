@@ -1,19 +1,6 @@
-const DEFAULT_API_BASE = "";
-
-function normalizeApiBase(value?: string) {
-  const envValue = (value || "").trim();\n  // Production uses the same-origin Vercel /api proxy. Ignore legacy values like "/api"\n  // because request paths already include the /api prefix.\n  const rawValue = envValue === "/api" ? DEFAULT_API_BASE : envValue || DEFAULT_API_BASE;
-  if (!rawValue) return "";
-
-  const withoutTrailingSlash = rawValue.replace(/\/$/, "");
-
-  if (/^https?:\/\//i.test(withoutTrailingSlash) || withoutTrailingSlash.startsWith("/")) {
-    return withoutTrailingSlash;
-  }
-
-  return `https://${withoutTrailingSlash}`;
-}
-
-const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
+// Browser requests always use the same-origin Vercel proxy.
+// Every endpoint below already starts with /api, so no API base prefix is needed.
+const API_BASE = "";
 let backendAvailable = true;
 let lastBackendError: string | null = null;
 
