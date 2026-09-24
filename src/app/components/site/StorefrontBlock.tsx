@@ -112,14 +112,20 @@ export function StorefrontBlock({
     return (
       <section
         className={`relative overflow-hidden ${hiddenMobileClass}`}
-        style={{ ...sectionStyle(block), minHeight: preview ? 460 : "78vh" }}
+        style={{
+          ...sectionStyle(block),
+          minHeight: `${Math.max(360, Number(block.design.minHeight || (preview ? 460 : 650)))}px`,
+        }}
       >
         {image && (
           <img
             src={image}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
-            style={{ objectPosition: block.design.imagePosition || "center" }}
+            style={{
+              objectPosition: block.design.imagePosition || "center",
+              transform: `scale(${Math.max(100, Number(block.design.imageZoom || 100)) / 100})`,
+            }}
           />
         )}
         <div
@@ -127,10 +133,13 @@ export function StorefrontBlock({
           style={{ backgroundColor: `rgba(0,0,0,${overlay})` }}
         />
         <div
-          className={`relative flex min-h-[460px] flex-col justify-center ${alignClass(
+          className={`relative flex flex-col justify-center ${alignClass(
             block.design.alignment
           )}`}
-          style={containerStyle(block)}
+          style={{
+            ...containerStyle(block),
+            minHeight: `${Math.max(360, Number(block.design.minHeight || (preview ? 460 : 650)))}px`,
+          }}
         >
           {block.data?.eyebrow && (
             <p className="mb-4 text-sm font-bold uppercase tracking-[0.22em] opacity-90">
@@ -284,7 +293,10 @@ export function StorefrontBlock({
             src={image}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
-            style={{ objectPosition: block.design.imagePosition || "center" }}
+            style={{
+              objectPosition: block.design.imagePosition || "center",
+              transform: `scale(${Math.max(100, Number(block.design.imageZoom || 100)) / 100})`,
+            }}
           />
         )}
         <div className="absolute inset-0" style={{ backgroundColor: `rgba(0,0,0,${overlay})` }} />
