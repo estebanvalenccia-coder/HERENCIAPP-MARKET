@@ -151,13 +151,15 @@ export function AdminContent() {
   async function saveAll() {
     setSaving(true);
     try {
+      const publishableSite = syncLegacyToBuilder(site);
       const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(site)),
-        site.hero.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: site.hero.imageUrl }))
+        backendStorage.setItem("siteContent", JSON.stringify(publishableSite)),
+        backendStorage.setItem("siteContentDraft", JSON.stringify(publishableSite)),
+        publishableSite.hero.imageUrl
+          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: publishableSite.hero.imageUrl }))
           : backendStorage.removeItem("heroBanner"),
-        site.cta.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: site.cta.imageUrl }))
+        publishableSite.cta.imageUrl
+          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: publishableSite.cta.imageUrl }))
           : backendStorage.removeItem("ctaBanner"),
       ]);
 
@@ -165,6 +167,7 @@ export function AdminContent() {
         throw new Error(results.find((result) => !result.ok)?.error || "No se pudo sincronizar todo");
       }
 
+      setSite(publishableSite);
       toast.success("Contenido guardado en el backend y publicado");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo guardar el contenido");
