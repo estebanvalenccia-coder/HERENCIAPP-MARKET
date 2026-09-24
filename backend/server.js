@@ -2273,6 +2273,23 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       .single();
     if (updateError) throw updateError;
 
+    const loyaltyCustomerId = String(order.metadata?.customerId || "").trim();
+    const loyaltyPointsEarned = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
+    if (loyaltyCustomerId && loyaltyPointsEarned > 0) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+      const posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+      const previousPoints = Number(posOperations.loyalty?.[loyaltyCustomerId]?.points || 0);
+      posOperations.loyalty = {
+        ...(posOperations.loyalty || {}),
+        [loyaltyCustomerId]: {
+          points: Math.max(0, previousPoints - loyaltyPointsEarned),
+          updatedAt: refundedAt,
+          lastRefundOrderId: orderId,
+        },
+      };
+      await upsertStorageValue("posOperations", JSON.stringify(posOperations));
+    }
+
     if (normalizePaymentMethod(order.payment_method) === "cash") {
       const session = await readPosCashSession();
       if (session?.status === "open") {
@@ -2338,6 +2355,8 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       customerNif: customer.nif,
       customerAddress: customer.address,
       customerPhone: customer.phone,
+      customerId: customer.id,
+      loyaltyPointsEarned,
       fiscalSnapshot: fiscalSettings,
       inventoryCommittedAt: null,
     };
@@ -2456,6 +2475,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     );
     const received = Number(req.body?.received || 0);
     const totals = calculatePosTotals(prepared.items, received);
+    const loyaltyPointsEarned = customer.id && customer.id !== "walk-in" ? Math.max(0, Math.floor(totals.total)) : 0;
 
     if (paymentMethod === "cash" && totals.total > 0 && received < totals.total) {
       return res.status(400).json({ error: "El efectivo recibido es inferior al total" });
@@ -2540,6 +2560,21 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     if (paymentMethod === "cash") {
       cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
       cashSessionWasWritten = true;
+    }
+
+    if (loyaltyPointsEarned > 0) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+      const posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+      const previousPoints = Number(posOperations.loyalty?.[customer.id]?.points || 0);
+      posOperations.loyalty = {
+        ...(posOperations.loyalty || {}),
+        [customer.id]: {
+          points: previousPoints + loyaltyPointsEarned,
+          updatedAt: now,
+          lastOrderId: savedOrder.id,
+        },
+      };
+      await upsertStorageValue("posOperations", JSON.stringify(posOperations));
     }
 
     if (!existingOrder) {
