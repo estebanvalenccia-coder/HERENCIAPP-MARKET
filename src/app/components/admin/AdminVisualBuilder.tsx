@@ -7,6 +7,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ExternalLink,
   GripVertical,
   History,
   Image as ImageIcon,
@@ -616,6 +617,13 @@ export function AdminVisualBuilder({
             ))}
           </div>
 
+          <button
+            type="button"
+            onClick={() => window.open("/", "_blank")}
+            className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold xl:flex"
+          >
+            <ExternalLink className="h-4 w-4" /> Ver sitio
+          </button>
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
