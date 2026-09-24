@@ -11,6 +11,9 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     description: "",
     price: "",
     salePrice: "",
+    sku: "",
+    stock: "0",
+    iva: "21",
     category: "flores",
     featured: false,
     onSale: false,
@@ -62,6 +65,9 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       description: formData.description.trim(),
       price: parseFloat(formData.price),
       salePrice: formData.onSale ? parseFloat(formData.salePrice) : undefined,
+      sku: formData.sku.trim() || `SKU-${Date.now()}`,
+      stock: Math.max(0, Math.floor(parseFloat(formData.stock) || 0)),
+      iva: Math.max(0, parseFloat(formData.iva) || 21),
       category: formData.category,
       image: imagePreview,
       featured: formData.featured,
@@ -84,6 +90,9 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       description: "",
       price: "",
       salePrice: "",
+      sku: "",
+      stock: "0",
+      iva: "21",
       category: "flores",
       featured: false,
       onSale: false,
@@ -215,6 +224,41 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">SKU / Código</label>
+              <input
+                type="text"
+                value={formData.sku}
+                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                placeholder="Ej: RAM-001"
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Stock real *</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={formData.stock}
+                onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">IVA (%) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.iva}
+                onChange={(e) => setFormData({ ...formData, iva: e.target.value })}
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+              />
             </div>
           </div>
 
