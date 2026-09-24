@@ -502,6 +502,7 @@ export const backendApi = {
         received: number;
         change: number;
       };
+      cashSession?: any | null;
       idempotent?: boolean;
     }>("/api/pos/complete-sale", {
       method: "POST",
