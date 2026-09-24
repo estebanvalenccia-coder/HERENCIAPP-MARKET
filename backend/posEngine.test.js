@@ -26,7 +26,6 @@ test("venta ficticia descuenta stock y calcula totales", () => {
   assert.equal(result.totals.tax > 0, true);
 });
 
-
 test("permite artículo manual sin descontar stock", () => {
   const result = validateAndApplyStock(products, [
     { id: "manual-test-1", name: "Artículo", price: 4, iva: 21, quantity: 1, manual: true },
@@ -38,6 +37,33 @@ test("permite artículo manual sin descontar stock", () => {
   assert.equal(result.totals.total, 4);
   assert.equal(result.updatedProducts[0].stock, 5);
   assert.equal(result.updatedProducts[1].stock, 10);
+});
+
+test("artículo manual conserva IVA y descuento elegidos", () => {
+  const result = validateAndApplyStock(products, [
+    { id: "manual-test-discount", name: "Servicio", price: 50, iva: 10, quantity: 1, manual: true, discountPercent: 20 },
+  ]);
+  assert.equal(result.items[0].iva, 10);
+  assert.equal(result.items[0].discountPercent, 20);
+  assert.equal(result.totals.total, 40);
+  assert.equal(result.totals.tax, 3.64);
+});
+
+test("descuento de línea usa el precio autoritativo del catálogo", () => {
+  const result = validateAndApplyStock(products, [
+    { id: 1, quantity: 2, discountPercent: 10, price: 0.01 },
+  ]);
+  assert.equal(result.items[0].price, 10);
+  assert.equal(result.items[0].discountPercent, 10);
+  assert.equal(result.totals.total, 18);
+  assert.equal(result.updatedProducts[0].stock, 3);
+});
+
+test("limita descuentos fuera de rango", () => {
+  const free = calculatePosTotals([{ price: 10, iva: 21, quantity: 1, discountPercent: 500 }]);
+  const noDiscount = calculatePosTotals([{ price: 10, iva: 21, quantity: 1, discountPercent: -50 }]);
+  assert.equal(free.total, 0);
+  assert.equal(noDiscount.total, 10);
 });
 
 test("rechaza artículo manual con importe inválido", () => {
@@ -65,10 +91,16 @@ test("efectivo calcula cambio real", () => {
 test("métodos de pago mapean a estados operativos", () => {
   assert.equal(normalizePaymentMethod("Efectivo"), "cash");
   assert.equal(normalizePaymentMethod("Tarjeta"), "card");
+  assert.equal(normalizePaymentMethod("Mixto"), "mixed");
+  assert.equal(normalizePaymentMethod("pago_mixto"), "mixed");
+  assert.equal(normalizePaymentMethod("gift_card"), "gift_card");
+  assert.equal(normalizePaymentMethod("tarjeta_regalo"), "gift_card");
   assert.equal(paymentStatusForMethod("Efectivo"), "paid");
   assert.equal(paymentStatusForMethod("Tarjeta"), "payment_pending");
   assert.equal(paymentStatusForMethod("Bizum"), "pending_bizum_review");
   assert.equal(paymentStatusForMethod("Transferencia"), "pending_transfer_review");
+  assert.equal(paymentStatusForMethod("Mixto"), "paid");
+  assert.equal(paymentStatusForMethod("gift_card"), "paid");
 });
 
 test("numeración de ticket y factura", () => {
