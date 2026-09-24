@@ -112,23 +112,17 @@ export function Layout() {
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              <Link
-                to="/carrito"
-                className="relative p-2 rounded-lg hover:bg-accent transition-colors"
-              >
+              <ActionLink href={site.headerActions.cartHref} className="relative p-2 rounded-lg hover:bg-accent transition-colors">
                 <ShoppingCart className="w-5 h-5 text-foreground" />
                 {cartCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center font-medium">
                     {cartCount}
                   </span>
                 )}
-              </Link>
-              <Link
-                to="/perfil"
-                className="p-2 rounded-lg hover:bg-accent transition-colors"
-              >
+              </ActionLink>
+              <ActionLink href={site.headerActions.profileHref} className="p-2 rounded-lg hover:bg-accent transition-colors">
                 <User className="w-5 h-5 text-foreground" />
-              </Link>
+              </ActionLink>
             </div>
           </div>
 
@@ -211,11 +205,11 @@ export function Layout() {
                 {site.footer.copyright} {site.footer.developerLabel ? <>| <span className="font-semibold text-foreground">{site.footer.developerLabel}</span></> : null}
               </p>
               <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-                <Link to="/privacidad" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.privacyLabel}</Link>
+                <FooterLink href={site.footer.privacyHref}>{site.footer.privacyLabel}</FooterLink>
                 <span className="text-muted-foreground/30">•</span>
-                <Link to="/cookies" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.cookiesLabel}</Link>
+                <FooterLink href={site.footer.cookiesHref}>{site.footer.cookiesLabel}</FooterLink>
                 <span className="text-muted-foreground/30">•</span>
-                <Link to="/terminos" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.termsLabel}</Link>
+                <FooterLink href={site.footer.termsHref}>{site.footer.termsLabel}</FooterLink>
               </div>
             </div>
           </div>
@@ -246,6 +240,13 @@ function MobileNavLink({ to, icon: Icon, label, active }: { to: string; icon: an
     return <a href={to} className={className} target="_blank" rel="noopener noreferrer"><Icon className="w-4 h-4" /><span>{label}</span></a>;
   }
   return <Link to={to || "/"} className={className}><Icon className="w-4 h-4" /><span>{label}</span></Link>;
+}
+
+function ActionLink({ href, className, children }: { href: string; className?: string; children: React.ReactNode }) {
+  if (isExternalHref(href)) {
+    return <a href={href} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>;
+  }
+  return <Link to={href || "/"} className={className}>{children}</Link>;
 }
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
