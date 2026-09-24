@@ -1914,7 +1914,13 @@ app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
-    res.json({ operations: { ...defaults, ...(saved || {}) } });
+    const operations = { ...defaults, ...(saved || {}) };
+    res.json({
+      operations: {
+        ...operations,
+        staff: (operations.staff || []).map(({ pinHash, pinSalt, ...item }) => item),
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1927,7 +1933,12 @@ app.put("/api/pos/operations", requireAdmin, async (req, res) => {
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const next = { ...current, ...(req.body || {}) };
     await upsertStorageValue("posOperations", JSON.stringify(next));
-    res.json({ operations: next });
+    res.json({
+      operations: {
+        ...next,
+        staff: (next.staff || []).map(({ pinHash, pinSalt, ...item }) => item),
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
