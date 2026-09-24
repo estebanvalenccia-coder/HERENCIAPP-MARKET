@@ -420,6 +420,17 @@ export const backendApi = {
     }>("/api/pos/bootstrap");
   },
 
+  async posSelfTest() {
+    return request<{
+      ok: boolean;
+      cardReady: boolean;
+      stockReady: boolean;
+      fiscalReady: boolean;
+      tests: Array<{ name: string; ok: boolean; detail: string }>;
+      ranAt?: string;
+    }>("/api/pos/self-test");
+  },
+
   async savePosCustomer(payload: any) {
     return request<{ customer: any; customers: any[] }>("/api/pos/customers", {
       method: "POST",
