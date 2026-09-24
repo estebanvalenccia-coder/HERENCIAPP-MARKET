@@ -2,3 +2,21 @@
 @source '../**/*.{js,ts,jsx,tsx}';
 
 @import 'tw-animate-css';
+
+
+/* Responsive page-builder grids also react inside the admin device preview. */
+.builder-page-container {
+  container-type: inline-size;
+}
+
+@container (max-width: 700px) {
+  .builder-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@container (min-width: 701px) and (max-width: 1024px) {
+  .builder-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
