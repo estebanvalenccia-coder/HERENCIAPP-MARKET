@@ -475,7 +475,7 @@ export function AdminVisualBuilder({
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
       const previousRaw = backendStorage.getItem("siteContent");
       const previous = previousRaw ? parseSiteContent(previousRaw) : publishedSite;
-      const nextHistory: StoredVersion[] = [
+      let nextHistory: StoredVersion[] = [
         {
           id: makeBuilderId("version"),
           at: new Date().toISOString(),
@@ -484,6 +484,11 @@ export function AdminVisualBuilder({
         },
         ...versions,
       ].slice(0, 12);
+
+      // Evita que el historial con imágenes base64 supere el límite del backend.
+      while (nextHistory.length > 1 && JSON.stringify(nextHistory).length > 5_000_000) {
+        nextHistory = nextHistory.slice(0, -1);
+      }
 
       const hero = ensureBuilderBlocks(nextPublished).find((block) => block.type === "hero");
       const cta = ensureBuilderBlocks(nextPublished).find((block) => block.type === "cta");
