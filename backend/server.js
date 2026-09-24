@@ -799,6 +799,7 @@ app.post(
           console.error("Error actualizando pedido pagado:", error.message);
         } else {
           broadcastAdminOrderEvent(updatedOrder, "order_paid");
+          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
 
           try {
             await sendOrderConfirmationEmails(updatedOrder, "stripe_payment_succeeded");
@@ -898,6 +899,29 @@ function broadcastAdminOrderEvent(order, kind = "order_created") {
   }
 
   return true;
+}
+
+
+async function emitNeuralBusinessEvent(type, payload = {}) {
+  const baseUrl = String(process.env.NEURAL_SERVICE_URL || "").replace(/\/$/, "");
+  const adminToken = process.env.NEURAL_ADMIN_TOKEN;
+  if (!baseUrl || !adminToken) return { skipped: true, reason: "neural_not_configured" };
+  try {
+    const response = await fetch(`${baseUrl}/v1/neural/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Neural-Admin-Token": adminToken,
+      },
+      body: JSON.stringify({ type, payload, meta: { source: "herencia_backend" } }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`Neural event HTTP ${response.status}`);
+    return { ok: true };
+  } catch (error) {
+    console.warn("No se pudo emitir evento a Neural:", type, error?.message || error);
+    return { ok: false, error: error?.message || String(error) };
+  }
 }
 
 app.get("/api/admin/order-events", requireAdmin, (req, res) => {
@@ -1136,6 +1160,7 @@ app.post("/api/orders", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   broadcastAdminOrderEvent(data, "order_created");
+  void emitNeuralBusinessEvent("order.created", normalizeOrder(data));
 
   try {
     await sendOrderConfirmationEmails(data, "order_created");
@@ -1236,6 +1261,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     }
   }
 
+  void emitNeuralBusinessEvent("order.status_changed", { ...normalizeOrder(data), previousStatus: previousOrder.status, nextStatus: status });
   res.json({ order: data, statusEmailResult });
 });
 
@@ -1953,6 +1979,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     if (!existingOrder) {
       broadcastAdminOrderEvent(savedOrder, status === "paid" ? "order_paid" : "order_created");
+      void emitNeuralBusinessEvent(status === "paid" ? "sale.completed" : "order.created", normalizeOrder(savedOrder));
 
       if (status === "paid") {
         try {
@@ -2413,6 +2440,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
 
   if (isPaid) {
     broadcastAdminOrderEvent(updatedOrder, "order_paid");
+          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
 
     try {
       emailResults = await sendOrderConfirmationEmails(
@@ -2481,6 +2509,64 @@ app.get("/api/neural-bridge/snapshot", requireNeuralBridge, async (_req, res) =>
   res.json({ products, inventory, orders: orders || [], customers, sales, updatedAt: new Date().toISOString() });
 });
 
+
+
+app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, heroRaw, ctaRaw] = await Promise.all([
+      supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
+      readStorageValue("adminProducts"),
+      readStorageValue("posCashSession"),
+      readStorageValue("siteContent"),
+      readStorageValue("heroBanner"),
+      readStorageValue("ctaBanner"),
+    ]);
+    if (orderError) throw orderError;
+    const products = parseStoredJson(productsRaw, []);
+    const cash = parseStoredJson(cashRaw, null);
+    const web = {
+      siteContent: parseStoredJson(siteRaw, {}),
+      heroBanner: parseStoredJson(heroRaw, {}),
+      ctaBanner: parseStoredJson(ctaRaw, {}),
+    };
+    const inventory = products.map((p) => ({
+      id: p.id,
+      name: p.name || p.title,
+      stock: Number(p.stock || 0),
+      price: Number(p.price || 0),
+      category: p.category || null,
+      sku: p.sku || null,
+    }));
+    const customers = [...new Map((orders || []).filter(o => o.customer_email).map(o => [
+      o.customer_email,
+      { email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }
+    ])).values()];
+    const sales = (orders || []).filter(o => ["paid","confirmed","preparing","ready","delivered","completed"].includes(o.status));
+    const revenue = sales.reduce((sum,o)=>sum+Number(o.total||0),0);
+    const finance = {
+      revenue,
+      transactions: sales.length,
+      averageTicket: sales.length ? revenue / sales.length : 0,
+      derivedFrom: "verified_orders",
+    };
+    res.json({
+      products,
+      inventory,
+      orders: orders || [],
+      customers,
+      sales,
+      cash,
+      finance,
+      suppliers: [],
+      conversations: [],
+      web,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo construir el Digital Twin" });
+  }
+});
 
 // Admin proxy to the independent HERENCIA Neural service.
 // Browser clients never receive NEURAL_ADMIN_TOKEN or the internal Neural service URL.
