@@ -559,6 +559,10 @@ export const backendApi = {
     });
   },
 
+  async neuralBrief() {
+    return request<any>("/api/neural/brief");
+  },
+
   async neuralStatus() {
     return request<any>("/api/neural/status");
   },
