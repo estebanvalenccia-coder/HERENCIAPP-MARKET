@@ -156,6 +156,8 @@ const protectedKeys = new Set([
   "heroBanner",
   "ctaBanner",
   "siteContent",
+  "siteContentDraft",
+  "siteContentHistory",
   "__backendStorage_test__",
 ]);
 
