@@ -150,6 +150,9 @@ const protectedKeys = new Set([
   "posCustomers",
   "posFiscalSettings",
   "posCashSession",
+  "herencia_finance_closures",
+  "herencia_finance_expenses",
+  "herencia_finance_sales",
   "adminProducts",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
@@ -174,6 +177,7 @@ const adminOnlyStorageKeys = [
   "posCashSession",
   "siteContentDraft",
   "siteContentHistory",
+  "herencia_finance_sales",
 ];
 
 function parseCookies(req) {
@@ -2804,12 +2808,26 @@ app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) =>
 app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw] = await Promise.all([
+    const [
+      { data: orders, error: orderError },
+      productsRaw,
+      cashRaw,
+      siteRaw,
+      draftRaw,
+      manualSalesRaw,
+      expensesRaw,
+      closuresRaw,
+      flowerCostsRaw,
+    ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
       readStorageValue("adminProducts"),
       readStorageValue("posCashSession"),
       readStorageValue("siteContent"),
       readStorageValue("siteContentDraft"),
+      readStorageValue("herencia_finance_sales"),
+      readStorageValue("herencia_finance_expenses"),
+      readStorageValue("herencia_finance_closures"),
+      readStorageValue("adminFlowerCosts"),
     ]);
     if (orderError) throw orderError;
     const products = parseStoredJson(productsRaw, []);
@@ -2817,6 +2835,28 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
     const customers = [...new Map((orders || []).filter(o => o.customer_email).map(o => [o.customer_email, { email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }])).values()];
     const sales = (orders || []).filter(o => ["paid","confirmed","preparing","ready","delivered","completed"].includes(o.status));
     const revenue = sales.reduce((sum,o)=>sum+Number(o.total||0),0);
+    const manualSales = parseStoredJson(manualSalesRaw, []);
+    const expenses = parseStoredJson(expensesRaw, []);
+    const closures = parseStoredJson(closuresRaw, []);
+    const flowerCosts = parseStoredJson(flowerCostsRaw, []);
+    const supplierMap = new Map();
+    for (const flower of Array.isArray(flowerCosts) ? flowerCosts : []) {
+      const name = String(flower?.supplier || "").trim();
+      if (!name) continue;
+      const current = supplierMap.get(name) || { name, products: [], inventoryCost: 0 };
+      current.products.push({
+        id: flower.id,
+        name: flower.name,
+        category: flower.category,
+        stock: Number(flower.stock || 0),
+        purchasePrice: Number(flower.purchasePrice || 0),
+        salePrice: Number(flower.salePrice || 0),
+      });
+      current.inventoryCost += Number(flower.purchasePrice || 0) * Number(flower.stock || 0);
+      supplierMap.set(name, current);
+    }
+    const manualRevenue = manualSales.reduce((sum, sale) => sum + Number(sale.amount || 0), 0);
+    const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
     res.json({
       products,
       inventory,
@@ -2824,8 +2864,19 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       customers,
       sales,
       cash: parseStoredJson(cashRaw, null),
-      finance: { revenue, transactions: sales.length, averageTicket: sales.length ? revenue / sales.length : 0, derivedFrom: "verified_orders" },
-      suppliers: [],
+      finance: {
+        revenue,
+        transactions: sales.length,
+        averageTicket: sales.length ? revenue / sales.length : 0,
+        manualSales,
+        manualRevenue,
+        expenses,
+        expenseTotal,
+        closures,
+        netBeforeCosts: revenue + manualRevenue - expenseTotal,
+        derivedFrom: ["verified_orders", "admin_finance_records"],
+      },
+      suppliers: [...supplierMap.values()],
       conversations: [],
       web: { published: parseStoredJson(siteRaw, {}), draft: parseStoredJson(draftRaw, {}) },
       updatedAt: new Date().toISOString(),
