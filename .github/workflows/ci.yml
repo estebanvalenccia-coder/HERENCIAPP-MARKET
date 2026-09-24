@@ -1,7 +1,7 @@
 name: Herencia CI
 on:
   push:
-    branches: ["feature/herencia-neural-command-center"]
+    branches: ["feature/herencia-neural-command-center","feature/herencia-neural-v2"]
   pull_request:
 jobs:
   build:
