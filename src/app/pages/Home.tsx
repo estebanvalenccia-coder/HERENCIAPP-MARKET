@@ -49,7 +49,7 @@ export function Home() {
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
 
   return (
-    <div>
+    <div className="builder-page-container">
       {blocks.map((block) => (
         <StorefrontBlock
           key={block.id}
