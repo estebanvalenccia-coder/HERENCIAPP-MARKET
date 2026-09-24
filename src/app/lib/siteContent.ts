@@ -26,6 +26,8 @@ export type BuilderBlockDesign = {
   overlay: number;
   alignment: BuilderAlignment;
   imagePosition: string;
+  imageZoom: number;
+  minHeight: number;
   headingScale: number;
   fontFamily: string;
   hiddenMobile: boolean;
@@ -334,6 +336,8 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
     overlay: 42,
     alignment: "left",
     imagePosition: "center",
+    imageZoom: 100,
+    minHeight: 0,
     headingScale: 100,
     fontFamily: "inherit",
     hiddenMobile: false,
@@ -347,6 +351,8 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
       paddingY: 96,
       overlay: 52,
       radius: 0,
+      imageZoom: 100,
+      minHeight: 650,
       headingScale: 125,
     };
   }
