@@ -625,7 +625,7 @@ export const backendApi = {
     });
   },
 
-  async adjustPosInventory(payload: { productId: string; type: "count" | "waste" | "breakage" | "manual"; reason?: string; delta?: number; countedStock?: number }) {
+  async adjustPosInventory(payload: { productId: string; type: "count" | "waste" | "breakage" | "manual"; reason?: string; delta?: number; countedStock?: number; staff?: { id: string; name: string; role: string } }) {
     return request<{ adjustment: any; inventory: any[]; operations: any }>("/api/pos/inventory-adjustments", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -644,7 +644,7 @@ export const backendApi = {
     return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
   },
 
-  async refundPosSale(payload: { orderId: string; reason?: string }) {
+  async refundPosSale(payload: { orderId: string; reason?: string; staff?: { id: string; name: string; role: string } }) {
     return request<{ ok: boolean; order: any; inventory: any[]; refundNumber: string }>("/api/pos/refund", {
       method: "POST",
       body: JSON.stringify(payload),
