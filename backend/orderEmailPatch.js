@@ -12,10 +12,16 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
 
-const sessionSecret =
+const configuredSessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "change-me-in-production";
+  "";
+const sessionSecret =
+  configuredSessionSecret || crypto.randomBytes(32).toString("hex");
+
+if (!configuredSessionSecret) {
+  console.warn("orderEmailPatch: ADMIN_SESSION_SECRET no configurado; las sesiones no persistirán tras reiniciar.");
+}
 
 function parseCookies(req) {
   return Object.fromEntries(
