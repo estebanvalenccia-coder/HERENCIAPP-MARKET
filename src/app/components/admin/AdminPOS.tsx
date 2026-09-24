@@ -106,7 +106,9 @@ function CardPaymentForm({
 }
 
 export function AdminPOS() {
-  const stripePublishable = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
+  const envStripePublishable = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
+  const [stripePublishable, setStripePublishable] = useState(envStripePublishable);
+  const [stripeSecretConfigured, setStripeSecretConfigured] = useState(false);
   const stripePromise = useMemo(() => (stripePublishable ? loadStripe(stripePublishable) : null), [stripePublishable]);
 
   const [products, setProducts] = useState<PosItem[]>([]);
@@ -131,6 +133,10 @@ export function AdminPOS() {
   const [fiscalDraft, setFiscalDraft] = useState<FiscalSettings>(EMPTY_FISCAL);
   const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId: string } | null>(null);
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
+  const [cashSession, setCashSession] = useState<any | null>(null);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
+  const [calcOperator, setCalcOperator] = useState<"+" | "-" | "×" | "÷" | null>(null);
   const [testingSystem, setTestingSystem] = useState(false);
   const [selfTestResult, setSelfTestResult] = useState<{
     ok: boolean;
@@ -157,6 +163,10 @@ export function AdminPOS() {
       setCustomers(realCustomers);
       setFiscal({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       setFiscalDraft({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
+      const backendStripeKey = String(data.stripeSettings?.publishableKey || "").trim();
+      setStripePublishable(backendStripeKey || envStripePublishable);
+      setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
+      setCashSession(data.cashSession || null);
       setBackendConnected(true);
     } catch (error: any) {
       setBackendConnected(false);
@@ -221,8 +231,21 @@ export function AdminPOS() {
     }).filter((line) => line.qty > 0));
   }
 
+  function keypadNumber() {
+    const value = Number(keypad || 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function calculate(left: number, operator: "+" | "-" | "×" | "÷", right: number) {
+    if (operator === "+") return left + right;
+    if (operator === "-") return left - right;
+    if (operator === "×") return left * right;
+    if (right === 0) throw new Error("No se puede dividir entre cero");
+    return left / right;
+  }
+
   function setSelectedQty() {
-    const qty = Math.floor(Number(keypad || 0));
+    const qty = Math.floor(keypadNumber());
     if (!selectedLineId || qty <= 0) return toast.error("Selecciona un artículo y escribe una cantidad");
     setCart((current) => current.map((line) => {
       if (line.id !== selectedLineId) return line;
@@ -233,13 +256,52 @@ export function AdminPOS() {
       return { ...line, qty };
     }));
     setKeypad("");
+    setCalcAccumulator(null);
+    setCalcOperator(null);
   }
 
-  function applyCash(sign: 1 | -1) {
-    const amount = Number(keypad || 0);
-    if (!Number.isFinite(amount) || amount <= 0) return;
-    setReceived((current) => Math.max(0, Math.round((current + sign * amount) * 100) / 100));
+  function useCalculatorAsCash() {
+    const amount = keypadNumber();
+    if (amount < 0) return toast.error("El efectivo no puede ser negativo");
+    setReceived(Math.round(amount * 100) / 100);
     setKeypad("");
+    setCalcAccumulator(null);
+    setCalcOperator(null);
+  }
+
+  function pressOperator(operator: "+" | "-" | "×" | "÷") {
+    const current = keypadNumber();
+    try {
+      if (calcAccumulator === null) {
+        setCalcAccumulator(current);
+      } else if (calcOperator && keypad !== "") {
+        const result = calculate(calcAccumulator, calcOperator, current);
+        setCalcAccumulator(result);
+      }
+      setCalcOperator(operator);
+      setKeypad("");
+    } catch (error: any) {
+      toast.error(error.message);
+      setCalcAccumulator(null);
+      setCalcOperator(null);
+      setKeypad("");
+    }
+  }
+
+  function pressEquals() {
+    if (calcAccumulator === null || !calcOperator || keypad === "") return;
+    try {
+      const result = calculate(calcAccumulator, calcOperator, keypadNumber());
+      const rounded = Math.round(result * 100) / 100;
+      setKeypad(String(rounded));
+      setCalcAccumulator(null);
+      setCalcOperator(null);
+    } catch (error: any) {
+      toast.error(error.message);
+      setCalcAccumulator(null);
+      setCalcOperator(null);
+      setKeypad("");
+    }
   }
 
   function pressKey(key: string) {
@@ -249,6 +311,12 @@ export function AdminPOS() {
       if (key === "00") return current ? current + "00" : "0";
       return current === "0" ? key : current + key;
     });
+  }
+
+  function clearCalculator() {
+    setKeypad("");
+    setCalcAccumulator(null);
+    setCalcOperator(null);
   }
 
   function removeLine(id: string) {
@@ -263,6 +331,8 @@ export function AdminPOS() {
     setNotes("");
     setReceived(0);
     setKeypad("");
+    setCalcAccumulator(null);
+    setCalcOperator(null);
     setPayment("Efectivo");
     setDocumentType("ticket");
   }
@@ -295,6 +365,10 @@ export function AdminPOS() {
   async function completeNonCardSale() {
     if (!cart.length) return toast.error("Añade productos a la venta");
     if (!invoiceRequirementsOk()) return;
+    if (payment === "Efectivo" && cashSession?.status !== "open") {
+      toast.error("La caja está cerrada. Pulsa Abrir caja antes de cobrar en efectivo.");
+      return;
+    }
     if (payment === "Efectivo" && received < totals.total) return toast.error("El efectivo recibido es inferior al total");
 
     setSubmitting(true);
@@ -309,6 +383,7 @@ export function AdminPOS() {
         fiscal,
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      if (result.cashSession) setCashSession(result.cashSession);
       setBackendConnected(true);
       if (payment === "Bizum" || payment === "Transferencia") {
         toast.success(`${result.documentNumber} registrado. Pago pendiente de verificación.`);
@@ -316,6 +391,7 @@ export function AdminPOS() {
         toast.success(`${result.documentNumber} cobrado y stock actualizado`);
       }
       clearSale();
+      if (autoPrint) setTimeout(() => window.print(), 200);
     } catch (error: any) {
       setBackendConnected(false);
       toast.error(error?.message || "No se pudo completar la venta");
@@ -327,7 +403,8 @@ export function AdminPOS() {
   async function startCardPayment() {
     if (!cart.length) return toast.error("Añade productos a la venta");
     if (!invoiceRequirementsOk()) return;
-    if (!stripePublishable || !stripePromise) return toast.error("Falta VITE_STRIPE_PUBLISHABLE_KEY para cobrar con tarjeta");
+    if (!stripeSecretConfigured) return toast.error("Stripe no tiene clave secreta configurada en Railway");
+    if (!stripePublishable || !stripePromise) return toast.error("Falta la clave pública de Stripe. Configúrala en Ajustes > Stripe.");
 
     setSubmitting(true);
     try {
@@ -369,10 +446,69 @@ export function AdminPOS() {
       setCardSession(null);
       toast.success(`${result.documentNumber} cobrado con tarjeta y stock actualizado`);
       clearSale();
+      if (autoPrint) setTimeout(() => window.print(), 200);
     } catch (error: any) {
       toast.error(error?.message || "El pago se cobró pero no se pudo cerrar la venta");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function openCashDrawer() {
+    const raw = window.prompt("Fondo inicial de caja (€)", "0");
+    if (raw === null) return;
+    const openingAmount = Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(openingAmount) || openingAmount < 0) {
+      toast.error("Importe de apertura inválido");
+      return;
+    }
+
+    try {
+      const result = await backendApi.openPosCashSession(openingAmount);
+      setCashSession(result.session);
+      toast.success(`Caja abierta con ${money(openingAmount)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo abrir la caja");
+    }
+  }
+
+  async function addCashMovement(type: "in" | "out") {
+    const raw = window.prompt(type === "in" ? "Entrada de efectivo (€)" : "Salida de efectivo (€)", "");
+    if (raw === null) return;
+    const amount = Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Importe inválido");
+      return;
+    }
+    const note = window.prompt("Concepto / nota", type === "in" ? "Entrada manual" : "Salida manual") || "";
+
+    try {
+      const result = await backendApi.addPosCashMovement({ type, amount, note });
+      setCashSession(result.session);
+      toast.success(type === "in" ? "Entrada registrada" : "Salida registrada");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar el movimiento");
+    }
+  }
+
+  async function closeCashDrawer() {
+    if (cashSession?.status !== "open") return toast.error("No hay caja abierta");
+    const suggested = String(Number(cashSession.expectedCash || 0).toFixed(2)).replace(".", ",");
+    const raw = window.prompt("Efectivo contado al cerrar (€)", suggested);
+    if (raw === null) return;
+    const countedCash = Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(countedCash) || countedCash < 0) {
+      toast.error("Importe de cierre inválido");
+      return;
+    }
+
+    try {
+      const result = await backendApi.closePosCashSession(countedCash);
+      setCashSession(result.session);
+      const diff = Number(result.session?.difference || 0);
+      toast.success(`Caja cerrada. Diferencia: ${money(diff)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cerrar la caja");
     }
   }
 
@@ -423,7 +559,10 @@ export function AdminPOS() {
   }
 
   function printReceipt() {
-    if (!lastReceipt && !cart.length) return toast.error("No hay ticket o factura para imprimir");
+    if (!lastReceipt) {
+      toast.error("Primero finaliza una venta para imprimir un ticket o factura definitivo");
+      return;
+    }
     window.print();
   }
 
@@ -440,6 +579,9 @@ export function AdminPOS() {
     customer,
     fiscal,
   } : null);
+
+  const cardReady = Boolean(stripePublishable && stripeSecretConfigured && stripePromise);
+  const printerReady = typeof window !== "undefined" && typeof window.print === "function";
 
   const paymentHelp =
     payment === "Efectivo"
@@ -472,7 +614,16 @@ export function AdminPOS() {
             {testingSystem ? "Probando..." : "Probar TPV"}
           </button>
           <button onClick={() => setShowFiscalModal(true)} className="flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 font-bold"><Settings className="h-4 w-4" /> Datos fiscales</button>
-          <button onClick={printReceipt} className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white"><Printer className="h-4 w-4" /> Imprimir</button>
+          <span className={`rounded-xl px-3 py-2 text-xs font-bold ${printerReady ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+            {printerReady ? "Impresión del sistema lista" : "Impresión no disponible"}
+          </span>
+          <button
+            onClick={printReceipt}
+            disabled={!lastReceipt || !printerReady}
+            className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white disabled:opacity-40"
+          >
+            <Printer className="h-4 w-4" /> Imprimir último
+          </button>
         </div>
       </div>
 
@@ -497,6 +648,30 @@ export function AdminPOS() {
           </div>
         </div>
       )}
+
+      <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4 print:hidden">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="font-black text-amber-950">
+              Caja física · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
+            </p>
+            <p className="text-sm text-amber-800">
+              Fondo {money(Number(cashSession?.openingAmount || 0))} · Ventas efectivo {money(Number(cashSession?.cashSales || 0))} · Esperado {money(Number(cashSession?.expectedCash || 0))}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {cashSession?.status !== "open" ? (
+              <button onClick={() => void openCashDrawer()} className="rounded-xl bg-emerald-600 px-4 py-2 font-black text-white">Abrir caja</button>
+            ) : (
+              <>
+                <button onClick={() => void addCashMovement("in")} className="rounded-xl bg-white px-4 py-2 font-bold text-emerald-700">+ Entrada</button>
+                <button onClick={() => void addCashMovement("out")} className="rounded-xl bg-white px-4 py-2 font-bold text-rose-700">− Salida</button>
+                <button onClick={() => void closeCashDrawer()} className="rounded-xl bg-zinc-900 px-4 py-2 font-black text-white">Cerrar caja</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_430px] print:hidden">
         <section className="space-y-5">
@@ -588,6 +763,15 @@ export function AdminPOS() {
               ))}
             </div>
             <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-600">{paymentHelp}</p>
+            {payment === "Tarjeta" && !cardReady && (
+              <p className="mt-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-700">
+                Tarjeta no está lista: {stripeSecretConfigured ? "falta la clave pública de Stripe en Ajustes" : "falta STRIPE_SECRET_KEY en Railway"}.
+              </p>
+            )}
+            <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-zinc-700">
+              <input type="checkbox" checked={autoPrint} onChange={(e) => setAutoPrint(e.target.checked)} />
+              Abrir impresión automáticamente después de cobrar
+            </label>
 
             {payment === "Efectivo" && (
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -601,16 +785,43 @@ export function AdminPOS() {
               <div className="grid grid-cols-3 gap-2">
                 {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00", "."].map((key) => <button key={key} onClick={() => pressKey(key)} className="rounded-xl bg-white/10 py-3 text-lg font-black hover:bg-white/20">{key}</button>)}
               </div>
-              <div className="mt-2 grid grid-cols-4 gap-2 text-sm font-black">
-                <button onClick={() => applyCash(1)} className="rounded-xl bg-emerald-600 py-3">+</button>
-                <button onClick={() => applyCash(-1)} className="rounded-xl bg-rose-600 py-3">−</button>
-                <button onClick={setSelectedQty} className="rounded-xl bg-blue-600 py-3">× Uds.</button>
-                <button onClick={() => setKeypad("")} className="rounded-xl bg-zinc-700 py-3">C</button>
+              <div className="mt-2 grid grid-cols-5 gap-2 text-sm font-black">
+                <button onClick={() => pressOperator("+")} className={`rounded-xl py-3 ${calcOperator === "+" ? "bg-emerald-500" : "bg-white/10"}`}>+</button>
+                <button onClick={() => pressOperator("-")} className={`rounded-xl py-3 ${calcOperator === "-" ? "bg-emerald-500" : "bg-white/10"}`}>−</button>
+                <button onClick={() => pressOperator("×")} className={`rounded-xl py-3 ${calcOperator === "×" ? "bg-emerald-500" : "bg-white/10"}`}>×</button>
+                <button onClick={() => pressOperator("÷")} className={`rounded-xl py-3 ${calcOperator === "÷" ? "bg-emerald-500" : "bg-white/10"}`}>÷</button>
+                <button onClick={pressEquals} className="rounded-xl bg-emerald-600 py-3 text-xl">=</button>
               </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-black">
+                <button onClick={useCalculatorAsCash} className="rounded-xl bg-amber-500 py-3 text-zinc-950">Aplicar a efectivo</button>
+                <button onClick={setSelectedQty} className="rounded-xl bg-blue-600 py-3">Aplicar a Uds.</button>
+                <button onClick={clearCalculator} className="rounded-xl bg-zinc-700 py-3">C</button>
+              </div>
+              {calcAccumulator !== null && calcOperator && (
+                <p className="mt-2 text-right text-xs text-zinc-400">
+                  {String(calcAccumulator).replace(".", ",")} {calcOperator} …
+                </p>
+              )}
             </div>
 
-            <button disabled={submitting || !cart.length} onClick={() => payment === "Tarjeta" ? void startCardPayment() : void completeNonCardSale()} className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:opacity-50">
-              {submitting ? "Procesando..." : payment === "Bizum" || payment === "Transferencia" ? `Registrar ${payment}` : `Cobrar ${money(totals.total)}`}
+            <button
+              disabled={
+                submitting ||
+                !cart.length ||
+                (payment === "Tarjeta" && !cardReady)
+              }
+              onClick={() => payment === "Tarjeta" ? void startCardPayment() : void completeNonCardSale()}
+              className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:opacity-50"
+            >
+              {submitting
+                ? "Procesando..."
+                : payment === "Efectivo" && cashSession?.status !== "open"
+                ? "Abre caja para cobrar"
+                : payment === "Bizum" || payment === "Transferencia"
+                ? `Registrar ${payment}`
+                : payment === "Tarjeta" && !cardReady
+                ? "Configura Stripe para cobrar"
+                : `Cobrar ${money(totals.total)}`}
             </button>
           </section>
 
