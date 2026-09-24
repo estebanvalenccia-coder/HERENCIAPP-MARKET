@@ -2376,6 +2376,51 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pos/mixed-card-intent", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
+
+  try {
+    const { products, fiscalSettings } = await loadPosBootstrap();
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
+    validatePosInvoiceData(documentType, customer, fiscalSettings);
+
+    const prepared = validateAndApplyStock(products, req.body?.items || []);
+    const totals = calculatePosTotals(prepared.items);
+    const cardAmount = normalizeMoney(req.body?.cardAmount);
+
+    if (cardAmount <= 0 || cardAmount > totals.total) {
+      return res.status(400).json({ error: "Importe de tarjeta inválido para el pago mixto" });
+    }
+
+    const amountCents = Math.round(cardAmount * 100);
+    if (amountCents < 50) {
+      return res.status(400).json({ error: "La parte de tarjeta debe ser de al menos 0,50 €" });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: "eur",
+      receipt_email: customer.email || undefined,
+      metadata: {
+        source: "TPV_ADMIN_MIXED",
+        customerId: customer.id,
+      },
+      payment_method_types: ["card"],
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      cardAmount,
+      totals,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo iniciar la parte de tarjeta" });
+  }
+});
+
 app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   if (!stripe) {
@@ -2473,6 +2518,8 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
   let createdOrderId = null;
   let originalCashSession = null;
   let cashSessionWasWritten = false;
+  let originalPosOperations = null;
+  let posOperationsWasWritten = false;
 
   try {
     const bootstrap = await loadPosBootstrap();
@@ -2527,6 +2574,90 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     const totals = calculatePosTotals(prepared.items, received);
     const loyaltyPointsEarned = customer.id && customer.id !== "walk-in" ? Math.max(0, Math.floor(totals.total)) : 0;
 
+    let mixedPayments = [];
+    let mixedCashAmount = 0;
+    let pendingPosOperations = null;
+
+    if (paymentMethod === "mixed") {
+      const rawPayments = Array.isArray(req.body?.payments) ? req.body.payments : [];
+      mixedPayments = rawPayments
+        .map((entry) => ({
+          method: normalizePaymentMethod(entry?.method),
+          amount: normalizeMoney(entry?.amount),
+          code: String(entry?.code || "").trim().toUpperCase(),
+        }))
+        .filter((entry) => entry.amount > 0);
+
+      if (!mixedPayments.length) {
+        return res.status(400).json({ error: "Añade al menos un método al pago mixto" });
+      }
+
+      const validMixedMethods = new Set(["cash", "card", "bizum", "transfer", "gift_card"]);
+      if (mixedPayments.some((entry) => !validMixedMethods.has(entry.method))) {
+        return res.status(400).json({ error: "El pago mixto contiene un método no admitido" });
+      }
+
+      const mixedTotal = normalizeMoney(mixedPayments.reduce((sum, entry) => sum + entry.amount, 0));
+      if (Math.abs(mixedTotal - totals.total) > 0.01) {
+        return res.status(400).json({ error: `El pago mixto suma ${mixedTotal.toFixed(2)} € y la venta es de ${totals.total.toFixed(2)} €` });
+      }
+
+      mixedCashAmount = normalizeMoney(
+        mixedPayments.filter((entry) => entry.method === "cash").reduce((sum, entry) => sum + entry.amount, 0)
+      );
+      const mixedCardAmount = normalizeMoney(
+        mixedPayments.filter((entry) => entry.method === "card").reduce((sum, entry) => sum + entry.amount, 0)
+      );
+
+      if (mixedCardAmount > 0) {
+        if (!stripe) return res.status(503).json({ error: "Stripe no está configurado" });
+        const paymentIntentId = String(req.body?.paymentIntentId || "").trim();
+        if (!paymentIntentId) return res.status(400).json({ error: "Falta confirmar la parte de tarjeta" });
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (intent.status !== "succeeded") {
+          return res.status(409).json({ error: "La parte de tarjeta todavía no está pagada" });
+        }
+        const paidCardAmount = normalizeMoney(Number(intent.amount_received || intent.amount || 0) / 100);
+        if (Math.abs(paidCardAmount - mixedCardAmount) > 0.01) {
+          return res.status(409).json({ error: "El importe confirmado por Stripe no coincide con la parte de tarjeta" });
+        }
+      }
+
+      if (mixedCashAmount > 0) {
+        const cashSession = await readPosCashSession();
+        if (!cashSession || cashSession.status !== "open") {
+          return res.status(409).json({ error: "La caja está cerrada. Ábrela para usar efectivo en un pago mixto." });
+        }
+        originalCashSession = cashSession;
+      }
+
+      const giftEntries = mixedPayments.filter((entry) => entry.method === "gift_card");
+      if (giftEntries.length) {
+        const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+        const storedOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+        originalPosOperations = storedOperations;
+        const requestedByCode = new Map();
+        for (const entry of giftEntries) {
+          if (!entry.code) return res.status(400).json({ error: "Falta el código de una tarjeta regalo" });
+          requestedByCode.set(entry.code, normalizeMoney((requestedByCode.get(entry.code) || 0) + entry.amount));
+        }
+        const nextCards = (storedOperations.giftCards || []).map((card) => {
+          const code = String(card?.code || "").toUpperCase();
+          const requestedAmount = requestedByCode.get(code) || 0;
+          if (!requestedAmount) return card;
+          if (card.active === false) throw new Error(`La tarjeta regalo ${code} está desactivada`);
+          if (Number(card.balance || 0) + 0.001 < requestedAmount) throw new Error(`Saldo insuficiente en ${code}`);
+          requestedByCode.delete(code);
+          const balance = normalizeMoney(Number(card.balance || 0) - requestedAmount);
+          return { ...card, balance, active: balance > 0, updatedAt: new Date().toISOString() };
+        });
+        if (requestedByCode.size) {
+          throw new Error(`Tarjeta regalo no encontrada: ${Array.from(requestedByCode.keys())[0]}`);
+        }
+        pendingPosOperations = { ...storedOperations, giftCards: nextCards };
+      }
+    }
+
     if (paymentMethod === "cash" && totals.total > 0 && received < totals.total) {
       return res.status(400).json({ error: "El efectivo recibido es inferior al total" });
     }
@@ -2539,7 +2670,14 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       originalCashSession = cashSession;
     }
 
-    const status = existingOrder ? "paid" : paymentStatusForMethod(paymentMethod);
+    const mixedNeedsReview =
+      paymentMethod === "mixed" &&
+      mixedPayments.some((entry) => entry.method === "bizum" || entry.method === "transfer");
+    const status = existingOrder
+      ? "paid"
+      : paymentMethod === "mixed"
+      ? (mixedNeedsReview ? "pending_manual_review" : "paid")
+      : paymentStatusForMethod(paymentMethod);
     const documentNumber = await reservePosDocumentNumber(documentType);
     const now = new Date().toISOString();
     const metadata = {
@@ -2553,7 +2691,8 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       customerPhone: customer.phone,
       fiscalSnapshot: fiscalSettings,
       tax: totals.tax,
-      received: paymentMethod === "cash" ? totals.received : totals.total,
+      paymentBreakdown: paymentMethod === "mixed" ? mixedPayments : undefined,
+      received: paymentMethod === "cash" ? totals.received : paymentMethod === "mixed" ? mixedCashAmount : totals.total,
       change: paymentMethod === "cash" ? totals.change : 0,
       inventoryCommittedAt: now,
     };
@@ -2610,21 +2749,35 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     if (paymentMethod === "cash") {
       cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
       cashSessionWasWritten = true;
+    } else if (paymentMethod === "mixed" && mixedCashAmount > 0) {
+      cashSession = await registerCashSaleInSession(mixedCashAmount, savedOrder.id);
+      cashSessionWasWritten = true;
     }
 
-    if (loyaltyPointsEarned > 0) {
-      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
-      const posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
-      const previousPoints = Number(posOperations.loyalty?.[customer.id]?.points || 0);
-      posOperations.loyalty = {
-        ...(posOperations.loyalty || {}),
-        [customer.id]: {
-          points: previousPoints + loyaltyPointsEarned,
-          updatedAt: now,
-          lastOrderId: savedOrder.id,
-        },
-      };
+    if (loyaltyPointsEarned > 0 || pendingPosOperations) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+      let posOperations = pendingPosOperations;
+      if (!posOperations) {
+        const storedOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+        if (!originalPosOperations) originalPosOperations = storedOperations;
+        posOperations = storedOperations;
+      }
+      if (loyaltyPointsEarned > 0) {
+        const previousPoints = Number(posOperations.loyalty?.[customer.id]?.points || 0);
+        posOperations = {
+          ...posOperations,
+          loyalty: {
+            ...(posOperations.loyalty || {}),
+            [customer.id]: {
+              points: previousPoints + loyaltyPointsEarned,
+              updatedAt: now,
+              lastOrderId: savedOrder.id,
+            },
+          },
+        };
+      }
       await upsertStorageValue("posOperations", JSON.stringify(posOperations));
+      posOperationsWasWritten = true;
     }
 
     if (!existingOrder) {
@@ -2654,6 +2807,14 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
         await writePosCashSession(originalCashSession);
       } catch (rollbackError) {
         console.error("No se pudo revertir la caja tras fallo TPV:", rollbackError.message);
+      }
+    }
+
+    if (posOperationsWasWritten && originalPosOperations) {
+      try {
+        await upsertStorageValue("posOperations", JSON.stringify(originalPosOperations));
+      } catch (rollbackError) {
+        console.error("No se pudieron revertir operaciones TPV tras fallo:", rollbackError.message);
       }
     }
 
