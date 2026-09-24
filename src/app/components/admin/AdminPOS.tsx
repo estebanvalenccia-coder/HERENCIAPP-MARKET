@@ -108,6 +108,7 @@ function CardPaymentForm({
 export function AdminPOS() {
   const envStripePublishable = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
   const [stripePublishable, setStripePublishable] = useState(envStripePublishable);
+  const [stripeEnabled, setStripeEnabled] = useState(Boolean(envStripePublishable));
   const [stripeSecretConfigured, setStripeSecretConfigured] = useState(false);
   const stripePromise = useMemo(() => (stripePublishable ? loadStripe(stripePublishable) : null), [stripePublishable]);
 
@@ -164,7 +165,9 @@ export function AdminPOS() {
       setFiscal({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       setFiscalDraft({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       const backendStripeKey = String(data.stripeSettings?.publishableKey || "").trim();
-      setStripePublishable(backendStripeKey || envStripePublishable);
+      const resolvedStripeKey = backendStripeKey || envStripePublishable;
+      setStripePublishable(resolvedStripeKey);
+      setStripeEnabled(Boolean(data.stripeSettings?.enabled && resolvedStripeKey));
       setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
       setCashSession(data.cashSession || null);
       setBackendConnected(true);
@@ -403,8 +406,10 @@ export function AdminPOS() {
   async function startCardPayment() {
     if (!cart.length) return toast.error("Añade productos a la venta");
     if (!invoiceRequirementsOk()) return;
+    if (!stripeEnabled) return toast.error("Stripe está deshabilitado o falta la clave pública en Ajustes > Stripe");
+    if (!stripePublishable.startsWith("pk_")) return toast.error("La clave pública de Stripe no tiene un formato válido (debe empezar por pk_)");
     if (!stripeSecretConfigured) return toast.error("Stripe no tiene clave secreta configurada en Railway");
-    if (!stripePublishable || !stripePromise) return toast.error("Falta la clave pública de Stripe. Configúrala en Ajustes > Stripe.");
+    if (!stripePromise) return toast.error("No se pudo cargar Stripe en el navegador");
 
     setSubmitting(true);
     try {
@@ -580,7 +585,12 @@ export function AdminPOS() {
     fiscal,
   } : null);
 
-  const cardReady = Boolean(stripePublishable && stripeSecretConfigured && stripePromise);
+  const cardReady = Boolean(
+    stripeEnabled &&
+    stripePublishable.startsWith("pk_") &&
+    stripeSecretConfigured &&
+    stripePromise
+  );
   const printerReady = typeof window !== "undefined" && typeof window.print === "function";
 
   const paymentHelp =
@@ -765,7 +775,11 @@ export function AdminPOS() {
             <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-600">{paymentHelp}</p>
             {payment === "Tarjeta" && !cardReady && (
               <p className="mt-2 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-700">
-                Tarjeta no está lista: {stripeSecretConfigured ? "falta la clave pública de Stripe en Ajustes" : "falta STRIPE_SECRET_KEY en Railway"}.
+                Tarjeta no está lista: {!stripeEnabled
+                  ? "Stripe está deshabilitado o falta la clave pública en Ajustes"
+                  : !stripePublishable.startsWith("pk_")
+                  ? "la clave pública no tiene formato válido"
+                  : "falta STRIPE_SECRET_KEY en Railway"}.
               </p>
             )}
             <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-zinc-700">
