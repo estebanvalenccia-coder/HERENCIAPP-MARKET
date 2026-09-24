@@ -636,6 +636,55 @@ export const backendApi = {
     });
   },
 
+
+  async neuralTraces() {
+    return request<{ traces: any[] }>("/api/neural/traces");
+  },
+
+  async neuralTraceByAction(actionId: string) {
+    return request<any>(`/api/neural/traces/action/${encodeURIComponent(actionId)}`);
+  },
+
+  async neuralResearchStatus() {
+    return request<any>("/api/neural/research/status");
+  },
+
+  async neuralWebDrafts() {
+    return request<{ drafts: any[] }>("/api/neural/web/drafts");
+  },
+
+  async neuralWebVersions() {
+    return request<{ versions: any[] }>("/api/neural/web/versions");
+  },
+
+  async neuralCreateWebDraft(payload: { title?: string; operations: any[] }) {
+    return request<any>("/api/neural/web/drafts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async neuralRequestPublish(draftId: string, reason?: string) {
+    return request<any>(`/api/neural/web/drafts/${encodeURIComponent(draftId)}/request-publish`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async neuralRequestRollback(versionId: string) {
+    return request<any>(`/api/neural/web/versions/${encodeURIComponent(versionId)}/request-rollback`, {
+      method: "POST",
+      body: "{}",
+    });
+  },
+
+  async neuralSendCellMessage(payload: { from: string; to: string; message: string; topic?: string; data?: any }) {
+    return request<any>("/api/neural/cells/message", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async neuralLab() {
     return request<{ experiments: any[] }>("/api/neural/lab");
   },
