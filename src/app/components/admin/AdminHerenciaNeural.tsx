@@ -28,11 +28,12 @@ export function AdminHerenciaNeural(){
  const [selfModel,setSelfModel]=useState<any>(null);
  const [demand,setDemand]=useState<any>(null);
  const [patterns,setPatterns]=useState<any>(null);
+ const [diagnostic,setDiagnostic]=useState<any>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
-  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns()]);
-  const [s,a,t,g,act,sig,gr,br,self,dmd,pat]=results;
+  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns(),backendApi.neuralSelfTest()]);
+  const [s,a,t,g,act,sig,gr,br,self,dmd,pat,diag]=results;
   if(s.status==="fulfilled"){setStatus(s.value);setError(null)}else setError(s.reason?.message||"Neural no disponible");
   if(a.status==="fulfilled")setAgents(a.value.agents||[]);
   if(t.status==="fulfilled")setTasks(t.value.tasks||[]);
@@ -44,6 +45,7 @@ export function AdminHerenciaNeural(){
   if(self.status==="fulfilled")setSelfModel(self.value);
   if(dmd.status==="fulfilled")setDemand(dmd.value);
   if(pat.status==="fulfilled")setPatterns(pat.value);
+  if(diag.status==="fulfilled")setDiagnostic(diag.value); else if(diag.status==="rejected")setDiagnostic({ok:false,tests:[],error:diag.reason?.message});
   setLoading(false);
  },[]);
 
@@ -106,6 +108,9 @@ export function AdminHerenciaNeural(){
         Neural resume únicamente el estado que observa en Herencia. Las ventas e ingresos aquí mostrados proceden de pedidos con estado verificado.
       </div>
     </div>:<Empty text="El brief aparecerá cuando Neural pueda observar Herencia."/>}
+   </Panel>
+   <Panel title="Autodiagnóstico" icon={CheckCircle2}>
+    {diagnostic?<div className="space-y-2"><div className={`rounded-xl p-3 text-sm font-black ${diagnostic.ok?"bg-emerald-50 text-emerald-800":"bg-amber-50 text-amber-900"}`}>{diagnostic.ok?"Núcleo verificado":"Hay elementos pendientes de configuración o verificación"}</div>{(diagnostic.tests||[]).map((x:any)=><div key={x.name} className="flex items-start justify-between gap-3 border-b py-2 last:border-0"><div><b className="text-sm">{x.name}</b><p className="text-xs text-muted-foreground">{x.detail}</p></div><span className={`text-xs font-black ${x.ok?"text-emerald-700":"text-amber-700"}`}>{x.ok?"OK":"PENDIENTE"}</span></div>)}</div>:<Empty text="Diagnóstico no disponible."/>}
    </Panel>
    <Panel title="Aprobaciones pendientes" icon={ShieldCheck}>
     {approvals.length?<div className="space-y-2">{approvals.slice(0,5).map((t:any)=><div key={t.id} className="border rounded-xl p-3"><b className="text-sm">{t.title}</b><button onClick={()=>void approve(t.id)} className="mt-2 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold">Aprobar</button></div>)}</div>:<Empty text="No hay tareas esperando autorización."/>}
