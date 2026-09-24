@@ -342,6 +342,83 @@ export function AdminContent() {
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-6">
+        <h3 className="mb-5 text-xl font-black">Página de contacto</h3>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Field label="Título de página" value={site.contactPage.title} onChange={(title) => setSite({ ...site, contactPage: { ...site.contactPage, title } })} />
+          <Field label="Subtítulo de página" value={site.contactPage.subtitle} onChange={(subtitle) => setSite({ ...site, contactPage: { ...site.contactPage, subtitle } })} />
+          <Field label="Título WhatsApp" value={site.contactPage.whatsappTitle} onChange={(whatsappTitle) => setSite({ ...site, contactPage: { ...site.contactPage, whatsappTitle } })} />
+          <Field label="Texto bajo WhatsApp" value={site.contactPage.whatsappSubtitle} onChange={(whatsappSubtitle) => setSite({ ...site, contactPage: { ...site.contactPage, whatsappSubtitle } })} />
+          <Field label="Título teléfono" value={site.contactPage.callTitle} onChange={(callTitle) => setSite({ ...site, contactPage: { ...site.contactPage, callTitle } })} />
+          <Field label="Texto bajo teléfono" value={site.contactPage.callSubtitle} onChange={(callSubtitle) => setSite({ ...site, contactPage: { ...site.contactPage, callSubtitle } })} />
+          <Field label="Título ubicación" value={site.contactPage.locationTitle} onChange={(locationTitle) => setSite({ ...site, contactPage: { ...site.contactPage, locationTitle } })} />
+          <Field label="Texto bajo ubicación" value={site.contactPage.locationSubtitle} onChange={(locationSubtitle) => setSite({ ...site, contactPage: { ...site.contactPage, locationSubtitle } })} />
+          <Field label="Título horarios" value={site.contactPage.hoursTitle} onChange={(hoursTitle) => setSite({ ...site, contactPage: { ...site.contactPage, hoursTitle } })} />
+          <Field label="Título dirección" value={site.contactPage.addressTitle} onChange={(addressTitle) => setSite({ ...site, contactPage: { ...site.contactPage, addressTitle } })} />
+          <Field label="Dirección física / texto" value={site.contactPage.addressText} onChange={(addressText) => setSite({ ...site, contactPage: { ...site.contactPage, addressText } })} multiline />
+          <Field label="Texto botón Google Maps" value={site.contactPage.mapButtonLabel} onChange={(mapButtonLabel) => setSite({ ...site, contactPage: { ...site.contactPage, mapButtonLabel } })} />
+          <Field label="URL de mapa embebido" value={site.contactPage.mapEmbedUrl} onChange={(mapEmbedUrl) => setSite({ ...site, contactPage: { ...site.contactPage, mapEmbedUrl } })} placeholder="https://www.google.com/maps/embed?..." />
+          <Field label="Título ayuda" value={site.contactPage.helpTitle} onChange={(helpTitle) => setSite({ ...site, contactPage: { ...site.contactPage, helpTitle } })} />
+          <Field label="Introducción ayuda" value={site.contactPage.helpIntro} onChange={(helpIntro) => setSite({ ...site, contactPage: { ...site.contactPage, helpIntro } })} multiline />
+        </div>
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-2">
+          <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+            <p className="font-black">Horarios</p>
+            {site.contactPage.hours.map((row, index) => (
+              <div key={index} className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label={`Fila ${index + 1} · día`}
+                  value={row.label}
+                  onChange={(label) =>
+                    setSite({
+                      ...site,
+                      contactPage: {
+                        ...site.contactPage,
+                        hours: site.contactPage.hours.map((item, i) => i === index ? { ...item, label } : item),
+                      },
+                    })
+                  }
+                />
+                <Field
+                  label={`Fila ${index + 1} · horario`}
+                  value={row.value}
+                  onChange={(value) =>
+                    setSite({
+                      ...site,
+                      contactPage: {
+                        ...site.contactPage,
+                        hours: site.contactPage.hours.map((item, i) => i === index ? { ...item, value } : item),
+                      },
+                    })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+            <p className="font-black">Lista “¿Necesitas ayuda?”</p>
+            {site.contactPage.helpItems.map((item, index) => (
+              <Field
+                key={index}
+                label={`Elemento ${index + 1}`}
+                value={item}
+                onChange={(value) =>
+                  setSite({
+                    ...site,
+                    contactPage: {
+                      ...site.contactPage,
+                      helpItems: site.contactPage.helpItems.map((current, i) => i === index ? value : current),
+                    },
+                  })
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
         <h3 className="mb-5 text-xl font-black">Copyright y enlaces legales</h3>
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label="Copyright" value={site.footer.copyright} onChange={(copyright) => setSite({ ...site, footer: { ...site.footer, copyright } })} />
