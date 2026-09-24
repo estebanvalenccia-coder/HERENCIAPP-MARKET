@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import {
   BuilderBlock,
   BuilderBlockDesign,
@@ -197,12 +197,45 @@ function ImageFields({
   onChange: (value: string) => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [media, setMedia] = useState<Array<{ name: string; path: string; url: string }>>([]);
+
+  async function loadLibrary() {
+    setMediaLoading(true);
+    try {
+      const result = await backendApi.listSiteMedia();
+      setMedia(Array.isArray(result.media) ? result.media : []);
+      setLibraryOpen(true);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo abrir la biblioteca multimedia");
+    } finally {
+      setMediaLoading(false);
+    }
+  }
 
   async function onFile(file?: File) {
     if (!file) return;
     setWorking(true);
     try {
-      onChange(await compressImage(file));
+      const compressed = await compressImage(file);
+      try {
+        const result = await backendApi.uploadSiteMedia({
+          dataUrl: compressed,
+          filename: file.name,
+        });
+        if (!result.media?.url) throw new Error("El servidor no devolvió la URL de la imagen");
+        onChange(result.media.url);
+        toast.success("Imagen subida a la biblioteca");
+      } catch (uploadError: any) {
+        // Conserva la edición incluso si Supabase Storage no está disponible.
+        onChange(compressed);
+        toast.warning(
+          uploadError?.message
+            ? `La imagen se guardó en el contenido, pero no en la biblioteca: ${uploadError.message}`
+            : "La imagen se guardó en el contenido, pero no en la biblioteca"
+        );
+      }
     } catch (error: any) {
       toast.error(error?.message || "No se pudo cargar la imagen");
     } finally {
@@ -210,38 +243,109 @@ function ImageFields({
     }
   }
 
+  async function removeMedia(item: { path: string; url: string }) {
+    if (!window.confirm("¿Eliminar esta imagen de la biblioteca?")) return;
+    try {
+      await backendApi.deleteSiteMedia(item.path);
+      setMedia((current) => current.filter((entry) => entry.path !== item.path));
+      if (value === item.url) onChange("");
+      toast.success("Imagen eliminada de la biblioteca");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar la imagen");
+    }
+  }
+
   return (
-    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <TextField
-        label={`${label} · URL`}
-        value={value.startsWith("data:image/") ? "" : value}
-        onChange={onChange}
-        placeholder="https://..."
-      />
-      <div className="flex flex-wrap gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">
-          <Upload className="h-3.5 w-3.5" />
-          {working ? "Procesando..." : "Subir imagen"}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={working}
-            onChange={(event) => void onFile(event.target.files?.[0])}
-          />
-        </label>
-        {value && (
+    <>
+      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <TextField
+          label={`${label} · URL`}
+          value={value.startsWith("data:image/") ? "" : value}
+          onChange={onChange}
+          placeholder="https://..."
+        />
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">
+            <Upload className="h-3.5 w-3.5" />
+            {working ? "Procesando..." : "Subir imagen"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={working}
+              onChange={(event) => void onFile(event.target.files?.[0])}
+            />
+          </label>
           <button
             type="button"
-            onClick={() => onChange("")}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold"
+            onClick={() => void loadLibrary()}
+            disabled={mediaLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black"
           >
-            Quitar
+            <ImageIcon className="h-3.5 w-3.5" />
+            {mediaLoading ? "Cargando..." : "Biblioteca"}
           </button>
-        )}
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold"
+            >
+              Quitar
+            </button>
+          )}
+        </div>
+        {value && <img src={value} alt={label} className="h-28 w-full rounded-lg object-cover" />}
       </div>
-      {value && <img src={value} alt={label} className="h-28 w-full rounded-lg object-cover" />}
-    </div>
+
+      {libraryOpen && (
+        <div className="fixed inset-0 z-[150] grid place-items-center bg-black/50 p-4">
+          <div className="max-h-[82vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-5">
+              <div>
+                <h3 className="text-xl font-black">Biblioteca multimedia</h3>
+                <p className="text-sm text-slate-500">Reutiliza imágenes ya subidas sin volver a cargarlas.</p>
+              </div>
+              <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg p-2 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[68vh] overflow-y-auto p-4">
+              {!media.length ? (
+                <div className="rounded-xl bg-slate-50 p-10 text-center text-sm text-slate-500">
+                  Todavía no hay imágenes en la biblioteca.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  {media.map((item) => (
+                    <div key={item.path} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange(item.url);
+                          setLibraryOpen(false);
+                        }}
+                        className="block w-full"
+                      >
+                        <img src={item.url} alt={item.name} className="h-36 w-full object-cover" />
+                        <p className="truncate px-3 py-2 text-left text-xs font-bold">{item.name}</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeMedia(item)}
+                        className="w-full border-t border-slate-100 px-3 py-2 text-xs font-bold text-rose-600"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
