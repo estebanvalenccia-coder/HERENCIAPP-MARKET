@@ -1241,6 +1241,129 @@ app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
   }
 });
 
+app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+
+  const tests = [];
+  let storageOk = false;
+  let stripeOk = false;
+
+  try {
+    const fakeProducts = [
+      { id: "test-ramo", name: "Ramo prueba", price: 20, iva: 21, stock: 5, active: true },
+      { id: "test-rosa", name: "Rosa prueba", price: 3, iva: 10, stock: 10, active: true },
+    ];
+
+    const prepared = validateAndApplyStock(fakeProducts, [
+      { id: "test-ramo", quantity: 2 },
+      { id: "test-rosa", quantity: 3 },
+    ]);
+    const cashTotals = calculatePosTotals(prepared.items, 60);
+
+    tests.push({
+      name: "motor_stock",
+      ok: prepared.updatedProducts[0].stock === 3 && prepared.updatedProducts[1].stock === 7,
+      detail: "Venta ficticia descuenta 2 ramos y 3 rosas sin tocar inventario real",
+    });
+    tests.push({
+      name: "calculo_venta",
+      ok: cashTotals.total === 49 && cashTotals.change === 11,
+      detail: `Total ficticio ${cashTotals.total.toFixed(2)} €, cambio ${cashTotals.change.toFixed(2)} €`,
+    });
+    tests.push({
+      name: "metodos_pago",
+      ok:
+        paymentStatusForMethod("Efectivo") === "paid" &&
+        paymentStatusForMethod("Tarjeta") === "payment_pending" &&
+        paymentStatusForMethod("Bizum") === "pending_bizum_review" &&
+        paymentStatusForMethod("Transferencia") === "pending_transfer_review",
+      detail: "Efectivo, tarjeta, Bizum y transferencia mapean a estados operativos correctos",
+    });
+    tests.push({
+      name: "numeracion",
+      ok: nextPosDocumentNumber("invoice", 2026, 1) === "FAC-2026-000001",
+      detail: "Numeración de tickets y facturas disponible",
+    });
+
+    const testKey = `__pos_self_test__:${crypto.randomUUID()}`;
+    await upsertStorageValue(testKey, JSON.stringify({ ok: true, at: new Date().toISOString() }));
+    const stored = await readStorageValue(testKey);
+    const { error: deleteError } = await supabase.from("app_storage").delete().eq("key", testKey);
+    if (deleteError) throw deleteError;
+    storageOk = Boolean(parseStoredJson(stored, {})?.ok);
+    tests.push({
+      name: "supabase_rw",
+      ok: storageOk,
+      detail: "Lectura, escritura y limpieza temporal en Supabase",
+    });
+
+    if (stripe) {
+      try {
+        await stripe.balance.retrieve();
+        stripeOk = true;
+      } catch (stripeError) {
+        tests.push({
+          name: "stripe",
+          ok: false,
+          detail: stripeError.message || "Stripe no respondió",
+        });
+      }
+    }
+
+    if (!tests.some((test) => test.name === "stripe")) {
+      tests.push({
+        name: "stripe",
+        ok: stripeOk,
+        detail: stripeOk
+          ? "Credencial Stripe válida; no se realizó ningún cargo"
+          : "Stripe no está configurado; tarjeta real no estará disponible",
+      });
+    }
+
+    const bootstrap = await loadPosBootstrap();
+    const stockConfigured = (bootstrap.products || []).some(
+      (product) => Number(product?.stock || 0) > 0
+    );
+    const fiscalReady = Boolean(
+      bootstrap.fiscalSettings?.businessName &&
+      bootstrap.fiscalSettings?.nif &&
+      bootstrap.fiscalSettings?.address
+    );
+
+    tests.push({
+      name: "stock_configurado",
+      ok: stockConfigured,
+      detail: stockConfigured
+        ? "Hay productos con stock real configurado"
+        : "Todos los productos tienen stock 0 o sin configurar",
+    });
+    tests.push({
+      name: "datos_fiscales",
+      ok: fiscalReady,
+      detail: fiscalReady
+        ? "Datos fiscales mínimos configurados para factura"
+        : "Faltan nombre fiscal, NIF/CIF o dirección del emisor",
+    });
+
+    res.json({
+      ok: tests.filter((test) => !["stripe", "stock_configurado", "datos_fiscales"].includes(test.name)).every((test) => test.ok),
+      cardReady: stripeOk,
+      stockReady: stockConfigured,
+      fiscalReady,
+      tests,
+      ranAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message || "Falló la autoprueba TPV",
+      tests,
+      cardReady: stripeOk,
+      storageReady: storageOk,
+    });
+  }
+});
+
 app.post("/api/pos/customers", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
 
