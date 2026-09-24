@@ -195,6 +195,7 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
  const [loading,setLoading]=useState(false);
  const [uploading,setUploading]=useState(false);
  const [media,setMedia]=useState<Array<{name:string;path:string;url:string}>>([]);
+ const [mediaLoading,setMediaLoading]=useState(false);
 
  const load=useCallback(async()=>{
    try{
@@ -215,6 +216,12 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
  const previewSite=selected?.preview as SiteContent|undefined;
  const previewBlocks=previewSite?ensureBuilderBlocks(previewSite):[];
 
+ const openMedia=async()=>{
+   setMediaLoading(true);
+   try{const r=await backendApi.listSiteMedia();setMedia(r.media||[])}
+   catch(e:any){toast.error(e.message||"No se pudo abrir la biblioteca multimedia")}
+   finally{setMediaLoading(false)}
+ };
  const upload=async(file?:File)=>{
    if(!file)return;
    setUploading(true);
@@ -270,6 +277,7 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
        <label className="cursor-pointer text-sm font-bold">Imagen opcional
         <input type="file" accept="image/png,image/jpeg,image/webp" className="mt-2 block w-full text-xs" onChange={e=>void upload(e.target.files?.[0])}/>
        </label>
+       <button type="button" onClick={()=>void openMedia()} disabled={mediaLoading} className="mt-3 rounded-lg border px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50">{mediaLoading?"Cargando…":"Abrir biblioteca multimedia"}</button>
        {uploading&&<p className="mt-2 text-xs font-bold text-emerald-700">Subiendo a Supabase Storage…</p>}{imageUrl&&<img src={imageUrl} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
        {media.length>0&&<div className="mt-3"><p className="mb-2 text-xs font-bold">Biblioteca de Herencia</p><div className="grid max-h-44 grid-cols-3 gap-2 overflow-auto">{media.slice(0,30).map(item=><button type="button" key={item.path} onClick={()=>setImageUrl(item.url)} title={item.name} className={`overflow-hidden rounded-lg border ${imageUrl===item.url?"ring-2 ring-primary":""}`}><img src={item.url} alt={item.name} className="h-20 w-full object-cover"/></button>)}</div></div>}
        <p className="mt-2 text-xs text-muted-foreground">Puedes subir una imagen nueva o reutilizar una de la biblioteca multimedia real de Herencia.</p>
