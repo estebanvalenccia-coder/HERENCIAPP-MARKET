@@ -2818,6 +2818,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       expensesRaw,
       closuresRaw,
       flowerCostsRaw,
+      posCustomersRaw,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
       readStorageValue("adminProducts"),
@@ -2828,11 +2829,19 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       readStorageValue("herencia_finance_expenses"),
       readStorageValue("herencia_finance_closures"),
       readStorageValue("adminFlowerCosts"),
+      readStorageValue("posCustomers"),
     ]);
     if (orderError) throw orderError;
     const products = parseStoredJson(productsRaw, []);
     const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null, sku: p.sku || null }));
-    const customers = [...new Map((orders || []).filter(o => o.customer_email).map(o => [o.customer_email, { email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }])).values()];
+    const orderCustomers = [...new Map((orders || []).filter(o => o.customer_email).map(o => [o.customer_email.toLowerCase(), { email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at, source: "orders" }])).values()];
+    const crmCustomers = parseStoredJson(posCustomersRaw, []).map(customer => ({ ...customer, source: "crm" }));
+    const customerMap = new Map(orderCustomers.map(customer => [String(customer.email || customer.id || "").toLowerCase(), customer]));
+    for (const customer of crmCustomers) {
+      const key = String(customer.email || customer.id || "").toLowerCase();
+      if (key) customerMap.set(key, { ...(customerMap.get(key) || {}), ...customer });
+    }
+    const customers = [...customerMap.values()];
     const sales = (orders || []).filter(o => ["paid","confirmed","preparing","ready","delivered","completed"].includes(o.status));
     const revenue = sales.reduce((sum,o)=>sum+Number(o.total||0),0);
     const manualSales = parseStoredJson(manualSalesRaw, []);
@@ -2942,6 +2951,99 @@ app.post("/api/neural-bridge/products", requireNeuralBridge, async (req, res) =>
   }
 });
 
+
+
+app.patch("/api/neural-bridge/products/:id", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const allowed = ["name","title","description","shortDescription","category","sku","image","imageUrl","active","featured"];
+    const patch = {};
+    for (const key of allowed) if (key in (req.body?.patch || {})) patch[key] = req.body.patch[key];
+    if ("name" in patch && !String(patch.name || "").trim()) return res.status(400).json({ error: "Nombre inválido" });
+    const previous = products[index];
+    products[index] = { ...previous, ...patch, updatedAt: new Date().toISOString() };
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.updated", { actionId, product: products[index], changedFields: Object.keys(patch) });
+    res.json({ ok: true, actionId, product: products[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo editar el producto" });
+  }
+});
+
+app.delete("/api/neural-bridge/products/:id", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const product = products.find(p => String(p.id) === String(req.params.id));
+    if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+    const next = products.filter(p => String(p.id) !== String(req.params.id));
+    await writeNeuralProducts(next);
+    void emitNeuralBusinessEvent("product.deleted", { actionId, productId: product.id, name: product.name || product.title });
+    res.json({ ok: true, actionId, product });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar el producto" });
+  }
+});
+
+app.post("/api/neural-bridge/crm/customers", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const current = parseStoredJson(await readStorageValue("posCustomers"), []);
+    const incoming = normalizePosCustomer(req.body?.customer || req.body || {});
+    if (!incoming.name) return res.status(400).json({ error: "El cliente necesita nombre" });
+    if (incoming.email && !isValidEmail(incoming.email)) return res.status(400).json({ error: "Email de cliente inválido" });
+    const index = current.findIndex(c => String(c.id) === incoming.id || (incoming.email && String(c.email || "").toLowerCase() === incoming.email.toLowerCase()));
+    let customer;
+    if (index >= 0) {
+      customer = { ...current[index], ...incoming, id: current[index].id, updatedAt: new Date().toISOString() };
+      current[index] = customer;
+    } else {
+      customer = { ...incoming, createdAt: new Date().toISOString() };
+      current.unshift(customer);
+    }
+    await upsertStorageValue("posCustomers", JSON.stringify(current.slice(0, 10000)));
+    void emitNeuralBusinessEvent("customer.updated", { actionId, customer: { ...customer, nif: customer.nif ? "[stored]" : "" } });
+    res.status(index >= 0 ? 200 : 201).json({ ok: true, actionId, customer });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo guardar el cliente" });
+  }
+});
+
+app.post("/api/neural-bridge/communications/whatsapp", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const graphVersion = process.env.WHATSAPP_GRAPH_VERSION;
+  if (!token || !phoneNumberId || !graphVersion) {
+    return res.status(503).json({ error: "WhatsApp Cloud API no configurada" });
+  }
+  const to = String(req.body?.to || "").replace(/[^0-9]/g, "");
+  const body = String(req.body?.body || "").trim().slice(0, 4096);
+  if (!/^\d{8,15}$/.test(to)) return res.status(400).json({ error: "Teléfono WhatsApp inválido" });
+  if (!body) return res.status(400).json({ error: "Mensaje vacío" });
+  try {
+    const response = await fetch(`https://graph.facebook.com/${encodeURIComponent(graphVersion)}/${encodeURIComponent(phoneNumberId)}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`WhatsApp HTTP ${response.status}: ${raw}`);
+    const result = parseStoredJson(raw, { ok: true });
+    void emitNeuralBusinessEvent("communication.whatsapp_sent", { actionId, to, messageId: result?.messages?.[0]?.id || null });
+    res.json({ ok: true, actionId, to, result });
+  } catch (error) {
+    res.status(502).json({ error: error.message || "No se pudo enviar WhatsApp" });
+  }
+});
 
 app.post("/api/neural-bridge/finance/expenses", requireNeuralBridge, async (req, res) => {
   const actionId = requireNeuralActionId(req, res);
