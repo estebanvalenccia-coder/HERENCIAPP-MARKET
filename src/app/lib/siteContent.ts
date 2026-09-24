@@ -85,8 +85,7 @@ export const defaultSiteContent: SiteContent = {
       "Descubre la belleza natural. Flores, plantas y servicios de jardinería con elegancia y dedicación.",
     primaryButton: { label: "Ver catálogo", href: "/productos" },
     secondaryButton: { label: "Nuestros servicios", href: "/servicios" },
-    imageUrl:
-      "https://images.unsplash.com/photo-1760618511409-9d80f26e36f4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1920",
+    imageUrl: "",
   },
   features: [
     { title: "Productos naturales", description: "Flores y plantas frescas" },
