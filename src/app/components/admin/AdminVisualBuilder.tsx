@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import {
   BuilderBlock,
   BuilderBlockDesign,
@@ -53,6 +53,34 @@ type StoredVersion = {
   label: string;
   content: string;
 };
+
+type MenuIconSettings = {
+  home: string;
+  products: string;
+  services: string;
+  herencia: string;
+};
+
+type HerenciaSettings = {
+  enabled: boolean;
+  url: string;
+};
+
+const defaultMenuIcons: MenuIconSettings = {
+  home: "Home",
+  products: "Leaf",
+  services: "Briefcase",
+  herencia: "Bot",
+};
+
+function readJsonValue<T>(key: string, fallback: T): T {
+  try {
+    const raw = backendStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -197,12 +225,45 @@ function ImageFields({
   onChange: (value: string) => void;
 }) {
   const [working, setWorking] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [media, setMedia] = useState<Array<{ name: string; path: string; url: string }>>([]);
+
+  async function loadLibrary() {
+    setMediaLoading(true);
+    try {
+      const result = await backendApi.listSiteMedia();
+      setMedia(Array.isArray(result.media) ? result.media : []);
+      setLibraryOpen(true);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo abrir la biblioteca multimedia");
+    } finally {
+      setMediaLoading(false);
+    }
+  }
 
   async function onFile(file?: File) {
     if (!file) return;
     setWorking(true);
     try {
-      onChange(await compressImage(file));
+      const compressed = await compressImage(file);
+      try {
+        const result = await backendApi.uploadSiteMedia({
+          dataUrl: compressed,
+          filename: file.name,
+        });
+        if (!result.media?.url) throw new Error("El servidor no devolvió la URL de la imagen");
+        onChange(result.media.url);
+        toast.success("Imagen subida a la biblioteca");
+      } catch (uploadError: any) {
+        // Conserva la edición incluso si Supabase Storage no está disponible.
+        onChange(compressed);
+        toast.warning(
+          uploadError?.message
+            ? `La imagen se guardó en el contenido, pero no en la biblioteca: ${uploadError.message}`
+            : "La imagen se guardó en el contenido, pero no en la biblioteca"
+        );
+      }
     } catch (error: any) {
       toast.error(error?.message || "No se pudo cargar la imagen");
     } finally {
@@ -210,38 +271,109 @@ function ImageFields({
     }
   }
 
+  async function removeMedia(item: { path: string; url: string }) {
+    if (!window.confirm("¿Eliminar esta imagen de la biblioteca?")) return;
+    try {
+      await backendApi.deleteSiteMedia(item.path);
+      setMedia((current) => current.filter((entry) => entry.path !== item.path));
+      if (value === item.url) onChange("");
+      toast.success("Imagen eliminada de la biblioteca");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar la imagen");
+    }
+  }
+
   return (
-    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <TextField
-        label={`${label} · URL`}
-        value={value.startsWith("data:image/") ? "" : value}
-        onChange={onChange}
-        placeholder="https://..."
-      />
-      <div className="flex flex-wrap gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">
-          <Upload className="h-3.5 w-3.5" />
-          {working ? "Procesando..." : "Subir imagen"}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={working}
-            onChange={(event) => void onFile(event.target.files?.[0])}
-          />
-        </label>
-        {value && (
+    <>
+      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <TextField
+          label={`${label} · URL`}
+          value={value.startsWith("data:image/") ? "" : value}
+          onChange={onChange}
+          placeholder="https://..."
+        />
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white">
+            <Upload className="h-3.5 w-3.5" />
+            {working ? "Procesando..." : "Subir imagen"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={working}
+              onChange={(event) => void onFile(event.target.files?.[0])}
+            />
+          </label>
           <button
             type="button"
-            onClick={() => onChange("")}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold"
+            onClick={() => void loadLibrary()}
+            disabled={mediaLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black"
           >
-            Quitar
+            <ImageIcon className="h-3.5 w-3.5" />
+            {mediaLoading ? "Cargando..." : "Biblioteca"}
           </button>
-        )}
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold"
+            >
+              Quitar
+            </button>
+          )}
+        </div>
+        {value && <img src={value} alt={label} className="h-28 w-full rounded-lg object-cover" />}
       </div>
-      {value && <img src={value} alt={label} className="h-28 w-full rounded-lg object-cover" />}
-    </div>
+
+      {libraryOpen && (
+        <div className="fixed inset-0 z-[150] grid place-items-center bg-black/50 p-4">
+          <div className="max-h-[82vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-5">
+              <div>
+                <h3 className="text-xl font-black">Biblioteca multimedia</h3>
+                <p className="text-sm text-slate-500">Reutiliza imágenes ya subidas sin volver a cargarlas.</p>
+              </div>
+              <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg p-2 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[68vh] overflow-y-auto p-4">
+              {!media.length ? (
+                <div className="rounded-xl bg-slate-50 p-10 text-center text-sm text-slate-500">
+                  Todavía no hay imágenes en la biblioteca.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  {media.map((item) => (
+                    <div key={item.path} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange(item.url);
+                          setLibraryOpen(false);
+                        }}
+                        className="block w-full"
+                      >
+                        <img src={item.url} alt={item.name} className="h-36 w-full object-cover" />
+                        <p className="truncate px-3 py-2 text-left text-xs font-bold">{item.name}</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeMedia(item)}
+                        className="w-full border-t border-slate-100 px-3 py-2 text-xs font-bold text-rose-600"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -317,6 +449,23 @@ export function AdminVisualBuilder({
   const [publishedSite, setPublishedSite] = useState<SiteContent>(() =>
     hydrateLegacyBanners(parseSiteContent(backendStorage.getItem("siteContent")))
   );
+  const initialAuxDraft = readJsonValue<{
+    menuIcons?: MenuIconSettings;
+    herenciaSettings?: HerenciaSettings;
+  }>("visualBuilderAuxDraft", {});
+  const [menuIcons, setMenuIcons] = useState<MenuIconSettings>(
+    initialAuxDraft.menuIcons || readJsonValue<MenuIconSettings>("menuIcons", defaultMenuIcons)
+  );
+  const [publishedMenuIcons, setPublishedMenuIcons] = useState<MenuIconSettings>(
+    readJsonValue<MenuIconSettings>("menuIcons", defaultMenuIcons)
+  );
+  const [herenciaSettings, setHerenciaSettings] = useState<HerenciaSettings>(
+    initialAuxDraft.herenciaSettings ||
+      readJsonValue<HerenciaSettings>("herenciaSettings", { enabled: false, url: "" })
+  );
+  const [publishedHerenciaSettings, setPublishedHerenciaSettings] = useState<HerenciaSettings>(
+    readJsonValue<HerenciaSettings>("herenciaSettings", { enabled: false, url: "" })
+  );
   const [selected, setSelected] = useState<SelectedTarget>("header");
   const [pageMode, setPageMode] = useState<PageMode>("home");
   const [device, setDevice] = useState<Device>("desktop");
@@ -354,6 +503,14 @@ export function AdminVisualBuilder({
     }, 900);
     return () => window.clearTimeout(timer);
   }, [site]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    void backendStorage.setItem(
+      "visualBuilderAuxDraft",
+      JSON.stringify({ menuIcons, herenciaSettings })
+    );
+  }, [menuIcons, herenciaSettings]);
 
   function commit(next: SiteContent) {
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
@@ -474,8 +631,14 @@ export function AdminVisualBuilder({
 
   async function saveDraftNow() {
     setDraftState("guardando");
-    const result = await backendStorage.setItem("siteContentDraft", JSON.stringify(site));
-    if (!result.ok) {
+    const [result, auxResult] = await Promise.all([
+      backendStorage.setItem("siteContentDraft", JSON.stringify(site)),
+      backendStorage.setItem(
+        "visualBuilderAuxDraft",
+        JSON.stringify({ menuIcons, herenciaSettings })
+      ),
+    ]);
+    if (!result.ok || !auxResult.ok) {
       setDraftState("pendiente");
       toast.error(result.error || "No se pudo guardar el borrador");
       return;
@@ -512,6 +675,8 @@ export function AdminVisualBuilder({
         backendStorage.setItem("siteContent", JSON.stringify(nextPublished)),
         backendStorage.setItem("siteContentDraft", JSON.stringify(nextPublished)),
         backendStorage.setItem("siteContentHistory", JSON.stringify(nextHistory)),
+        backendStorage.setItem("menuIcons", JSON.stringify(menuIcons)),
+        backendStorage.setItem("herenciaSettings", JSON.stringify(herenciaSettings)),
         hero?.data?.imageUrl
           ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: hero.data.imageUrl }))
           : backendStorage.removeItem("heroBanner"),
@@ -526,6 +691,9 @@ export function AdminVisualBuilder({
       setSite(nextPublished);
       setPublishedSite(nextPublished);
       setVersions(nextHistory);
+      setPublishedMenuIcons(menuIcons);
+      setPublishedHerenciaSettings(herenciaSettings);
+      await backendStorage.removeItem("visualBuilderAuxDraft");
       setDraftState("guardado");
       window.dispatchEvent(new Event("backend-storage"));
       toast.success("Cambios publicados en Herencia");
@@ -553,6 +721,9 @@ export function AdminVisualBuilder({
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
     setRedoStack([]);
     setSite(clone(publishedSite));
+    setMenuIcons(clone(publishedMenuIcons));
+    setHerenciaSettings(clone(publishedHerenciaSettings));
+    void backendStorage.removeItem("visualBuilderAuxDraft");
     toast.info("Se ha recuperado la versión publicada");
   }
 
@@ -730,7 +901,7 @@ export function AdminVisualBuilder({
                         {block.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                       </span>
                     </button>
-                    <div className="hidden items-center justify-end gap-1 border-t border-slate-100 px-2 py-1.5 group-hover:flex">
+                    <div className="flex items-center justify-end gap-1 border-t border-slate-100 px-2 py-1.5">
                       <button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => duplicateBlock(block)} className="rounded p-1 hover:bg-slate-100"><Copy className="h-3.5 w-3.5" /></button>
@@ -799,7 +970,71 @@ export function AdminVisualBuilder({
           </div>
         </aside>
 
-        <main className="min-w-0 overflow-auto bg-[#e5e9e3] p-3 sm:p-5">
+        <main className="min-w-0 overflow-auto bg-[#e5e9e3] p-3 sm:p-5 max-lg:pb-[50vh]">
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm lg:hidden">
+            <select
+              value={selected}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelected(value);
+                if (value === "contact") setPageMode("contact");
+                else if (pageMode === "contact") setPageMode("home");
+              }}
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold"
+            >
+              <option value="header">Header</option>
+              {blocks.map((block) => (
+                <option key={block.id} value={block.id}>
+                  {block.name}
+                </option>
+              ))}
+              <option value="footer">Footer</option>
+              <option value="contact">Contacto</option>
+            </select>
+            <div className="flex rounded-lg bg-slate-100 p-1">
+              {([
+                ["desktop", Monitor],
+                ["tablet", Tablet],
+                ["mobile", Smartphone],
+              ] as const).map(([value, Icon]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDevice(value)}
+                  className={`rounded-md p-1.5 ${device === value ? "bg-white shadow-sm" : ""}`}
+                  title={value}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
+            </div>
+            {pageMode === "home" && (
+              <button
+                type="button"
+                onClick={() => setAddOpen((open) => !open)}
+                className="rounded-lg bg-emerald-700 p-2 text-white"
+                title="Añadir sección"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {addOpen && pageMode === "home" && (
+            <div className="relative z-40 mb-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl lg:hidden">
+              {(["textImage", "gallery", "testimonials", "cta", "categories", "features", "hero"] as BuilderBlockType[]).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => addBlock(type)}
+                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-black"
+                >
+                  <Plus className="h-3.5 w-3.5 text-emerald-700" />
+                  {blockTypeLabel(type)}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
             style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
@@ -823,7 +1058,7 @@ export function AdminVisualBuilder({
                 <span>{site.navigation.home.label}</span>
                 <span>{site.navigation.products.label}</span>
                 <span>{site.navigation.services.label}</span>
-                <span>{site.navigation.herencia.label}</span>
+                {herenciaSettings.enabled && <span>{site.navigation.herencia.label}</span>}
               </div>
             </div>
 
@@ -863,7 +1098,7 @@ export function AdminVisualBuilder({
           </div>
         </main>
 
-        <aside className="overflow-y-auto border-l border-slate-200 bg-white">
+        <aside className="overflow-y-auto border-l border-slate-200 bg-white max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-[110] max-lg:h-[48vh] max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-12px_35px_rgba(15,23,42,0.18)]">
           <div className="sticky top-0 z-10 border-b border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -895,7 +1130,16 @@ export function AdminVisualBuilder({
           </div>
 
           <div className="space-y-4 p-4">
-            {selected === "header" && tab === "contenido" && <HeaderEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && tab === "contenido" && (
+              <HeaderEditor
+                site={site}
+                updateSite={updateSite}
+                menuIcons={menuIcons}
+                setMenuIcons={setMenuIcons}
+                herenciaSettings={herenciaSettings}
+                setHerenciaSettings={setHerenciaSettings}
+              />
+            )}
             {selected === "header" && tab === "diseno" && <HeaderDesignEditor site={site} updateSite={updateSite} />}
             {selected === "header" && tab === "avanzado" && (
               <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
@@ -952,6 +1196,22 @@ export function AdminVisualBuilder({
                   />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => moveBlock(selectedBlock.id, -1)}
+                    disabled={blocks.findIndex((item) => item.id === selectedBlock.id) <= 0}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-black disabled:opacity-30"
+                  >
+                    <ArrowUp className="h-4 w-4" /> Subir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveBlock(selectedBlock.id, 1)}
+                    disabled={blocks.findIndex((item) => item.id === selectedBlock.id) >= blocks.length - 1}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-black disabled:opacity-30"
+                  >
+                    <ArrowDown className="h-4 w-4" /> Bajar
+                  </button>
                   <button type="button" onClick={() => duplicateBlock(selectedBlock)} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-black">
                     <Copy className="h-4 w-4" /> Duplicar
                   </button>
@@ -1005,9 +1265,17 @@ export function AdminVisualBuilder({
 function HeaderEditor({
   site,
   updateSite,
+  menuIcons,
+  setMenuIcons,
+  herenciaSettings,
+  setHerenciaSettings,
 }: {
   site: SiteContent;
   updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+  menuIcons: MenuIconSettings;
+  setMenuIcons: (value: MenuIconSettings) => void;
+  herenciaSettings: HerenciaSettings;
+  setHerenciaSettings: (value: HerenciaSettings) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -1022,6 +1290,43 @@ function HeaderEditor({
           onChange={(value) => updateSite((current) => ({ ...current, navigation: { ...current.navigation, [key]: value } }))}
         />
       ))}
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-xs font-black uppercase tracking-wider text-slate-500">Iconos del menú</p>
+        {(["home", "products", "services", "herencia"] as const).map((key) => (
+          <label key={key} className="block text-xs font-bold text-slate-700">
+            <span className="mb-1.5 block">
+              {key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Herenc(IA)"}
+            </span>
+            <select
+              value={menuIcons[key]}
+              onChange={(event) => setMenuIcons({ ...menuIcons, [key]: event.target.value })}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+            >
+              {["Home", "House", "Sparkles", "Flower", "Flower2", "Leaf", "LeafyGreen", "Package", "ShoppingBag", "Briefcase", "Scissors", "Store", "Building", "Bot", "Brain", "Zap", "Star"].map((icon) => (
+                <option key={icon} value={icon}>{icon}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <label className="flex items-center justify-between text-sm font-bold">
+          Mostrar Herenc(IA) en el menú
+          <input
+            type="checkbox"
+            checked={herenciaSettings.enabled}
+            onChange={(event) =>
+              setHerenciaSettings({ ...herenciaSettings, enabled: event.target.checked })
+            }
+          />
+        </label>
+        <TextField
+          label="URL interna/configuración Herenc(IA)"
+          value={herenciaSettings.url}
+          onChange={(url) => setHerenciaSettings({ ...herenciaSettings, url })}
+          placeholder="Opcional"
+        />
+      </div>
       <TextField label="Destino del carrito" value={site.headerActions.cartHref} onChange={(cartHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, cartHref } }))} />
       <TextField label="Destino del perfil" value={site.headerActions.profileHref} onChange={(profileHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, profileHref } }))} />
     </div>
