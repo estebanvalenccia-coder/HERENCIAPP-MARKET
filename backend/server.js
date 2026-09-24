@@ -2200,6 +2200,55 @@ app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pos/quotes", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const bootstrap = await loadPosBootstrap();
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const prepared = validateAndApplyStock(bootstrap.products, req.body?.items || []);
+    const totals = calculatePosTotals(prepared.items);
+    const now = new Date();
+    const expiresAt = req.body?.expiresAt || new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString();
+    const quote = {
+      id: crypto.randomUUID(),
+      quoteNumber: `PRE-${now.getFullYear()}-${String(Date.now()).slice(-8)}`,
+      customer,
+      items: prepared.items,
+      subtotal: totals.subtotal,
+      tax: totals.tax,
+      total: totals.total,
+      notes: String(req.body?.notes || "").trim(),
+      status: "draft",
+      createdAt: now.toISOString(),
+      expiresAt,
+    };
+    current.quotes = [quote, ...(Array.isArray(current.quotes) ? current.quotes : [])].slice(0, 100);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ quote, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/pos/quotes/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const index = (current.quotes || []).findIndex((item) => String(item?.id) === id);
+    if (index < 0) return res.status(404).json({ error: "Presupuesto no encontrado" });
+    const updated = { ...current.quotes[index], ...(req.body || {}), id, updatedAt: new Date().toISOString() };
+    current.quotes = current.quotes.map((item, itemIndex) => itemIndex === index ? updated : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ quote: updated, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/pos/sales", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
