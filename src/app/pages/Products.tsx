@@ -24,26 +24,30 @@ export function Products() {
     }
   }, [location.search]);
 
-  // Cargar productos del admin si existen
+  // Cargar productos y contenido publicado del backend.
   useEffect(() => {
-    const adminProducts = backendStorage.getItem("adminProducts");
-    if (adminProducts) {
-      const parsed = JSON.parse(adminProducts);
-      // Solo mostrar productos activos
-      setDisplayProducts(parsed.filter((p: any) => p.active !== false));
-    }
-
-    // Escuchar cambios en backendStorage
-    const handleStorageChange = () => {
-      const updated = backendStorage.getItem("adminProducts");
-      if (updated) {
-        const parsed = JSON.parse(updated);
-        setDisplayProducts(parsed.filter((p: any) => p.active !== false));
+    const load = () => {
+      const adminProducts = backendStorage.getItem("adminProducts");
+      if (adminProducts) {
+        try {
+          const parsed = JSON.parse(adminProducts);
+          setDisplayProducts(
+            Array.isArray(parsed) ? parsed.filter((p: any) => p.active !== false) : []
+          );
+        } catch {
+          setDisplayProducts(products);
+        }
       }
+      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     };
 
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    load();
+    window.addEventListener("storage", load);
+    window.addEventListener("backend-storage", load);
+    return () => {
+      window.removeEventListener("storage", load);
+      window.removeEventListener("backend-storage", load);
+    };
   }, []);
 
   const filteredProducts = displayProducts.filter((product) => {
@@ -109,7 +113,7 @@ export function Products() {
               className="sm:hidden flex items-center justify-center gap-2 px-6 py-3 bg-background border border-border rounded-xl hover:bg-accent transition-colors"
             >
               <Filter className="w-5 h-5" />
-              Filtros
+              {site.productsPage.filtersLabel}
             </button>
           </div>
 
@@ -156,7 +160,7 @@ export function Products() {
                   />
                   {product.featured && (
                     <div className="absolute top-3 right-3 px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
-                      Destacado
+                      {site.productsPage.featuredLabel}
                     </div>
                   )}
                   <button
@@ -198,7 +202,7 @@ export function Products() {
                       className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                     >
                       <ShoppingCart className="w-4 h-4" />
-                      Añadir
+                      {site.productsPage.addButtonLabel}
                     </button>
                   </div>
                 </div>
