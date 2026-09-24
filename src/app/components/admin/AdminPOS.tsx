@@ -146,6 +146,7 @@ export function AdminPOS() {
   const [showHistory, setShowHistory] = useState(false);
   const [showOperations, setShowOperations] = useState(false);
   const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
+  const [currentStaff, setCurrentStaff] = useState<any | null>(null);
   const [heldSales, setHeldSales] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
   });
@@ -286,6 +287,7 @@ export function AdminPOS() {
   }
 
   function applyDiscountToSelected(percent: number) {
+    if (!hasPosPermission("discount")) return toast.error("Este empleado no puede aplicar descuentos");
     if (!selectedLineId) return toast.error("Selecciona una línea de la venta");
     const safe = Math.max(0, Math.min(100, Number(percent || 0)));
     setCart((current) => current.map((line) =>
@@ -496,7 +498,117 @@ export function AdminPOS() {
     };
   }
 
-  async function createQuickFloristOrder() {
+  function hasPosPermission(permission: string) {
+    if (!currentStaff) return true;
+    return Array.isArray(currentStaff.permissions) && currentStaff.permissions.includes(permission);
+  }
+
+  async function unlockStaff() {
+    const pin = window.prompt("PIN del empleado");
+    if (!pin) return;
+    try {
+      const result = await backendApi.unlockPosStaff(pin);
+      setCurrentStaff(result.staff);
+      toast.success(`Sesión TPV: ${result.staff.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "PIN incorrecto");
+    }
+  }
+
+  async function createStaffMember() {
+    const name = window.prompt("Nombre del empleado");
+    if (!name) return;
+    const roleRaw = (window.prompt("Rol: admin, manager o seller", "seller") || "seller").toLowerCase();
+    const role = (["admin", "manager", "seller"].includes(roleRaw) ? roleRaw : "seller") as "admin" | "manager" | "seller";
+    const pin = window.prompt("PIN de 4 a 8 dígitos");
+    if (!pin) return;
+    try {
+      const result = await backendApi.savePosStaff({ name, role, pin });
+      setOperations(result.operations);
+      toast.success(`Empleado ${result.staff.name} creado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear el empleado");
+    }
+  }
+
+  async function createSupplier() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede gestionar proveedores");
+    const name = window.prompt("Nombre del proveedor");
+    if (!name) return;
+    const email = window.prompt("Email del proveedor", "") || "";
+    const phone = window.prompt("Teléfono del proveedor", "") || "";
+    try {
+      const result = await backendApi.savePosSupplier({ name, email, phone });
+      setOperations(result.operations);
+      toast.success(`Proveedor ${result.supplier.name} guardado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el proveedor");
+    }
+  }
+
+  async function receivePurchase() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede modificar inventario");
+    const sku = window.prompt("SKU o ID del producto recibido");
+    if (!sku) return;
+    const product = products.find((item) => item.sku.toLowerCase() === sku.toLowerCase() || item.id === sku);
+    if (!product) return toast.error("Producto no encontrado");
+    const quantity = Math.floor(Number(window.prompt("Cantidad recibida", "1") || 0));
+    const unitCost = Number(window.prompt("Coste por unidad (€)", "0") || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+      return toast.error("Cantidad o coste inválido");
+    }
+    const supplierId = operations.suppliers?.[0]?.id || "";
+    try {
+      const result = await backendApi.createPosPurchase({
+        supplierId,
+        items: [{ id: product.id, quantity, unitCost }],
+      });
+      setProducts((result.inventory || []).map(toPosItem));
+      setOperations(result.operations);
+      toast.success(`Entrada registrada: +${quantity} ${product.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la compra");
+    }
+  }
+
+  async function redeemGiftCard() {
+    const code = window.prompt("Código de la tarjeta regalo");
+    if (!code) return;
+    const amount = Number(window.prompt("Importe a canjear (€)", String(Math.max(0, totals.total))) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Importe inválido");
+    try {
+      const result = await backendApi.redeemGiftCard({ code, amount });
+      setOperations(result.operations);
+      toast.success(`Canje realizado · saldo restante ${money(result.card.balance)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo canjear la tarjeta regalo");
+    }
+  }
+
+  async function adjustLoyalty() {
+    if (!customer?.id || customer.id === WALK_IN.id) return toast.error("Selecciona un cliente registrado");
+    const delta = Math.trunc(Number(window.prompt("Puntos a sumar (usa negativo para restar)", "10") || 0));
+    if (!delta) return;
+    try {
+      const result = await backendApi.adjustPosLoyalty({ customerId: customer.id, delta });
+      setOperations(result.operations);
+      toast.success(`Saldo de fidelización: ${result.loyalty.points} puntos`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los puntos");
+    }
+  }
+
+  async function updateFloristStatus(id: string, status: string) {
+    try {
+      const result = await backendApi.updateFloristOrder(id, { status });
+      setOperations(result.operations);
+      toast.success(`Encargo marcado como ${status}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el encargo");
+    }
+  }
+
+    async function createQuickFloristOrder() {
     const concept = window.prompt("Concepto del encargo", "Ramo personalizado");
     if (!concept) return;
     const total = Number(window.prompt("Total del encargo (€)", "50") || 0);
@@ -534,6 +646,7 @@ export function AdminPOS() {
     async function refundSale(orderId: string) {
     const sale = recentSales.find((item) => String(item.id) === String(orderId));
     if (!sale) return;
+    if (!hasPosPermission("refund")) return toast.error("Este empleado no puede realizar devoluciones");
     const reason = window.prompt("Motivo de la devolución", "Devolución de cliente");
     if (reason === null) return;
 
@@ -1158,22 +1271,42 @@ export function AdminPOS() {
             </button>
             {showOperations && (
               <div className="mt-3 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => void createQuickFloristOrder()} className="rounded-xl bg-emerald-700 px-3 py-3 text-sm font-black text-white">
-                    + Encargo floral
-                  </button>
-                  <button onClick={() => void createQuickGiftCard()} className="rounded-xl bg-violet-700 px-3 py-3 text-sm font-black text-white">
-                    + Tarjeta regalo
-                  </button>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-zinc-500">Empleado activo</p>
+                      <p className="font-black">{currentStaff ? `${currentStaff.name} · ${currentStaff.role}` : "Propietario / administrador"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => void unlockStaff()} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Cambiar</button>
+                      {currentStaff && <button onClick={() => setCurrentStaff(null)} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Salir</button>}
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => void createQuickFloristOrder()} className="rounded-xl bg-emerald-700 px-3 py-3 text-sm font-black text-white">+ Encargo floral</button>
+                  <button onClick={() => void createQuickGiftCard()} className="rounded-xl bg-violet-700 px-3 py-3 text-sm font-black text-white">+ Tarjeta regalo</button>
+                  <button onClick={() => void redeemGiftCard()} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-black text-violet-800">Canjear regalo</button>
+                  <button onClick={() => void adjustLoyalty()} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-black text-amber-800">Puntos cliente</button>
+                  <button onClick={() => void createSupplier()} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">+ Proveedor</button>
+                  <button onClick={() => void receivePurchase()} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-sm font-black text-cyan-800">Entrada stock</button>
+                  <button onClick={() => void createStaffMember()} className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-black">+ Empleado</button>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-sm">
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.floristOrders?.length || 0}</b><p className="text-zinc-500">Encargos</p></div>
-                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Tarjetas regalo</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Regalo</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.suppliers?.length || 0}</b><p className="text-zinc-500">Proveedores</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.staff?.length || 0}</b><p className="text-zinc-500">Personal</p></div>
                 </div>
                 {(operations.floristOrders || []).slice(0, 5).map((order: any) => (
                   <div key={order.id} className="rounded-xl border p-3 text-sm">
                     <div className="flex justify-between gap-2"><b>{order.concept}</b><b>{money(order.total)}</b></div>
                     <p className="text-zinc-500">{order.customerName} · pendiente {money(order.pending)} · {order.status}</p>
+                    <div className="mt-2 flex gap-2">
+                      {order.status !== "listo" && <button onClick={() => void updateFloristStatus(order.id, "listo")} className="rounded-lg border px-2 py-1 text-xs font-bold">Listo</button>}
+                      {order.status !== "entregado" && <button onClick={() => void updateFloristStatus(order.id, "entregado")} className="rounded-lg border px-2 py-1 text-xs font-bold">Entregado</button>}
+                    </div>
                   </div>
                 ))}
               </div>
