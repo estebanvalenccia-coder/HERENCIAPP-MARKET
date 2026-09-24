@@ -7,11 +7,35 @@ export function AdminOffers() {
   const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    const saved = backendStorage.getItem("adminProducts");
-    if (saved) {
-      const all = JSON.parse(saved);
-      setProducts(all.filter((p: any) => p.onSale));
-    }
+    let mounted = true;
+
+    const loadOffers = async (refreshBackend = true) => {
+      if (refreshBackend) {
+        await backendStorage.refresh().catch(() => null);
+      }
+
+      try {
+        const saved = backendStorage.getItem("adminProducts");
+        const all = JSON.parse(saved || "[]");
+        if (mounted) {
+          setProducts((Array.isArray(all) ? all : []).filter((p: any) => p.onSale === true));
+        }
+      } catch {
+        if (mounted) setProducts([]);
+      }
+    };
+
+    loadOffers(true);
+
+    const syncOffers = () => loadOffers(false);
+    window.addEventListener("backend-storage", syncOffers);
+    window.addEventListener("storage", syncOffers);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("backend-storage", syncOffers);
+      window.removeEventListener("storage", syncOffers);
+    };
   }, []);
 
   const calculateDiscount = (price: number, salePrice: number) => {
