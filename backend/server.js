@@ -172,6 +172,8 @@ const adminOnlyStorageKeys = [
   "posCustomers",
   "posFiscalSettings",
   "posCashSession",
+  "siteContentDraft",
+  "siteContentHistory",
 ];
 
 function parseCookies(req) {
