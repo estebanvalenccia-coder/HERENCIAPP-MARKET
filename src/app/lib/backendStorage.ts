@@ -559,6 +559,21 @@ export const backendApi = {
     });
   },
 
+  async neuralCustomerChatEvent(payload: {
+    type: "conversation.message" | "conversation.unanswered" | "conversation.intent" | "web.demand_signal";
+    conversationId?: string;
+    text?: string;
+    intent?: string;
+    topic?: string;
+    suggestion?: string;
+    page?: string;
+  }) {
+    return request<{ accepted: boolean; provisional: boolean; reason?: string | null }>("/api/neural/customer-chat-event", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async neuralBrief() {
     return request<any>("/api/neural/brief");
   },
