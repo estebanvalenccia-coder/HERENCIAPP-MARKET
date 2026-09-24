@@ -2481,6 +2481,37 @@ app.get("/api/neural-bridge/snapshot", requireNeuralBridge, async (_req, res) =>
   res.json({ products, inventory, orders: orders || [], customers, sales, updatedAt: new Date().toISOString() });
 });
 
+
+// Admin proxy to the independent HERENCIA Neural service.
+// Browser clients never receive NEURAL_ADMIN_TOKEN or the internal Neural service URL.
+app.use("/api/neural", requireAdmin, async (req, res) => {
+  const baseUrl = String(process.env.NEURAL_SERVICE_URL || "").replace(/\/$/, "");
+  const adminToken = process.env.NEURAL_ADMIN_TOKEN;
+  if (!baseUrl || !adminToken) {
+    return res.status(503).json({ error: "HERENCIA Neural no está configurada en este backend" });
+  }
+  const target = `${baseUrl}/v1/neural${req.url || ""}`;
+  const method = req.method.toUpperCase();
+  try {
+    const upstream = await fetch(target, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Neural-Admin-Token": adminToken,
+      },
+      body: ["GET", "HEAD"].includes(method) ? undefined : JSON.stringify(req.body || {}),
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await upstream.text();
+    const contentType = upstream.headers.get("content-type") || "application/json; charset=utf-8";
+    res.status(upstream.status).type(contentType);
+    return res.send(text);
+  } catch (error) {
+    console.error("Neural proxy error:", error?.message || error);
+    return res.status(502).json({ error: "No se pudo comunicar con HERENCIA Neural" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
 });
