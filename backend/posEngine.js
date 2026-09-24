@@ -9,6 +9,8 @@ export function normalizePaymentMethod(value = "") {
   if (["card", "tarjeta"].includes(method)) return "card";
   if (method === "bizum") return "bizum";
   if (["transfer", "transferencia", "bank_transfer"].includes(method)) return "transfer";
+  if (["mixed", "mixto", "pago_mixto"].includes(method)) return "mixed";
+  if (["gift_card", "giftcard", "tarjeta_regalo"].includes(method)) return "gift_card";
   return method || "cash";
 }
 
@@ -18,6 +20,8 @@ export function paymentStatusForMethod(value = "") {
   if (method === "card") return "payment_pending";
   if (method === "bizum") return "pending_bizum_review";
   if (method === "transfer") return "pending_transfer_review";
+  if (method === "mixed") return "paid";
+  if (method === "gift_card") return "paid";
   return "pending_manual_review";
 }
 
