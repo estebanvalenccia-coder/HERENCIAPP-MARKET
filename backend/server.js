@@ -4,6 +4,13 @@ import Stripe from "stripe";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import {
+  calculatePosTotals,
+  nextPosDocumentNumber,
+  normalizePaymentMethod,
+  paymentStatusForMethod,
+  validateAndApplyStock,
+} from "./posEngine.js";
 
 dotenv.config();
 
@@ -155,6 +162,8 @@ const adminOnlyStorageKeys = [
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
   "tpvLayoutSettings",
+  "posCustomers",
+  "posFiscalSettings",
 ];
 
 function parseCookies(req) {
@@ -1068,6 +1077,388 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   }
 
   res.json({ order: data, statusEmailResult });
+});
+
+
+function parseStoredJson(raw, fallback) {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizePosCustomer(customer = {}) {
+  return {
+    id: String(customer.id || crypto.randomUUID()),
+    name: String(customer.name || "").trim(),
+    nif: String(customer.nif || "").trim(),
+    email: String(customer.email || "").trim(),
+    address: String(customer.address || "").trim(),
+    phone: String(customer.phone || "").trim(),
+  };
+}
+
+async function loadPosBootstrap() {
+  const [productsRaw, customersRaw, fiscalRaw] = await Promise.all([
+    readStorageValue("adminProducts"),
+    readStorageValue("posCustomers"),
+    readStorageValue("posFiscalSettings"),
+  ]);
+
+  return {
+    products: parseStoredJson(productsRaw, []),
+    customers: parseStoredJson(customersRaw, []),
+    fiscalSettings: parseStoredJson(fiscalRaw, {}),
+  };
+}
+
+async function reservePosDocumentNumber(documentType) {
+  const year = new Date().getFullYear();
+  const normalizedType = documentType === "invoice" ? "invoice" : "ticket";
+  const counterKey = `posDocumentCounter:${year}:${normalizedType}`;
+  const rawCounter = await readStorageValue(counterKey);
+  const currentCounter = Math.max(0, Number(rawCounter || 0) || 0);
+  const nextCounter = currentCounter + 1;
+  await upsertStorageValue(counterKey, String(nextCounter));
+  return nextPosDocumentNumber(normalizedType, year, nextCounter);
+}
+
+function validatePosInvoiceData(documentType, customer, fiscalSettings) {
+  if (documentType !== "invoice") return;
+
+  const missingIssuer = [
+    fiscalSettings?.businessName,
+    fiscalSettings?.nif,
+    fiscalSettings?.address,
+  ].some((value) => !String(value || "").trim());
+
+  if (missingIssuer) {
+    throw new Error("Configura nombre fiscal, NIF/CIF y dirección del emisor antes de emitir facturas");
+  }
+
+  const missingCustomer = [customer?.name, customer?.nif, customer?.address].some(
+    (value) => !String(value || "").trim()
+  );
+
+  if (missingCustomer) {
+    throw new Error("Para factura completa indica nombre, NIF/CIF y dirección del cliente");
+  }
+}
+
+function posOrderResponse(order) {
+  return {
+    id: order.id,
+    customerName: order.customer_name || "Cliente",
+    customerEmail: order.customer_email || "",
+    items: order.items || [],
+    subtotal: Number(order.subtotal || 0),
+    shipping: Number(order.shipping || 0),
+    total: Number(order.total || 0),
+    paymentMethod: order.payment_method,
+    deliveryMethod: order.delivery_method,
+    status: order.status,
+    date: order.created_at,
+    metadata: order.metadata || {},
+  };
+}
+
+app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const data = await loadPosBootstrap();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/customers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const customer = normalizePosCustomer(req.body || {});
+    if (!customer.name) {
+      return res.status(400).json({ error: "El cliente necesita un nombre" });
+    }
+    if (customer.email && !isValidEmail(customer.email)) {
+      return res.status(400).json({ error: "Email de cliente inválido" });
+    }
+
+    const current = parseStoredJson(await readStorageValue("posCustomers"), []);
+    const next = Array.isArray(current)
+      ? [...current.filter((item) => String(item?.id) !== customer.id), customer]
+      : [customer];
+
+    await upsertStorageValue("posCustomers", JSON.stringify(next));
+    res.json({ customer, customers: next });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const settings = {
+      businessName: String(req.body?.businessName || "").trim(),
+      nif: String(req.body?.nif || "").trim(),
+      address: String(req.body?.address || "").trim(),
+      email: String(req.body?.email || "").trim(),
+      phone: String(req.body?.phone || "").trim(),
+    };
+
+    if (settings.email && !isValidEmail(settings.email)) {
+      return res.status(400).json({ error: "Email fiscal inválido" });
+    }
+
+    await upsertStorageValue("posFiscalSettings", JSON.stringify(settings));
+    res.json({ settings });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (!stripe) {
+    return res.status(503).json({ error: "Stripe no está configurado en el backend" });
+  }
+
+  try {
+    const { products, fiscalSettings } = await loadPosBootstrap();
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
+    validatePosInvoiceData(documentType, customer, fiscalSettings);
+
+    const prepared = validateAndApplyStock(products, req.body?.items || []);
+    const totals = calculatePosTotals(prepared.items);
+    const totalCents = Math.round(totals.total * 100);
+
+    if (!Number.isFinite(totalCents) || totalCents < 50) {
+      return res.status(400).json({ error: "Importe inválido para tarjeta" });
+    }
+
+    const orderId = crypto.randomUUID();
+    const metadata = {
+      source: "TPV_ADMIN_CARD",
+      documentType,
+      notes: String(req.body?.notes || ""),
+      customerNif: customer.nif,
+      customerAddress: customer.address,
+      customerPhone: customer.phone,
+      fiscalSnapshot: fiscalSettings,
+      inventoryCommittedAt: null,
+    };
+
+    const { error: orderError } = await supabase.from("orders").insert({
+      id: orderId,
+      customer_email: customer.email || null,
+      customer_name: customer.name || "Cliente mostrador",
+      payment_method: "card",
+      delivery_method: "mostrador",
+      status: "payment_pending",
+      subtotal: totals.subtotal,
+      shipping: 0,
+      total: totals.total,
+      items: prepared.items,
+      metadata,
+    });
+
+    if (orderError) throw orderError;
+
+    try {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: totalCents,
+        currency: "eur",
+        receipt_email: customer.email || undefined,
+        metadata: {
+          orderId,
+          source: "TPV_ADMIN_CARD",
+        },
+        payment_method_types: ["card"],
+      });
+
+      await supabase
+        .from("orders")
+        .update({ stripe_payment_intent_id: paymentIntent.id })
+        .eq("id", orderId);
+
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        orderId,
+        totals,
+      });
+    } catch (error) {
+      await supabase
+        .from("orders")
+        .update({
+          status: "payment_error",
+          metadata: { ...metadata, stripeError: error.message },
+        })
+        .eq("id", orderId);
+      throw error;
+    }
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo iniciar el pago con tarjeta" });
+  }
+});
+
+app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  let originalProducts = null;
+  let stockWasWritten = false;
+
+  try {
+    const bootstrap = await loadPosBootstrap();
+    originalProducts = bootstrap.products;
+    const fiscalSettings = bootstrap.fiscalSettings || {};
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
+    const paymentMethod = normalizePaymentMethod(req.body?.paymentMethod);
+    const existingOrderId = String(req.body?.existingOrderId || "").trim();
+
+    validatePosInvoiceData(documentType, customer, fiscalSettings);
+
+    let existingOrder = null;
+    if (existingOrderId) {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", existingOrderId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: "Pedido de tarjeta no encontrado" });
+
+      if (data?.metadata?.inventoryCommittedAt) {
+        return res.json({
+          ok: true,
+          order: posOrderResponse(data),
+          inventory: bootstrap.products,
+          documentNumber: data.metadata?.invoiceNumber || "",
+          totals: {
+            subtotal: Number(data.subtotal || 0),
+            tax: Number(data.metadata?.tax || 0),
+            total: Number(data.total || 0),
+            received: Number(data.metadata?.received || 0),
+            change: Number(data.metadata?.change || 0),
+          },
+          idempotent: true,
+        });
+      }
+
+      if (paymentMethod !== "card" || data.status !== "paid") {
+        return res.status(409).json({ error: "El pago con tarjeta todavía no está confirmado" });
+      }
+
+      existingOrder = data;
+    }
+
+    const prepared = validateAndApplyStock(
+      bootstrap.products,
+      existingOrder ? existingOrder.items : req.body?.items || []
+    );
+    const received = Number(req.body?.received || 0);
+    const totals = calculatePosTotals(prepared.items, received);
+
+    if (paymentMethod === "cash" && totals.total > 0 && received < totals.total) {
+      return res.status(400).json({ error: "El efectivo recibido es inferior al total" });
+    }
+
+    const status = existingOrder ? "paid" : paymentStatusForMethod(paymentMethod);
+    const documentNumber = await reservePosDocumentNumber(documentType);
+    const now = new Date().toISOString();
+    const metadata = {
+      ...(existingOrder?.metadata || {}),
+      source: existingOrder ? "TPV_ADMIN_CARD" : "TPV_ADMIN",
+      documentType,
+      invoiceNumber: documentNumber,
+      notes: String(req.body?.notes || existingOrder?.metadata?.notes || ""),
+      customerNif: customer.nif,
+      customerAddress: customer.address,
+      customerPhone: customer.phone,
+      fiscalSnapshot: fiscalSettings,
+      tax: totals.tax,
+      received: paymentMethod === "cash" ? totals.received : totals.total,
+      change: paymentMethod === "cash" ? totals.change : 0,
+      inventoryCommittedAt: now,
+    };
+
+    await upsertStorageValue("adminProducts", JSON.stringify(prepared.updatedProducts));
+    stockWasWritten = true;
+
+    let savedOrder;
+    if (existingOrder) {
+      const { data, error } = await supabase
+        .from("orders")
+        .update({
+          customer_email: customer.email || null,
+          customer_name: customer.name || "Cliente mostrador",
+          payment_method: "card",
+          delivery_method: "mostrador",
+          status: "paid",
+          subtotal: totals.subtotal,
+          shipping: 0,
+          total: totals.total,
+          items: prepared.items,
+          metadata,
+        })
+        .eq("id", existingOrder.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      savedOrder = data;
+    } else {
+      const id = crypto.randomUUID();
+      const { data, error } = await supabase
+        .from("orders")
+        .insert({
+          id,
+          customer_email: customer.email || null,
+          customer_name: customer.name || "Cliente mostrador",
+          payment_method: paymentMethod,
+          delivery_method: "mostrador",
+          status,
+          subtotal: totals.subtotal,
+          shipping: 0,
+          total: totals.total,
+          items: prepared.items,
+          metadata,
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      savedOrder = data;
+
+      try {
+        await sendOrderConfirmationEmails(savedOrder, "pos_sale_created");
+      } catch (emailError) {
+        console.error("Error enviando emails de venta TPV:", emailError.message);
+      }
+    }
+
+    res.json({
+      ok: true,
+      order: posOrderResponse(savedOrder),
+      inventory: prepared.updatedProducts,
+      documentNumber,
+      totals,
+    });
+  } catch (error) {
+    if (stockWasWritten && originalProducts) {
+      try {
+        await upsertStorageValue("adminProducts", JSON.stringify(originalProducts));
+      } catch (rollbackError) {
+        console.error("No se pudo revertir stock tras fallo TPV:", rollbackError.message);
+      }
+    }
+    res.status(500).json({ error: error.message || "No se pudo completar la venta TPV" });
+  }
 });
 
 function pickBouquetImage({ description = "", color = "", style = "" }) {
