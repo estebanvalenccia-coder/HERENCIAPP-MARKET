@@ -64,8 +64,8 @@ export function Home() {
   }, []);
 
   const featureIcons = [Leaf, Truck, GraduationCap, Heart];
-  const heroImage = site.hero.imageUrl || legacyHero || DEFAULT_HERO;
-  const ctaImage = site.cta.imageUrl || legacyCta || ctaBackground;
+  const heroImage = legacyHero || site.hero.imageUrl || DEFAULT_HERO;
+  const ctaImage = legacyCta || site.cta.imageUrl || ctaBackground;
   const logoSrc = site.brand.logoUrl || logo;
 
   return (
