@@ -2112,6 +2112,11 @@ app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
       reference: String(req.body?.reference || "").trim(),
       items: purchaseLines,
       total: normalizeMoney(purchaseLines.reduce((sum, line) => sum + Number(line.totalCost || 0), 0)),
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
       createdAt: new Date().toISOString(),
     };
     current.purchases = [purchase, ...(Array.isArray(current.purchases) ? current.purchases : [])];
@@ -2290,6 +2295,11 @@ app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
       before,
       after,
       delta: after - before,
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
       createdAt: new Date().toISOString(),
     };
     operations.inventoryAdjustments = [adjustment, ...(Array.isArray(operations.inventoryAdjustments) ? operations.inventoryAdjustments : [])].slice(0, 500);
@@ -2396,6 +2406,11 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
   try {
     const orderId = String(req.body?.orderId || "").trim();
     const reason = String(req.body?.reason || "Devolución TPV").trim();
+    const refundStaff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
     if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
 
     const { data: order, error: orderError } = await supabase
@@ -2468,6 +2483,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       refundReason: reason,
       refundNumber,
       stripeRefundId: stripeRefundId || undefined,
+      refundedBy: refundStaff,
     };
 
     const { data: updated, error: updateError } = await supabase
@@ -2716,6 +2732,11 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
     const paymentMethod = normalizePaymentMethod(req.body?.paymentMethod);
     const existingOrderId = String(req.body?.existingOrderId || "").trim();
+    const staff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
 
     validatePosInvoiceData(documentType, customer, fiscalSettings);
 
@@ -2879,6 +2900,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       customerId: customer.id,
       loyaltyPointsEarned,
       mixedCardPaymentIntentId: paymentMethod === "mixed" ? String(req.body?.paymentIntentId || "") : undefined,
+      staff,
       fiscalSnapshot: fiscalSettings,
       tax: totals.tax,
       paymentBreakdown: paymentMethod === "mixed" ? mixedPayments : undefined,
