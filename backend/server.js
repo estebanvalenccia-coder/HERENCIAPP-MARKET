@@ -1794,6 +1794,9 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
   let originalProducts = null;
   let stockWasWritten = false;
+  let createdOrderId = null;
+  let originalCashSession = null;
+  let cashSessionWasWritten = false;
 
   try {
     const bootstrap = await loadPosBootstrap();
@@ -1856,6 +1859,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       if (!cashSession || cashSession.status !== "open") {
         return res.status(409).json({ error: "La caja está cerrada. Ábrela antes de cobrar en efectivo." });
       }
+      originalCashSession = cashSession;
     }
 
     const status = existingOrder ? "paid" : paymentStatusForMethod(paymentMethod);
@@ -1921,7 +1925,18 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
         .select("*")
         .single();
       if (error) throw error;
+      createdOrderId = id;
       savedOrder = data;
+    }
+
+    let cashSession = null;
+    if (paymentMethod === "cash") {
+      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
+      cashSessionWasWritten = true;
+    }
+
+    if (!existingOrder) {
+      broadcastAdminOrderEvent(savedOrder, status === "paid" ? "order_paid" : "order_created");
 
       if (status === "paid") {
         try {
@@ -1930,11 +1945,6 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
           console.error("Error enviando emails de venta TPV:", emailError.message);
         }
       }
-    }
-
-    let cashSession = null;
-    if (paymentMethod === "cash") {
-      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
     }
 
     res.json({
@@ -1946,6 +1956,26 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       cashSession,
     });
   } catch (error) {
+    if (cashSessionWasWritten && originalCashSession) {
+      try {
+        await writePosCashSession(originalCashSession);
+      } catch (rollbackError) {
+        console.error("No se pudo revertir la caja tras fallo TPV:", rollbackError.message);
+      }
+    }
+
+    if (createdOrderId) {
+      try {
+        const { error: deleteOrderError } = await supabase
+          .from("orders")
+          .delete()
+          .eq("id", createdOrderId);
+        if (deleteOrderError) throw deleteOrderError;
+      } catch (rollbackError) {
+        console.error("No se pudo revertir el pedido tras fallo TPV:", rollbackError.message);
+      }
+    }
+
     if (stockWasWritten && originalProducts) {
       try {
         await upsertStorageValue("adminProducts", JSON.stringify(originalProducts));
