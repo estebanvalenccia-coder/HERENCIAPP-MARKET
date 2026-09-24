@@ -5,13 +5,15 @@ import { products, categories } from "../data/products";
 import { toast } from "sonner";
 import { useLocation, Link } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
+import { defaultSiteContent, parseSiteContent, SiteContent } from "../lib/siteContent";
 
 export function Products() {
   const location = useLocation();
   const [selectedCategory, setSelectedCategory] = useState("todos");
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [displayProducts, setDisplayProducts] = useState(products);
+  const [displayProducts, setDisplayProducts] = useState<any[]>(products);
+  const [site, setSite] = useState<SiteContent>(defaultSiteContent);
 
   // Leer categoría de la URL
   useEffect(() => {
@@ -51,28 +53,22 @@ export function Products() {
     return matchesCategory && matchesSearch;
   });
 
-  const addToCart = (productId: number) => {
+  const addToCart = (productId: any) => {
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const product = displayProducts.find(p => p.id === productId);
+    const product = displayProducts.find((p: any) => String(p.id) === String(productId));
+    if (!product) return toast.error("Producto no encontrado");
 
-    if (!product) {
-      toast.error("Producto no encontrado");
-      return;
-    }
+    const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+    if (stock <= 0) return toast.error(site.productsPage.outOfStockText);
 
-    if (!product.price || product.price <= 0) {
-      toast.error("Este producto no tiene un precio válido");
-      return;
-    }
+    const existingItem = cart.find((item: any) => String(item.id) === String(productId));
+    const nextQuantity = Number(existingItem?.quantity || 0) + 1;
+    if (nextQuantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
 
-    const existingItem = cart.find((item: any) => item.id === productId);
-    if (existingItem) {
-      existingItem.quantity += 1;
-    } else {
-      cart.push({ ...product, quantity: 1 });
-    }
+    if (existingItem) existingItem.quantity = nextQuantity;
+    else cart.push({ ...product, quantity: 1 });
 
-    backendStorage.setItem("cart", JSON.stringify(cart));
+    void backendStorage.setItem("cart", JSON.stringify(cart));
     toast.success("Producto añadido al carrito");
     window.dispatchEvent(new Event("storage"));
   };
@@ -83,10 +79,10 @@ export function Products() {
       <div className="bg-muted/30 border-b border-border">
         <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
           <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Nuestros Productos
+            {site.productsPage.title}
           </h1>
           <p className="text-muted-foreground max-w-2xl">
-            Explora nuestra selección de flores, plantas y accesorios de jardinería
+            {site.productsPage.subtitle}
           </p>
         </div>
       </div>
@@ -100,7 +96,7 @@ export function Products() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Buscar productos..."
+                placeholder={site.productsPage.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
@@ -140,7 +136,7 @@ export function Products() {
         {/* Products Grid */}
         {filteredProducts.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-muted-foreground text-lg">No se encontraron productos</p>
+            <p className="text-muted-foreground text-lg">{site.productsPage.emptyText}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

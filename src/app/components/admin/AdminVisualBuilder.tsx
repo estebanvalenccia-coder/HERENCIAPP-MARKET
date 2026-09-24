@@ -43,8 +43,8 @@ import {
 import { StorefrontBlock } from "../site/StorefrontBlock";
 
 type Device = "desktop" | "tablet" | "mobile";
-type PageMode = "home" | "contact";
-type SelectedTarget = "header" | "footer" | "contact" | string;
+type PageMode = "home" | "products" | "services" | "contact";
+type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
 type EditorTab = "contenido" | "diseno" | "avanzado";
 
 type StoredVersion = {
@@ -978,7 +978,9 @@ export function AdminVisualBuilder({
                 const value = event.target.value;
                 setSelected(value);
                 if (value === "contact") setPageMode("contact");
-                else if (pageMode === "contact") setPageMode("home");
+                else if (value === "products") setPageMode("products");
+                else if (value === "services") setPageMode("services");
+                else if (pageMode !== "home") setPageMode("home");
               }}
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold"
             >
@@ -989,6 +991,8 @@ export function AdminVisualBuilder({
                 </option>
               ))}
               <option value="footer">Footer</option>
+              <option value="products">Productos</option>
+              <option value="services">Servicios</option>
               <option value="contact">Contacto</option>
             </select>
             <div className="flex rounded-lg bg-slate-100 p-1">
@@ -1155,6 +1159,8 @@ export function AdminVisualBuilder({
               </div>
             )}
 
+            {selected === "products" && <ProductsPageEditor site={site} updateSite={updateSite} />}
+            {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
             {selected === "contact" && <ContactEditor site={site} updateSite={updateSite} />}
 
             {selectedBlock && tab === "contenido" && (
@@ -1528,6 +1534,43 @@ function FooterEditor({
       </div>
     </div>
   );
+}
+
+function ProductsPageEditor({ site, updateSite }: { site: SiteContent; updateSite: (mutator: (site: SiteContent) => SiteContent) => void }) {
+  const patch = (value: Partial<SiteContent["productsPage"]>) => updateSite((current) => ({ ...current, productsPage: { ...current.productsPage, ...value } }));
+  return <div className="space-y-4">
+    <TextField label="Título" value={site.productsPage.title} onChange={(title) => patch({ title })} />
+    <TextField label="Subtítulo" value={site.productsPage.subtitle} onChange={(subtitle) => patch({ subtitle })} multiline />
+    <TextField label="Buscador" value={site.productsPage.searchPlaceholder} onChange={(searchPlaceholder) => patch({ searchPlaceholder })} />
+    <TextField label="Filtros" value={site.productsPage.filtersLabel} onChange={(filtersLabel) => patch({ filtersLabel })} />
+    <TextField label="Sin resultados" value={site.productsPage.emptyText} onChange={(emptyText) => patch({ emptyText })} />
+    <TextField label="Destacado" value={site.productsPage.featuredLabel} onChange={(featuredLabel) => patch({ featuredLabel })} />
+    <TextField label="Botón añadir" value={site.productsPage.addButtonLabel} onChange={(addButtonLabel) => patch({ addButtonLabel })} />
+    <TextField label="Agotado" value={site.productsPage.outOfStockText} onChange={(outOfStockText) => patch({ outOfStockText })} />
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Productos, precios, fotos y stock se gestionan desde el módulo Productos.</p>
+  </div>;
+}
+
+function ServicesPageEditor({ site, updateSite }: { site: SiteContent; updateSite: (mutator: (site: SiteContent) => SiteContent) => void }) {
+  const p=site.servicesPage;
+  const patch=(value:Partial<SiteContent["servicesPage"]>)=>updateSite((current)=>({...current,servicesPage:{...current.servicesPage,...value}}));
+  return <div className="space-y-4">
+    <TextField label="Título" value={p.title} onChange={(title)=>patch({title})}/>
+    <TextField label="Subtítulo" value={p.subtitle} onChange={(subtitle)=>patch({subtitle})} multiline/>
+    <TextField label="Título Jardinería" value={p.gardeningHeading} onChange={(gardeningHeading)=>patch({gardeningHeading})}/>
+    <TextField label="Descripción Jardinería" value={p.gardeningDescription} onChange={(gardeningDescription)=>patch({gardeningDescription})} multiline/>
+    <TextField label="Título Cursos" value={p.coursesHeading} onChange={(coursesHeading)=>patch({coursesHeading})}/>
+    <TextField label="Descripción Cursos" value={p.coursesDescription} onChange={(coursesDescription)=>patch({coursesDescription})} multiline/>
+    <TextField label="Título Entrega" value={p.deliveryHeading} onChange={(deliveryHeading)=>patch({deliveryHeading})}/>
+    <TextField label="Descripción Entrega" value={p.deliveryDescription} onChange={(deliveryDescription)=>patch({deliveryDescription})} multiline/>
+    <TextField label="Título Asesoría" value={p.advisoryHeading} onChange={(advisoryHeading)=>patch({advisoryHeading})}/>
+    <TextField label="Descripción Asesoría" value={p.advisoryDescription} onChange={(advisoryDescription)=>patch({advisoryDescription})} multiline/>
+    <TextField label="CTA" value={p.ctaTitle} onChange={(ctaTitle)=>patch({ctaTitle})}/>
+    <TextField label="Descripción CTA" value={p.ctaDescription} onChange={(ctaDescription)=>patch({ctaDescription})} multiline/>
+    <TextField label="Botón WhatsApp" value={p.whatsappButtonLabel} onChange={(whatsappButtonLabel)=>patch({whatsappButtonLabel})}/>
+    <TextField label="Botón llamar" value={p.callButtonLabel} onChange={(callButtonLabel)=>patch({callButtonLabel})}/>
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Los botones de servicios usan el WhatsApp y teléfono reales configurados en el Footer.</p>
+  </div>;
 }
 
 function ContactEditor({

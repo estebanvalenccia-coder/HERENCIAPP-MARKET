@@ -3,9 +3,32 @@ import { Calendar, Clock, MapPin, Users, Scissors, BookOpen, Check } from "lucid
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
+import { backendStorage } from "../lib/backendStorage";
+import { defaultSiteContent, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
 
 export function Services() {
   const location = useLocation();
+  const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+
+  useEffect(() => {
+    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    load();
+    window.addEventListener("storage", load);
+    window.addEventListener("backend-storage", load);
+    return () => {
+      window.removeEventListener("storage", load);
+      window.removeEventListener("backend-storage", load);
+    };
+  }, []);
+
+  const openWhatsApp = (message: string) => {
+    const phone = normalizeWhatsAppPhone(site.footer.whatsappPhone || site.floatingWhatsapp.phone);
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const callStore = () => {
+    window.location.href = `tel:${normalizePhoneForHref(site.footer.callPhone)}`;
+  };
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
 
@@ -100,7 +123,7 @@ export function Services() {
       <div className="bg-muted/30 border-b border-border">
         <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
           <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Nuestros Servicios
+            {site.servicesPage.title}
           </h1>
           <p className="text-muted-foreground max-w-2xl">
             Expertos en jardinería y educación para transformar tus espacios verdes
@@ -113,10 +136,10 @@ export function Services() {
         <section id="jardineria" className="mb-16 scroll-mt-20">
           <div className="mb-8">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Servicios de Jardinería
+              {site.servicesPage.gardeningHeading}
             </h2>
             <p className="text-muted-foreground">
-              Profesionales especializados para el cuidado de tus plantas
+              {site.servicesPage.gardeningDescription}
             </p>
           </div>
 
@@ -160,10 +183,10 @@ export function Services() {
         <section id="cursos" className="scroll-mt-20">
           <div className="mb-8">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Cursos Disponibles
+              {site.servicesPage.coursesHeading}
             </h2>
             <p className="text-muted-foreground">
-              Aprende con nuestros expertos y desarrolla tus habilidades
+              {site.servicesPage.coursesDescription}
             </p>
           </div>
 
@@ -229,10 +252,10 @@ export function Services() {
         <section id="entrega" className="mt-16 scroll-mt-20">
           <div className="mb-8">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Servicio de Entrega
+              {site.servicesPage.deliveryHeading}
             </h2>
             <p className="text-muted-foreground">
-              Llevamos tus plantas y flores directamente a tu puerta
+              {site.servicesPage.deliveryDescription}
             </p>
           </div>
 
@@ -265,7 +288,7 @@ export function Services() {
         <section id="asesoria" className="mt-16 scroll-mt-20">
           <div className="mb-8">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Asesoría Personalizada
+              {site.servicesPage.advisoryHeading}
             </h2>
             <p className="text-muted-foreground">
               Consultoría experta para el cuidado de tus plantas
@@ -334,7 +357,7 @@ export function Services() {
           className="mt-16 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-3xl p-8 md:p-12 text-center border border-border"
         >
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-4">
-            ¿Necesitas un servicio personalizado?
+            {site.servicesPage.ctaTitle}
           </h2>
           <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
             Contáctanos para diseñar un plan a medida según tus necesidades

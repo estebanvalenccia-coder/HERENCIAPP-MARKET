@@ -111,6 +111,32 @@ export type SiteContent = {
     phone: string;
     ariaLabel: string;
   };
+  productsPage: {
+    title: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    filtersLabel: string;
+    emptyText: string;
+    featuredLabel: string;
+    addButtonLabel: string;
+    outOfStockText: string;
+  };
+  servicesPage: {
+    title: string;
+    subtitle: string;
+    gardeningHeading: string;
+    gardeningDescription: string;
+    coursesHeading: string;
+    coursesDescription: string;
+    deliveryHeading: string;
+    deliveryDescription: string;
+    advisoryHeading: string;
+    advisoryDescription: string;
+    ctaTitle: string;
+    ctaDescription: string;
+    whatsappButtonLabel: string;
+    callButtonLabel: string;
+  };
   contactPage: {
     title: string;
     subtitle: string;
@@ -253,6 +279,32 @@ export const defaultSiteContent: SiteContent = {
     enabled: true,
     phone: "34624239598",
     ariaLabel: "Contactar por WhatsApp",
+  },
+  productsPage: {
+    title: "Nuestros Productos",
+    subtitle: "Explora nuestra selección de flores, plantas y accesorios de jardinería",
+    searchPlaceholder: "Buscar productos...",
+    filtersLabel: "Filtros",
+    emptyText: "No se encontraron productos",
+    featuredLabel: "Destacado",
+    addButtonLabel: "Añadir",
+    outOfStockText: "Agotado",
+  },
+  servicesPage: {
+    title: "Nuestros Servicios",
+    subtitle: "Soluciones personalizadas para cuidar, decorar y transformar tus espacios",
+    gardeningHeading: "Servicios de Jardinería",
+    gardeningDescription: "Profesionales especializados para el cuidado de tus plantas",
+    coursesHeading: "Cursos Disponibles",
+    coursesDescription: "Aprende con nuestros expertos y desarrolla tus habilidades",
+    deliveryHeading: "Servicio de Entrega",
+    deliveryDescription: "Llevamos tus plantas y flores directamente a tu puerta",
+    advisoryHeading: "Asesoría Personalizada",
+    advisoryDescription: "Consultoría experta para el cuidado y diseño de tus espacios",
+    ctaTitle: "¿Necesitas un servicio personalizado?",
+    ctaDescription: "Cuéntanos qué necesitas y prepararemos una propuesta a medida.",
+    whatsappButtonLabel: "Contactar por WhatsApp",
+    callButtonLabel: "Llamar ahora",
   },
   contactPage: {
     title: "Contacto",
@@ -707,6 +759,14 @@ export function parseSiteContent(raw: string | null): SiteContent {
       floatingWhatsapp: {
         ...defaultSiteContent.floatingWhatsapp,
         ...(parsed.floatingWhatsapp || {}),
+      },
+      productsPage: {
+        ...defaultSiteContent.productsPage,
+        ...(parsed.productsPage || {}),
+      },
+      servicesPage: {
+        ...defaultSiteContent.servicesPage,
+        ...(parsed.servicesPage || {}),
       },
       contactPage: {
         ...defaultSiteContent.contactPage,
