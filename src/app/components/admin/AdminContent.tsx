@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, ExternalLink, GripVertical, Image as ImageIcon, Monitor, RotateCcw, Save, Smartphone, Tablet, Upload } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, Monitor, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { backendStorage } from "../../lib/backendStorage";
-import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink } from "../../lib/siteContent";
+import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
+import { AdminVisualBuilder } from "./AdminVisualBuilder";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -131,8 +132,6 @@ export function AdminContent() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [saving, setSaving] = useState(false);
   const [visualMode, setVisualMode] = useState(false);
-  const [selectedBlock, setSelectedBlock] = useState<"hero" | "features" | "categories" | "cta" | "footer">("hero");
-  const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
 
   const load = () => {
     const next = parseSiteContent(backendStorage.getItem("siteContent"));
