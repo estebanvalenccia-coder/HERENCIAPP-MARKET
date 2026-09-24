@@ -131,6 +131,14 @@ export function AdminPOS() {
   const [fiscalDraft, setFiscalDraft] = useState<FiscalSettings>(EMPTY_FISCAL);
   const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId: string } | null>(null);
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
+  const [testingSystem, setTestingSystem] = useState(false);
+  const [selfTestResult, setSelfTestResult] = useState<{
+    ok: boolean;
+    cardReady: boolean;
+    stockReady: boolean;
+    fiscalReady: boolean;
+    tests: Array<{ name: string; ok: boolean; detail: string }>;
+  } | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -368,6 +376,25 @@ export function AdminPOS() {
     }
   }
 
+  async function runSelfTest() {
+    setTestingSystem(true);
+    try {
+      const result = await backendApi.posSelfTest();
+      setSelfTestResult(result);
+      if (result.ok && result.cardReady && result.stockReady) {
+        toast.success("Autoprueba TPV correcta: backend, stock, cálculos y Stripe responden");
+      } else if (result.ok) {
+        toast.warning("Motor TPV correcto, pero hay configuración pendiente. Revisa el informe.");
+      } else {
+        toast.error("La autoprueba detectó un fallo en el TPV");
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo ejecutar la autoprueba TPV");
+    } finally {
+      setTestingSystem(false);
+    }
+  }
+
   async function saveCustomer() {
     if (!newCustomer.name.trim()) return toast.error("Escribe el nombre del cliente");
     try {
@@ -437,10 +464,39 @@ export function AdminPOS() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => void loadData()} className="rounded-xl border border-emerald-100 px-4 py-2 font-bold text-emerald-700">Actualizar stock</button>
+          <button
+            onClick={() => void runSelfTest()}
+            disabled={testingSystem}
+            className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 font-bold text-blue-700 disabled:opacity-60"
+          >
+            {testingSystem ? "Probando..." : "Probar TPV"}
+          </button>
           <button onClick={() => setShowFiscalModal(true)} className="flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 font-bold"><Settings className="h-4 w-4" /> Datos fiscales</button>
           <button onClick={printReceipt} className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white"><Printer className="h-4 w-4" /> Imprimir</button>
         </div>
       </div>
+
+      {selfTestResult && (
+        <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-black text-blue-950">Autoprueba del TPV</p>
+              <p className="text-sm text-blue-800">
+                Motor {selfTestResult.ok ? "OK" : "con errores"} · Tarjeta {selfTestResult.cardReady ? "lista" : "no lista"} · Stock {selfTestResult.stockReady ? "configurado" : "pendiente"} · Factura {selfTestResult.fiscalReady ? "configurada" : "pendiente"}
+              </p>
+            </div>
+            <button onClick={() => setSelfTestResult(null)} className="rounded-lg bg-white px-3 py-1 text-sm font-bold text-blue-700">Cerrar</button>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {selfTestResult.tests.map((test) => (
+              <div key={test.name} className="flex items-start gap-2 rounded-xl bg-white/80 p-3 text-sm">
+                <span className={test.ok ? "text-emerald-600" : "text-rose-600"}>{test.ok ? "✓" : "✕"}</span>
+                <div><p className="font-bold text-zinc-900">{test.name.replaceAll("_", " ")}</p><p className="text-zinc-600">{test.detail}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_430px] print:hidden">
         <section className="space-y-5">
