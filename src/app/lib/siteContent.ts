@@ -3,6 +3,42 @@ export type SiteLink = {
   href: string;
 };
 
+export type BuilderBlockType =
+  | "hero"
+  | "features"
+  | "categories"
+  | "cta"
+  | "textImage"
+  | "gallery"
+  | "testimonials";
+
+export type BuilderAlignment = "left" | "center" | "right";
+
+export type BuilderBlockDesign = {
+  backgroundColor: string;
+  textColor: string;
+  accentColor: string;
+  paddingY: number;
+  maxWidth: number;
+  columns: number;
+  gap: number;
+  radius: number;
+  overlay: number;
+  alignment: BuilderAlignment;
+  imagePosition: string;
+  headingScale: number;
+  hiddenMobile: boolean;
+};
+
+export type BuilderBlock = {
+  id: string;
+  type: BuilderBlockType;
+  name: string;
+  visible: boolean;
+  data: any;
+  design: BuilderBlockDesign;
+};
+
 export type SiteContent = {
   brand: {
     name: string;
@@ -90,6 +126,9 @@ export type SiteContent = {
     helpTitle: string;
     helpIntro: string;
     helpItems: string[];
+  };
+  builder: {
+    blocks: BuilderBlock[];
   };
 };
 
@@ -224,6 +263,9 @@ export const defaultSiteContent: SiteContent = {
       "Entregas a domicilio",
     ],
   },
+  builder: {
+    blocks: [],
+  },
 };
 
 function mergeLinks(defaults: SiteLink[], incoming: unknown): SiteLink[] {
@@ -234,12 +276,334 @@ function mergeLinks(defaults: SiteLink[], incoming: unknown): SiteLink[] {
   }));
 }
 
+function copy<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+export function makeBuilderId(prefix = "section") {
+  try {
+    return `${prefix}-${crypto.randomUUID()}`;
+  } catch {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
+  const base: BuilderBlockDesign = {
+    backgroundColor: "#ffffff",
+    textColor: "#1f2937",
+    accentColor: "#2f6848",
+    paddingY: 64,
+    maxWidth: 1280,
+    columns: 4,
+    gap: 24,
+    radius: 16,
+    overlay: 42,
+    alignment: "left",
+    imagePosition: "center",
+    headingScale: 100,
+    hiddenMobile: false,
+  };
+
+  if (type === "hero") {
+    return {
+      ...base,
+      backgroundColor: "#294c35",
+      textColor: "#ffffff",
+      paddingY: 96,
+      overlay: 52,
+      radius: 0,
+      headingScale: 125,
+    };
+  }
+
+  if (type === "features") {
+    return { ...base, backgroundColor: "#f7f8f5", paddingY: 48, columns: 4 };
+  }
+
+  if (type === "categories") {
+    return { ...base, paddingY: 72, columns: 4 };
+  }
+
+  if (type === "cta") {
+    return {
+      ...base,
+      backgroundColor: "#315a3f",
+      textColor: "#ffffff",
+      paddingY: 80,
+      overlay: 45,
+      alignment: "center",
+      radius: 0,
+      headingScale: 115,
+    };
+  }
+
+  if (type === "gallery") {
+    return { ...base, columns: 3, paddingY: 72 };
+  }
+
+  if (type === "testimonials") {
+    return { ...base, backgroundColor: "#f6f4ee", columns: 3, paddingY: 72 };
+  }
+
+  return base;
+}
+
+export function createBuilderBlock(
+  type: BuilderBlockType,
+  site: SiteContent = defaultSiteContent,
+  id = makeBuilderId(type)
+): BuilderBlock {
+  if (type === "hero") {
+    return {
+      id,
+      type,
+      name: "Portada",
+      visible: true,
+      data: {
+        eyebrow: site.hero.eyebrow,
+        description: site.hero.description,
+        primaryButton: copy(site.hero.primaryButton),
+        secondaryButton: copy(site.hero.secondaryButton),
+        imageUrl: site.hero.imageUrl,
+        showLogo: true,
+        heading: "",
+      },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  if (type === "features") {
+    return {
+      id,
+      type,
+      name: "Ventajas",
+      visible: true,
+      data: { items: copy(site.features) },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  if (type === "categories") {
+    return {
+      id,
+      type,
+      name: "Categorías",
+      visible: true,
+      data: {
+        heading: site.categoriesHeading,
+        description: site.categoriesDescription,
+        items: copy(site.categories),
+      },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  if (type === "cta") {
+    return {
+      id,
+      type,
+      name: "Banner promocional",
+      visible: true,
+      data: {
+        title: site.cta.title,
+        subtitle: site.cta.subtitle,
+        button: copy(site.cta.button),
+        imageUrl: site.cta.imageUrl,
+      },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  if (type === "gallery") {
+    return {
+      id,
+      type,
+      name: "Galería",
+      visible: true,
+      data: {
+        heading: "Galería",
+        description: "Una selección visual de nuestros trabajos y productos.",
+        images: site.categories.slice(0, 4).map((item) => ({
+          url: item.imageUrl,
+          alt: item.name,
+        })),
+      },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  if (type === "testimonials") {
+    return {
+      id,
+      type,
+      name: "Testimonios",
+      visible: true,
+      data: {
+        heading: "Lo que dicen nuestros clientes",
+        description: "Experiencias reales de quienes confían en Herencia.",
+        items: [
+          { name: "Cliente 1", text: "Una experiencia excelente.", rating: 5 },
+          { name: "Cliente 2", text: "Todo llegó precioso y a tiempo.", rating: 5 },
+          { name: "Cliente 3", text: "Atención cercana y muy profesional.", rating: 5 },
+        ],
+      },
+      design: defaultBlockDesign(type),
+    };
+  }
+
+  return {
+    id,
+    type: "textImage",
+    name: "Texto + imagen",
+    visible: true,
+    data: {
+      eyebrow: "HERENCIA",
+      heading: "Una historia que merece ser contada",
+      text: "Añade aquí el contenido que quieras destacar.",
+      button: { label: "Saber más", href: "/servicios" },
+      imageUrl: site.categories[0]?.imageUrl || "",
+      imageSide: "right",
+    },
+    design: defaultBlockDesign("textImage"),
+  };
+}
+
+export function ensureBuilderBlocks(site: SiteContent): BuilderBlock[] {
+  const incoming = site.builder?.blocks;
+  if (Array.isArray(incoming) && incoming.length > 0) {
+    return incoming.map((block: any) => ({
+      ...block,
+      id: String(block.id || makeBuilderId(block.type || "section")),
+      name: String(block.name || block.type || "Sección"),
+      visible: block.visible !== false,
+      design: {
+        ...defaultBlockDesign(block.type || "textImage"),
+        ...(block.design || {}),
+      },
+      data: block.data || {},
+    }));
+  }
+
+  return [
+    createBuilderBlock("hero", site, "hero-main"),
+    createBuilderBlock("features", site, "features-main"),
+    createBuilderBlock("categories", site, "categories-main"),
+    createBuilderBlock("cta", site, "cta-main"),
+  ];
+}
+
+export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): SiteContent {
+  const next = copy(site);
+  const hero = blocks.find((block) => block.type === "hero");
+  const features = blocks.find((block) => block.type === "features");
+  const categories = blocks.find((block) => block.type === "categories");
+  const cta = blocks.find((block) => block.type === "cta");
+
+  if (hero) {
+    next.hero = {
+      eyebrow: String(hero.data?.eyebrow || ""),
+      description: String(hero.data?.description || ""),
+      primaryButton: {
+        ...next.hero.primaryButton,
+        ...(hero.data?.primaryButton || {}),
+      },
+      secondaryButton: {
+        ...next.hero.secondaryButton,
+        ...(hero.data?.secondaryButton || {}),
+      },
+      imageUrl: String(hero.data?.imageUrl || ""),
+    };
+  }
+
+  if (features && Array.isArray(features.data?.items)) {
+    next.features = features.data.items.map((item: any) => ({
+      title: String(item?.title || ""),
+      description: String(item?.description || ""),
+    }));
+  }
+
+  if (categories) {
+    next.categoriesHeading = String(categories.data?.heading || "");
+    next.categoriesDescription = String(categories.data?.description || "");
+    if (Array.isArray(categories.data?.items)) {
+      next.categories = categories.data.items.map((item: any) => ({
+        name: String(item?.name || ""),
+        imageUrl: String(item?.imageUrl || ""),
+        href: String(item?.href || "/"),
+      }));
+    }
+  }
+
+  if (cta) {
+    next.cta = {
+      title: String(cta.data?.title || ""),
+      subtitle: String(cta.data?.subtitle || ""),
+      button: {
+        ...next.cta.button,
+        ...(cta.data?.button || {}),
+      },
+      imageUrl: String(cta.data?.imageUrl || ""),
+    };
+  }
+
+  next.builder = { blocks: copy(blocks) };
+  return next;
+}
+
+export function syncLegacyToBuilder(site: SiteContent): SiteContent {
+  const blocks = ensureBuilderBlocks(site).map((block) => {
+    if (block.type === "hero") {
+      return {
+        ...block,
+        data: {
+          ...block.data,
+          eyebrow: site.hero.eyebrow,
+          description: site.hero.description,
+          primaryButton: copy(site.hero.primaryButton),
+          secondaryButton: copy(site.hero.secondaryButton),
+          imageUrl: site.hero.imageUrl,
+        },
+      };
+    }
+    if (block.type === "features") {
+      return { ...block, data: { ...block.data, items: copy(site.features) } };
+    }
+    if (block.type === "categories") {
+      return {
+        ...block,
+        data: {
+          ...block.data,
+          heading: site.categoriesHeading,
+          description: site.categoriesDescription,
+          items: copy(site.categories),
+        },
+      };
+    }
+    if (block.type === "cta") {
+      return {
+        ...block,
+        data: {
+          ...block.data,
+          title: site.cta.title,
+          subtitle: site.cta.subtitle,
+          button: copy(site.cta.button),
+          imageUrl: site.cta.imageUrl,
+        },
+      };
+    }
+    return block;
+  });
+
+  return { ...site, builder: { blocks } };
+}
+
 export function parseSiteContent(raw: string | null): SiteContent {
-  if (!raw) return defaultSiteContent;
+  if (!raw) return copy(defaultSiteContent);
 
   try {
     const parsed = JSON.parse(raw) || {};
-    return {
+    const result: SiteContent = {
       ...defaultSiteContent,
       ...parsed,
       brand: { ...defaultSiteContent.brand, ...(parsed.brand || {}) },
@@ -312,9 +676,17 @@ export function parseSiteContent(raw: string | null): SiteContent {
             : item
         ),
       },
+      builder: {
+        blocks: Array.isArray(parsed.builder?.blocks) ? parsed.builder.blocks : [],
+      },
     };
+
+    result.builder.blocks = ensureBuilderBlocks(result);
+    return result;
   } catch {
-    return defaultSiteContent;
+    const fallback = copy(defaultSiteContent);
+    fallback.builder.blocks = ensureBuilderBlocks(fallback);
+    return fallback;
   }
 }
 
