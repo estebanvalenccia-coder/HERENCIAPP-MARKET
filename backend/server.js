@@ -2341,6 +2341,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
 
     const prepared = validateAndApplyStock(products, req.body?.items || []);
     const totals = calculatePosTotals(prepared.items);
+    const loyaltyPointsEarned = customer.id && customer.id !== "walk-in" ? Math.max(0, Math.floor(totals.total)) : 0;
     const totalCents = Math.round(totals.total * 100);
 
     if (!Number.isFinite(totalCents) || totalCents < 50) {
