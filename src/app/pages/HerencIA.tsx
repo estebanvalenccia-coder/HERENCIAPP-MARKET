@@ -3,6 +3,7 @@ import { Bot, ExternalLink, Lock, Mail, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { useNeuralChatBridge } from "../lib/useNeuralChatBridge";
 import {
   getHerenciaIaAccessMessage,
   getHerenciaIaDailyLimit,
@@ -33,6 +34,8 @@ export function HerencIA() {
   const [accessStarted, setAccessStarted] = useState(false);
   const [checkingCustomer, setCheckingCustomer] = useState(false);
   const [automaticStatus, setAutomaticStatus] = useState(false);
+
+  useNeuralChatBridge(iaUrl, isEnabled && accessStarted);
 
   useEffect(() => {
     const settings = backendStorage.getItem("herenciaSettings");

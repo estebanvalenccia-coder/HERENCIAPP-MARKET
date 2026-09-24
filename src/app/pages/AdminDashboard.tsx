@@ -19,6 +19,7 @@ import {
   DollarSign,
   Layers3,
   CreditCard,
+  Brain,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -37,6 +38,7 @@ import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
 import { AdminFinance } from "../components/admin/AdminFinance";
 import { AdminPOS } from "../components/admin/AdminPOS";
+import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
 
 type AdminSection =
   | "dashboard"
@@ -51,6 +53,7 @@ type AdminSection =
   | "calculator"
   | "flower-costs"
   | "content"
+  | "neural"
   | "settings";
 
 type AdminOrderAlert = {
@@ -311,6 +314,7 @@ export function AdminDashboard() {
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
+    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -758,6 +762,8 @@ export function AdminDashboard() {
           {currentSection === "flower-costs" && <AdminFlowerCosts />}
 
           {currentSection === "content" && <AdminContent />}
+
+          {currentSection === "neural" && <AdminHerenciaNeural />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

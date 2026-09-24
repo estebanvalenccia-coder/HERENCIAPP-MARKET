@@ -156,6 +156,7 @@ const protectedKeys = new Set([
   "posFiscalSettings",
   "posCashSession",
   "adminProducts",
+  "adminSuppliers",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
   "heroBanner",
@@ -163,6 +164,9 @@ const protectedKeys = new Set([
   "siteContent",
   "siteContentDraft",
   "siteContentHistory",
+  "herencia_finance_sales",
+  "herencia_finance_expenses",
+  "herencia_finance_closures",
   "__backendStorage_test__",
 ]);
 
@@ -177,8 +181,12 @@ const adminOnlyStorageKeys = [
   "posCustomers",
   "posFiscalSettings",
   "posCashSession",
+  "adminSuppliers",
   "siteContentDraft",
   "siteContentHistory",
+  "herencia_finance_sales",
+  "herencia_finance_expenses",
+  "herencia_finance_closures",
 ];
 
 function parseCookies(req) {
@@ -808,6 +816,7 @@ app.post(
           console.error("Error actualizando pedido pagado:", error.message);
         } else {
           broadcastAdminOrderEvent(updatedOrder, "order_paid");
+          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
 
           try {
             await sendOrderConfirmationEmails(updatedOrder, "stripe_payment_succeeded");
@@ -998,7 +1007,6 @@ app.delete("/api/admin/media", requireAdmin, async (req, res) => {
   }
 });
 
-
 const adminOrderEventClients = new Set();
 const recentAdminOrderEventKeys = new Map();
 
@@ -1052,6 +1060,29 @@ function broadcastAdminOrderEvent(order, kind = "order_created") {
   }
 
   return true;
+}
+
+
+async function emitNeuralBusinessEvent(type, payload = {}) {
+  const baseUrl = String(process.env.NEURAL_SERVICE_URL || "").replace(/\/$/, "");
+  const adminToken = process.env.NEURAL_ADMIN_TOKEN;
+  if (!baseUrl || !adminToken) return { skipped: true, reason: "neural_not_configured" };
+  try {
+    const response = await fetch(`${baseUrl}/v1/neural/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Neural-Admin-Token": adminToken,
+      },
+      body: JSON.stringify({ type, payload, meta: { source: "herencia_backend" } }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`Neural event HTTP ${response.status}`);
+    return { ok: true };
+  } catch (error) {
+    console.warn("No se pudo emitir evento a Neural:", type, error?.message || error);
+    return { ok: false, error: error?.message || String(error) };
+  }
 }
 
 app.get("/api/admin/order-events", requireAdmin, (req, res) => {
@@ -1290,6 +1321,7 @@ app.post("/api/orders", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   broadcastAdminOrderEvent(data, "order_created");
+  void emitNeuralBusinessEvent("order.created", normalizeOrder(data));
 
   try {
     await sendOrderConfirmationEmails(data, "order_created");
@@ -1390,6 +1422,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     }
   }
 
+  void emitNeuralBusinessEvent("order.status_changed", { ...normalizeOrder(data), previousStatus: previousOrder.status, nextStatus: status });
   res.json({ order: data, statusEmailResult });
 });
 
@@ -1596,6 +1629,7 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
     };
 
     await writePosCashSession(session);
+    void emitNeuralBusinessEvent("cash.opened", { session });
     res.json({ session });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1643,6 +1677,7 @@ app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
     }
 
     await writePosCashSession(next);
+    void emitNeuralBusinessEvent("cash.movement", { sessionId: next.id, movement: next.movements?.at(-1), expectedCash: next.expectedCash });
     res.json({ session: next });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1684,6 +1719,7 @@ app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
     };
 
     await writePosCashSession(closed);
+    void emitNeuralBusinessEvent("cash.closed", { session: closed, difference });
     res.json({ session: closed });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2107,6 +2143,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     if (!existingOrder) {
       broadcastAdminOrderEvent(savedOrder, status === "paid" ? "order_paid" : "order_created");
+      void emitNeuralBusinessEvent(status === "paid" ? "sale.completed" : "order.created", normalizeOrder(savedOrder));
 
       if (status === "paid") {
         try {
@@ -2567,6 +2604,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
 
   if (isPaid) {
     broadcastAdminOrderEvent(updatedOrder, "order_paid");
+          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
 
     try {
       emailResults = await sendOrderConfirmationEmails(
@@ -2588,6 +2626,848 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     emailResults,
     paymentIntentStatus: paymentIntent.status,
   });
+});
+
+
+function requireNeuralBridge(req, res, next) {
+  const expected = process.env.HERENCIA_NEURAL_TOKEN;
+  const received = req.get("X-Herencia-Neural-Token");
+  if (!expected) return res.status(503).json({ error: "HERENCIA_NEURAL_TOKEN no configurado" });
+  if (!received) return res.status(401).json({ error: "Token Neural requerido" });
+  const a = Buffer.from(String(received));
+  const b = Buffer.from(String(expected));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return res.status(403).json({ error: "Token Neural inválido" });
+  }
+  next();
+}
+
+function requireNeuralActionId(req, res) {
+  const actionId = String(req.get("X-Neural-Action-Id") || req.body?.actionId || "").trim();
+  if (!actionId) {
+    res.status(400).json({ error: "X-Neural-Action-Id requerido para acciones de escritura" });
+    return null;
+  }
+  return actionId;
+}
+
+async function readNeuralProducts() {
+  return parseStoredJson(await readStorageValue("adminProducts"), []);
+}
+
+async function writeNeuralProducts(products) {
+  await upsertStorageValue("adminProducts", JSON.stringify(products));
+  return products;
+}
+
+function normalizeNeuralProduct(input = {}) {
+  const name = String(input.name || input.title || "").trim();
+  if (!name) throw new Error("El producto necesita nombre");
+  const price = Number(input.price || 0);
+  const stock = Math.max(0, Math.floor(Number(input.stock || 0)));
+  if (!Number.isFinite(price) || price < 0) throw new Error("Precio inválido");
+  return {
+    ...input,
+    id: String(input.id || crypto.randomUUID()),
+    name,
+    price,
+    stock,
+    category: String(input.category || "Sin categoría").trim(),
+    sku: String(input.sku || "").trim(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function neuralClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function neuralDefaultDesign(overrides = {}) {
+  return {
+    backgroundColor: "#ffffff",
+    textColor: "#1f2937",
+    accentColor: "#2f6848",
+    paddingY: 64,
+    maxWidth: 1280,
+    columns: 3,
+    gap: 24,
+    radius: 16,
+    overlay: 42,
+    alignment: "left",
+    imagePosition: "center",
+    headingScale: 100,
+    fontFamily: "inherit",
+    hiddenMobile: false,
+    ...overrides,
+  };
+}
+
+function ensureNeuralBuilder(site) {
+  site.builder = site.builder && typeof site.builder === "object" ? site.builder : {};
+  if (!Array.isArray(site.builder.blocks) || !site.builder.blocks.length) {
+    site.builder.blocks = [
+      {
+        id: "hero-main",
+        type: "hero",
+        name: "Portada",
+        visible: true,
+        data: {
+          eyebrow: site.hero?.eyebrow || "",
+          description: site.hero?.description || "",
+          primaryButton: site.hero?.primaryButton || { label: "Ver catálogo", href: "/productos" },
+          secondaryButton: site.hero?.secondaryButton || { label: "Servicios", href: "/servicios" },
+          imageUrl: site.hero?.imageUrl || "",
+          showLogo: true,
+          heading: "",
+        },
+        design: neuralDefaultDesign({ backgroundColor: "#294c35", textColor: "#ffffff", paddingY: 96, overlay: 52, radius: 0, headingScale: 125 }),
+      },
+      {
+        id: "features-main",
+        type: "features",
+        name: "Ventajas",
+        visible: true,
+        data: { items: Array.isArray(site.features) ? site.features : [] },
+        design: neuralDefaultDesign({ backgroundColor: "#f7f8f5", paddingY: 48, columns: 4 }),
+      },
+      {
+        id: "categories-main",
+        type: "categories",
+        name: "Categorías",
+        visible: true,
+        data: { heading: site.categoriesHeading || "", description: site.categoriesDescription || "", items: Array.isArray(site.categories) ? site.categories : [] },
+        design: neuralDefaultDesign({ columns: 4 }),
+      },
+      {
+        id: "cta-main",
+        type: "cta",
+        name: "Banner promocional",
+        visible: true,
+        data: { title: site.cta?.title || "", subtitle: site.cta?.subtitle || "", button: site.cta?.button || {}, imageUrl: site.cta?.imageUrl || "" },
+        design: neuralDefaultDesign({ backgroundColor: "#294c35", textColor: "#ffffff" }),
+      },
+    ];
+  }
+  return site;
+}
+
+function syncNeuralBuilderToLegacy(site) {
+  const blocks = site?.builder?.blocks || [];
+  const hero = blocks.find((block) => block.type === "hero");
+  const features = blocks.find((block) => block.type === "features");
+  const categories = blocks.find((block) => block.type === "categories");
+  const cta = blocks.find((block) => block.type === "cta");
+  if (hero) {
+    site.hero = {
+      ...(site.hero || {}),
+      eyebrow: String(hero.data?.eyebrow || ""),
+      description: String(hero.data?.description || ""),
+      primaryButton: { ...(site.hero?.primaryButton || {}), ...(hero.data?.primaryButton || {}) },
+      secondaryButton: { ...(site.hero?.secondaryButton || {}), ...(hero.data?.secondaryButton || {}) },
+      imageUrl: String(hero.data?.imageUrl || ""),
+    };
+  }
+  if (features && Array.isArray(features.data?.items)) site.features = features.data.items;
+  if (categories) {
+    site.categoriesHeading = String(categories.data?.heading || "");
+    site.categoriesDescription = String(categories.data?.description || "");
+    if (Array.isArray(categories.data?.items)) site.categories = categories.data.items;
+  }
+  if (cta) {
+    site.cta = {
+      ...(site.cta || {}),
+      title: String(cta.data?.title || ""),
+      subtitle: String(cta.data?.subtitle || ""),
+      button: { ...(site.cta?.button || {}), ...(cta.data?.button || {}) },
+      imageUrl: String(cta.data?.imageUrl || ""),
+    };
+  }
+  return site;
+}
+
+function neuralSetDeepValue(root, path, value) {
+  const parts = String(path || "").split(".").filter(Boolean);
+  const allowedRoots = new Set(["brand","navigation","headerActions","hero","features","categories","categoriesHeading","categoriesDescription","cta","footer","floatingWhatsapp","contactPage","builder"]);
+  if (!parts.length || !allowedRoots.has(parts[0])) throw new Error("Ruta de contenido no permitida");
+  let cursor = root;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = /^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i];
+    if (cursor[key] == null || typeof cursor[key] !== "object") cursor[key] = /^\d+$/.test(parts[i + 1]) ? [] : {};
+    cursor = cursor[key];
+  }
+  const rawLast = parts.at(-1);
+  const last = /^\d+$/.test(rawLast) ? Number(rawLast) : rawLast;
+  cursor[last] = value;
+}
+
+function createNeuralBuilderBlock(section = {}) {
+  const requestedType = String(section.type || "textImage");
+  const type = ["hero","features","categories","cta","textImage","gallery","testimonials"].includes(requestedType) ? requestedType : "textImage";
+  const id = String(section.id || `${type}-${crypto.randomUUID()}`);
+  const title = String(section.title || section.heading || "Nueva sección").trim();
+  const subtitle = String(section.subtitle || section.text || "").trim();
+  if (type === "gallery") return { id, type, name: title || "Galería", visible: true, data: { heading: title, description: subtitle, images: Array.isArray(section.images) ? section.images : [] }, design: neuralDefaultDesign({ columns: Math.max(1, Math.min(4, Number(section.columns || 3))) }) };
+  if (type === "testimonials") return { id, type, name: title || "Testimonios", visible: true, data: { heading: title, description: subtitle, items: Array.isArray(section.items) ? section.items : [] }, design: neuralDefaultDesign({ backgroundColor: "#f6f4ee", columns: Math.max(1, Math.min(4, Number(section.columns || 3))) }) };
+  if (type === "features") return { id, type, name: title || "Ventajas", visible: true, data: { items: Array.isArray(section.items) ? section.items : [] }, design: neuralDefaultDesign({ columns: Math.max(1, Math.min(4, Number(section.columns || 4))) }) };
+  if (type === "categories") return { id, type, name: title || "Categorías", visible: true, data: { heading: title, description: subtitle, items: Array.isArray(section.items) ? section.items : [] }, design: neuralDefaultDesign({ columns: Math.max(1, Math.min(4, Number(section.columns || 4))) }) };
+  if (type === "cta") return { id, type, name: title || "Banner", visible: true, data: { title, subtitle, button: section.button || { label: "Ver más", href: "/" }, imageUrl: String(section.imageUrl || "") }, design: neuralDefaultDesign({ backgroundColor: "#294c35", textColor: "#ffffff" }) };
+  if (type === "hero") return { id, type, name: title || "Portada", visible: true, data: { heading: title, eyebrow: String(section.eyebrow || ""), description: subtitle, primaryButton: section.primaryButton || { label: "Ver más", href: "/" }, secondaryButton: section.secondaryButton || { label: "Servicios", href: "/servicios" }, imageUrl: String(section.imageUrl || ""), showLogo: section.showLogo !== false }, design: neuralDefaultDesign({ backgroundColor: "#294c35", textColor: "#ffffff", paddingY: 96, overlay: 52, radius: 0, headingScale: 125 }) };
+  return { id, type: "textImage", name: title || "Texto + imagen", visible: true, data: { eyebrow: String(section.eyebrow || "HERENCIA"), heading: title, text: subtitle, button: section.button || { label: String(section.buttonLabel || "Saber más"), href: String(section.href || "/servicios") }, imageUrl: String(section.imageUrl || ""), imageSide: String(section.imageSide || "right") }, design: neuralDefaultDesign({ columns: Math.max(1, Math.min(4, Number(section.columns || 2))) }) };
+}
+
+function applyNeuralWebOperations(siteInput, operations = []) {
+  const site = ensureNeuralBuilder(neuralClone(siteInput || {}));
+  for (const op of operations) {
+    const blocks = site.builder.blocks;
+    switch (op?.type) {
+      case "updateText":
+      case "setImage":
+      case "updateButtonAction":
+        neuralSetDeepValue(site, op.path || op.target, op.value);
+        break;
+      case "createSection":
+        blocks.push(createNeuralBuilderBlock(op.section || op.value || {}));
+        break;
+      case "moveSection": {
+        const from = blocks.findIndex((block) => block.id === (op.sectionId || op.blockId));
+        if (from < 0) throw new Error("Sección no encontrada");
+        const [block] = blocks.splice(from, 1);
+        const to = Math.max(0, Math.min(blocks.length, Number(op.toIndex || 0)));
+        blocks.splice(to, 0, block);
+        break;
+      }
+      case "removeElement": {
+        const blockId = op.sectionId || op.blockId;
+        const before = blocks.length;
+        site.builder.blocks = blocks.filter((block) => block.id !== blockId);
+        if (site.builder.blocks.length === before) throw new Error("Sección no encontrada");
+        break;
+      }
+      case "setGrid": {
+        const block = blocks.find((item) => item.id === (op.sectionId || op.blockId));
+        if (!block) throw new Error("Sección no encontrada");
+        block.design = { ...neuralDefaultDesign(), ...(block.design || {}), columns: Math.max(1, Math.min(6, Number(op.columns || op.value || 3))) };
+        break;
+      }
+      case "setTypography": {
+        const block = blocks.find((item) => item.id === (op.sectionId || op.blockId));
+        if (!block) throw new Error("Sección no encontrada");
+        block.design = { ...neuralDefaultDesign(), ...(block.design || {}), fontFamily: String(op.fontFamily || op.value || "inherit"), headingScale: Math.max(60, Math.min(180, Number(op.headingScale || block.design?.headingScale || 100))) };
+        break;
+      }
+      case "setSpacing": {
+        const block = blocks.find((item) => item.id === (op.sectionId || op.blockId));
+        if (!block) throw new Error("Sección no encontrada");
+        block.design = { ...neuralDefaultDesign(), ...(block.design || {}), paddingY: Math.max(0, Math.min(200, Number(op.paddingY ?? block.design?.paddingY ?? 64))), gap: Math.max(0, Math.min(100, Number(op.gap ?? block.design?.gap ?? 24))) };
+        break;
+      }
+      case "createButton": {
+        const block = blocks.find((item) => item.id === (op.sectionId || op.blockId));
+        if (!block) throw new Error("Sección no encontrada");
+        block.data = { ...(block.data || {}), button: { label: String(op.label || "Ver más"), href: String(op.href || "/") } };
+        break;
+      }
+      case "uploadAsset": {
+        const dataUrl = String(op.dataUrl || op.value || "");
+        if (!/^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(dataUrl)) {
+          throw new Error("uploadAsset solo acepta imágenes PNG, JPEG o WebP en data URL");
+        }
+        const comma = dataUrl.indexOf(",");
+        const base64 = comma >= 0 ? dataUrl.slice(comma + 1).replace(/\s/g, "") : "";
+        const approxBytes = Math.floor((base64.length * 3) / 4);
+        if (approxBytes <= 0 || approxBytes > 2 * 1024 * 1024) {
+          throw new Error("La imagen debe pesar como máximo 2 MB después de comprimir");
+        }
+        const blockId = op.sectionId || op.blockId;
+        if (blockId) {
+          const block = blocks.find((item) => item.id === blockId);
+          if (!block) throw new Error("Sección no encontrada para uploadAsset");
+          const field = String(op.field || "imageUrl");
+          const allowedFields = new Set(["imageUrl"]);
+          if (!allowedFields.has(field)) throw new Error("Campo de imagen no permitido");
+          block.data = { ...(block.data || {}), [field]: dataUrl };
+        } else if (op.path || op.target) {
+          neuralSetDeepValue(site, op.path || op.target, dataUrl);
+        } else {
+          throw new Error("uploadAsset requiere sectionId o path");
+        }
+        break;
+      }
+      default:
+        throw new Error(`Operación web no soportada: ${op?.type}`);
+    }
+  }
+  return syncNeuralBuilderToLegacy(site);
+}
+
+async function readNeuralWebDrafts() {
+  return parseStoredJson(await readStorageValue("neuralWebDrafts"), []);
+}
+
+async function readSiteHistory() {
+  return parseStoredJson(await readStorageValue("siteContentHistory"), []);
+}
+
+
+const neuralCustomerEventRate = new Map();
+
+function redactCustomerChatText(value) {
+  return String(value || "")
+    .slice(0, 2000)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/(?:\+?34)?[\s.-]?(?:\d[\s.-]?){9,}/g, "[phone]")
+    .replace(/\b\d{8}[A-Z]\b/gi, "[id]");
+}
+
+function allowCustomerNeuralEvent(req) {
+  const key = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const now = Date.now();
+  const windowMs = 60_000;
+  const max = 30;
+  const entry = neuralCustomerEventRate.get(key) || { startedAt: now, count: 0 };
+  if (now - entry.startedAt > windowMs) {
+    entry.startedAt = now;
+    entry.count = 0;
+  }
+  entry.count += 1;
+  neuralCustomerEventRate.set(key, entry);
+  return entry.count <= max;
+}
+
+app.post("/api/neural/customer-chat-event", async (req, res) => {
+  if (!allowCustomerNeuralEvent(req)) {
+    return res.status(429).json({ error: "Demasiados eventos de chat" });
+  }
+  const allowedTypes = new Set([
+    "conversation.message",
+    "conversation.unanswered",
+    "conversation.intent",
+    "web.demand_signal",
+  ]);
+  const type = String(req.body?.type || "");
+  if (!allowedTypes.has(type)) {
+    return res.status(400).json({ error: "Tipo de evento de chat no permitido" });
+  }
+  const text = redactCustomerChatText(req.body?.text);
+  if (!text && type !== "conversation.intent") {
+    return res.status(400).json({ error: "Evento sin contenido" });
+  }
+  const payload = {
+    conversationId: String(req.body?.conversationId || "").slice(0, 120) || crypto.randomUUID(),
+    text,
+    intent: String(req.body?.intent || "").slice(0, 120),
+    topic: String(req.body?.topic || "").slice(0, 120),
+    suggestion: redactCustomerChatText(req.body?.suggestion || ""),
+    page: String(req.body?.page || "").slice(0, 300),
+    trust: "customer_unverified",
+    receivedAt: new Date().toISOString(),
+  };
+  const emitted = await emitNeuralBusinessEvent(type, payload);
+  res.status(emitted?.ok ? 202 : 503).json({
+    accepted: Boolean(emitted?.ok),
+    provisional: true,
+    reason: emitted?.reason || emitted?.error || null,
+  });
+});
+
+app.get("/api/neural-bridge/orders", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ orders: data || [], observedAt: new Date().toISOString() });
+});
+
+app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) => {
+  try {
+    res.json({ products: await readNeuralProducts(), observedAt: new Date().toISOString() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
+      supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
+      readStorageValue("adminProducts"),
+      readStorageValue("posCashSession"),
+      readStorageValue("siteContent"),
+      readStorageValue("siteContentDraft"),
+      readStorageValue("posCustomers"),
+      readStorageValue("herencia_finance_expenses"),
+      readStorageValue("herencia_finance_sales"),
+      readStorageValue("herencia_finance_closures"),
+      readStorageValue("adminSuppliers"),
+    ]);
+    if (orderError) throw orderError;
+    const products = parseStoredJson(productsRaw, []);
+    const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null, sku: p.sku || null }));
+    const orderCustomers = (orders || []).filter(o => o.customer_email).map(o => ({ email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }));
+    const posCustomers = parseStoredJson(posCustomersRaw, []);
+    const customerMap = new Map();
+    for (const customer of [...orderCustomers, ...posCustomers]) {
+      const key = String(customer.email || customer.id || customer.phone || "").toLowerCase();
+      if (key) customerMap.set(key, { ...(customerMap.get(key) || {}), ...customer });
+    }
+    const customers = [...customerMap.values()];
+    const sales = (orders || []).filter(o => ["paid","confirmed","preparing","ready","delivered","completed"].includes(o.status));
+    const revenue = sales.reduce((sum,o)=>sum+Number(o.total||0),0);
+    res.json({
+      products,
+      inventory,
+      orders: orders || [],
+      customers,
+      sales,
+      cash: parseStoredJson(cashRaw, null),
+      finance: {
+        revenue,
+        transactions: sales.length,
+        averageTicket: sales.length ? revenue / sales.length : 0,
+        expenses: parseStoredJson(expensesRaw, []),
+        recordedExpenses: parseStoredJson(expensesRaw, []),
+        expensesTotal: parseStoredJson(expensesRaw, []).reduce((sum, x) => sum + Number(x.amount || 0), 0),
+        manualSales: parseStoredJson(manualSalesRaw, []),
+        closures: parseStoredJson(closuresRaw, []),
+        netAfterRecordedExpenses: revenue - parseStoredJson(expensesRaw, []).reduce((sum, x) => sum + Number(x.amount || 0), 0),
+        derivedFrom: "verified_orders_plus_recorded_finance",
+      },
+      suppliers: parseStoredJson(suppliersRaw, []),
+      web: { published: parseStoredJson(siteRaw, {}), draft: parseStoredJson(draftRaw, {}) },
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo construir el Digital Twin" });
+  }
+});
+
+app.patch("/api/neural-bridge/products/:id/stock", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const current = Math.max(0, Math.floor(Number(products[index].stock || 0)));
+    const nextStock = req.body?.stock != null ? Math.max(0, Math.floor(Number(req.body.stock))) : Math.max(0, current + Math.floor(Number(req.body?.delta || 0)));
+    if (!Number.isFinite(nextStock)) return res.status(400).json({ error: "Stock inválido" });
+    products[index] = { ...products[index], stock: nextStock, updatedAt: new Date().toISOString() };
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("inventory.changed", { actionId, product: products[index], previousStock: current, nextStock });
+    res.json({ ok: true, actionId, product: products[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo modificar stock" });
+  }
+});
+
+app.patch("/api/neural-bridge/products/:id/price", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const price = Number(req.body?.price);
+    if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Precio inválido" });
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const previousPrice = Number(products[index].price || 0);
+    products[index] = { ...products[index], price, updatedAt: new Date().toISOString() };
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.price_changed", { actionId, product: products[index], previousPrice, price });
+    res.json({ ok: true, actionId, product: products[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo modificar precio" });
+  }
+});
+
+app.post("/api/neural-bridge/products", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const product = normalizeNeuralProduct(req.body?.product || req.body || {});
+    if (products.some(p => String(p.id) === product.id || (product.sku && String(p.sku || "").toLowerCase() === product.sku.toLowerCase()))) {
+      return res.status(409).json({ error: "Ya existe un producto con ese ID o SKU" });
+    }
+    products.push(product);
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.created", { actionId, product });
+    res.status(201).json({ ok: true, actionId, product });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo crear el producto" });
+  }
+});
+
+
+app.patch("/api/neural-bridge/products/:id", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const patch = req.body?.patch || {};
+    const previous = products[index];
+    const updated = normalizeNeuralProduct({ ...previous, ...patch, id: previous.id });
+    products[index] = updated;
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.updated", { actionId, product: updated, previous });
+    res.json({ ok: true, actionId, product: updated });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo actualizar el producto" });
+  }
+});
+
+app.delete("/api/neural-bridge/products/:id", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const [deleted] = products.splice(index, 1);
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.deleted", { actionId, product: deleted });
+    res.json({ ok: true, actionId, product: deleted });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar el producto" });
+  }
+});
+
+app.post("/api/neural-bridge/crm/customers", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const incoming = normalizePosCustomer(req.body?.customer || {});
+    if (!incoming.name) return res.status(400).json({ error: "El cliente necesita nombre" });
+    const customers = parseStoredJson(await readStorageValue("posCustomers"), []);
+    const match = customers.findIndex((item) =>
+      String(item.id || "") === incoming.id ||
+      (incoming.email && String(item.email || "").toLowerCase() === incoming.email.toLowerCase()) ||
+      (incoming.phone && String(item.phone || "") === incoming.phone)
+    );
+    const customer = match >= 0 ? { ...customers[match], ...incoming, id: customers[match].id || incoming.id } : incoming;
+    if (match >= 0) customers[match] = customer;
+    else customers.unshift(customer);
+    await upsertStorageValue("posCustomers", JSON.stringify(customers.slice(0, 5000)));
+    void emitNeuralBusinessEvent("customer.updated", { actionId, customer, created: match < 0 });
+    res.status(match < 0 ? 201 : 200).json({ ok: true, actionId, customer });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo guardar el cliente" });
+  }
+});
+
+
+app.post("/api/neural-bridge/suppliers", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const incoming = req.body?.supplier || req.body || {};
+    const name = String(incoming.name || "").trim();
+    if (!name) return res.status(400).json({ error: "El proveedor necesita nombre" });
+    const suppliers = parseStoredJson(await readStorageValue("adminSuppliers"), []);
+    const normalized = {
+      id: String(incoming.id || crypto.randomUUID()),
+      name,
+      email: String(incoming.email || "").trim(),
+      phone: String(incoming.phone || "").trim(),
+      address: String(incoming.address || "").trim(),
+      website: String(incoming.website || "").trim(),
+      notes: String(incoming.notes || "").slice(0, 2000),
+      categories: Array.isArray(incoming.categories) ? incoming.categories.map(String).slice(0, 50) : [],
+      active: incoming.active !== false,
+      updatedAt: new Date().toISOString(),
+    };
+    if (normalized.email && !isValidEmail(normalized.email)) {
+      return res.status(400).json({ error: "Email de proveedor inválido" });
+    }
+    const match = suppliers.findIndex(s =>
+      String(s.id || "") === normalized.id ||
+      (normalized.email && String(s.email || "").toLowerCase() === normalized.email.toLowerCase()) ||
+      String(s.name || "").toLowerCase() === normalized.name.toLowerCase()
+    );
+    const supplier = match >= 0 ? { ...suppliers[match], ...normalized, id: suppliers[match].id || normalized.id } : normalized;
+    if (match >= 0) suppliers[match] = supplier;
+    else suppliers.unshift(supplier);
+    await upsertStorageValue("adminSuppliers", JSON.stringify(suppliers.slice(0, 5000)));
+    void emitNeuralBusinessEvent("supplier.updated", { actionId, supplier, created: match < 0 });
+    res.status(match < 0 ? 201 : 200).json({ ok: true, actionId, supplier });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo guardar el proveedor" });
+  }
+});
+
+app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  if (!requireSupabase(res)) return;
+  try {
+    const { data: order, error } = await supabase.from("orders").select("*").eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    if (!["paid","confirmed","preparing","processing","ready","delivered","completed"].includes(order.status)) {
+      return res.status(409).json({ error: "Solo se puede emitir factura para un pedido cobrado o confirmado" });
+    }
+    const bootstrap = await loadPosBootstrap();
+    const metadata = order.metadata || {};
+    const customer = normalizePosCustomer({
+      id: req.body?.customer?.id || order.customer_email || crypto.randomUUID(),
+      name: req.body?.customer?.name || order.customer_name || "",
+      email: req.body?.customer?.email || order.customer_email || "",
+      nif: req.body?.customer?.nif || metadata.customerNif || "",
+      address: req.body?.customer?.address || metadata.customerAddress || "",
+      phone: req.body?.customer?.phone || metadata.customerPhone || "",
+    });
+    validatePosInvoiceData("invoice", customer, bootstrap.fiscalSettings || {});
+    if (metadata.documentType === "invoice" && metadata.invoiceNumber) {
+      return res.json({ ok: true, actionId, idempotent: true, invoiceNumber: metadata.invoiceNumber, order: posOrderResponse(order) });
+    }
+    const invoiceNumber = await reservePosDocumentNumber("invoice");
+    const now = new Date().toISOString();
+    const nextMetadata = {
+      ...metadata,
+      documentType: "invoice",
+      invoiceNumber,
+      invoiceIssuedAt: now,
+      invoiceNeuralActionId: actionId,
+      customerNif: customer.nif,
+      customerAddress: customer.address,
+      customerPhone: customer.phone,
+      fiscalSnapshot: bootstrap.fiscalSettings || {},
+    };
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ customer_email: customer.email || null, customer_name: customer.name, metadata: nextMetadata, updated_at: now })
+      .eq("id", order.id)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+    void emitNeuralBusinessEvent("invoice.issued", { actionId, orderId: order.id, invoiceNumber, total: Number(updated.total || 0) });
+    res.status(201).json({
+      ok: true,
+      actionId,
+      invoiceNumber,
+      invoice: {
+        number: invoiceNumber,
+        issuedAt: now,
+        issuer: bootstrap.fiscalSettings || {},
+        customer,
+        items: updated.items || [],
+        subtotal: Number(updated.subtotal || 0),
+        total: Number(updated.total || 0),
+        tax: Number(nextMetadata.tax || 0),
+      },
+      order: posOrderResponse(updated),
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo emitir la factura" });
+  }
+});
+
+app.post("/api/neural-bridge/finance/expenses", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Importe de gasto inválido" });
+    const expenses = parseStoredJson(await readStorageValue("herencia_finance_expenses"), []);
+    const now = new Date().toISOString();
+    const expense = {
+      id: crypto.randomUUID(),
+      expense_date: String(req.body?.expense_date || req.body?.date || now.slice(0, 10)),
+      category: String(req.body?.category || "Otros").slice(0, 120),
+      provider: String(req.body?.provider || "Proveedor").slice(0, 160),
+      concept: String(req.body?.concept || req.body?.note || "Gasto Neural").slice(0, 300),
+      amount: Math.round(amount * 100) / 100,
+      payment_method: String(req.body?.payment_method || req.body?.paymentMethod || "Transferencia").slice(0, 80),
+      status: String(req.body?.status || "Pagado").slice(0, 80),
+      notes: String(req.body?.notes || "").slice(0, 1000),
+      created_at: now,
+      source: "HERENCIA_NEURAL",
+      neuralActionId: actionId,
+    };
+    await upsertStorageValue("herencia_finance_expenses", JSON.stringify([expense, ...expenses].slice(0, 10000)));
+    void emitNeuralBusinessEvent("finance.expense_recorded", { actionId, expense });
+    res.status(201).json({ ok: true, actionId, expense });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo registrar el gasto" });
+  }
+});
+
+app.post("/api/neural-bridge/communications/email", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  const to = String(req.body?.to || "").trim();
+  if (!isValidEmail(to)) return res.status(400).json({ error: "Destinatario inválido" });
+  const subject = String(req.body?.subject || "Mensaje de Herencia").slice(0, 180);
+  const body = String(req.body?.text || req.body?.message || "").slice(0, 10000);
+  if (!body) return res.status(400).json({ error: "El email necesita contenido" });
+  try {
+    const html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#233127">${escapeHtml(body).replace(/\n/g, "<br>")}</div>`;
+    const result = await sendResendEmail({ to, subject, html, replyTo: req.body?.replyTo });
+    if (result?.skipped) return res.status(503).json({ error: "Email no configurado", detail: result.reason });
+    void emitNeuralBusinessEvent("communication.email_sent", { actionId, to, subject });
+    res.json({ ok: true, actionId, providerResult: result });
+  } catch (error) {
+    res.status(502).json({ error: error.message || "No se pudo enviar el email" });
+  }
+});
+
+app.post("/api/neural-bridge/communications/whatsapp", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  const apiUrl = String(process.env.WHATSAPP_API_URL || "").trim();
+  const apiToken = String(process.env.WHATSAPP_API_TOKEN || "").trim();
+  if (!apiUrl || !apiToken) return res.status(503).json({ error: "Proveedor de WhatsApp no configurado" });
+  const to = String(req.body?.to || "").replace(/[^+\d]/g, "");
+  const message = String(req.body?.message || req.body?.text || "").trim().slice(0, 4000);
+  if (!to || !message) return res.status(400).json({ error: "Faltan destinatario o mensaje" });
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to, message, metadata: { source: "HERENCIA_NEURAL", actionId } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`WhatsApp provider ${response.status}: ${raw}`);
+    let providerResult = raw;
+    try { providerResult = raw ? JSON.parse(raw) : { ok: true }; } catch {}
+    void emitNeuralBusinessEvent("communication.whatsapp_sent", { actionId, to });
+    res.json({ ok: true, actionId, providerResult });
+  } catch (error) {
+    res.status(502).json({ error: error.message || "No se pudo enviar WhatsApp" });
+  }
+});
+
+app.get("/api/neural-bridge/web/drafts", requireNeuralBridge, async (_req, res) => {
+  res.json({ drafts: await readNeuralWebDrafts() });
+});
+
+app.post("/api/neural-bridge/web/drafts", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const current = parseStoredJson(await readStorageValue("siteContent"), {});
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    const preview = applyNeuralWebOperations(current, operations);
+    const drafts = await readNeuralWebDrafts();
+    const draft = { id: crypto.randomUUID(), actionId, title: String(req.body?.title || "Neural web draft"), operations, preview, status: "DRAFT", createdAt: new Date().toISOString() };
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify([draft, ...drafts].slice(0, 100)));
+    res.status(201).json({ draft });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo crear el borrador" });
+  }
+});
+
+app.post("/api/neural-bridge/web/drafts/:id/operations", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    if (!operations.length) return res.status(400).json({ error: "No hay operaciones para aplicar" });
+    const drafts = await readNeuralWebDrafts();
+    const draft = drafts.find((item) => item.id === req.params.id);
+    if (!draft) return res.status(404).json({ error: "Borrador no encontrado" });
+    if (draft.status === "PUBLISHED") return res.status(409).json({ error: "Un borrador publicado no se edita; crea una nueva versión" });
+    const base = draft.preview && typeof draft.preview === "object"
+      ? draft.preview
+      : parseStoredJson(await readStorageValue("siteContent"), {});
+    draft.preview = applyNeuralWebOperations(base, operations);
+    draft.operations = [...(Array.isArray(draft.operations) ? draft.operations : []), ...operations].slice(-500);
+    draft.updatedAt = new Date().toISOString();
+    draft.lastActionId = actionId;
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify(drafts.slice(0, 100)));
+    void emitNeuralBusinessEvent("web.draft_updated", { actionId, draftId: draft.id, operationCount: operations.length });
+    res.json({ ok: true, actionId, draft });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo actualizar el borrador" });
+  }
+});
+
+app.get("/api/neural-bridge/web/versions", requireNeuralBridge, async (_req, res) => {
+  const history = await readSiteHistory();
+  res.json({ versions: history.map(({ content, ...meta }) => meta) });
+});
+
+app.post("/api/neural-bridge/web/drafts/:id/publish", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const drafts = await readNeuralWebDrafts();
+    const draft = drafts.find(d => d.id === req.params.id);
+    if (!draft) return res.status(404).json({ error: "Borrador no encontrado" });
+    const currentRaw = await readStorageValue("siteContent");
+    const current = parseStoredJson(currentRaw, {});
+    let history = await readSiteHistory();
+    history = [{ id: `version-${crypto.randomUUID()}`, at: new Date().toISOString(), label: `Antes de Neural · ${new Date().toLocaleString("es-ES")}`, content: JSON.stringify(current) }, ...history].slice(0, 12);
+    while (history.length > 1 && JSON.stringify(history).length > 5_000_000) history = history.slice(0, -1);
+    const published = syncNeuralBuilderToLegacy(neuralClone(draft.preview));
+    await Promise.all([
+      upsertStorageValue("siteContent", JSON.stringify(published)),
+      upsertStorageValue("siteContentDraft", JSON.stringify(published)),
+      upsertStorageValue("siteContentHistory", JSON.stringify(history)),
+    ]);
+    if (published?.hero?.imageUrl) await upsertStorageValue("heroBanner", JSON.stringify({ imageUrl: published.hero.imageUrl }));
+    if (published?.cta?.imageUrl) await upsertStorageValue("ctaBanner", JSON.stringify({ imageUrl: published.cta.imageUrl }));
+    draft.status = "PUBLISHED";
+    draft.publishedAt = new Date().toISOString();
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify(drafts));
+    void emitNeuralBusinessEvent("web.published", { actionId, draftId: draft.id, versionId: history[0]?.id });
+    res.json({ ok: true, draftId: draft.id, versionId: history[0]?.id, publishedAt: draft.publishedAt });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo publicar" });
+  }
+});
+
+app.post("/api/neural-bridge/web/versions/:id/rollback", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    let history = await readSiteHistory();
+    const target = history.find(v => v.id === req.params.id);
+    if (!target?.content) return res.status(404).json({ error: "Versión no encontrada" });
+    const current = parseStoredJson(await readStorageValue("siteContent"), {});
+    const restored = parseStoredJson(target.content, null);
+    if (!restored) return res.status(409).json({ error: "La versión no contiene un snapshot válido" });
+    const safety = { id: `version-${crypto.randomUUID()}`, at: new Date().toISOString(), label: `Antes de rollback Neural · ${new Date().toLocaleString("es-ES")}`, content: JSON.stringify(current) };
+    history = [safety, ...history].slice(0, 12);
+    await Promise.all([
+      upsertStorageValue("siteContent", JSON.stringify(restored)),
+      upsertStorageValue("siteContentDraft", JSON.stringify(restored)),
+      upsertStorageValue("siteContentHistory", JSON.stringify(history)),
+    ]);
+    if (restored?.hero?.imageUrl) await upsertStorageValue("heroBanner", JSON.stringify({ imageUrl: restored.hero.imageUrl }));
+    if (restored?.cta?.imageUrl) await upsertStorageValue("ctaBanner", JSON.stringify({ imageUrl: restored.cta.imageUrl }));
+    void emitNeuralBusinessEvent("web.rollback", { actionId, restoredVersionId: target.id, safetyVersionId: safety.id });
+    res.json({ ok: true, restoredVersionId: target.id, safetyVersionId: safety.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo restaurar la versión" });
+  }
+});
+
+app.use("/api/neural", requireAdmin, async (req, res) => {
+  const baseUrl = String(process.env.NEURAL_SERVICE_URL || "").replace(/\/$/, "");
+  const adminToken = process.env.NEURAL_ADMIN_TOKEN;
+  if (!baseUrl || !adminToken) {
+    return res.status(503).json({ error: "HERENCIA Neural no está configurada en este backend" });
+  }
+  const target = `${baseUrl}/v1/neural${req.url || ""}`;
+  const method = req.method.toUpperCase();
+  try {
+    const upstream = await fetch(target, {
+      method,
+      headers: { "Content-Type": "application/json", "X-Neural-Admin-Token": adminToken },
+      body: ["GET", "HEAD"].includes(method) ? undefined : JSON.stringify(req.body || {}),
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await upstream.text();
+    res.status(upstream.status);
+    res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json; charset=utf-8");
+    return res.send(text);
+  } catch (error) {
+    console.error("Neural proxy error:", error?.message || error);
+    return res.status(502).json({ error: "No se pudo comunicar con HERENCIA Neural" });
+  }
 });
 
 app.listen(port, () => {
