@@ -5,6 +5,7 @@ import {
   Scissors, Store, Building, Brain, Zap, Star
 } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
+import { defaultSiteContent, isExternalHref, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
 import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import { ChatboxWidget } from "./ChatboxWidget";
@@ -22,6 +23,7 @@ export function Layout() {
   const [cartCount, setCartCount] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
   const [herenciaEnabled, setHerenciaEnabled] = useState(false);
+  const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [menuIcons, setMenuIcons] = useState({
     home: "Home",
     products: "Leaf",
@@ -56,11 +58,17 @@ export function Layout() {
       if (savedIcons) {
         setMenuIcons(JSON.parse(savedIcons));
       }
+
+      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     };
 
     loadSettings();
     window.addEventListener("storage", loadSettings);
-    return () => window.removeEventListener("storage", loadSettings);
+    window.addEventListener("backend-storage", loadSettings);
+    return () => {
+      window.removeEventListener("storage", loadSettings);
+      window.removeEventListener("backend-storage", loadSettings);
+    };
   }, []);
 
   const isActive = (path: string) => location.pathname === path;
@@ -86,19 +94,19 @@ export function Layout() {
             {/* Logo */}
             <Link to="/" className="flex items-center group">
               <img
-                src={logo}
-                alt="Herencia Floristería"
+                src={site.brand.logoUrl || logo}
+                alt={site.brand.logoAlt || site.brand.name}
                 className="h-12 sm:h-14 w-auto group-hover:scale-105 transition-transform"
               />
             </Link>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1">
-              <NavLink to="/" icon={HomeIcon} label="Inicio" active={isActive("/")} />
-              <NavLink to="/productos" icon={ProductsIcon} label="Productos" active={isActive("/productos")} />
-              <NavLink to="/servicios" icon={ServicesIcon} label="Servicios" active={isActive("/servicios")} />
+              <NavLink to={site.navigation.home.href} icon={HomeIcon} label={site.navigation.home.label} active={isActive(site.navigation.home.href)} />
+              <NavLink to={site.navigation.products.href} icon={ProductsIcon} label={site.navigation.products.label} active={isActive(site.navigation.products.href)} />
+              <NavLink to={site.navigation.services.href} icon={ServicesIcon} label={site.navigation.services.label} active={isActive(site.navigation.services.href)} />
               {herenciaEnabled && (
-                <NavLink to="/herencia" icon={HerenciaIcon} label="Herenc(IA)" active={isActive("/herencia")} />
+                <NavLink to={site.navigation.herencia.href} icon={HerenciaIcon} label={site.navigation.herencia.label} active={isActive(site.navigation.herencia.href)} />
               )}
             </nav>
 
@@ -126,11 +134,11 @@ export function Layout() {
 
           {/* Mobile Navigation */}
           <nav className="md:hidden flex items-center gap-1 pb-3 overflow-x-auto">
-            <MobileNavLink to="/" icon={HomeIcon} label="Inicio" active={isActive("/")} />
-            <MobileNavLink to="/productos" icon={ProductsIcon} label="Productos" active={isActive("/productos")} />
-            <MobileNavLink to="/servicios" icon={ServicesIcon} label="Servicios" active={isActive("/servicios")} />
+            <MobileNavLink to={site.navigation.home.href} icon={HomeIcon} label={site.navigation.home.label} active={isActive(site.navigation.home.href)} />
+            <MobileNavLink to={site.navigation.products.href} icon={ProductsIcon} label={site.navigation.products.label} active={isActive(site.navigation.products.href)} />
+            <MobileNavLink to={site.navigation.services.href} icon={ServicesIcon} label={site.navigation.services.label} active={isActive(site.navigation.services.href)} />
             {herenciaEnabled && (
-              <MobileNavLink to="/herencia" icon={HerenciaIcon} label="Herenc(IA)" active={isActive("/herencia")} />
+              <MobileNavLink to={site.navigation.herencia.href} icon={HerenciaIcon} label={site.navigation.herencia.label} active={isActive(site.navigation.herencia.href)} />
             )}
           </nav>
         </div>
@@ -147,90 +155,50 @@ export function Layout() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
               <div className="mb-4">
-                <img
-                  src={logo}
-                  alt="Herencia Floristería"
-                  className="h-16 w-auto"
-                />
+                <img src={site.brand.logoUrl || logo} alt={site.brand.logoAlt || site.brand.name} className="h-16 w-auto" />
               </div>
-              <p className="text-sm text-muted-foreground">
-                Flores, plantas y servicios de jardinería con elegancia natural.
-              </p>
+              <p className="text-sm text-muted-foreground">{site.footer.description}</p>
             </div>
 
             <div>
-              <h4 className="font-semibold text-foreground mb-3">Productos</h4>
+              <h4 className="font-semibold text-foreground mb-3">{site.footer.productsTitle}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link to="/productos?categoria=flores" className="hover:text-foreground transition-colors">
-                    Flores
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/productos?categoria=plantas-interior" className="hover:text-foreground transition-colors">
-                    Plantas de interior
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/productos?categoria=plantas-exterior" className="hover:text-foreground transition-colors">
-                    Plantas de exterior
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/productos?categoria=orquideas" className="hover:text-foreground transition-colors">
-                    Orquídeas
-                  </Link>
-                </li>
+                {site.footer.productLinks.map((item, index) => (
+                  <li key={index}><FooterLink href={item.href}>{item.label}</FooterLink></li>
+                ))}
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-foreground mb-3">Servicios</h4>
+              <h4 className="font-semibold text-foreground mb-3">{site.footer.servicesTitle}</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link to="/servicios?tipo=jardineria" className="hover:text-foreground transition-colors">
-                    Jardinería
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/servicios?tipo=cursos" className="hover:text-foreground transition-colors">
-                    Cursos
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/servicios?tipo=entrega" className="hover:text-foreground transition-colors">
-                    Entrega a domicilio
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/servicios?tipo=asesoria" className="hover:text-foreground transition-colors">
-                    Asesoría
-                  </Link>
-                </li>
+                {site.footer.serviceLinks.map((item, index) => (
+                  <li key={index}><FooterLink href={item.href}>{item.label}</FooterLink></li>
+                ))}
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-foreground mb-3">Contacto</h4>
+              <h4 className="font-semibold text-foreground mb-3">{site.footer.contactTitle}</h4>
               <ul className="space-y-2 text-sm">
                 <li>
-                  <a href="https://wa.me/34624239598" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                    <span>📱</span> WhatsApp: +34 624 23 95 98
+                  <a href={`https://wa.me/${normalizeWhatsAppPhone(site.footer.whatsappPhone)}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+                    <span>📱</span> {site.footer.whatsappLabel}
                   </a>
                 </li>
                 <li>
-                  <a href="tel:+34624239598" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                    <span>📞</span> Llamar
+                  <a href={`tel:${normalizePhoneForHref(site.footer.callPhone)}`} className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+                    <span>📞</span> {site.footer.callLabel}
                   </a>
                 </li>
                 <li>
-                  <a href="https://instagram.com/floristeriaherencia" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                    <span>📷</span> @floristeriaherencia
+                  <a href={site.footer.instagramUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+                    <span>📷</span> {site.footer.instagramLabel}
                   </a>
                 </li>
                 <li>
-                  <a href="https://maps.app.goo.gl/WLihx3aD1Xhqc9WT8" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                    <span>📍</span> Cómo llegar
+                  <a href={site.footer.mapsUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+                    <span>📍</span> {site.footer.mapsLabel}
                   </a>
                 </li>
               </ul>
@@ -240,29 +208,14 @@ export function Layout() {
           <div className="border-t border-border mt-8 pt-8">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
-                © 2026 Herencia Floristería. Todos los derechos reservados. | Desarrollado por <span className="font-semibold text-foreground">DEVB</span>
+                {site.footer.copyright} {site.footer.developerLabel ? <>| <span className="font-semibold text-foreground">{site.footer.developerLabel}</span></> : null}
               </p>
               <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-                <Link
-                  to="/privacidad"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Política de Privacidad
-                </Link>
+                <Link to="/privacidad" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.privacyLabel}</Link>
                 <span className="text-muted-foreground/30">•</span>
-                <Link
-                  to="/cookies"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Política de Cookies
-                </Link>
+                <Link to="/cookies" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.cookiesLabel}</Link>
                 <span className="text-muted-foreground/30">•</span>
-                <Link
-                  to="/terminos"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Términos y Condiciones
-                </Link>
+                <Link to="/terminos" className="text-muted-foreground hover:text-foreground transition-colors">{site.footer.termsLabel}</Link>
               </div>
             </div>
           </div>
@@ -276,29 +229,29 @@ export function Layout() {
 }
 
 function NavLink({ to, icon: Icon, label, active }: { to: string; icon: any; label: string; active: boolean }) {
-  return (
-    <Link
-      to={to}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-      }`}
-    >
-      <Icon className="w-4 h-4" />
-      <span className="text-sm font-medium">{label}</span>
-    </Link>
-  );
+  const className = `flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+    active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+  }`;
+  if (isExternalHref(to)) {
+    return <a href={to} className={className} target="_blank" rel="noopener noreferrer"><Icon className="w-4 h-4" /><span className="text-sm font-medium">{label}</span></a>;
+  }
+  return <Link to={to || "/"} className={className}><Icon className="w-4 h-4" /><span className="text-sm font-medium">{label}</span></Link>;
 }
 
 function MobileNavLink({ to, icon: Icon, label, active }: { to: string; icon: any; label: string; active: boolean }) {
-  return (
-    <Link
-      to={to}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap text-sm ${
-        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-      }`}
-    >
-      <Icon className="w-4 h-4" />
-      <span>{label}</span>
-    </Link>
-  );
+  const className = `flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap text-sm ${
+    active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+  }`;
+  if (isExternalHref(to)) {
+    return <a href={to} className={className} target="_blank" rel="noopener noreferrer"><Icon className="w-4 h-4" /><span>{label}</span></a>;
+  }
+  return <Link to={to || "/"} className={className}><Icon className="w-4 h-4" /><span>{label}</span></Link>;
+}
+
+function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const className = "hover:text-foreground transition-colors";
+  if (isExternalHref(href)) {
+    return <a href={href} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>;
+  }
+  return <Link to={href || "/"} className={className}>{children}</Link>;
 }
