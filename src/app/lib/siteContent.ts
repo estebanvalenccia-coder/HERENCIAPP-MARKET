@@ -27,6 +27,7 @@ export type BuilderBlockDesign = {
   alignment: BuilderAlignment;
   imagePosition: string;
   headingScale: number;
+  fontFamily: string;
   hiddenMobile: boolean;
 };
 
@@ -302,6 +303,7 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
     alignment: "left",
     imagePosition: "center",
     headingScale: 100,
+    fontFamily: "inherit",
     hiddenMobile: false,
   };
 
