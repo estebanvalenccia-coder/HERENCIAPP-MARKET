@@ -2436,6 +2436,51 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   });
 });
 
+
+// Read-only bridge for HERENCIA Neural. Neural is an independent service; this bridge only exposes
+// verified business state and never gives it unrestricted database access.
+function requireNeuralBridge(req, res, next) {
+  const expected = process.env.HERENCIA_NEURAL_TOKEN;
+  const received = req.get("X-Herencia-Neural-Token");
+  if (!expected) return res.status(503).json({ error: "HERENCIA_NEURAL_TOKEN no configurado" });
+  if (!received) return res.status(401).json({ error: "Token Neural requerido" });
+  const a = Buffer.from(String(received));
+  const b = Buffer.from(String(expected));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(403).json({ error: "Token Neural inválido" });
+  next();
+}
+
+app.get("/api/neural-bridge/orders", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ orders: data || [], observedAt: new Date().toISOString() });
+});
+
+app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabase.from("app_storage").select("value").eq("key", "adminProducts").maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  let products = [];
+  try { products = JSON.parse(data?.value || "[]"); } catch { products = []; }
+  res.json({ products, observedAt: new Date().toISOString() });
+});
+
+app.get("/api/neural-bridge/snapshot", requireNeuralBridge, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  const [{ data: orders, error: orderError }, { data: productRow, error: productError }] = await Promise.all([
+    supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
+    supabase.from("app_storage").select("value").eq("key", "adminProducts").maybeSingle(),
+  ]);
+  if (orderError || productError) return res.status(500).json({ error: orderError?.message || productError?.message });
+  let products = [];
+  try { products = JSON.parse(productRow?.value || "[]"); } catch { products = []; }
+  const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null }));
+  const customers = [...new Map((orders || []).filter(o => o.customer_email).map(o => [o.customer_email, { email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }])).values()];
+  const sales = (orders || []).filter(o => ["paid","completed","delivered"].includes(o.status));
+  res.json({ products, inventory, orders: orders || [], customers, sales, updatedAt: new Date().toISOString() });
+});
+
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
 });
