@@ -2942,6 +2942,64 @@ app.post("/api/neural-bridge/products", requireNeuralBridge, async (req, res) =>
   }
 });
 
+
+app.post("/api/neural-bridge/finance/expenses", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "Importe de gasto inválido" });
+    }
+    const expenses = parseStoredJson(await readStorageValue("herencia_finance_expenses"), []);
+    const expense = {
+      id: crypto.randomUUID(),
+      expense_date: String(req.body?.date || new Date().toISOString().slice(0, 10)),
+      category: String(req.body?.category || "Otros").slice(0, 120),
+      provider: String(req.body?.provider || "Proveedor").slice(0, 180),
+      concept: String(req.body?.concept || "Gasto registrado por Neural").slice(0, 300),
+      amount,
+      payment_method: String(req.body?.paymentMethod || "Pendiente").slice(0, 80),
+      status: String(req.body?.status || "Registrado").slice(0, 80),
+      notes: String(req.body?.notes || "").slice(0, 1000),
+      created_at: new Date().toISOString(),
+      neural_action_id: actionId,
+    };
+    await upsertStorageValue("herencia_finance_expenses", JSON.stringify([expense, ...expenses].slice(0, 5000)));
+    void emitNeuralBusinessEvent("finance.expense_recorded", { actionId, expense });
+    res.status(201).json({ ok: true, actionId, expense });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo registrar el gasto" });
+  }
+});
+
+function renderNeuralPlainEmail(body) {
+  const safeBody = escapeHtml(String(body || "").slice(0, 10000)).replace(/\n/g, "<br>");
+  return `<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;background:#f7faf7;padding:24px;color:#203126"><div style="max-width:680px;margin:auto;background:white;border:1px solid #e5ebe5;border-radius:20px;padding:28px"><div style="font-weight:800;color:#2f6b3f;margin-bottom:20px">HERENCIA</div><div style="line-height:1.65">${safeBody}</div><p style="margin-top:26px;color:#758175;font-size:12px">Enviado desde Herencia bajo una acción autorizada de HERENCIA Neural.</p></div></body></html>`;
+}
+
+app.post("/api/neural-bridge/communications/email", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  const to = String(req.body?.to || "").trim();
+  const subject = String(req.body?.subject || "").trim().slice(0, 160);
+  const body = String(req.body?.body || "").trim().slice(0, 10000);
+  if (!isValidEmail(to)) return res.status(400).json({ error: "Destinatario inválido" });
+  if (!subject || !body) return res.status(400).json({ error: "Asunto y mensaje son obligatorios" });
+  try {
+    const result = await sendResendEmail({
+      to,
+      subject,
+      html: renderNeuralPlainEmail(body),
+      replyTo: process.env.ADMIN_EMAIL || process.env.STORE_EMAIL || undefined,
+    });
+    void emitNeuralBusinessEvent("communication.email_sent", { actionId, to, subject, skipped: Boolean(result?.skipped) });
+    res.json({ ok: !result?.skipped, actionId, to, subject, result });
+  } catch (error) {
+    res.status(502).json({ error: error.message || "No se pudo enviar el email" });
+  }
+});
+
 app.get("/api/neural-bridge/web/drafts", requireNeuralBridge, async (_req, res) => {
   res.json({ drafts: await readNeuralWebDrafts() });
 });
