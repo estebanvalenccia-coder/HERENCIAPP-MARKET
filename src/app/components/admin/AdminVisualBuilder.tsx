@@ -774,7 +774,7 @@ export function AdminVisualBuilder({
 
         <main className="min-w-0 overflow-auto bg-[#e5e9e3] p-3 sm:p-5">
           <div
-            className="mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
+            className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
             style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
           >
             <div className="flex min-h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
