@@ -559,6 +559,157 @@ export const backendApi = {
     });
   },
 
+  async neuralCustomerChatEvent(payload: {
+    type: "conversation.message" | "conversation.unanswered" | "conversation.intent" | "web.demand_signal";
+    conversationId?: string;
+    text?: string;
+    intent?: string;
+    topic?: string;
+    suggestion?: string;
+    page?: string;
+  }) {
+    return request<{ accepted: boolean; provisional: boolean; reason?: string | null }>("/api/neural/customer-chat-event", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async neuralBrief() {
+    return request<any>("/api/neural/brief");
+  },
+
+  async neuralStatus() {
+    return request<any>("/api/neural/status");
+  },
+
+  async neuralAgents() {
+    return request<{ agents: any[] }>("/api/neural/agents");
+  },
+
+  async neuralGoals() {
+    return request<{ goals: any[] }>("/api/neural/goals");
+  },
+
+  async neuralCreateGoal(text: string) {
+    return request<any>("/api/neural/goals", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  async neuralTasks(status?: string) {
+    return request<{ tasks: any[] }>(`/api/neural/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+  },
+
+  async neuralCommand(text: string) {
+    return request<any>("/api/neural/command", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  async neuralActivity() {
+    return request<{ events: any[]; integrity?: any }>("/api/neural/activity");
+  },
+
+  async neuralMemory(query = "") {
+    return request<{ items: any[]; stats?: any }>(`/api/neural/memory/search?q=${encodeURIComponent(query)}`);
+  },
+
+  async neuralSignals() {
+    return request<{ signals: any[] }>("/api/neural/signals");
+  },
+
+  async neuralTwin() {
+    return request<any>("/api/neural/twin");
+  },
+
+  async neuralObserveNow() {
+    return request<any>("/api/neural/twin/observe", { method: "POST", body: "{}" });
+  },
+
+  async neuralPermissions() {
+    return request<any>("/api/neural/permissions");
+  },
+
+  async neuralSetPermission(capability: string, mode: "AUTO" | "ASK" | "BLOCK") {
+    return request<any>(`/api/neural/permissions/${encodeURIComponent(capability)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ mode }),
+    });
+  },
+
+  async neuralEmergencyStop() {
+    return request<any>("/api/neural/emergency-stop", { method: "POST", body: "{}" });
+  },
+
+  async neuralResume() {
+    return request<any>("/api/neural/resume", { method: "POST", body: "{}" });
+  },
+
+  async neuralApproveTask(id: string) {
+    return request<any>(`/api/neural/tasks/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
+  async neuralTraces() {
+    return request<{ traces: any[] }>("/api/neural/traces");
+  },
+
+  async neuralTraceByAction(actionId: string) {
+    return request<any>(`/api/neural/traces/action/${encodeURIComponent(actionId)}`);
+  },
+
+  async neuralResearchStatus() {
+    return request<any>("/api/neural/research/status");
+  },
+
+  async neuralWebDrafts() {
+    return request<{ drafts: any[] }>("/api/neural/web/drafts");
+  },
+
+  async neuralWebVersions() {
+    return request<{ versions: any[] }>("/api/neural/web/versions");
+  },
+
+  async neuralCreateWebDraft(payload: { title?: string; operations: any[] }) {
+    return request<any>("/api/neural/web/drafts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async neuralRequestPublish(draftId: string, reason?: string) {
+    return request<any>(`/api/neural/web/drafts/${encodeURIComponent(draftId)}/request-publish`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async neuralRequestRollback(versionId: string) {
+    return request<any>(`/api/neural/web/versions/${encodeURIComponent(versionId)}/request-rollback`, {
+      method: "POST",
+      body: "{}",
+    });
+  },
+
+  async neuralSendCellMessage(payload: { from: string; to: string; message: string; topic?: string; data?: any }) {
+    return request<any>("/api/neural/cells/message", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async neuralLab() {
+    return request<{ experiments: any[] }>("/api/neural/lab");
+  },
+
+  async neuralGraph() {
+    return request<any>("/api/neural/graph");
+  },
+
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
       method: "POST",
