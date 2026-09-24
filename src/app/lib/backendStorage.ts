@@ -559,6 +559,91 @@ export const backendApi = {
     });
   },
 
+
+  async neuralStatus() {
+    return request<any>("/api/neural/status");
+  },
+
+  async neuralAgents() {
+    return request<{ agents: any[] }>("/api/neural/agents");
+  },
+
+  async neuralGoals() {
+    return request<{ goals: any[] }>("/api/neural/goals");
+  },
+
+  async neuralCreateGoal(text: string) {
+    return request<any>("/api/neural/goals", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  async neuralTasks(status?: string) {
+    return request<{ tasks: any[] }>(`/api/neural/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+  },
+
+  async neuralCommand(text: string) {
+    return request<any>("/api/neural/command", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  async neuralActivity() {
+    return request<{ events: any[]; integrity?: any }>("/api/neural/activity");
+  },
+
+  async neuralMemory(query = "") {
+    return request<{ items: any[]; stats?: any }>(`/api/neural/memory/search?q=${encodeURIComponent(query)}`);
+  },
+
+  async neuralSignals() {
+    return request<{ signals: any[] }>("/api/neural/signals");
+  },
+
+  async neuralTwin() {
+    return request<any>("/api/neural/twin");
+  },
+
+  async neuralObserveNow() {
+    return request<any>("/api/neural/twin/observe", { method: "POST", body: "{}" });
+  },
+
+  async neuralPermissions() {
+    return request<any>("/api/neural/permissions");
+  },
+
+  async neuralSetPermission(capability: string, mode: "AUTO" | "ASK" | "BLOCK") {
+    return request<any>(`/api/neural/permissions/${encodeURIComponent(capability)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ mode }),
+    });
+  },
+
+  async neuralEmergencyStop() {
+    return request<any>("/api/neural/emergency-stop", { method: "POST", body: "{}" });
+  },
+
+  async neuralResume() {
+    return request<any>("/api/neural/resume", { method: "POST", body: "{}" });
+  },
+
+  async neuralApproveTask(id: string) {
+    return request<any>(`/api/neural/tasks/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
+  async neuralLab() {
+    return request<{ experiments: any[] }>("/api/neural/lab");
+  },
+
+  async neuralGraph() {
+    return request<any>("/api/neural/graph");
+  },
+
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
       method: "POST",
