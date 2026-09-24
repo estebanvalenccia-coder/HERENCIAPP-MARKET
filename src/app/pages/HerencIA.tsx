@@ -3,8 +3,8 @@ import { Bot, ExternalLink, Lock, Mail, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { backendApi, backendStorage } from "../lib/backendStorage";
-import {
 import { useNeuralChatBridge } from "../lib/useNeuralChatBridge";
+import {
   getHerenciaIaAccessMessage,
   getHerenciaIaDailyLimit,
   HERENCIA_IA_ACCESS_RULES,
