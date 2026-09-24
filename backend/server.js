@@ -2288,6 +2288,37 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "La devolución TPV solo admite ventas de mostrador" });
     }
 
+    const orderPaymentMethod = normalizePaymentMethod(order.payment_method);
+    const paymentBreakdown = Array.isArray(order.metadata?.paymentBreakdown) ? order.metadata.paymentBreakdown : [];
+    const cashRefundAmount = orderPaymentMethod === "cash"
+      ? normalizeMoney(order.total)
+      : orderPaymentMethod === "mixed"
+      ? normalizeMoney(paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "cash").reduce((sum, entry) => sum + Number(entry?.amount || 0), 0))
+      : 0;
+    const cardRefundAmount = orderPaymentMethod === "card"
+      ? normalizeMoney(order.total)
+      : orderPaymentMethod === "mixed"
+      ? normalizeMoney(paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "card").reduce((sum, entry) => sum + Number(entry?.amount || 0), 0))
+      : 0;
+    const giftRefunds = paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "gift_card");
+
+    let stripeRefundId = "";
+    if (cardRefundAmount > 0) {
+      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado para devolver la parte de tarjeta" });
+      const paymentIntentId = orderPaymentMethod === "card"
+        ? String(order.stripe_payment_intent_id || "")
+        : String(order.metadata?.mixedCardPaymentIntentId || "");
+      if (!paymentIntentId) {
+        return res.status(409).json({ error: "No se encontró el pago de Stripe asociado a esta venta" });
+      }
+      const stripeRefund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        amount: Math.round(cardRefundAmount * 100),
+        metadata: { orderId, source: "TPV_REFUND" },
+      });
+      stripeRefundId = stripeRefund.id;
+    }
+
     const bootstrap = await loadPosBootstrap();
     const items = Array.isArray(order.items) ? order.items : [];
     const quantities = new Map();
@@ -2312,6 +2343,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       refundedAt,
       refundReason: reason,
       refundNumber,
+      stripeRefundId: stripeRefundId || undefined,
     };
 
     const { data: updated, error: updateError } = await supabase
@@ -2324,25 +2356,55 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
 
     const loyaltyCustomerId = String(order.metadata?.customerId || "").trim();
     const loyaltyPointsEarned = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
-    if (loyaltyCustomerId && loyaltyPointsEarned > 0) {
-      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
-      const posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
-      const previousPoints = Number(posOperations.loyalty?.[loyaltyCustomerId]?.points || 0);
-      posOperations.loyalty = {
-        ...(posOperations.loyalty || {}),
-        [loyaltyCustomerId]: {
-          points: Math.max(0, previousPoints - loyaltyPointsEarned),
-          updatedAt: refundedAt,
-          lastRefundOrderId: orderId,
-        },
-      };
+    if ((loyaltyCustomerId && loyaltyPointsEarned > 0) || giftRefunds.length) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+      let posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+
+      if (giftRefunds.length) {
+        const refundsByCode = new Map();
+        for (const entry of giftRefunds) {
+          const code = String(entry?.code || "").trim().toUpperCase();
+          const amount = normalizeMoney(entry?.amount);
+          if (code && amount > 0) refundsByCode.set(code, normalizeMoney((refundsByCode.get(code) || 0) + amount));
+        }
+        posOperations = {
+          ...posOperations,
+          giftCards: (posOperations.giftCards || []).map((card) => {
+            const code = String(card?.code || "").toUpperCase();
+            const amount = refundsByCode.get(code) || 0;
+            if (!amount) return card;
+            return {
+              ...card,
+              balance: normalizeMoney(Number(card.balance || 0) + amount),
+              active: true,
+              updatedAt: refundedAt,
+            };
+          }),
+        };
+      }
+
+      if (loyaltyCustomerId && loyaltyPointsEarned > 0) {
+        const previousPoints = Number(posOperations.loyalty?.[loyaltyCustomerId]?.points || 0);
+        posOperations = {
+          ...posOperations,
+          loyalty: {
+            ...(posOperations.loyalty || {}),
+            [loyaltyCustomerId]: {
+              points: Math.max(0, previousPoints - loyaltyPointsEarned),
+              updatedAt: refundedAt,
+              lastRefundOrderId: orderId,
+            },
+          },
+        };
+      }
+
       await upsertStorageValue("posOperations", JSON.stringify(posOperations));
     }
 
-    if (normalizePaymentMethod(order.payment_method) === "cash") {
+    if (cashRefundAmount > 0) {
       const session = await readPosCashSession();
       if (session?.status === "open") {
-        const amount = normalizeMoney(order.total);
+        const amount = cashRefundAmount;
         const next = {
           ...session,
           cashSales: normalizeMoney(Math.max(0, Number(session.cashSales || 0) - amount)),
@@ -2370,6 +2432,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       order: posOrderResponse(updated),
       inventory: restoredProducts,
       refundNumber,
+      stripeRefundId: stripeRefundId || null,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
