@@ -578,6 +578,10 @@ export const backendApi = {
   },
 
 
+  async neuralSelfTest() {
+    return request<any>("/api/neural/self-test");
+  },
+
   async neuralSelfModel() {
     return request<any>("/api/neural/self-model");
   },
