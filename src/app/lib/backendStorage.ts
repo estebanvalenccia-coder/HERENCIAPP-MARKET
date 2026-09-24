@@ -63,6 +63,7 @@ const remotelySyncedKeys = new Set([
   "shippingSettings",
   "aiSettings",
   "adminProducts",
+  "adminSuppliers",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
   "tpvLayoutSettings",
@@ -596,6 +597,14 @@ export const backendApi = {
 
   async neuralResources() {
     return request<any>("/api/neural/governance/resources");
+  },
+
+  async neuralScheduler() {
+    return request<any>("/api/neural/scheduler");
+  },
+
+  async neuralConsolidatePatterns() {
+    return request<any>("/api/neural/learning/consolidate", { method: "POST", body: "{}" });
   },
 
   async neuralProactiveStatus() {
