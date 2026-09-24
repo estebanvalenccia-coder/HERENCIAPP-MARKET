@@ -87,6 +87,10 @@ function itemCategory(item: any) {
   return item?.category || item?.type || item?.productCategory || "Sin categoría";
 }
 
+function isFloresAdminRequest(order: any) {
+  return order?.metadata?.source === "FLORES_TABLET" || order?.metadata?.type === "flower_admin_request";
+}
+
 const KPI_STYLES = [
   {
     iconBg: "from-emerald-500 to-green-700",
@@ -152,7 +156,8 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
       if (backendApi.enabled) {
         try {
           const response = await backendApi.listOrders();
-          nextOrders = Array.isArray(response.orders) ? response.orders : [];
+          const backendOrders = Array.isArray(response.orders) ? response.orders : [];
+          nextOrders = backendOrders.filter((order: any) => !isFloresAdminRequest(order));
           nextStatus = "backend";
         } catch (error: any) {
           nextStatus = "error";
@@ -198,15 +203,34 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
   }, [loadDashboard]);
 
   const statsCards = [
-    { label: "Total Productos", value: stats.totalProducts.toString(), icon: Package, trend: `${stats.productsOnSale} ofertas` },
+    {
+      label: "Total Productos",
+      value: stats.totalProducts.toString(),
+      icon: Package,
+      trend: `${stats.productsOnSale} ofertas`,
+      actionSection: "offers",
+      actionLabel: "Ver ofertas",
+    },
     {
       label: "Productos Activos",
       value: stats.activeProducts.toString(),
       icon: ShoppingBag,
       trend: stats.totalProducts ? `${Math.round((stats.activeProducts / stats.totalProducts) * 100)}%` : "0%",
     },
-    { label: "Pedidos Pendientes", value: stats.pendingOrders.toString(), icon: Tag, trend: stats.pendingOrders > 0 ? "Atender" : "0" },
-    { label: "Ingresos Pagados", value: `€${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, trend: `${stats.paidOrders} pagados` },
+    {
+      label: "Pedidos Pendientes",
+      value: stats.pendingOrders.toString(),
+      icon: Tag,
+      trend: stats.pendingOrders > 0 ? "Atender" : "0 pendientes",
+      actionSection: "orders",
+      actionLabel: "Ver pedidos pendientes",
+    },
+    {
+      label: "Ingresos Pagados",
+      value: `€${stats.totalRevenue.toFixed(2)}`,
+      icon: DollarSign,
+      trend: `${stats.paidOrders} pagados`,
+    },
   ];
 
   const last7Days = Array.from({ length: 7 }).map((_, index) => {
@@ -336,10 +360,22 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
                 <div className={`rounded-2xl bg-gradient-to-br ${style.iconBg} p-3.5 shadow-lg`}>
                   <stat.icon className="h-6 w-6 text-white" />
                 </div>
-                <div className="flex items-center gap-1 rounded-full bg-white/70 px-3 py-1 text-xs font-extrabold text-emerald-700 shadow-sm">
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                  {stat.trend}
-                </div>
+                {"actionSection" in stat && stat.actionSection ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate?.(stat.actionSection)}
+                    aria-label={stat.actionLabel}
+                    className="flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-xs font-extrabold text-emerald-700 shadow-sm transition-all hover:bg-emerald-100 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    {stat.trend}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 rounded-full bg-white/70 px-3 py-1 text-xs font-extrabold text-emerald-700 shadow-sm">
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    {stat.trend}
+                  </div>
+                )}
               </div>
               <div className="relative mt-7">
                 <p className="text-4xl font-black text-slate-950">{stat.value}</p>
