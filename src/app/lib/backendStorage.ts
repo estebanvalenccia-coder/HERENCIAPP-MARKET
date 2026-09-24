@@ -72,6 +72,8 @@ const remotelySyncedKeys = new Set([
   "heroBanner",
   "ctaBanner",
   "siteContent",
+  "siteContentDraft",
+  "siteContentHistory",
   "__backendStorage_test__",
   "cart",
   "user",
