@@ -420,6 +420,40 @@ export const backendApi = {
     return request<{ authenticated: boolean }>("/api/admin/session");
   },
 
+  async listSiteMedia() {
+    return request<{
+      media: Array<{
+        name: string;
+        path: string;
+        url: string;
+        createdAt?: string | null;
+        size?: number | null;
+      }>;
+    }>("/api/admin/media");
+  },
+
+  async uploadSiteMedia(payload: { dataUrl: string; filename?: string }) {
+    return request<{
+      media: {
+        name: string;
+        path: string;
+        url: string;
+        createdAt?: string | null;
+        size?: number | null;
+      };
+    }>("/api/admin/media", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteSiteMedia(path: string) {
+    return request<{ ok: boolean }>("/api/admin/media", {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
+    });
+  },
+
   async posBootstrap() {
     return request<{
       products: any[];
