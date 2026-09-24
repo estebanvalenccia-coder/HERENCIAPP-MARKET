@@ -552,8 +552,12 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
 }
 
 export function syncLegacyToBuilder(site: SiteContent): SiteContent {
+  const seen = new Set<BuilderBlockType>();
   const blocks = ensureBuilderBlocks(site).map((block) => {
+    if (seen.has(block.type)) return block;
+
     if (block.type === "hero") {
+      seen.add(block.type);
       return {
         ...block,
         data: {
@@ -567,9 +571,11 @@ export function syncLegacyToBuilder(site: SiteContent): SiteContent {
       };
     }
     if (block.type === "features") {
+      seen.add(block.type);
       return { ...block, data: { ...block.data, items: copy(site.features) } };
     }
     if (block.type === "categories") {
+      seen.add(block.type);
       return {
         ...block,
         data: {
@@ -581,6 +587,7 @@ export function syncLegacyToBuilder(site: SiteContent): SiteContent {
       };
     }
     if (block.type === "cta") {
+      seen.add(block.type);
       return {
         ...block,
         data: {
