@@ -54,6 +54,34 @@ type StoredVersion = {
   content: string;
 };
 
+type MenuIconSettings = {
+  home: string;
+  products: string;
+  services: string;
+  herencia: string;
+};
+
+type HerenciaSettings = {
+  enabled: boolean;
+  url: string;
+};
+
+const defaultMenuIcons: MenuIconSettings = {
+  home: "Home",
+  products: "Leaf",
+  services: "Briefcase",
+  herencia: "Bot",
+};
+
+function readJsonValue<T>(key: string, fallback: T): T {
+  try {
+    const raw = backendStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
@@ -421,6 +449,23 @@ export function AdminVisualBuilder({
   const [publishedSite, setPublishedSite] = useState<SiteContent>(() =>
     hydrateLegacyBanners(parseSiteContent(backendStorage.getItem("siteContent")))
   );
+  const initialAuxDraft = readJsonValue<{
+    menuIcons?: MenuIconSettings;
+    herenciaSettings?: HerenciaSettings;
+  }>("visualBuilderAuxDraft", {});
+  const [menuIcons, setMenuIcons] = useState<MenuIconSettings>(
+    initialAuxDraft.menuIcons || readJsonValue<MenuIconSettings>("menuIcons", defaultMenuIcons)
+  );
+  const [publishedMenuIcons, setPublishedMenuIcons] = useState<MenuIconSettings>(
+    readJsonValue<MenuIconSettings>("menuIcons", defaultMenuIcons)
+  );
+  const [herenciaSettings, setHerenciaSettings] = useState<HerenciaSettings>(
+    initialAuxDraft.herenciaSettings ||
+      readJsonValue<HerenciaSettings>("herenciaSettings", { enabled: false, url: "" })
+  );
+  const [publishedHerenciaSettings, setPublishedHerenciaSettings] = useState<HerenciaSettings>(
+    readJsonValue<HerenciaSettings>("herenciaSettings", { enabled: false, url: "" })
+  );
   const [selected, setSelected] = useState<SelectedTarget>("header");
   const [pageMode, setPageMode] = useState<PageMode>("home");
   const [device, setDevice] = useState<Device>("desktop");
@@ -458,6 +503,14 @@ export function AdminVisualBuilder({
     }, 900);
     return () => window.clearTimeout(timer);
   }, [site]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    void backendStorage.setItem(
+      "visualBuilderAuxDraft",
+      JSON.stringify({ menuIcons, herenciaSettings })
+    );
+  }, [menuIcons, herenciaSettings]);
 
   function commit(next: SiteContent) {
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
@@ -578,8 +631,14 @@ export function AdminVisualBuilder({
 
   async function saveDraftNow() {
     setDraftState("guardando");
-    const result = await backendStorage.setItem("siteContentDraft", JSON.stringify(site));
-    if (!result.ok) {
+    const [result, auxResult] = await Promise.all([
+      backendStorage.setItem("siteContentDraft", JSON.stringify(site)),
+      backendStorage.setItem(
+        "visualBuilderAuxDraft",
+        JSON.stringify({ menuIcons, herenciaSettings })
+      ),
+    ]);
+    if (!result.ok || !auxResult.ok) {
       setDraftState("pendiente");
       toast.error(result.error || "No se pudo guardar el borrador");
       return;
@@ -616,6 +675,8 @@ export function AdminVisualBuilder({
         backendStorage.setItem("siteContent", JSON.stringify(nextPublished)),
         backendStorage.setItem("siteContentDraft", JSON.stringify(nextPublished)),
         backendStorage.setItem("siteContentHistory", JSON.stringify(nextHistory)),
+        backendStorage.setItem("menuIcons", JSON.stringify(menuIcons)),
+        backendStorage.setItem("herenciaSettings", JSON.stringify(herenciaSettings)),
         hero?.data?.imageUrl
           ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: hero.data.imageUrl }))
           : backendStorage.removeItem("heroBanner"),
@@ -630,6 +691,9 @@ export function AdminVisualBuilder({
       setSite(nextPublished);
       setPublishedSite(nextPublished);
       setVersions(nextHistory);
+      setPublishedMenuIcons(menuIcons);
+      setPublishedHerenciaSettings(herenciaSettings);
+      await backendStorage.removeItem("visualBuilderAuxDraft");
       setDraftState("guardado");
       window.dispatchEvent(new Event("backend-storage"));
       toast.success("Cambios publicados en Herencia");
@@ -657,6 +721,9 @@ export function AdminVisualBuilder({
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
     setRedoStack([]);
     setSite(clone(publishedSite));
+    setMenuIcons(clone(publishedMenuIcons));
+    setHerenciaSettings(clone(publishedHerenciaSettings));
+    void backendStorage.removeItem("visualBuilderAuxDraft");
     toast.info("Se ha recuperado la versión publicada");
   }
 
@@ -991,7 +1058,7 @@ export function AdminVisualBuilder({
                 <span>{site.navigation.home.label}</span>
                 <span>{site.navigation.products.label}</span>
                 <span>{site.navigation.services.label}</span>
-                <span>{site.navigation.herencia.label}</span>
+                {herenciaSettings.enabled && <span>{site.navigation.herencia.label}</span>}
               </div>
             </div>
 
@@ -1063,7 +1130,16 @@ export function AdminVisualBuilder({
           </div>
 
           <div className="space-y-4 p-4">
-            {selected === "header" && tab === "contenido" && <HeaderEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && tab === "contenido" && (
+              <HeaderEditor
+                site={site}
+                updateSite={updateSite}
+                menuIcons={menuIcons}
+                setMenuIcons={setMenuIcons}
+                herenciaSettings={herenciaSettings}
+                setHerenciaSettings={setHerenciaSettings}
+              />
+            )}
             {selected === "header" && tab === "diseno" && <HeaderDesignEditor site={site} updateSite={updateSite} />}
             {selected === "header" && tab === "avanzado" && (
               <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
@@ -1189,9 +1265,17 @@ export function AdminVisualBuilder({
 function HeaderEditor({
   site,
   updateSite,
+  menuIcons,
+  setMenuIcons,
+  herenciaSettings,
+  setHerenciaSettings,
 }: {
   site: SiteContent;
   updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+  menuIcons: MenuIconSettings;
+  setMenuIcons: (value: MenuIconSettings) => void;
+  herenciaSettings: HerenciaSettings;
+  setHerenciaSettings: (value: HerenciaSettings) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -1206,6 +1290,43 @@ function HeaderEditor({
           onChange={(value) => updateSite((current) => ({ ...current, navigation: { ...current.navigation, [key]: value } }))}
         />
       ))}
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-xs font-black uppercase tracking-wider text-slate-500">Iconos del menú</p>
+        {(["home", "products", "services", "herencia"] as const).map((key) => (
+          <label key={key} className="block text-xs font-bold text-slate-700">
+            <span className="mb-1.5 block">
+              {key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Herenc(IA)"}
+            </span>
+            <select
+              value={menuIcons[key]}
+              onChange={(event) => setMenuIcons({ ...menuIcons, [key]: event.target.value })}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+            >
+              {["Home", "House", "Sparkles", "Flower", "Flower2", "Leaf", "LeafyGreen", "Package", "ShoppingBag", "Briefcase", "Scissors", "Store", "Building", "Bot", "Brain", "Zap", "Star"].map((icon) => (
+                <option key={icon} value={icon}>{icon}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <label className="flex items-center justify-between text-sm font-bold">
+          Mostrar Herenc(IA) en el menú
+          <input
+            type="checkbox"
+            checked={herenciaSettings.enabled}
+            onChange={(event) =>
+              setHerenciaSettings({ ...herenciaSettings, enabled: event.target.checked })
+            }
+          />
+        </label>
+        <TextField
+          label="URL interna/configuración Herenc(IA)"
+          value={herenciaSettings.url}
+          onChange={(url) => setHerenciaSettings({ ...herenciaSettings, url })}
+          placeholder="Opcional"
+        />
+      </div>
       <TextField label="Destino del carrito" value={site.headerActions.cartHref} onChange={(cartHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, cartHref } }))} />
       <TextField label="Destino del perfil" value={site.headerActions.profileHref} onChange={(profileHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, profileHref } }))} />
     </div>
