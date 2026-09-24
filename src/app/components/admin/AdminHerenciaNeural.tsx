@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { toast } from "sonner";
+import { StorefrontBlock } from "../site/StorefrontBlock";
+import { ensureBuilderBlocks, type SiteContent } from "../../lib/siteContent";
 
 type Mode="AUTO"|"ASK"|"BLOCK";
 type Message={role:"user"|"neural";text:string};
@@ -183,17 +185,127 @@ function ResearchPanel(){
 }
 
 function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
- const [drafts,setDrafts]=useState<any[]>([]),[title,setTitle]=useState(""),[subtitle,setSubtitle]=useState(""),[columns,setColumns]=useState(3),[loading,setLoading]=useState(false);
- const load=useCallback(()=>backendApi.neuralWebDrafts().then(r=>setDrafts(r.drafts||[])).catch(()=>setDrafts([])),[]);
+ const [drafts,setDrafts]=useState<any[]>([]);
+ const [selectedId,setSelectedId]=useState("");
+ const [title,setTitle]=useState("");
+ const [subtitle,setSubtitle]=useState("");
+ const [columns,setColumns]=useState(2);
+ const [type,setType]=useState("textImage");
+ const [imageData,setImageData]=useState("");
+ const [loading,setLoading]=useState(false);
+
+ const load=useCallback(async()=>{
+   try{
+     const r=await backendApi.neuralWebDrafts();
+     const next=r.drafts||[];
+     setDrafts(next);
+     setSelectedId(current=>current&&next.some((x:any)=>x.id===current)?current:(next[0]?.id||""));
+   }catch{
+     setDrafts([]);
+     setSelectedId("");
+   }
+ },[]);
  useEffect(()=>{void load()},[load]);
- const create=async()=>{if(!title.trim())return;setLoading(true);try{await backendApi.neuralCreateWebDraft({title:`Nueva sección: ${title.trim()}`,operations:[{type:"createSection",section:{title:title.trim(),subtitle:subtitle.trim(),columns,items:[]}}]});toast.success("Borrador creado. Aún no está publicado.");setTitle("");setSubtitle("");await load();await onChanged()}catch(e:any){toast.error(e.message)}finally{setLoading(false)}};
- const requestPublish=async(id:string)=>{try{await backendApi.neuralRequestPublish(id,"Publicación solicitada desde Neural Designer");toast.success("Publicación enviada a aprobación");await onChanged()}catch(e:any){toast.error(e.message)}};
+
+ const selected=drafts.find(d=>d.id===selectedId)||null;
+ const previewSite=selected?.preview as SiteContent|undefined;
+ const previewBlocks=previewSite?ensureBuilderBlocks(previewSite):[];
+
+ const upload=async(file?:File)=>{
+   if(!file)return;
+   try{
+     const result=await compressNeuralImage(file);
+     setImageData(result);
+     toast.success("Imagen preparada para el borrador");
+   }catch(e:any){toast.error(e.message||"No se pudo procesar la imagen")}
+ };
+
+ const create=async()=>{
+   if(!title.trim())return;
+   setLoading(true);
+   try{
+     const sectionId=`neural-${crypto.randomUUID()}`;
+     const operations:any[]=[{type:"createSection",section:{id:sectionId,type,title:title.trim(),subtitle:subtitle.trim(),columns,items:[]}}];
+     if(imageData&&["textImage","cta","hero"].includes(type))operations.push({type:"uploadAsset",sectionId,dataUrl:imageData,field:"imageUrl"});
+     const result=await backendApi.neuralCreateWebDraft({title:`Nueva sección: ${title.trim()}`,operations});
+     toast.success("Borrador creado. Aún no está publicado.");
+     setTitle("");setSubtitle("");setImageData("");
+     await load();
+     const createdId=result?.result?.draft?.id||result?.draft?.id;
+     if(createdId)setSelectedId(createdId);
+     await onChanged();
+   }catch(e:any){toast.error(e.message)}finally{setLoading(false)}
+ };
+
+ const requestPublish=async(id:string)=>{
+   try{await backendApi.neuralRequestPublish(id,"Publicación solicitada desde Neural Designer");toast.success("Publicación enviada a aprobación");await onChanged();await load()}
+   catch(e:any){toast.error(e.message)}
+ };
+
  return <Panel title="Neural Designer · borradores reales" icon={Palette}>
-  <div className="grid gap-5 lg:grid-cols-2">
-   <div className="rounded-2xl border p-4"><h3 className="font-black">Crear sección estructurada</h3><p className="mt-1 text-sm text-muted-foreground">Se guarda primero como borrador. Publicarla es una acción separada gobernada por permisos.</p><div className="mt-4 space-y-3"><input value={title} onChange={e=>setTitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" placeholder="Título de la sección"/><textarea value={subtitle} onChange={e=>setSubtitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" rows={3} placeholder="Subtítulo"/><label className="block text-sm font-bold">Columnas<select value={columns} onChange={e=>setColumns(Number(e.target.value))} className="mt-2 w-full rounded-xl border px-4 py-3"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label><button disabled={loading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button></div></div>
-   <div><h3 className="mb-3 font-black">Borradores</h3>{drafts.length?<div className="space-y-3">{drafts.slice(0,20).map(d=><div key={d.id} className="rounded-2xl border p-4"><div className="flex justify-between gap-3"><div><b>{d.title||d.id}</b><p className="mt-1 text-xs text-muted-foreground">{d.status} · {d.createdAt}</p></div>{d.status!=="PUBLISHED"&&<button onClick={()=>void requestPublish(d.id)} className="h-fit rounded-xl bg-amber-100 px-3 py-2 text-xs font-black text-amber-900">Solicitar publicación</button>}</div><p className="mt-3 text-xs">{Array.isArray(d.operations)?d.operations.length:0} operaciones estructuradas</p></div>)}</div>:<Empty text="No hay borradores."/>}</div>
+  <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
+   <div className="space-y-5">
+    <div className="rounded-2xl border p-4">
+     <h3 className="font-black">Crear sección estructurada</h3>
+     <p className="mt-1 text-sm text-muted-foreground">Se crea en sandbox. La publicación es otra acción y pasa por el Permission Kernel.</p>
+     <div className="mt-4 space-y-3">
+      <label className="block text-sm font-bold">Tipo
+       <select value={type} onChange={e=>setType(e.target.value)} className="mt-2 w-full rounded-xl border px-4 py-3">
+        <option value="textImage">Texto + imagen</option><option value="cta">Banner / CTA</option><option value="hero">Hero</option><option value="gallery">Galería</option><option value="features">Ventajas</option><option value="categories">Categorías</option><option value="testimonials">Testimonios</option>
+       </select>
+      </label>
+      <input value={title} onChange={e=>setTitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" placeholder="Título de la sección"/>
+      <textarea value={subtitle} onChange={e=>setSubtitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" rows={3} placeholder="Subtítulo / texto"/>
+      <label className="block text-sm font-bold">Columnas
+       <select value={columns} onChange={e=>setColumns(Number(e.target.value))} className="mt-2 w-full rounded-xl border px-4 py-3"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select>
+      </label>
+      {["textImage","cta","hero"].includes(type)&&<div className="rounded-xl border border-dashed p-3">
+       <label className="cursor-pointer text-sm font-bold">Imagen opcional
+        <input type="file" accept="image/png,image/jpeg,image/webp" className="mt-2 block w-full text-xs" onChange={e=>void upload(e.target.files?.[0])}/>
+       </label>
+       {imageData&&<img src={imageData} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
+       <p className="mt-2 text-xs text-muted-foreground">Se comprime antes de enviar y el backend limita el resultado a 2 MB.</p>
+      </div>}
+      <button disabled={loading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button>
+     </div>
+    </div>
+
+    <div>
+     <h3 className="mb-3 font-black">Borradores</h3>
+     {drafts.length?<div className="space-y-3">{drafts.slice(0,30).map(d=><button key={d.id} onClick={()=>setSelectedId(d.id)} className={`w-full rounded-2xl border p-4 text-left ${selectedId===d.id?"border-primary bg-primary/5":""}`}><div className="flex justify-between gap-3"><div><b>{d.title||d.id}</b><p className="mt-1 text-xs text-muted-foreground">{d.status} · {d.createdAt}</p></div></div><p className="mt-3 text-xs">{Array.isArray(d.operations)?d.operations.length:0} operaciones</p></button>)}</div>:<Empty text="No hay borradores."/>}
+    </div>
+   </div>
+
+   <div className="min-w-0">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+     <div><h3 className="font-black">Preview real</h3><p className="text-sm text-muted-foreground">Renderizado con el mismo StorefrontBlock que usa la Home.</p></div>
+     {selected&&selected.status!=="PUBLISHED"&&<button onClick={()=>void requestPublish(selected.id)} className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-900">Solicitar publicación</button>}
+    </div>
+    {previewSite?<div className="overflow-hidden rounded-2xl border bg-background">
+      <div className="max-h-[760px] overflow-auto">
+       {previewBlocks.map((block:any)=><StorefrontBlock key={block.id} block={block} site={previewSite} heroFallback="" ctaFallback="" logoFallback="" preview />)}
+      </div>
+     </div>:<div className="rounded-2xl border"><Empty text="Selecciona o crea un borrador para verlo exactamente como lo renderiza Herencia."/></div>}
+   </div>
   </div>
  </Panel>
+}
+
+async function compressNeuralImage(file:File){
+ if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw new Error("Usa una imagen PNG, JPEG o WebP");
+ if(file.size>8*1024*1024)throw new Error("La imagen original supera 8 MB");
+ const source=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||""));reader.onerror=()=>reject(new Error("No se pudo leer la imagen"));reader.readAsDataURL(file)});
+ const image=await new Promise<HTMLImageElement>((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error("No se pudo abrir la imagen"));img.src=source});
+ const maxWidth=1600,scale=Math.min(1,maxWidth/Math.max(1,image.width));
+ const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
+ const ctx=canvas.getContext("2d");if(!ctx)throw new Error("El navegador no puede comprimir la imagen");
+ ctx.drawImage(image,0,0,canvas.width,canvas.height);
+ let quality=.84;
+ let data=canvas.toDataURL(file.type==="image/png"?"image/webp":file.type,quality);
+ while(data.length>2.55*1024*1024&&quality>.45){quality-=.08;data=canvas.toDataURL("image/webp",quality)}
+ const base64=data.split(",")[1]||"";
+ if(Math.floor(base64.length*3/4)>2*1024*1024)throw new Error("No se pudo comprimir la imagen por debajo de 2 MB");
+ return data;
 }
 
 function TimeMachinePanel({onChanged}:{onChanged:()=>Promise<void>}){
