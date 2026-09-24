@@ -997,7 +997,7 @@ export function AdminPOS() {
             </div>
 
             <div className="mb-3 flex gap-2">
-              <button onClick={() => setDocumentType("ticket") className={`flex-1 rounded-xl py-2 font-bold ${documentType === "ticket" ? "bg-zinc-900 text-white" : "border"}`}>Ticket</button>
+              <button onClick={() => setDocumentType("ticket")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "ticket" ? "bg-zinc-900 text-white" : "border"}`}>Ticket</button>
               <button onClick={() => setDocumentType("invoice")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "invoice" ? "bg-zinc-900 text-white" : "border"}`}>Factura</button>
             </div>
 
