@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "vite build",
+    "test:pos": "node --test backend/posEngine.test.js",
     "dev": "vite",
     "dev:backend": "node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
     "dev:full": "concurrently \"vite\" \"node --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js\"",
