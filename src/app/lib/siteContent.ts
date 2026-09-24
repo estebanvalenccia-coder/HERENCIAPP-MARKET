@@ -15,6 +15,10 @@ export type SiteContent = {
     services: SiteLink;
     herencia: SiteLink;
   };
+  headerActions: {
+    cartHref: string;
+    profileHref: string;
+  };
   hero: {
     eyebrow: string;
     description: string;
@@ -59,6 +63,9 @@ export type SiteContent = {
     privacyLabel: string;
     cookiesLabel: string;
     termsLabel: string;
+    privacyHref: string;
+    cookiesHref: string;
+    termsHref: string;
   };
   floatingWhatsapp: {
     enabled: boolean;
@@ -78,6 +85,10 @@ export const defaultSiteContent: SiteContent = {
     products: { label: "Productos", href: "/productos" },
     services: { label: "Servicios", href: "/servicios" },
     herencia: { label: "Herenc(IA)", href: "/herencia" },
+  },
+  headerActions: {
+    cartHref: "/carrito",
+    profileHref: "/perfil",
   },
   hero: {
     eyebrow: "Bienvenido a",
@@ -157,6 +168,9 @@ export const defaultSiteContent: SiteContent = {
     privacyLabel: "Política de Privacidad",
     cookiesLabel: "Política de Cookies",
     termsLabel: "Términos y Condiciones",
+    privacyHref: "/privacidad",
+    cookiesHref: "/cookies",
+    termsHref: "/terminos",
   },
   floatingWhatsapp: {
     enabled: true,
@@ -187,6 +201,10 @@ export function parseSiteContent(raw: string | null): SiteContent {
         products: { ...defaultSiteContent.navigation.products, ...(parsed.navigation?.products || {}) },
         services: { ...defaultSiteContent.navigation.services, ...(parsed.navigation?.services || {}) },
         herencia: { ...defaultSiteContent.navigation.herencia, ...(parsed.navigation?.herencia || {}) },
+      },
+      headerActions: {
+        ...defaultSiteContent.headerActions,
+        ...(parsed.headerActions || {}),
       },
       hero: {
         ...defaultSiteContent.hero,
