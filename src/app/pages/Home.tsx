@@ -137,6 +137,34 @@ export function Home() {
         </div>
       </section>
 
+      {site.customSections.map((section) => (
+        <section key={section.id} className="py-20 bg-background">
+          <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">{section.title}</h2>
+              {section.subtitle && <p className="text-muted-foreground max-w-2xl mx-auto">{section.subtitle}</p>}
+            </div>
+            <div
+              className="grid gap-6"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.min(4, Number(section.columns || 3)))}, minmax(0, 1fr))` }}
+            >
+              {section.items.map((item) => (
+                <article key={item.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  {item.imageUrl && <img src={item.imageUrl} alt={item.title} className="h-52 w-full object-cover" />}
+                  <div className="p-5">
+                    <h3 className="text-xl font-bold text-foreground">{item.title}</h3>
+                    {item.description && <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>}
+                    <SmartLink href={item.href} className="mt-4 inline-flex items-center gap-2 font-semibold text-primary hover:underline">
+                      {item.buttonLabel || "Ver más"}<ArrowRight className="w-4 h-4" />
+                    </SmartLink>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ))}
+
       <section className="relative py-20 overflow-hidden">
         <div className="absolute inset-0">
           <img src={ctaImage} alt="Fondo natural" className="w-full h-full object-cover" />
