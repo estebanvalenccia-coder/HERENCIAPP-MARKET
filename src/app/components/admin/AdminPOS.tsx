@@ -1145,7 +1145,17 @@ export function AdminPOS() {
           <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, SKU o categoría..." className="w-full rounded-2xl border border-zinc-200 py-3 pl-12 pr-4 outline-none focus:border-emerald-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && query.trim()) {
+                    if (!findAndAddByCode(query)) toast.error("Código/SKU no encontrado");
+                  }
+                }}
+                placeholder="Buscar producto o escanear SKU/código y Enter..."
+                className="w-full rounded-2xl border border-zinc-200 py-3 pl-12 pr-4 outline-none focus:border-emerald-400"
+              />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {categories.map((item) => (
@@ -1208,68 +1218,17 @@ export function AdminPOS() {
                       <span className="w-8 text-center font-black">{line.qty}</span>
                       <button onClick={() => changeQty(line.id, 1)} className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100"><Plus className="h-4 w-4" /></button>
                     </div>
-                    <span className="font-black text-emerald-700">{money(line.price * line.qty)}</span>
+                    <div className="text-right">
+                      {Number(line.discountPercent || globalDiscount || 0) > 0 && (
+                        <p className="text-[11px] font-bold text-rose-600">−{Number(line.discountPercent || globalDiscount || 0)}%</p>
+                      )}
+                      <span className="font-black text-emerald-700">
+                        {money(line.price * line.qty * (1 - Math.max(0, Math.min(100, Number(line.discountPercent || globalDiscount || 0))) / 100))}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
-              {payment === "Mixto" && (
-              <div className="mt-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
-                <div className="flex items-center justify-between">
-                  <p className="font-black text-blue-950">Pago mixto</p>
-                  <p className={`text-sm font-black ${Math.abs(mixedAssignedTotal() - totals.total) <= 0.01 ? "text-emerald-700" : "text-amber-700"}`}>
-                    Asignado {money(mixedAssignedTotal())} / {money(totals.total)}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    ["cash", "Efectivo"],
-                    ["card", "Tarjeta"],
-                    ["bizum", "Bizum"],
-                    ["transfer", "Transferencia"],
-                  ] as const).map(([key, label]) => (
-                    <label key={key} className="rounded-xl bg-white p-2 text-xs font-bold text-zinc-600">
-                      {label}
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={mixed[key] || ""}
-                        onChange={(e) => setMixed((current) => ({ ...current, [key]: Math.max(0, Number(e.target.value || 0)) }))}
-                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-base font-black text-zinc-900"
-                      />
-                    </label>
-                  ))}
-                </div>
-                <div className="grid grid-cols-[1fr_120px] gap-2">
-                  <input
-                    value={mixed.giftCardCode}
-                    onChange={(e) => setMixed((current) => ({ ...current, giftCardCode: e.target.value.toUpperCase() }))}
-                    placeholder="Código tarjeta regalo"
-                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={mixed.giftCard || ""}
-                    onChange={(e) => setMixed((current) => ({ ...current, giftCard: Math.max(0, Number(e.target.value || 0)) }))}
-                    placeholder="Importe"
-                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 font-black"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const assignedWithoutCash = mixed.card + mixed.bizum + mixed.transfer + mixed.giftCard;
-                    setMixed((current) => ({ ...current, cash: Math.max(0, Math.round((totals.total - assignedWithoutCash) * 100) / 100) }));
-                  }}
-                  className="w-full rounded-xl border border-blue-200 bg-white py-2 text-sm font-black text-blue-800"
-                >
-                  Completar resto en efectivo
-                </button>
-              </div>
-            )}
-
             {!cart.length && (
                 <div className="p-8 text-center text-sm text-zinc-400">
                   Sin artículos. Puedes elegir un producto o crear un artículo libre con el teclado.
@@ -1390,6 +1349,64 @@ export function AdminPOS() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {payment === "Mixto" && (
+              <div className="mt-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-blue-950">Pago mixto</p>
+                  <p className={`text-sm font-black ${Math.abs(mixedAssignedTotal() - totals.total) <= 0.01 ? "text-emerald-700" : "text-amber-700"}`}>
+                    Asignado {money(mixedAssignedTotal())} / {money(totals.total)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["cash", "Efectivo"],
+                    ["card", "Tarjeta"],
+                    ["bizum", "Bizum"],
+                    ["transfer", "Transferencia"],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="rounded-xl bg-white p-2 text-xs font-bold text-zinc-600">
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={mixed[key] || ""}
+                        onChange={(e) => setMixed((current) => ({ ...current, [key]: Math.max(0, Number(e.target.value || 0)) }))}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-base font-black text-zinc-900"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_120px] gap-2">
+                  <input
+                    value={mixed.giftCardCode}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCardCode: e.target.value.toUpperCase() }))}
+                    placeholder="Código tarjeta regalo"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={mixed.giftCard || ""}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCard: Math.max(0, Number(e.target.value || 0)) }))}
+                    placeholder="Importe"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 font-black"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const assignedWithoutCash = mixed.card + mixed.bizum + mixed.transfer + mixed.giftCard;
+                    setMixed((current) => ({ ...current, cash: Math.max(0, Math.round((totals.total - assignedWithoutCash) * 100) / 100) }));
+                  }}
+                  className="w-full rounded-xl border border-blue-200 bg-white py-2 text-sm font-black text-blue-800"
+                >
+                  Completar resto en efectivo
+                </button>
               </div>
             )}
 
