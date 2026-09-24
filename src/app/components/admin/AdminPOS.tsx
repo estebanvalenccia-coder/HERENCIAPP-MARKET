@@ -146,7 +146,7 @@ export function AdminPOS() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showOperations, setShowOperations] = useState(false);
-  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
   const [report, setReport] = useState<any | null>(null);
   const [currentStaff, setCurrentStaff] = useState<any | null>(null);
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
@@ -228,7 +228,7 @@ export function AdminPOS() {
           backendApi.getPosReportSummary(),
         ]);
         setRecentSales(Array.isArray(history.sales) ? history.sales : []);
-        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
         setReport(reportResult.report || null);
       } catch {
         setRecentSales([]);
@@ -628,7 +628,29 @@ export function AdminPOS() {
     }
   }
 
-  async function createStaffMember() {
+  async function startStaffShift() {
+    if (!currentStaff?.id) return toast.error("Selecciona un empleado con PIN");
+    try {
+      const result = await backendApi.startPosStaffShift(currentStaff.id);
+      setOperations(result.operations);
+      toast.success(`Turno iniciado: ${currentStaff.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar el turno");
+    }
+  }
+
+  async function endStaffShift() {
+    if (!currentStaff?.id) return toast.error("Selecciona un empleado con PIN");
+    try {
+      const result = await backendApi.endPosStaffShift(currentStaff.id);
+      setOperations(result.operations);
+      toast.success(`Turno cerrado · ${result.shift.durationMinutes} min`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cerrar el turno");
+    }
+  }
+
+    async function createStaffMember() {
     const name = window.prompt("Nombre del empleado");
     if (!name) return;
     const roleRaw = (window.prompt("Rol: admin, manager o seller", "seller") || "seller").toLowerCase();
@@ -1666,9 +1688,18 @@ export function AdminPOS() {
                       <p className="text-xs font-bold uppercase text-zinc-500">Empleado activo</p>
                       <p className="font-black">{currentStaff ? `${currentStaff.name} · ${currentStaff.role}` : "Propietario / administrador"}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button onClick={() => void unlockStaff()} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Cambiar</button>
-                      {currentStaff && <button onClick={() => setCurrentStaff(null)} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Salir</button>}
+                      {currentStaff && (
+                        <>
+                          {(operations.staffShifts || []).some((shift: any) => shift.staffId === currentStaff.id && !shift.endedAt) ? (
+                            <button onClick={() => void endStaffShift()} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-700">Fin turno</button>
+                          ) : (
+                            <button onClick={() => void startStaffShift()} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700">Iniciar turno</button>
+                          )}
+                          <button onClick={() => setCurrentStaff(null)} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Salir</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1688,7 +1719,10 @@ export function AdminPOS() {
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.floristOrders?.length || 0}</b><p className="text-zinc-500">Encargos</p></div>
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Regalo</p></div>
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.suppliers?.length || 0}</b><p className="text-zinc-500">Proveedores</p></div>
-                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.staff?.length || 0}</b><p className="text-zinc-500">Personal</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3">
+                    <b>{operations.staff?.length || 0}</b>
+                    <p className="text-zinc-500">Personal · {(operations.staffShifts || []).filter((shift: any) => !shift.endedAt).length} en turno</p>
+                  </div>
                 </div>
                 <div className="rounded-xl bg-zinc-50 p-3 text-sm">
                   <div className="flex items-center justify-between">
