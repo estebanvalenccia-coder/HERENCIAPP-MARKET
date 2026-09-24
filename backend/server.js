@@ -1983,6 +1983,215 @@ app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
   }
 });
 
+app.patch("/api/pos/florist-orders/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const index = (current.floristOrders || []).findIndex((item) => String(item?.id) === id);
+    if (index < 0) return res.status(404).json({ error: "Encargo no encontrado" });
+    const previous = current.floristOrders[index];
+    const total = req.body?.total == null ? Number(previous.total || 0) : normalizeMoney(req.body.total);
+    const deposit = req.body?.deposit == null ? Number(previous.deposit || 0) : normalizeMoney(req.body.deposit);
+    if (total <= 0 || deposit < 0 || deposit > total) return res.status(400).json({ error: "Importes del encargo inválidos" });
+    const updated = {
+      ...previous,
+      ...(req.body || {}),
+      id,
+      total,
+      deposit,
+      pending: normalizeMoney(total - deposit),
+      updatedAt: new Date().toISOString(),
+    };
+    current.floristOrders = current.floristOrders.map((item, itemIndex) => itemIndex === index ? updated : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ order: updated, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const code = String(req.body?.code || "").trim().toUpperCase();
+    const amount = normalizeMoney(req.body?.amount);
+    if (!code || amount <= 0) return res.status(400).json({ error: "Código e importe válidos son obligatorios" });
+    const index = (current.giftCards || []).findIndex((card) => String(card?.code || "").toUpperCase() === code);
+    if (index < 0) return res.status(404).json({ error: "Tarjeta regalo no encontrada" });
+    const card = current.giftCards[index];
+    if (card.active === false) return res.status(409).json({ error: "La tarjeta regalo está desactivada" });
+    if (Number(card.balance || 0) < amount) return res.status(409).json({ error: "Saldo insuficiente" });
+    const nextCard = {
+      ...card,
+      balance: normalizeMoney(Number(card.balance || 0) - amount),
+      updatedAt: new Date().toISOString(),
+      active: normalizeMoney(Number(card.balance || 0) - amount) > 0,
+    };
+    current.giftCards = current.giftCards.map((item, itemIndex) => itemIndex === index ? nextCard : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ card: nextCard, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const supplier = {
+      id: String(req.body?.id || crypto.randomUUID()),
+      name: String(req.body?.name || "").trim(),
+      nif: String(req.body?.nif || "").trim(),
+      email: String(req.body?.email || "").trim(),
+      phone: String(req.body?.phone || "").trim(),
+      notes: String(req.body?.notes || "").trim(),
+      active: req.body?.active !== false,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
+    if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
+    current.suppliers = [supplier, ...(current.suppliers || []).filter((item) => String(item?.id) !== supplier.id)];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ supplier, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const bootstrap = await loadPosBootstrap();
+    const requested = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!requested.length) return res.status(400).json({ error: "Añade productos a la compra" });
+
+    const quantities = new Map();
+    const purchaseLines = [];
+    for (const raw of requested) {
+      const id = String(raw?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
+      const unitCost = normalizeMoney(raw?.unitCost);
+      const product = bootstrap.products.find((item) => String(item?.id) === id);
+      if (!product || qty <= 0) return res.status(400).json({ error: `Producto o cantidad inválida: ${id || "sin id"}` });
+      quantities.set(id, (quantities.get(id) || 0) + qty);
+      purchaseLines.push({
+        id,
+        name: String(product.name || "Producto"),
+        sku: String(product.sku || ""),
+        quantity: qty,
+        unitCost,
+        totalCost: normalizeMoney(qty * unitCost),
+      });
+    }
+
+    const updatedProducts = bootstrap.products.map((product) => {
+      const qty = quantities.get(String(product?.id || "")) || 0;
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+
+    const purchase = {
+      id: crypto.randomUUID(),
+      supplierId: String(req.body?.supplierId || "").trim(),
+      reference: String(req.body?.reference || "").trim(),
+      items: purchaseLines,
+      total: normalizeMoney(purchaseLines.reduce((sum, line) => sum + Number(line.totalCost || 0), 0)),
+      createdAt: new Date().toISOString(),
+    };
+    current.purchases = [purchase, ...(Array.isArray(current.purchases) ? current.purchases : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ purchase, inventory: updatedProducts, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const name = String(req.body?.name || "").trim();
+    const role = ["admin", "manager", "seller"].includes(String(req.body?.role || "")) ? String(req.body.role) : "seller";
+    const pin = String(req.body?.pin || "").trim();
+    if (!name) return res.status(400).json({ error: "El empleado necesita un nombre" });
+    if (!/^\d{4,8}$/.test(pin)) return res.status(400).json({ error: "El PIN debe tener entre 4 y 8 dígitos" });
+    const salt = crypto.randomBytes(16).toString("hex");
+    const pinHash = crypto.scryptSync(pin, salt, 32).toString("hex");
+    const permissionsByRole = {
+      admin: ["sell", "discount", "refund", "cash", "inventory", "settings"],
+      manager: ["sell", "discount", "refund", "cash", "inventory"],
+      seller: ["sell"],
+    };
+    const staff = {
+      id: crypto.randomUUID(),
+      name,
+      role,
+      permissions: permissionsByRole[role],
+      pinSalt: salt,
+      pinHash,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    current.staff = [staff, ...(Array.isArray(current.staff) ? current.staff : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    const { pinHash: _hash, pinSalt: _salt, ...safeStaff } = staff;
+    res.json({ staff: safeStaff, operations: { ...current, staff: current.staff.map(({ pinHash, pinSalt, ...item }) => item) } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff/unlock", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const pin = String(req.body?.pin || "").trim();
+    const match = (current.staff || []).find((staff) => {
+      if (staff?.active === false || !staff?.pinSalt || !staff?.pinHash) return false;
+      const candidate = crypto.scryptSync(pin, staff.pinSalt, 32).toString("hex");
+      const left = Buffer.from(candidate, "hex");
+      const right = Buffer.from(staff.pinHash, "hex");
+      return left.length === right.length && crypto.timingSafeEqual(left, right);
+    });
+    if (!match) return res.status(401).json({ error: "PIN incorrecto" });
+    const { pinHash, pinSalt, ...safeStaff } = match;
+    res.json({ staff: safeStaff });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const customerId = String(req.body?.customerId || "").trim();
+    const delta = Math.trunc(Number(req.body?.delta || 0));
+    if (!customerId || !Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: "Cliente y puntos son obligatorios" });
+    const previous = Number(current.loyalty?.[customerId]?.points || 0);
+    const entry = {
+      points: Math.max(0, previous + delta),
+      updatedAt: new Date().toISOString(),
+    };
+    current.loyalty = { ...(current.loyalty || {}), [customerId]: entry };
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ loyalty: entry, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/pos/sales", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
