@@ -148,6 +148,7 @@ const protectedKeys = new Set([
   "tpvLayoutSettings",
   "posCustomers",
   "posFiscalSettings",
+  "posCashSession",
   "adminProducts",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
@@ -166,6 +167,7 @@ const adminOnlyStorageKeys = [
   "tpvLayoutSettings",
   "posCustomers",
   "posFiscalSettings",
+  "posCashSession",
 ];
 
 function parseCookies(req) {
@@ -1167,16 +1169,33 @@ function normalizePosCustomer(customer = {}) {
 }
 
 async function loadPosBootstrap() {
-  const [productsRaw, customersRaw, fiscalRaw] = await Promise.all([
+  const [productsRaw, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
     readStorageValue("adminProducts"),
     readStorageValue("posCustomers"),
     readStorageValue("posFiscalSettings"),
+    readStorageValue("stripeSettings"),
+    readStorageValue("posCashSession"),
   ]);
+
+  const stripeSettings = parseStoredJson(stripeRaw, {});
+  const publishableKey =
+    String(
+      stripeSettings?.publishableKey ||
+      process.env.STRIPE_PUBLISHABLE_KEY ||
+      process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+      ""
+    ).trim();
 
   return {
     products: parseStoredJson(productsRaw, []),
     customers: parseStoredJson(customersRaw, []),
     fiscalSettings: parseStoredJson(fiscalRaw, {}),
+    stripeSettings: {
+      enabled: stripeSettings?.enabled !== false && Boolean(publishableKey),
+      publishableKey,
+      secretConfigured: Boolean(stripe),
+    },
+    cashSession: parseStoredJson(cashSessionRaw, null),
   };
 }
 
@@ -1230,12 +1249,196 @@ function posOrderResponse(order) {
   };
 }
 
+function normalizeMoney(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round(amount * 100) / 100;
+}
+
+async function readPosCashSession() {
+  return parseStoredJson(await readStorageValue("posCashSession"), null);
+}
+
+async function writePosCashSession(session) {
+  await upsertStorageValue("posCashSession", JSON.stringify(session));
+  return session;
+}
+
+async function registerCashSaleInSession(amount, orderId) {
+  const session = await readPosCashSession();
+  if (!session || session.status !== "open") {
+    throw new Error("La caja está cerrada. Ábrela antes de cobrar en efectivo.");
+  }
+
+  const saleAmount = normalizeMoney(amount);
+  const next = {
+    ...session,
+    cashSales: normalizeMoney(Number(session.cashSales || 0) + saleAmount),
+    expectedCash: normalizeMoney(Number(session.expectedCash || 0) + saleAmount),
+    movements: [
+      ...(Array.isArray(session.movements) ? session.movements : []),
+      {
+        id: crypto.randomUUID(),
+        type: "sale",
+        amount: saleAmount,
+        orderId,
+        note: "Venta en efectivo",
+        at: new Date().toISOString(),
+      },
+    ],
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writePosCashSession(next);
+  return next;
+}
+
 app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
 
   try {
     const data = await loadPosBootstrap();
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/pos/cash-session", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    res.json({ session: await readPosCashSession() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const current = await readPosCashSession();
+    if (current?.status === "open") {
+      return res.status(409).json({ error: "Ya hay una caja abierta" });
+    }
+
+    const openingAmount = normalizeMoney(req.body?.openingAmount);
+    if (openingAmount < 0) {
+      return res.status(400).json({ error: "El fondo inicial no puede ser negativo" });
+    }
+
+    const now = new Date().toISOString();
+    const session = {
+      id: crypto.randomUUID(),
+      status: "open",
+      openedAt: now,
+      closedAt: null,
+      openingAmount,
+      cashSales: 0,
+      cashIn: 0,
+      cashOut: 0,
+      expectedCash: openingAmount,
+      movements: [
+        {
+          id: crypto.randomUUID(),
+          type: "open",
+          amount: openingAmount,
+          note: "Apertura de caja",
+          at: now,
+        },
+      ],
+      updatedAt: now,
+    };
+
+    await writePosCashSession(session);
+    res.json({ session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const session = await readPosCashSession();
+    if (!session || session.status !== "open") {
+      return res.status(409).json({ error: "La caja está cerrada" });
+    }
+
+    const type = req.body?.type === "out" ? "out" : "in";
+    const amount = normalizeMoney(req.body?.amount);
+    const note = String(req.body?.note || "").trim();
+
+    if (amount <= 0) {
+      return res.status(400).json({ error: "El importe debe ser mayor que 0" });
+    }
+
+    const next = {
+      ...session,
+      cashIn: normalizeMoney(Number(session.cashIn || 0) + (type === "in" ? amount : 0)),
+      cashOut: normalizeMoney(Number(session.cashOut || 0) + (type === "out" ? amount : 0)),
+      expectedCash: normalizeMoney(
+        Number(session.expectedCash || 0) + (type === "in" ? amount : -amount)
+      ),
+      movements: [
+        ...(Array.isArray(session.movements) ? session.movements : []),
+        {
+          id: crypto.randomUUID(),
+          type,
+          amount,
+          note: note || (type === "in" ? "Entrada de efectivo" : "Salida de efectivo"),
+          at: new Date().toISOString(),
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (next.expectedCash < 0) {
+      return res.status(400).json({ error: "La salida supera el efectivo esperado en caja" });
+    }
+
+    await writePosCashSession(next);
+    res.json({ session: next });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const session = await readPosCashSession();
+    if (!session || session.status !== "open") {
+      return res.status(409).json({ error: "No hay una caja abierta" });
+    }
+
+    const countedCash = normalizeMoney(req.body?.countedCash);
+    if (countedCash < 0) {
+      return res.status(400).json({ error: "El efectivo contado no puede ser negativo" });
+    }
+
+    const now = new Date().toISOString();
+    const difference = normalizeMoney(countedCash - Number(session.expectedCash || 0));
+    const closed = {
+      ...session,
+      status: "closed",
+      closedAt: now,
+      countedCash,
+      difference,
+      movements: [
+        ...(Array.isArray(session.movements) ? session.movements : []),
+        {
+          id: crypto.randomUUID(),
+          type: "close",
+          amount: countedCash,
+          note: "Cierre de caja",
+          at: now,
+        },
+      ],
+      updatedAt: now,
+    };
+
+    await writePosCashSession(closed);
+    res.json({ session: closed });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1559,6 +1762,13 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "El efectivo recibido es inferior al total" });
     }
 
+    if (paymentMethod === "cash") {
+      const cashSession = await readPosCashSession();
+      if (!cashSession || cashSession.status !== "open") {
+        return res.status(409).json({ error: "La caja está cerrada. Ábrela antes de cobrar en efectivo." });
+      }
+    }
+
     const status = existingOrder ? "paid" : paymentStatusForMethod(paymentMethod);
     const documentNumber = await reservePosDocumentNumber(documentType);
     const now = new Date().toISOString();
@@ -1633,12 +1843,18 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       }
     }
 
+    let cashSession = null;
+    if (paymentMethod === "cash") {
+      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
+    }
+
     res.json({
       ok: true,
       order: posOrderResponse(savedOrder),
       inventory: prepared.updatedProducts,
       documentNumber,
       totals,
+      cashSession,
     });
   } catch (error) {
     if (stockWasWritten && originalProducts) {
