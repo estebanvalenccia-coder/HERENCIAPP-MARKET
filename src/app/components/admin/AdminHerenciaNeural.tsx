@@ -194,15 +194,18 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
  const [imageUrl,setImageUrl]=useState("");
  const [loading,setLoading]=useState(false);
  const [uploading,setUploading]=useState(false);
+ const [media,setMedia]=useState<Array<{name:string;path:string;url:string}>>([]);
 
  const load=useCallback(async()=>{
    try{
-     const r=await backendApi.neuralWebDrafts();
+     const [r,m]=await Promise.all([backendApi.neuralWebDrafts(),backendApi.listSiteMedia().catch(()=>({media:[]}))]);
      const next=r.drafts||[];
      setDrafts(next);
+     setMedia(m.media||[]);
      setSelectedId(current=>current&&next.some((x:any)=>x.id===current)?current:(next[0]?.id||""));
    }catch{
      setDrafts([]);
+     setMedia([]);
      setSelectedId("");
    }
  },[]);
@@ -219,6 +222,7 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
      const dataUrl=await compressNeuralImage(file);
      const result=await backendApi.uploadSiteMedia({dataUrl,filename:file.name});
      setImageUrl(result.media.url);
+     setMedia(current=>[result.media,...current.filter(x=>x.path!==result.media.path)]);
      toast.success("Imagen subida a la biblioteca multimedia");
    }catch(e:any){toast.error(e.message||"No se pudo subir la imagen")}
    finally{setUploading(false)}
@@ -267,7 +271,8 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
         <input type="file" accept="image/png,image/jpeg,image/webp" className="mt-2 block w-full text-xs" onChange={e=>void upload(e.target.files?.[0])}/>
        </label>
        {uploading&&<p className="mt-2 text-xs font-bold text-emerald-700">Subiendo a Supabase Storage…</p>}{imageUrl&&<img src={imageUrl} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
-       <p className="mt-2 text-xs text-muted-foreground">Se comprime en el navegador y se guarda en la biblioteca multimedia real de Herencia.</p>
+       {media.length>0&&<div className="mt-3"><p className="mb-2 text-xs font-bold">Biblioteca de Herencia</p><div className="grid max-h-44 grid-cols-3 gap-2 overflow-auto">{media.slice(0,30).map(item=><button type="button" key={item.path} onClick={()=>setImageUrl(item.url)} title={item.name} className={`overflow-hidden rounded-lg border ${imageUrl===item.url?"ring-2 ring-primary":""}`}><img src={item.url} alt={item.name} className="h-20 w-full object-cover"/></button>)}</div></div>}
+       <p className="mt-2 text-xs text-muted-foreground">Puedes subir una imagen nueva o reutilizar una de la biblioteca multimedia real de Herencia.</p>
       </div>}
       <button disabled={loading||uploading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button>
      </div>
