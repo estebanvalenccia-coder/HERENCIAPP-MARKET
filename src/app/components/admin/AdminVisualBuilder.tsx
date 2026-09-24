@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 import { backendStorage } from "../../lib/backendStorage";
 import {
   BuilderBlock,
@@ -54,6 +55,36 @@ type StoredVersion = {
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
+}
+
+function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
+  try {
+    const raw = backendStorage.getItem(key);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw);
+    return String(parsed?.imageUrl || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function hydrateLegacyBanners(site: SiteContent): SiteContent {
+  const heroImage = readLegacyBanner("heroBanner");
+  const ctaImage = readLegacyBanner("ctaBanner");
+  return {
+    ...site,
+    builder: {
+      blocks: ensureBuilderBlocks(site).map((block) => {
+        if (block.type === "hero" && !block.data?.imageUrl && heroImage) {
+          return { ...block, data: { ...block.data, imageUrl: heroImage } };
+        }
+        if (block.type === "cta" && !block.data?.imageUrl && ctaImage) {
+          return { ...block, data: { ...block.data, imageUrl: ctaImage } };
+        }
+        return block;
+      }),
+    },
+  };
 }
 
 async function compressImage(file: File, maxWidth = 1920) {
@@ -268,10 +299,10 @@ export function AdminVisualBuilder({
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
     const draft = backendStorage.getItem("siteContentDraft");
-    return parseSiteContent(draft || backendStorage.getItem("siteContent"));
+    return hydrateLegacyBanners(parseSiteContent(draft || backendStorage.getItem("siteContent")));
   });
   const [publishedSite, setPublishedSite] = useState<SiteContent>(() =>
-    parseSiteContent(backendStorage.getItem("siteContent"))
+    hydrateLegacyBanners(parseSiteContent(backendStorage.getItem("siteContent")))
   );
   const [selected, setSelected] = useState<SelectedTarget>("header");
   const [pageMode, setPageMode] = useState<PageMode>("home");
@@ -774,7 +805,7 @@ export function AdminVisualBuilder({
                       Sección oculta
                     </div>
                   )}
-                  <StorefrontBlock block={{ ...block, visible: true }} site={site} preview />
+                  <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
                 </div>
               ))
             ) : (
