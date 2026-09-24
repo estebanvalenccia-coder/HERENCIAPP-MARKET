@@ -130,6 +130,22 @@ export type SiteContent = {
   };
   builder: {
     blocks: BuilderBlock[];
+    headerStyle: {
+      backgroundColor: string;
+      textColor: string;
+      activeColor: string;
+      activeBackground: string;
+      borderColor: string;
+      logoHeight: number;
+      sticky: boolean;
+    };
+    footerStyle: {
+      backgroundColor: string;
+      textColor: string;
+      headingColor: string;
+      borderColor: string;
+      paddingY: number;
+    };
   };
 };
 
@@ -266,6 +282,22 @@ export const defaultSiteContent: SiteContent = {
   },
   builder: {
     blocks: [],
+    headerStyle: {
+      backgroundColor: "#ffffff",
+      textColor: "#475569",
+      activeColor: "#1f5137",
+      activeBackground: "#e8f3eb",
+      borderColor: "#e2e8f0",
+      logoHeight: 56,
+      sticky: true,
+    },
+    footerStyle: {
+      backgroundColor: "#edf4ef",
+      textColor: "#52645a",
+      headingColor: "#17251d",
+      borderColor: "#dce8df",
+      paddingY: 48,
+    },
   },
 };
 
@@ -549,7 +581,7 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
     };
   }
 
-  next.builder = { blocks: copy(blocks) };
+  next.builder = { ...next.builder, blocks: copy(blocks) };
   return next;
 }
 
@@ -604,7 +636,7 @@ export function syncLegacyToBuilder(site: SiteContent): SiteContent {
     return block;
   });
 
-  return { ...site, builder: { blocks } };
+  return { ...site, builder: { ...site.builder, blocks } };
 }
 
 export function parseSiteContent(raw: string | null): SiteContent {
@@ -687,6 +719,14 @@ export function parseSiteContent(raw: string | null): SiteContent {
       },
       builder: {
         blocks: Array.isArray(parsed.builder?.blocks) ? parsed.builder.blocks : [],
+        headerStyle: {
+          ...defaultSiteContent.builder.headerStyle,
+          ...(parsed.builder?.headerStyle || {}),
+        },
+        footerStyle: {
+          ...defaultSiteContent.builder.footerStyle,
+          ...(parsed.builder?.footerStyle || {}),
+        },
       },
     };
 
