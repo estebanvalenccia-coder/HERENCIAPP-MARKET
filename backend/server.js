@@ -1534,6 +1534,13 @@ function normalizeMoney(value) {
   return Math.round(amount * 100) / 100;
 }
 
+function sanitizePosOperations(operations = {}) {
+  return {
+    ...operations,
+    staff: (Array.isArray(operations.staff) ? operations.staff : []).map(({ pinHash, pinSalt, ...item }) => item),
+  };
+}
+
 async function readPosCashSession() {
   return parseStoredJson(await readStorageValue("posCashSession"), null);
 }
@@ -1915,12 +1922,7 @@ app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
     const operations = { ...defaults, ...(saved || {}) };
-    res.json({
-      operations: {
-        ...operations,
-        staff: (operations.staff || []).map(({ pinHash, pinSalt, ...item }) => item),
-      },
-    });
+    res.json({ operations: sanitizePosOperations(operations) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1933,12 +1935,7 @@ app.put("/api/pos/operations", requireAdmin, async (req, res) => {
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const next = { ...current, ...(req.body || {}) };
     await upsertStorageValue("posOperations", JSON.stringify(next));
-    res.json({
-      operations: {
-        ...next,
-        staff: (next.staff || []).map(({ pinHash, pinSalt, ...item }) => item),
-      },
-    });
+    res.json({ operations: sanitizePosOperations(next) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1970,7 +1967,7 @@ app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
     };
     current.floristOrders = [order, ...(Array.isArray(current.floristOrders) ? current.floristOrders : [])];
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ order, operations: current });
+    res.json({ order, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1988,7 +1985,7 @@ app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
     const card = { id: crypto.randomUUID(), code, initialBalance: amount, balance: amount, active: true, createdAt: new Date().toISOString() };
     current.giftCards = [card, ...(Array.isArray(current.giftCards) ? current.giftCards : [])];
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ card, operations: current });
+    res.json({ card, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2017,7 +2014,7 @@ app.patch("/api/pos/florist-orders/:id", requireAdmin, async (req, res) => {
     };
     current.floristOrders = current.floristOrders.map((item, itemIndex) => itemIndex === index ? updated : item);
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ order: updated, operations: current });
+    res.json({ order: updated, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2044,7 +2041,7 @@ app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
     };
     current.giftCards = current.giftCards.map((item, itemIndex) => itemIndex === index ? nextCard : item);
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ card: nextCard, operations: current });
+    res.json({ card: nextCard, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2069,7 +2066,7 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
     current.suppliers = [supplier, ...(current.suppliers || []).filter((item) => String(item?.id) !== supplier.id)];
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ supplier, operations: current });
+    res.json({ supplier, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2119,7 +2116,7 @@ app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
     };
     current.purchases = [purchase, ...(Array.isArray(current.purchases) ? current.purchases : [])];
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ purchase, inventory: updatedProducts, operations: current });
+    res.json({ purchase, inventory: updatedProducts, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2197,7 +2194,7 @@ app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
     };
     current.loyalty = { ...(current.loyalty || {}), [customerId]: entry };
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ loyalty: entry, operations: current });
+    res.json({ loyalty: entry, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
