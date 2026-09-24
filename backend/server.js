@@ -151,6 +151,7 @@ const protectedKeys = new Set([
   "posFiscalSettings",
   "posCashSession",
   "adminProducts",
+  "adminSuppliers",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
   "heroBanner",
@@ -175,6 +176,7 @@ const adminOnlyStorageKeys = [
   "posCustomers",
   "posFiscalSettings",
   "posCashSession",
+  "adminSuppliers",
   "siteContentDraft",
   "siteContentHistory",
   "herencia_finance_sales",
@@ -1478,6 +1480,7 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
     };
 
     await writePosCashSession(session);
+    void emitNeuralBusinessEvent("cash.opened", { session });
     res.json({ session });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1525,6 +1528,7 @@ app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
     }
 
     await writePosCashSession(next);
+    void emitNeuralBusinessEvent("cash.movement", { sessionId: next.id, movement: next.movements?.at(-1), expectedCash: next.expectedCash });
     res.json({ session: next });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1566,6 +1570,7 @@ app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
     };
 
     await writePosCashSession(closed);
+    void emitNeuralBusinessEvent("cash.closed", { session: closed, difference });
     res.json({ session: closed });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2810,7 +2815,7 @@ app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) =>
 app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw] = await Promise.all([
+    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
       readStorageValue("adminProducts"),
       readStorageValue("posCashSession"),
@@ -2820,6 +2825,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       readStorageValue("herencia_finance_expenses"),
       readStorageValue("herencia_finance_sales"),
       readStorageValue("herencia_finance_closures"),
+      readStorageValue("adminSuppliers"),
     ]);
     if (orderError) throw orderError;
     const products = parseStoredJson(productsRaw, []);
@@ -2851,7 +2857,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
         netAfterRecordedExpenses: revenue - parseStoredJson(expensesRaw, []).reduce((sum, x) => sum + Number(x.amount || 0), 0),
         derivedFrom: "verified_orders_plus_recorded_finance",
       },
-      suppliers: [],
+      suppliers: parseStoredJson(suppliersRaw, []),
       conversations: [],
       web: { published: parseStoredJson(siteRaw, {}), draft: parseStoredJson(draftRaw, {}) },
       updatedAt: new Date().toISOString(),
@@ -2973,6 +2979,113 @@ app.post("/api/neural-bridge/crm/customers", requireNeuralBridge, async (req, re
     res.status(match < 0 ? 201 : 200).json({ ok: true, actionId, customer });
   } catch (error) {
     res.status(400).json({ error: error.message || "No se pudo guardar el cliente" });
+  }
+});
+
+
+app.post("/api/neural-bridge/suppliers", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const incoming = req.body?.supplier || req.body || {};
+    const name = String(incoming.name || "").trim();
+    if (!name) return res.status(400).json({ error: "El proveedor necesita nombre" });
+    const suppliers = parseStoredJson(await readStorageValue("adminSuppliers"), []);
+    const normalized = {
+      id: String(incoming.id || crypto.randomUUID()),
+      name,
+      email: String(incoming.email || "").trim(),
+      phone: String(incoming.phone || "").trim(),
+      address: String(incoming.address || "").trim(),
+      website: String(incoming.website || "").trim(),
+      notes: String(incoming.notes || "").slice(0, 2000),
+      categories: Array.isArray(incoming.categories) ? incoming.categories.map(String).slice(0, 50) : [],
+      active: incoming.active !== false,
+      updatedAt: new Date().toISOString(),
+    };
+    if (normalized.email && !isValidEmail(normalized.email)) {
+      return res.status(400).json({ error: "Email de proveedor inválido" });
+    }
+    const match = suppliers.findIndex(s =>
+      String(s.id || "") === normalized.id ||
+      (normalized.email && String(s.email || "").toLowerCase() === normalized.email.toLowerCase()) ||
+      String(s.name || "").toLowerCase() === normalized.name.toLowerCase()
+    );
+    const supplier = match >= 0 ? { ...suppliers[match], ...normalized, id: suppliers[match].id || normalized.id } : normalized;
+    if (match >= 0) suppliers[match] = supplier;
+    else suppliers.unshift(supplier);
+    await upsertStorageValue("adminSuppliers", JSON.stringify(suppliers.slice(0, 5000)));
+    void emitNeuralBusinessEvent("supplier.updated", { actionId, supplier, created: match < 0 });
+    res.status(match < 0 ? 201 : 200).json({ ok: true, actionId, supplier });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo guardar el proveedor" });
+  }
+});
+
+app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  if (!requireSupabase(res)) return;
+  try {
+    const { data: order, error } = await supabase.from("orders").select("*").eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    if (!["paid","confirmed","preparing","processing","ready","delivered","completed"].includes(order.status)) {
+      return res.status(409).json({ error: "Solo se puede emitir factura para un pedido cobrado o confirmado" });
+    }
+    const bootstrap = await loadPosBootstrap();
+    const metadata = order.metadata || {};
+    const customer = normalizePosCustomer({
+      id: req.body?.customer?.id || order.customer_email || crypto.randomUUID(),
+      name: req.body?.customer?.name || order.customer_name || "",
+      email: req.body?.customer?.email || order.customer_email || "",
+      nif: req.body?.customer?.nif || metadata.customerNif || "",
+      address: req.body?.customer?.address || metadata.customerAddress || "",
+      phone: req.body?.customer?.phone || metadata.customerPhone || "",
+    });
+    validatePosInvoiceData("invoice", customer, bootstrap.fiscalSettings || {});
+    if (metadata.documentType === "invoice" && metadata.invoiceNumber) {
+      return res.json({ ok: true, actionId, idempotent: true, invoiceNumber: metadata.invoiceNumber, order: posOrderResponse(order) });
+    }
+    const invoiceNumber = await reservePosDocumentNumber("invoice");
+    const now = new Date().toISOString();
+    const nextMetadata = {
+      ...metadata,
+      documentType: "invoice",
+      invoiceNumber,
+      invoiceIssuedAt: now,
+      invoiceNeuralActionId: actionId,
+      customerNif: customer.nif,
+      customerAddress: customer.address,
+      customerPhone: customer.phone,
+      fiscalSnapshot: bootstrap.fiscalSettings || {},
+    };
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ customer_email: customer.email || null, customer_name: customer.name, metadata: nextMetadata, updated_at: now })
+      .eq("id", order.id)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+    void emitNeuralBusinessEvent("invoice.issued", { actionId, orderId: order.id, invoiceNumber, total: Number(updated.total || 0) });
+    res.status(201).json({
+      ok: true,
+      actionId,
+      invoiceNumber,
+      invoice: {
+        number: invoiceNumber,
+        issuedAt: now,
+        issuer: bootstrap.fiscalSettings || {},
+        customer,
+        items: updated.items || [],
+        subtotal: Number(updated.subtotal || 0),
+        total: Number(updated.total || 0),
+        tax: Number(nextMetadata.tax || 0),
+      },
+      order: posOrderResponse(updated),
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo emitir la factura" });
   }
 });
 
