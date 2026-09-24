@@ -625,6 +625,21 @@ export const backendApi = {
     });
   },
 
+  async adjustPosInventory(payload: { productId: string; type: "count" | "waste" | "breakage" | "manual"; reason?: string; delta?: number; countedStock?: number }) {
+    return request<{ adjustment: any; inventory: any[]; operations: any }>("/api/pos/inventory-adjustments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getPosReportSummary(params?: { from?: string; to?: string }) {
+    const search = new URLSearchParams();
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<{ report: any }>(`/api/pos/reports/summary${suffix}`);
+  },
+
   async listPosSales(limit = 50) {
     return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
   },
