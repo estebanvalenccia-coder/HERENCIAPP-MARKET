@@ -66,6 +66,8 @@ const remotelySyncedKeys = new Set([
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
   "tpvLayoutSettings",
+  "posCustomers",
+  "posFiscalSettings",
   "heroBanner",
   "ctaBanner",
   "__backendStorage_test__",
@@ -408,6 +410,60 @@ export const backendApi = {
 
   async adminSession() {
     return request<{ authenticated: boolean }>("/api/admin/session");
+  },
+
+  async posBootstrap() {
+    return request<{
+      products: any[];
+      customers: any[];
+      fiscalSettings: Record<string, any>;
+    }>("/api/pos/bootstrap");
+  },
+
+  async savePosCustomer(payload: any) {
+    return request<{ customer: any; customers: any[] }>("/api/pos/customers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async savePosFiscalSettings(payload: any) {
+    return request<{ settings: Record<string, any> }>("/api/pos/fiscal-settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosCardIntent(payload: any) {
+    return request<{
+      clientSecret: string;
+      paymentIntentId: string;
+      orderId: string;
+      totals: { subtotal: number; tax: number; total: number };
+    }>("/api/pos/card-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async completePosSale(payload: any) {
+    return request<{
+      ok: boolean;
+      order: any;
+      inventory: any[];
+      documentNumber: string;
+      totals: {
+        subtotal: number;
+        tax: number;
+        total: number;
+        received: number;
+        change: number;
+      };
+      idempotent?: boolean;
+    }>("/api/pos/complete-sale", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   async createPaymentIntent(payload: any) {
