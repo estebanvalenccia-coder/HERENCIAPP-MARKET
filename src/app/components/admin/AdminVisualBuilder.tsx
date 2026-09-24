@@ -75,6 +75,7 @@ function hydrateLegacyBanners(site: SiteContent): SiteContent {
   return {
     ...site,
     builder: {
+      ...site.builder,
       blocks: ensureBuilderBlocks(site).map((block) => {
         if (block.type === "hero" && !block.data?.imageUrl && heroImage) {
           return { ...block, data: { ...block.data, imageUrl: heroImage } };
@@ -368,6 +369,7 @@ export function AdminVisualBuilder({
     updateSite((current) => ({
       ...current,
       builder: {
+        ...current.builder,
         blocks: ensureBuilderBlocks(current).map((block) =>
           block.id === id ? mutator(clone(block)) : block
         ),
@@ -415,7 +417,7 @@ export function AdminVisualBuilder({
       const reordered = [...next];
       const [moved] = reordered.splice(from, 1);
       reordered.splice(to, 0, moved);
-      return { ...current, builder: { blocks: reordered } };
+      return { ...current, builder: { ...current.builder, blocks: reordered } };
     });
   }
 
@@ -430,7 +432,7 @@ export function AdminVisualBuilder({
     const block = createBuilderBlock(type, site);
     updateSite((current) => ({
       ...current,
-      builder: { blocks: [...ensureBuilderBlocks(current), block] },
+      builder: { ...current.builder, blocks: [...ensureBuilderBlocks(current), block] },
     }));
     setSelected(block.id);
     setTab("contenido");
@@ -446,7 +448,7 @@ export function AdminVisualBuilder({
       const index = currentBlocks.findIndex((item) => item.id === block.id);
       const next = [...currentBlocks];
       next.splice(index + 1, 0, duplicate);
-      return { ...current, builder: { blocks: next } };
+      return { ...current, builder: { ...current.builder, blocks: next } };
     });
     setSelected(duplicate.id);
   }
@@ -456,6 +458,7 @@ export function AdminVisualBuilder({
     updateSite((current) => ({
       ...current,
       builder: {
+        ...current.builder,
         blocks: ensureBuilderBlocks(current).filter((item) => item.id !== block.id),
       },
     }));
