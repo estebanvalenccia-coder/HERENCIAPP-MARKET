@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { MessageSquare, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { backendStorage } from "../lib/backendStorage";
+import { useNeuralChatBridge } from "../lib/useNeuralChatBridge";
 
 export function ChatboxWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [chatboxUrl, setChatboxUrl] = useState("");
   const [isEnabled, setIsEnabled] = useState(false);
+
+  useNeuralChatBridge(chatboxUrl, isEnabled);
 
   useEffect(() => {
     const settings = backendStorage.getItem("chatboxSettings");
