@@ -20,7 +20,7 @@ import { backendApi } from "../../lib/backendStorage";
 
 type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
 type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; image?: string; manual?: boolean };
-type CartLine = PosItem & { qty: number };
+type CartLine = PosItem & { qty: number; discountPercent?: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string; phone?: string };
 type FiscalSettings = { businessName: string; nif: string; address: string; email: string; phone: string };
 type SaleReceipt = {
@@ -139,6 +139,12 @@ export function AdminPOS() {
   const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
   const [calcOperator, setCalcOperator] = useState<"+" | "-" | "×" | "÷" | null>(null);
   const [testingSystem, setTestingSystem] = useState(false);
+  const [manualName, setManualName] = useState("Artículo");
+  const [manualIva, setManualIva] = useState(21);
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [heldSales, setHeldSales] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
+  });
   const [selfTestResult, setSelfTestResult] = useState<{
     ok: boolean;
     cardReady: boolean;
@@ -195,7 +201,8 @@ export function AdminPOS() {
     let total = 0;
     let subtotal = 0;
     for (const line of cart) {
-      const lineTotal = line.price * line.qty;
+      const lineDiscount = Math.max(0, Math.min(100, Number(line.discountPercent || globalDiscount || 0)));
+      const lineTotal = line.price * line.qty * (1 - lineDiscount / 100);
       total += lineTotal;
       subtotal += lineTotal / (1 + line.iva / 100);
     }
@@ -204,7 +211,7 @@ export function AdminPOS() {
     const tax = Math.round((total - subtotal) * 100) / 100;
     const change = Math.max(0, Math.round((received - total) * 100) / 100);
     return { subtotal, tax, total, change };
-  }, [cart, received]);
+  }, [cart, received, globalDiscount]);
 
   function addItem(product: PosItem) {
     if (product.stock <= 0) return toast.error("Este producto no tiene stock");
@@ -218,6 +225,61 @@ export function AdminPOS() {
       }
       return current.map((line) => line.id === product.id ? { ...line, qty: line.qty + 1 } : line);
     });
+  }
+
+  function findAndAddByCode(value: string) {
+    const code = value.trim().toLowerCase();
+    if (!code) return false;
+    const product = products.find((item) =>
+      item.sku.toLowerCase() === code || item.id.toLowerCase() === code
+    );
+    if (!product) return false;
+    addItem(product);
+    setQuery("");
+    toast.success(`${product.name} añadido`);
+    return true;
+  }
+
+  function parkSale() {
+    if (!cart.length) return toast.error("No hay una venta para aparcar");
+    const sale = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      cart,
+      customer,
+      payment,
+      documentType,
+      notes,
+      globalDiscount,
+    };
+    const next = [sale, ...heldSales].slice(0, 20);
+    setHeldSales(next);
+    localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next));
+    clearSale();
+    toast.success("Venta aparcada");
+  }
+
+  function restoreHeldSale(id: string) {
+    const sale = heldSales.find((item) => item.id === id);
+    if (!sale) return;
+    setCart(Array.isArray(sale.cart) ? sale.cart : []);
+    setCustomer(sale.customer || WALK_IN);
+    setPayment(sale.payment || "Efectivo");
+    setDocumentType(sale.documentType || "ticket");
+    setNotes(sale.notes || "");
+    setGlobalDiscount(Number(sale.globalDiscount || 0));
+    const next = heldSales.filter((item) => item.id !== id);
+    setHeldSales(next);
+    localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next));
+    toast.success("Venta recuperada");
+  }
+
+  function applyDiscountToSelected(percent: number) {
+    if (!selectedLineId) return toast.error("Selecciona una línea de la venta");
+    const safe = Math.max(0, Math.min(100, Number(percent || 0)));
+    setCart((current) => current.map((line) =>
+      line.id === selectedLineId ? { ...line, discountPercent: safe } : line
+    ));
   }
 
   function changeQty(id: string, delta: number) {
@@ -292,10 +354,10 @@ export function AdminPOS() {
     const id = `manual-${crypto.randomUUID()}`;
     const line: CartLine = {
       id,
-      name: "Artículo",
+      name: manualName.trim() || "Artículo",
       sku: "VENTA-LIBRE",
       price: amount,
-      iva: 21,
+      iva: manualIva,
       stock: 999999,
       category: "Venta libre",
       manual: true,
@@ -308,7 +370,7 @@ export function AdminPOS() {
     setKeypad("");
     setCalcAccumulator(null);
     setCalcOperator(null);
-    toast.success(`Artículo libre añadido por ${money(amount)}`);
+    toast.success(`${line.name} añadido por ${money(amount)}`);
   }
 
   function pressOperator(operator: "+" | "-" | "×" | "÷") {
@@ -377,6 +439,8 @@ export function AdminPOS() {
     setCalcOperator(null);
     setPayment("Efectivo");
     setDocumentType("ticket");
+    setGlobalDiscount(0);
+    setSelectedLineId(null);
   }
 
   function invoiceRequirementsOk() {
@@ -402,10 +466,11 @@ export function AdminPOS() {
             sku: line.sku,
             price: line.price,
             iva: line.iva,
+            discountPercent: line.discountPercent ?? globalDiscount,
             quantity: line.qty,
             manual: true,
           }
-        : { id: line.id, quantity: line.qty }
+        : { id: line.id, quantity: line.qty, discountPercent: line.discountPercent ?? globalDiscount }
     );
   }
 
@@ -821,13 +886,53 @@ export function AdminPOS() {
               <div className="flex justify-between"><span>Base</span><b>{money(totals.subtotal)}</b></div>
               <div className="flex justify-between"><span>IVA</span><b>{money(totals.tax)}</b></div>
               <div className="flex justify-between text-2xl text-emerald-700"><span className="font-black">Total</span><b>{money(totals.total)}</b></div>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs font-bold uppercase text-zinc-500">Descuento venta</span>
+                {[0, 5, 10, 15, 20].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setGlobalDiscount(value)}
+                    className={`rounded-lg px-2 py-1 text-xs font-black ${globalDiscount === value ? "bg-emerald-600 text-white" : "bg-zinc-100"}`}
+                  >
+                    {value}%
+                  </button>
+                ))}
+              </div>
+              {selectedLineId && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-500">Línea seleccionada:</span>
+                  {[0, 5, 10, 20, 50].map((value) => (
+                    <button key={value} onClick={() => applyDiscountToSelected(value)} className="rounded-lg border px-2 py-1 text-xs font-bold">
+                      {value}%
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Notas de la venta" className="mt-4 w-full rounded-xl border border-zinc-200 p-3 text-sm" />
           </section>
 
           <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button onClick={parkSale} disabled={!cart.length} className="rounded-xl border border-amber-300 bg-amber-50 py-2 text-sm font-black text-amber-800 disabled:opacity-40">
+                Aparcar venta
+              </button>
+              <select
+                value=""
+                onChange={(e) => e.target.value && restoreHeldSale(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-2 py-2 text-sm font-bold"
+              >
+                <option value="">Recuperar ({heldSales.length})</option>
+                {heldSales.map((sale) => (
+                  <option key={sale.id} value={sale.id}>
+                    {new Date(sale.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} · {sale.cart?.length || 0} líneas
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="mb-3 flex gap-2">
-              <button onClick={() => setDocumentType("ticket")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "ticket" ? "bg-zinc-900 text-white" : "border"}`}>Ticket</button>
+              <button onClick={() => setDocumentType("ticket") className={`flex-1 rounded-xl py-2 font-bold ${documentType === "ticket" ? "bg-zinc-900 text-white" : "border"}`}>Ticket</button>
               <button onClick={() => setDocumentType("invoice")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "invoice" ? "bg-zinc-900 text-white" : "border"}`}>Factura</button>
             </div>
 
@@ -876,6 +981,20 @@ export function AdminPOS() {
                     Pago exacto · {money(totals.total)}
                   </button>
                 )}
+                {cart.length > 0 && totals.total > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {[10, 20, 50, 100].map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => setReceived(amount)}
+                        className="rounded-xl border border-zinc-200 py-2 text-sm font-black"
+                      >
+                        {amount} €
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -885,7 +1004,23 @@ export function AdminPOS() {
               </div>
             )}
 
-            <div className="mt-4 rounded-2xl bg-zinc-950 p-4 text-white">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+                placeholder="Concepto del artículo libre"
+                className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+              />
+              <select
+                value={manualIva}
+                onChange={(e) => setManualIva(Number(e.target.value))}
+                className="rounded-xl border border-zinc-200 px-3 py-2 text-sm font-bold"
+              >
+                {[0, 4, 10, 21].map((iva) => <option key={iva} value={iva}>IVA {iva}%</option>)}
+              </select>
+            </div>
+
+            <div className="mt-3 rounded-2xl bg-zinc-950 p-4 text-white">
               <div className="mb-3 text-right text-3xl font-black">{keypad ? `${keypad.replace(".", ",")} €` : money(0)}</div>
               <div className="grid grid-cols-3 gap-2">
                 {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00", "."].map((key) => <button key={key} onClick={() => pressKey(key)} className="rounded-xl bg-white/10 py-3 text-lg font-black hover:bg-white/20">{key}</button>)}
