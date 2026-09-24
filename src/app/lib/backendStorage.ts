@@ -68,6 +68,7 @@ const remotelySyncedKeys = new Set([
   "tpvLayoutSettings",
   "posCustomers",
   "posFiscalSettings",
+  "posCashSession",
   "heroBanner",
   "ctaBanner",
   "__backendStorage_test__",
@@ -417,7 +418,38 @@ export const backendApi = {
       products: any[];
       customers: any[];
       fiscalSettings: Record<string, any>;
+      stripeSettings: {
+        enabled: boolean;
+        publishableKey: string;
+        secretConfigured: boolean;
+      };
+      cashSession: any | null;
     }>("/api/pos/bootstrap");
+  },
+
+  async getPosCashSession() {
+    return request<{ session: any | null }>("/api/pos/cash-session");
+  },
+
+  async openPosCashSession(openingAmount: number) {
+    return request<{ session: any }>("/api/pos/cash-session/open", {
+      method: "POST",
+      body: JSON.stringify({ openingAmount }),
+    });
+  },
+
+  async addPosCashMovement(payload: { type: "in" | "out"; amount: number; note?: string }) {
+    return request<{ session: any }>("/api/pos/cash-session/movement", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async closePosCashSession(countedCash: number) {
+    return request<{ session: any }>("/api/pos/cash-session/close", {
+      method: "POST",
+      body: JSON.stringify({ countedCash }),
+    });
   },
 
   async posSelfTest() {
