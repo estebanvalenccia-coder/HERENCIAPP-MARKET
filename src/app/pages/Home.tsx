@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 import ctaBackground from "figma:asset/d5382b123a27fa7c9d1abc7d1b3ca1c479f8df01.png";
 import { backendStorage } from "../lib/backendStorage";
 import {
@@ -56,6 +57,7 @@ export function Home() {
           site={site}
           heroFallback={legacyHero || DEFAULT_HERO}
           ctaFallback={legacyCta || ctaBackground}
+          logoFallback={logo}
         />
       ))}
     </div>
