@@ -577,6 +577,55 @@ export const backendApi = {
     });
   },
 
+
+  async neuralSelfModel() {
+    return request<any>("/api/neural/self-model");
+  },
+
+  async neuralDemand() {
+    return request<any>("/api/neural/learning/demand");
+  },
+
+  async neuralPatterns() {
+    return request<any>("/api/neural/learning/patterns");
+  },
+
+  async neuralResources() {
+    return request<any>("/api/neural/governance/resources");
+  },
+
+  async neuralProactiveStatus() {
+    return request<any>("/api/neural/proactive/status");
+  },
+
+  async neuralLabMutate(payload: { parentId: string; hypothesis: string; mutation?: Record<string, any> }) {
+    return request<any>("/api/neural/lab/mutate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async neuralLabEvaluate(experimentId: string, metrics: Record<string, any>) {
+    return request<any>("/api/neural/lab/evaluate", {
+      method: "POST",
+      body: JSON.stringify({ experimentId, metrics }),
+    });
+  },
+
+  async neuralLabPromote(experimentId: string) {
+    return request<any>(`/api/neural/lab/${encodeURIComponent(experimentId)}/promote`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
+  async neuralLabRetire(experimentId: string, reason = "not_selected") {
+    return request<any>(`/api/neural/lab/${encodeURIComponent(experimentId)}/retire`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
+
   async neuralBrief() {
     return request<any>("/api/neural/brief");
   },
