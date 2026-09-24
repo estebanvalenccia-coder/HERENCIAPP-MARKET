@@ -107,18 +107,23 @@ app.options(
   })
 );
 
-const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
-const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
-const sessionSecret =
+const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
+const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+const configuredSessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "change-me-in-production";
-const usingDefaultAdminCredentials =
-  !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
+  "";
+const sessionSecret =
+  configuredSessionSecret || crypto.randomBytes(32).toString("hex");
+const adminAuthConfigured = Boolean(
+  adminUsername &&
+  adminPassword &&
+  configuredSessionSecret
+);
 
-if (usingDefaultAdminCredentials) {
+if (!adminAuthConfigured) {
   console.warn(
-    "Admin auth usando credenciales por defecto. Configura ADMIN_USERNAME y ADMIN_PASSWORD para endurecer producción."
+    "Admin auth deshabilitado: configura ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET (o SUPABASE_SERVICE_ROLE_KEY)."
   );
 }
 
@@ -824,6 +829,12 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/admin/login", (req, res) => {
+  if (!adminAuthConfigured) {
+    return res.status(503).json({
+      error: "Acceso admin no configurado en el servidor",
+    });
+  }
+
   const { username, password } = req.body || {};
 
   if (username !== adminUsername || password !== adminPassword) {
