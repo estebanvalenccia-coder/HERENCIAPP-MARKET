@@ -162,8 +162,19 @@ function LinkFields({
 }) {
   return (
     <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="text-xs font-black uppercase tracking-wider text-slate-500">{label}</p>
-      <TextField label="Texto" value={value?.label || ""} onChange={(text) => onChange({ ...value, label: text })} />
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase tracking-wider text-slate-500">{label}</p>
+        {(value?.label || value?.href) && (
+          <button
+            type="button"
+            onClick={() => onChange({ label: "", href: "" })}
+            className="text-[11px] font-bold text-rose-600 hover:underline"
+          >
+            Quitar
+          </button>
+        )}
+      </div>
+      <TextField label="Texto" value={value?.label || ""} onChange={(text) => onChange({ ...value, label: text })} placeholder="Escribe para añadir el botón" />
       <TextField
         label="Destino / URL"
         value={value?.href || ""}
