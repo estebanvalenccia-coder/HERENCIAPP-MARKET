@@ -530,6 +530,31 @@ export const backendApi = {
     });
   },
 
+  async getPosOperations() {
+    return request<{ operations: any }>("/api/pos/operations");
+  },
+
+  async savePosOperations(payload: any) {
+    return request<{ operations: any }>("/api/pos/operations", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createFloristOrder(payload: any) {
+    return request<{ order: any; operations: any }>("/api/pos/florist-orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createGiftCard(payload: { amount: number; code?: string }) {
+    return request<{ card: any; operations: any }>("/api/pos/gift-cards", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async listPosSales(limit = 50) {
     return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
   },
