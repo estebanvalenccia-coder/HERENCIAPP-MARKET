@@ -518,6 +518,13 @@ export const backendApi = {
     });
   },
 
+  async createPosMixedCardIntent(payload: any) {
+    return request<{ clientSecret: string; paymentIntentId: string; cardAmount: number; totals: any }>("/api/pos/mixed-card-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async createPosCardIntent(payload: any) {
     return request<{
       clientSecret: string;
