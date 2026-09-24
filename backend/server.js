@@ -2184,6 +2184,53 @@ app.post("/api/pos/staff/unlock", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pos/staff-shifts/start", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const staffId = String(req.body?.staffId || "").trim();
+    const staff = (operations.staff || []).find((item) => String(item?.id) === staffId && item?.active !== false);
+    if (!staff) return res.status(404).json({ error: "Empleado no encontrado" });
+    const openShift = (operations.staffShifts || []).find((item) => String(item?.staffId) === staffId && !item?.endedAt);
+    if (openShift) return res.status(409).json({ error: "Este empleado ya tiene un turno abierto" });
+    const shift = {
+      id: crypto.randomUUID(),
+      staffId,
+      staffName: String(staff.name || "Empleado"),
+      role: String(staff.role || "seller"),
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      durationMinutes: null,
+    };
+    operations.staffShifts = [shift, ...(Array.isArray(operations.staffShifts) ? operations.staffShifts : [])].slice(0, 1000);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ shift, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff-shifts/end", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const staffId = String(req.body?.staffId || "").trim();
+    const index = (operations.staffShifts || []).findIndex((item) => String(item?.staffId) === staffId && !item?.endedAt);
+    if (index < 0) return res.status(404).json({ error: "No hay un turno abierto para este empleado" });
+    const previous = operations.staffShifts[index];
+    const endedAt = new Date();
+    const durationMinutes = Math.max(0, Math.round((endedAt.getTime() - new Date(previous.startedAt).getTime()) / 60000));
+    const shift = { ...previous, endedAt: endedAt.toISOString(), durationMinutes };
+    operations.staffShifts = operations.staffShifts.map((item, itemIndex) => itemIndex === index ? shift : item);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ shift, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
