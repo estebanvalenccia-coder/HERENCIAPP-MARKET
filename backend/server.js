@@ -1909,6 +1909,80 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
+    res.json({ operations: { ...defaults, ...(saved || {}) } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/pos/operations", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const next = { ...current, ...(req.body || {}) };
+    await upsertStorageValue("posOperations", JSON.stringify(next));
+    res.json({ operations: next });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const total = normalizeMoney(req.body?.total);
+    const deposit = normalizeMoney(req.body?.deposit);
+    if (total <= 0) return res.status(400).json({ error: "El encargo necesita un total válido" });
+    if (deposit < 0 || deposit > total) return res.status(400).json({ error: "Anticipo inválido" });
+    const order = {
+      id: crypto.randomUUID(),
+      customerName: String(req.body?.customerName || "Cliente mostrador").trim(),
+      customerPhone: String(req.body?.customerPhone || "").trim(),
+      concept: String(req.body?.concept || "Encargo floral").trim(),
+      dedication: String(req.body?.dedication || "").trim(),
+      deliveryAddress: String(req.body?.deliveryAddress || "").trim(),
+      dueAt: req.body?.dueAt || null,
+      assignedTo: String(req.body?.assignedTo || "").trim(),
+      total,
+      deposit,
+      pending: normalizeMoney(total - deposit),
+      status: String(req.body?.status || "pendiente"),
+      createdAt: new Date().toISOString(),
+    };
+    current.floristOrders = [order, ...(Array.isArray(current.floristOrders) ? current.floristOrders : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ order, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const amount = normalizeMoney(req.body?.amount);
+    if (amount <= 0) return res.status(400).json({ error: "El saldo debe ser mayor que 0" });
+    const code = String(req.body?.code || `HER-${crypto.randomUUID().slice(0, 8).toUpperCase()}`).trim().toUpperCase();
+    if ((current.giftCards || []).some((card) => card.code === code)) return res.status(409).json({ error: "Ese código ya existe" });
+    const card = { id: crypto.randomUUID(), code, initialBalance: amount, balance: amount, active: true, createdAt: new Date().toISOString() };
+    current.giftCards = [card, ...(Array.isArray(current.giftCards) ? current.giftCards : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ card, operations: current });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/pos/sales", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
