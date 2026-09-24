@@ -16,6 +16,9 @@ interface Product {
   active?: boolean;
   onSale?: boolean;
   salePrice?: number;
+  sku?: string;
+  stock?: number;
+  iva?: number;
 }
 
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -85,6 +88,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     price: 0,
     category: "",
     image: "",
+    sku: "",
+    stock: 0,
+    iva: 21,
   });
 
   useEffect(() => {
@@ -149,13 +155,16 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       price: product.price,
       category: product.category,
       image: product.image,
+      sku: product.sku || "",
+      stock: Math.max(0, Number(product.stock || 0)),
+      iva: Number(product.iva || 21),
     });
   };
 
   const cancelEdit = () => {
     setEditingProduct(null);
     setAiPrompt("");
-    setEditForm({ name: "", description: "", price: 0, category: "", image: "" });
+    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21 });
   };
 
   const generateAiImage = async () => {
@@ -187,6 +196,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
             price: editForm.price,
             category: editForm.category,
             image: editForm.image,
+            sku: editForm.sku.trim() || p.sku || `SKU-${p.id}`,
+            stock: Math.max(0, Math.floor(Number(editForm.stock || 0))),
+            iva: Math.max(0, Number(editForm.iva || 21)),
             salePrice: p.onSale ? editForm.price * 0.8 : p.salePrice,
           }
         : p
@@ -277,6 +289,18 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                     <span className="text-foreground capitalize">
                       {product.category.replace("-", " ")}
                     </span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-muted-foreground">Stock: </span>
+                    <span className="font-bold text-foreground">{Math.max(0, Number(product.stock || 0))}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-muted-foreground">SKU: </span>
+                    <span className="text-foreground">{product.sku || `SKU-${product.id}`}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-muted-foreground">IVA: </span>
+                    <span className="text-foreground">{Number(product.iva || 21)}%</span>
                   </div>
                 </div>
 
@@ -452,6 +476,40 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                     <option value="sustratos">Sustratos</option>
                     <option value="fertilizantes">Fertilizantes</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">SKU / Código</label>
+                  <input
+                    type="text"
+                    value={editForm.sku}
+                    onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">Stock real</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editForm.stock}
+                    onChange={(e) => setEditForm({ ...editForm, stock: Math.max(0, Math.floor(Number(e.target.value || 0))) })}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">IVA (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.iva}
+                    onChange={(e) => setEditForm({ ...editForm, iva: Math.max(0, Number(e.target.value || 0)) })}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
                 </div>
               </div>
 
