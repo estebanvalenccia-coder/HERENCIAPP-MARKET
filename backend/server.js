@@ -1621,6 +1621,19 @@ app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
       bootstrap.fiscalSettings?.nif &&
       bootstrap.fiscalSettings?.address
     );
+    const publicStripeReady = Boolean(
+      bootstrap.stripeSettings?.enabled &&
+      String(bootstrap.stripeSettings?.publishableKey || "").startsWith("pk_")
+    );
+    const cardReady = Boolean(stripeOk && publicStripeReady);
+
+    tests.push({
+      name: "stripe_publica",
+      ok: publicStripeReady,
+      detail: publicStripeReady
+        ? "Clave pública de Stripe habilitada y con formato válido"
+        : "Falta habilitar Stripe o configurar una clave pública pk_ válida",
+    });
 
     tests.push({
       name: "stock_configurado",
@@ -1639,7 +1652,7 @@ app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
 
     res.json({
       ok: tests.filter((test) => !["stripe", "stock_configurado", "datos_fiscales"].includes(test.name)).every((test) => test.ok),
-      cardReady: stripeOk,
+      cardReady,
       stockReady: stockConfigured,
       fiscalReady,
       tests,
