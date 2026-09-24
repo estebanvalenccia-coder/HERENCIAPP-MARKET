@@ -71,6 +71,7 @@ const remotelySyncedKeys = new Set([
   "posCashSession",
   "heroBanner",
   "ctaBanner",
+  "siteContent",
   "__backendStorage_test__",
   "cart",
   "user",
