@@ -146,7 +146,8 @@ export function AdminPOS() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showOperations, setShowOperations] = useState(false);
-  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
+  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+  const [report, setReport] = useState<any | null>(null);
   const [currentStaff, setCurrentStaff] = useState<any | null>(null);
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
   const [heldSales, setHeldSales] = useState<any[]>(() => {
@@ -184,9 +185,14 @@ export function AdminPOS() {
       setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
       setCashSession(data.cashSession || null);
       try {
-        const [history, ops] = await Promise.all([backendApi.listPosSales(30), backendApi.getPosOperations()]);
+        const [history, ops, reportResult] = await Promise.all([
+          backendApi.listPosSales(30),
+          backendApi.getPosOperations(),
+          backendApi.getPosReportSummary(),
+        ]);
         setRecentSales(Array.isArray(history.sales) ? history.sales : []);
-        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
+        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+        setReport(reportResult.report || null);
       } catch {
         setRecentSales([]);
       }
@@ -571,7 +577,49 @@ export function AdminPOS() {
     }
   }
 
-  async function createSupplier() {
+  async function refreshReport() {
+    try {
+      const result = await backendApi.getPosReportSummary();
+      setReport(result.report || null);
+    } catch {
+      // El resto del TPV puede seguir funcionando aunque el panel analítico no cargue.
+    }
+  }
+
+  async function adjustInventory() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede ajustar inventario");
+    const sku = window.prompt("SKU o ID del producto");
+    if (!sku) return;
+    const product = products.find((item) => item.sku.toLowerCase() === sku.toLowerCase() || item.id === sku);
+    if (!product) return toast.error("Producto no encontrado");
+
+    const typeRaw = (window.prompt("Tipo: count, waste, breakage o manual", "count") || "count").toLowerCase();
+    const type = (["count", "waste", "breakage", "manual"].includes(typeRaw) ? typeRaw : "manual") as "count" | "waste" | "breakage" | "manual";
+    const reason = window.prompt("Motivo del ajuste", type === "count" ? "Inventario físico" : "") || "";
+
+    try {
+      let payload: any = { productId: product.id, type, reason };
+      if (type === "count") {
+        const countedStock = Math.floor(Number(window.prompt("Stock contado", String(product.stock)) || -1));
+        if (!Number.isFinite(countedStock) || countedStock < 0) return toast.error("Stock contado inválido");
+        payload.countedStock = countedStock;
+      } else {
+        const units = Math.floor(Number(window.prompt(type === "manual" ? "Ajuste de unidades (+/-)" : "Unidades a descontar", "1") || 0));
+        if (!Number.isFinite(units) || units === 0) return toast.error("Cantidad inválida");
+        payload.delta = type === "manual" ? units : -Math.abs(units);
+      }
+
+      const result = await backendApi.adjustPosInventory(payload);
+      setProducts((result.inventory || []).map(toPosItem));
+      setOperations(result.operations);
+      await refreshReport();
+      toast.success(`Stock actualizado: ${result.adjustment.productName} ${result.adjustment.before} → ${result.adjustment.after}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo ajustar el inventario");
+    }
+  }
+
+    async function createSupplier() {
     if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede gestionar proveedores");
     const name = window.prompt("Nombre del proveedor");
     if (!name) return;
@@ -605,6 +653,7 @@ export function AdminPOS() {
       });
       setProducts((result.inventory || []).map(toPosItem));
       setOperations(result.operations);
+      await refreshReport();
       toast.success(`Entrada registrada: +${quantity} ${product.name}`);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo registrar la compra");
@@ -760,6 +809,7 @@ export function AdminPOS() {
       setRecentSales((current) => current.map((item) =>
         String(item.id) === String(orderId) ? result.order : item
       ));
+      await refreshReport();
       toast.success(`Devolución registrada: ${result.refundNumber}`);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo registrar la devolución");
@@ -793,6 +843,7 @@ export function AdminPOS() {
       setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
       await markActiveQuoteConverted(String(result.order?.id || ""));
+      await refreshReport();
       if (payment === "Bizum" || payment === "Transferencia") {
         toast.success(`${result.documentNumber} registrado. Pago pendiente de verificación.`);
       } else {
@@ -872,6 +923,7 @@ export function AdminPOS() {
       setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
       await markActiveQuoteConverted(String(result.order?.id || ""));
+      await refreshReport();
       setCardSession(null);
       toast.success(`${result.documentNumber} cobrado correctamente`);
       clearSale();
@@ -1139,6 +1191,17 @@ export function AdminPOS() {
           </div>
         </div>
       </div>
+
+      {report && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 print:hidden">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">Ventas hoy</p><p className="text-2xl font-black text-emerald-950">{money(report.revenue)}</p></div>
+          <div className="rounded-2xl border border-zinc-100 bg-white p-4"><p className="text-xs font-bold uppercase text-zinc-500">Operaciones</p><p className="text-2xl font-black">{report.transactions || 0}</p></div>
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-700">Ticket medio</p><p className="text-2xl font-black text-blue-950">{money(report.averageTicket)}</p></div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-xs font-bold uppercase text-amber-700">IVA</p><p className="text-2xl font-black text-amber-950">{money(report.tax)}</p></div>
+          <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4"><p className="text-xs font-bold uppercase text-rose-700">Devoluciones</p><p className="text-2xl font-black text-rose-950">{report.refunds || 0}</p></div>
+          <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4"><p className="text-xs font-bold uppercase text-violet-700">Encargos pendientes</p><p className="text-2xl font-black text-violet-950">{report.pendingFloristOrders || 0}</p></div>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_430px] print:hidden">
         <section className="space-y-5">
@@ -1535,6 +1598,7 @@ export function AdminPOS() {
                   <button onClick={() => void adjustLoyalty()} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-black text-amber-800">Puntos cliente</button>
                   <button onClick={() => void createSupplier()} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">+ Proveedor</button>
                   <button onClick={() => void receivePurchase()} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-sm font-black text-cyan-800">Entrada stock</button>
+                  <button onClick={() => void adjustInventory()} className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-3 text-sm font-black text-orange-800">Ajustar inventario</button>
                   <button onClick={() => void createStaffMember()} className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-black">+ Empleado</button>
                   <button onClick={() => void saveCurrentQuote()} disabled={!cart.length} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-black text-emerald-800 disabled:opacity-40">Guardar presupuesto</button>
                 </div>
