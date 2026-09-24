@@ -1,17 +1,34 @@
 import { motion, AnimatePresence } from "motion/react";
 import { MessageCircle, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { backendStorage } from "../lib/backendStorage";
+import { defaultSiteContent, normalizeWhatsAppPhone, parseSiteContent } from "../lib/siteContent";
 
 export function WhatsAppButton() {
   const [isVisible, setIsVisible] = useState(true);
+  const [settings, setSettings] = useState(defaultSiteContent.floatingWhatsapp);
 
-  if (!isVisible) return null;
+  useEffect(() => {
+    const load = () => {
+      const site = parseSiteContent(backendStorage.getItem("siteContent"));
+      setSettings(site.floatingWhatsapp);
+    };
+    load();
+    window.addEventListener("storage", load);
+    window.addEventListener("backend-storage", load);
+    return () => {
+      window.removeEventListener("storage", load);
+      window.removeEventListener("backend-storage", load);
+    };
+  }, []);
+
+  if (!isVisible || !settings.enabled) return null;
 
   return (
     <AnimatePresence>
       <div className="fixed bottom-6 right-6 z-50">
         <motion.a
-          href="https://wa.me/34624239598"
+          href={`https://wa.me/${normalizeWhatsAppPhone(settings.phone)}`}
           target="_blank"
           rel="noopener noreferrer"
           initial={{ scale: 0 }}
@@ -19,16 +36,13 @@ export function WhatsAppButton() {
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           className="relative flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-full shadow-2xl shadow-green-500/30 hover:shadow-green-500/60 transition-all"
-          aria-label="Contactar por WhatsApp"
-          style={{
-            filter: 'drop-shadow(0 10px 20px rgba(34, 197, 94, 0.4))'
-          }}
+          aria-label={settings.ariaLabel}
+          style={{ filter: "drop-shadow(0 10px 20px rgba(34, 197, 94, 0.4))" }}
         >
           <MessageCircle className="w-8 h-8" />
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
         </motion.a>
 
-        {/* Botón de cerrar */}
         <motion.button
           onClick={() => setIsVisible(false)}
           initial={{ opacity: 0, scale: 0 }}
