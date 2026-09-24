@@ -848,6 +848,138 @@ app.post("/api/admin/logout", (_req, res) => {
 app.get("/api/admin/session", (req, res) => {
   res.json({ authenticated: isAdmin(req) });
 });
+const SITE_MEDIA_BUCKET = process.env.SITE_MEDIA_BUCKET || "site-media";
+
+async function ensureSiteMediaBucket() {
+  if (!supabase?.storage) {
+    throw new Error("Supabase Storage no está disponible en este entorno");
+  }
+
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+  if (listError) throw listError;
+
+  const exists = (buckets || []).some((bucket) => bucket.name === SITE_MEDIA_BUCKET);
+  if (!exists) {
+    const { error: createError } = await supabase.storage.createBucket(SITE_MEDIA_BUCKET, {
+      public: true,
+      fileSizeLimit: 6 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    });
+    if (createError && !/already exists/i.test(createError.message || "")) {
+      throw createError;
+    }
+  }
+}
+
+function parseImageDataUrl(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/i);
+  if (!match) throw new Error("Formato de imagen no válido");
+
+  const mimeType = match[1].toLowerCase();
+  const buffer = Buffer.from(match[2], "base64");
+  if (!buffer.length) throw new Error("La imagen está vacía");
+  if (buffer.length > 6 * 1024 * 1024) throw new Error("La imagen supera 6 MB después de procesarla");
+
+  const extension =
+    mimeType === "image/png" ? "png" :
+    mimeType === "image/webp" ? "webp" :
+    mimeType === "image/gif" ? "gif" : "jpg";
+
+  return { mimeType, buffer, extension };
+}
+
+function sanitizeMediaName(value) {
+  return String(value || "imagen")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || "imagen";
+}
+
+app.get("/api/admin/media", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    await ensureSiteMediaBucket();
+    const { data, error } = await supabase.storage
+      .from(SITE_MEDIA_BUCKET)
+      .list("builder", { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+
+    if (error) throw error;
+
+    const media = (data || [])
+      .filter((item) => item?.name)
+      .map((item) => {
+        const path = `builder/${item.name}`;
+        const { data: publicData } = supabase.storage.from(SITE_MEDIA_BUCKET).getPublicUrl(path);
+        return {
+          name: item.name,
+          path,
+          url: publicData?.publicUrl || "",
+          createdAt: item.created_at || null,
+          size: item.metadata?.size || null,
+        };
+      });
+
+    res.json({ media });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar la biblioteca multimedia" });
+  }
+});
+
+app.post("/api/admin/media", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    await ensureSiteMediaBucket();
+    const { dataUrl, filename } = req.body || {};
+    const { mimeType, buffer, extension } = parseImageDataUrl(dataUrl);
+    const base = sanitizeMediaName(filename).replace(/\.[^.]+$/, "");
+    const objectName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${base}.${extension}`;
+    const path = `builder/${objectName}`;
+
+    const { error } = await supabase.storage
+      .from(SITE_MEDIA_BUCKET)
+      .upload(path, buffer, {
+        contentType: mimeType,
+        cacheControl: "31536000",
+        upsert: false,
+      });
+
+    if (error) throw error;
+
+    const { data: publicData } = supabase.storage.from(SITE_MEDIA_BUCKET).getPublicUrl(path);
+    res.json({
+      media: {
+        name: objectName,
+        path,
+        url: publicData?.publicUrl || "",
+        size: buffer.length,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo subir la imagen" });
+  }
+});
+
+app.delete("/api/admin/media", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    await ensureSiteMediaBucket();
+    const path = String(req.body?.path || "");
+    if (!/^builder\/[a-zA-Z0-9._-]+$/.test(path)) {
+      return res.status(400).json({ error: "Ruta multimedia no válida" });
+    }
+
+    const { error } = await supabase.storage.from(SITE_MEDIA_BUCKET).remove([path]);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar la imagen" });
+  }
+});
+
 
 const adminOrderEventClients = new Set();
 const recentAdminOrderEventKeys = new Map();
