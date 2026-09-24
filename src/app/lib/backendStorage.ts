@@ -604,6 +604,20 @@ export const backendApi = {
     });
   },
 
+  async startPosStaffShift(staffId: string) {
+    return request<{ shift: any; operations: any }>("/api/pos/staff-shifts/start", {
+      method: "POST",
+      body: JSON.stringify({ staffId }),
+    });
+  },
+
+  async endPosStaffShift(staffId: string) {
+    return request<{ shift: any; operations: any }>("/api/pos/staff-shifts/end", {
+      method: "POST",
+      body: JSON.stringify({ staffId }),
+    });
+  },
+
   async adjustPosLoyalty(payload: { customerId: string; delta: number }) {
     return request<{ loyalty: any; operations: any }>("/api/pos/loyalty/adjust", {
       method: "POST",
