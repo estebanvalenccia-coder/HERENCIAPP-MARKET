@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
 type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
-type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; image?: string };
+type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; image?: string; manual?: boolean };
 type CartLine = PosItem & { qty: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string; phone?: string };
 type FiscalSettings = { businessName: string; nif: string; address: string; email: string; phone: string };
@@ -226,7 +226,7 @@ export function AdminPOS() {
       if (line.id !== id) return line;
       const next = line.qty + delta;
       if (next <= 0) return { ...line, qty: 0 };
-      if (next > line.stock) {
+      if (!line.manual && next > line.stock) {
         toast.error(`Stock máximo: ${line.stock}`);
         return line;
       }
@@ -252,7 +252,7 @@ export function AdminPOS() {
     if (!selectedLineId || qty <= 0) return toast.error("Selecciona un artículo y escribe una cantidad");
     setCart((current) => current.map((line) => {
       if (line.id !== selectedLineId) return line;
-      if (qty > line.stock) {
+      if (!line.manual && qty > line.stock) {
         toast.error(`Stock máximo: ${line.stock}`);
         return line;
       }
@@ -265,7 +265,7 @@ export function AdminPOS() {
 
   function useCalculatorAsCash() {
     if (!cart.length || totals.total <= 0) {
-      toast.error("Primero añade al menos un producto a la venta");
+      toast.error("Primero añade al menos un producto o artículo libre a la venta");
       return;
     }
 
@@ -280,6 +280,35 @@ export function AdminPOS() {
     setKeypad("");
     setCalcAccumulator(null);
     setCalcOperator(null);
+  }
+
+  function addManualArticle() {
+    const amount = Math.round(keypadNumber() * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Escribe el importe del artículo libre");
+      return;
+    }
+
+    const id = `manual-${crypto.randomUUID()}`;
+    const line: CartLine = {
+      id,
+      name: "Artículo",
+      sku: "VENTA-LIBRE",
+      price: amount,
+      iva: 21,
+      stock: 999999,
+      category: "Venta libre",
+      manual: true,
+      qty: 1,
+    };
+
+    setCart((current) => [...current, line]);
+    setSelectedLineId(id);
+    if (payment === "Efectivo") setReceived(amount);
+    setKeypad("");
+    setCalcAccumulator(null);
+    setCalcOperator(null);
+    toast.success(`Artículo libre añadido por ${money(amount)}`);
   }
 
   function pressOperator(operator: "+" | "-" | "×" | "÷") {
@@ -364,10 +393,26 @@ export function AdminPOS() {
     return true;
   }
 
+  function saleItemsPayload() {
+    return cart.map((line) =>
+      line.manual
+        ? {
+            id: line.id,
+            name: line.name,
+            sku: line.sku,
+            price: line.price,
+            iva: line.iva,
+            quantity: line.qty,
+            manual: true,
+          }
+        : { id: line.id, quantity: line.qty }
+    );
+  }
+
   function salePayload() {
     return {
       customer,
-      items: cart.map((line) => ({ id: line.id, quantity: line.qty })),
+      items: saleItemsPayload(),
       paymentMethod: payment,
       documentType,
       received,
@@ -425,7 +470,7 @@ export function AdminPOS() {
     try {
       const result = await backendApi.createPosCardIntent({
         customer,
-        items: cart.map((line) => ({ id: line.id, quantity: line.qty })),
+        items: saleItemsPayload(),
         documentType,
         notes,
       });
@@ -747,7 +792,12 @@ export function AdminPOS() {
               {cart.map((line) => (
                 <div key={line.id} onClick={() => setSelectedLineId(line.id)} className={`p-3 ${selectedLineId === line.id ? "bg-emerald-50" : "bg-white"}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <div><p className="font-bold">{line.name}</p><p className="text-xs text-zinc-500">{money(line.price)} · stock {line.stock}</p></div>
+                    <div>
+                      <p className="font-bold">{line.name}</p>
+                      <p className="text-xs text-zinc-500">
+                        {money(line.price)} · {line.manual ? "Artículo libre · sin stock" : `stock ${line.stock}`}
+                      </p>
+                    </div>
                     <button onClick={() => removeLine(line.id)} className="text-rose-500"><Trash2 className="h-4 w-4" /></button>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
@@ -760,7 +810,11 @@ export function AdminPOS() {
                   </div>
                 </div>
               ))}
-              {!cart.length && <div className="p-8 text-center text-sm text-zinc-400">Sin artículos</div>}
+              {!cart.length && (
+                <div className="p-8 text-center text-sm text-zinc-400">
+                  Sin artículos. Puedes elegir un producto o crear un artículo libre con el teclado.
+                </div>
+              )}
             </div>
 
             <div className="mt-4 space-y-1 text-sm">
@@ -827,7 +881,7 @@ export function AdminPOS() {
 
             {!cart.length && (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
-                La venta está vacía. Selecciona un producto arriba antes de introducir el efectivo y cobrar.
+                Puedes seleccionar un producto del catálogo o escribir un importe en el teclado y pulsar “Añadir como artículo”.
               </div>
             )}
 
@@ -843,6 +897,14 @@ export function AdminPOS() {
                 <button onClick={() => pressOperator("÷")} className={`rounded-xl py-3 ${calcOperator === "÷" ? "bg-emerald-500" : "bg-white/10"}`}>÷</button>
                 <button onClick={pressEquals} className="rounded-xl bg-emerald-600 py-3 text-xl">=</button>
               </div>
+              <button
+                type="button"
+                onClick={addManualArticle}
+                disabled={keypadNumber() <= 0}
+                className="mt-2 w-full rounded-xl bg-violet-600 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                + Añadir importe como artículo
+              </button>
               <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-black">
                 <button
                   onClick={useCalculatorAsCash}
