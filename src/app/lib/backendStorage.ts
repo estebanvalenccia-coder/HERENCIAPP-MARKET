@@ -700,6 +700,19 @@ export const backendApi = {
     });
   },
 
+  async neuralUpdateGoal(id: string, patch: Record<string, any>) {
+    return request<any>(`/api/neural/goals/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  },
+
+  async neuralDeleteGoal(id: string) {
+    return request<any>(`/api/neural/goals/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
   async neuralTasks(status?: string) {
     return request<{ tasks: any[] }>(`/api/neural/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`);
   },
