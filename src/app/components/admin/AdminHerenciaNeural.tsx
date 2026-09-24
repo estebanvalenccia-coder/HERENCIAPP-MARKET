@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, Users, Euro, AlertTriangle, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
+import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { toast } from "sonner";
 
 type Mode="AUTO"|"ASK"|"BLOCK";
 type Message={role:"user"|"neural";text:string};
-const labels:Record<string,string>={internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",modify_stock:"Modificar stock",change_prices:"Cambiar precios",refunds:"Hacer devoluciones",payments:"Realizar pagos",publish_web_changes:"Publicar cambios web",create_products:"Crear productos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails"};
+const labels:Record<string,string>={internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",prepare_web_changes:"Preparar borradores web",modify_stock:"Modificar stock",change_prices:"Cambiar precios",publish_web_changes:"Publicar cambios web",rollback_web_changes:"Restaurar versiones web",create_products:"Crear productos",delete_products:"Eliminar productos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails",contact_suppliers:"Contactar proveedores",manage_crm:"Gestionar CRM",create_promotions:"Crear promociones",issue_invoices:"Emitir facturas",purchases:"Realizar compras",refunds:"Hacer devoluciones",payments:"Realizar pagos"};
 
 export function AdminHerenciaNeural(){
  const [tab,setTab]=useState("command");
@@ -23,6 +23,7 @@ export function AdminHerenciaNeural(){
  const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"HERENCIA Neural Command Center. Esta conversación envía órdenes al Neural Core independiente."}]);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState<string|null>(null);
+ const [trace,setTrace]=useState<any>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -52,6 +53,7 @@ export function AdminHerenciaNeural(){
  const observe=async()=>{try{const r=await backendApi.neuralObserveNow();toast.success(r.ok?"Digital Twin actualizado":`Observación: ${r.skipped||"sin cambios"}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const searchMemory=async()=>{try{const r=await backendApi.neuralMemory(memoryQuery);setMemory(r.items||[])}catch(e:any){toast.error(e.message)}};
  const approve=async(id:string)=>{try{await backendApi.neuralApproveTask(id);toast.success("Tarea aprobada");await refresh()}catch(e:any){toast.error(e.message)}};
+ const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
 
  const tabs=[["command","Command Center",Brain],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
 
@@ -101,14 +103,44 @@ export function AdminHerenciaNeural(){
 
   {tab==="permissions"&&<Panel title="Permission Kernel externo" icon={ShieldCheck}><p className="text-muted-foreground mb-4">Esta capa vive fuera de los modelos y células. Pulsa un permiso para alternar AUTO → ASK → BLOCK.</p><div className="grid md:grid-cols-2 gap-3">{Object.entries(permissions).map(([k,v])=><button key={k} onClick={()=>void cycle(k)} className="flex justify-between items-center border rounded-xl p-4 hover:bg-muted"><span className="font-medium">{labels[k]||k}</span><ModeBadge mode={v}/></button>)}</div></Panel>}
 
-  {tab==="activity"&&<Panel title="Auditoría append-only" icon={Activity}><div className="mb-4 text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600"/>Integridad: {status?.audit?.ok===false?"fallo detectado":status?.audit?.ok?"verificada":"sin datos"}</div>{activity.length?<div className="space-y-2">{activity.slice(0,100).map((e:any)=><div key={e.id} className="border rounded-xl p-3"><div className="flex flex-wrap justify-between gap-2"><b className="text-sm">{e.intent||"evento"}</b><span className="text-xs text-muted-foreground">{e.at}</span></div><p className="text-xs mt-1">{e.actor||"system"} · {String(e.result||"")}</p></div>)}</div>:<Empty text="Todavía no hay actividad auditada."/>}</Panel>}
+  {tab==="activity"&&<Panel title="Auditoría append-only" icon={Activity}><div className="mb-4 text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600"/>Integridad: {status?.audit?.ok===false?"fallo detectado":status?.audit?.ok?"verificada":"sin datos"}</div>{trace&&<div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex justify-between gap-3"><b>¿Por qué hizo esto?</b><button onClick={()=>setTrace(null)} className="text-xs underline">Cerrar</button></div><pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(trace,null,2)}</pre></div>}{activity.length?<div className="space-y-2">{activity.slice(0,100).map((e:any)=><div key={e.id} className="border rounded-xl p-3"><div className="flex flex-wrap justify-between gap-2"><b className="text-sm">{e.intent||"evento"}</b><span className="text-xs text-muted-foreground">{e.at}</span></div><div className="mt-1 flex items-center justify-between gap-2"><p className="text-xs">{e.actor||"system"} · {String(e.result||"")}</p>{e.actionId&&<button onClick={()=>void explain(e.actionId)} className="rounded-lg border px-2 py-1 text-xs font-bold hover:bg-muted">¿Por qué?</button>}</div></div>)}</div>:<Empty text="Todavía no hay actividad auditada."/>}</Panel>}
 
   {tab==="lab"&&<LabPanel/>}
   {tab==="graph"&&<Panel title="Knowledge Graph" icon={Network}><div className="grid grid-cols-2 gap-3 mb-5"><Metric icon={Database} label="Nodos" value={String(graph.nodes?.length||0)}/><Metric icon={Network} label="Relaciones" value={String(graph.edges?.length||0)}/></div><div className="grid md:grid-cols-3 gap-2">{(graph.nodes||[]).slice(0,60).map((n:any)=><div key={n.id} className="border rounded-xl p-3"><b className="text-sm">{n.type}</b><p className="text-xs truncate mt-1">{n.name||n.key}</p></div>)}</div></Panel>}
-  {tab==="research"&&<InfoPanel title="Investigación" icon={Globe2} text="La investigación usa una herramienta separada y exige procedencia, fecha, confianza y verificación. Si no existe un proveedor configurado, Neural devuelve un error en lugar de inventar resultados."/>}
-  {tab==="designer"&&<InfoPanel title="Neural Designer" icon={Palette} text="Los cambios web se representan como operaciones estructuradas y requieren preview. La publicación está gobernada por publish_web_changes y todavía no se muestra como operativa hasta completar el adapter de publicación/rollback."/>}
-  {tab==="history"&&<InfoPanel title="Time Machine" icon={History} text="La capa de versionado/rollback se mantendrá separada de la memoria cognitiva. Ninguna restauración se hará sin un snapshot verificable."/>}
+  {tab==="research"&&<ResearchPanel/>}
+  {tab==="designer"&&<DesignerPanel onChanged={refresh}/>}
+  {tab==="history"&&<TimeMachinePanel onChanged={refresh}/>}
  </div>
+}
+
+
+function ResearchPanel(){
+ const [provider,setProvider]=useState<any>(null),[query,setQuery]=useState("");
+ useEffect(()=>{backendApi.neuralResearchStatus().then(setProvider).catch(()=>setProvider({enabled:false,provider:null}))},[]);
+ const research=async()=>{if(!query.trim())return;try{const r=await backendApi.neuralCommand(`investiga ${query.trim()}`);toast.success(r.message||"Investigación añadida a la cola");setQuery("")}catch(e:any){toast.error(e.message)}};
+ return <Panel title="Investigación con procedencia" icon={Globe2}><div className="mb-5 rounded-2xl border p-4"><b>{provider?.enabled?`Proveedor activo: ${provider.provider}`:"Proveedor de búsqueda no configurado"}</b><p className="mt-1 text-sm text-muted-foreground">Los resultados web entran como memoria provisional y no se convierten automáticamente en conocimiento verificado.</p></div><div className="flex gap-2"><input className="flex-1 rounded-xl border px-4" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&void research()} placeholder="Investigar tendencias, proveedores, productos…"/><button onClick={()=>void research()} className="rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground">Investigar</button></div></Panel>
+}
+
+function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
+ const [drafts,setDrafts]=useState<any[]>([]),[title,setTitle]=useState(""),[subtitle,setSubtitle]=useState(""),[columns,setColumns]=useState(3),[loading,setLoading]=useState(false);
+ const load=useCallback(()=>backendApi.neuralWebDrafts().then(r=>setDrafts(r.drafts||[])).catch(()=>setDrafts([])),[]);
+ useEffect(()=>{void load()},[load]);
+ const create=async()=>{if(!title.trim())return;setLoading(true);try{await backendApi.neuralCreateWebDraft({title:`Nueva sección: ${title.trim()}`,operations:[{type:"createSection",section:{title:title.trim(),subtitle:subtitle.trim(),columns,items:[]}}]});toast.success("Borrador creado. Aún no está publicado.");setTitle("");setSubtitle("");await load();await onChanged()}catch(e:any){toast.error(e.message)}finally{setLoading(false)}};
+ const requestPublish=async(id:string)=>{try{await backendApi.neuralRequestPublish(id,"Publicación solicitada desde Neural Designer");toast.success("Publicación enviada a aprobación");await onChanged()}catch(e:any){toast.error(e.message)}};
+ return <Panel title="Neural Designer · borradores reales" icon={Palette}>
+  <div className="grid gap-5 lg:grid-cols-2">
+   <div className="rounded-2xl border p-4"><h3 className="font-black">Crear sección estructurada</h3><p className="mt-1 text-sm text-muted-foreground">Se guarda primero como borrador. Publicarla es una acción separada gobernada por permisos.</p><div className="mt-4 space-y-3"><input value={title} onChange={e=>setTitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" placeholder="Título de la sección"/><textarea value={subtitle} onChange={e=>setSubtitle(e.target.value)} className="w-full rounded-xl border px-4 py-3" rows={3} placeholder="Subtítulo"/><label className="block text-sm font-bold">Columnas<select value={columns} onChange={e=>setColumns(Number(e.target.value))} className="mt-2 w-full rounded-xl border px-4 py-3"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label><button disabled={loading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button></div></div>
+   <div><h3 className="mb-3 font-black">Borradores</h3>{drafts.length?<div className="space-y-3">{drafts.slice(0,20).map(d=><div key={d.id} className="rounded-2xl border p-4"><div className="flex justify-between gap-3"><div><b>{d.title||d.id}</b><p className="mt-1 text-xs text-muted-foreground">{d.status} · {d.createdAt}</p></div>{d.status!=="PUBLISHED"&&<button onClick={()=>void requestPublish(d.id)} className="h-fit rounded-xl bg-amber-100 px-3 py-2 text-xs font-black text-amber-900">Solicitar publicación</button>}</div><p className="mt-3 text-xs">{Array.isArray(d.operations)?d.operations.length:0} operaciones estructuradas</p></div>)}</div>:<Empty text="No hay borradores."/>}</div>
+  </div>
+ </Panel>
+}
+
+function TimeMachinePanel({onChanged}:{onChanged:()=>Promise<void>}){
+ const [versions,setVersions]=useState<any[]>([]);
+ const load=useCallback(()=>backendApi.neuralWebVersions().then(r=>setVersions(r.versions||[])).catch(()=>setVersions([])),[]);
+ useEffect(()=>{void load()},[load]);
+ const rollback=async(id:string)=>{try{await backendApi.neuralRequestRollback(id);toast.success("Restauración enviada a aprobación");await onChanged()}catch(e:any){toast.error(e.message)}};
+ return <Panel title="Time Machine" icon={History}><p className="mb-4 text-sm text-muted-foreground">Cada publicación guarda el estado anterior. Restaurar crea una tarea ASK y antes de ejecutarse vuelve a crear un snapshot de seguridad.</p>{versions.length?<div className="space-y-3">{versions.map(v=><div key={v.id} className="flex flex-col gap-3 rounded-2xl border p-4 md:flex-row md:items-center md:justify-between"><div><b>{v.reason||"Versión web"}</b><p className="mt-1 text-xs text-muted-foreground">{v.createdAt} · {v.id}</p></div><button onClick={()=>void rollback(v.id)} className="rounded-xl border px-4 py-2 font-bold hover:bg-muted">Solicitar restauración</button></div>)}</div>:<Empty text="Todavía no hay versiones. La primera se creará al publicar un borrador."/>}</Panel>
 }
 
 function LabPanel(){const [items,setItems]=useState<any[]>([]);useEffect(()=>{backendApi.neuralLab().then(r=>setItems(r.experiments||[])).catch(()=>{})},[]);return <Panel title="Neural Lab" icon={FlaskConical}><p className="text-sm text-muted-foreground mb-4">Entorno aislado: variantes, mutación y fitness sin acceso automático a producción.</p>{items.length?<div className="space-y-2">{items.map(x=><div key={x.id} className="border rounded-xl p-3"><b>{x.hypothesis||"Experimento"}</b><p className="text-xs mt-1">{x.status} · fitness {x.fitness??"sin evaluar"}</p></div>)}</div>:<Empty text="Aún no hay experimentos creados."/>}</Panel>}
