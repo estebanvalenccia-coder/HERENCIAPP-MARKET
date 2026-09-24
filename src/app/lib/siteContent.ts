@@ -72,6 +72,25 @@ export type SiteContent = {
     phone: string;
     ariaLabel: string;
   };
+  contactPage: {
+    title: string;
+    subtitle: string;
+    whatsappTitle: string;
+    whatsappSubtitle: string;
+    callTitle: string;
+    callSubtitle: string;
+    locationTitle: string;
+    locationSubtitle: string;
+    hoursTitle: string;
+    hours: Array<{ label: string; value: string }>;
+    addressTitle: string;
+    addressText: string;
+    mapButtonLabel: string;
+    mapEmbedUrl: string;
+    helpTitle: string;
+    helpIntro: string;
+    helpItems: string[];
+  };
 };
 
 export const defaultSiteContent: SiteContent = {
@@ -177,6 +196,34 @@ export const defaultSiteContent: SiteContent = {
     phone: "34624239598",
     ariaLabel: "Contactar por WhatsApp",
   },
+  contactPage: {
+    title: "Contacto",
+    subtitle: "Estamos aquí para ayudarte. Visítanos, llámanos o escríbenos.",
+    whatsappTitle: "WhatsApp",
+    whatsappSubtitle: "Haz clic para abrir chat",
+    callTitle: "Teléfono",
+    callSubtitle: "Haz clic para llamar",
+    locationTitle: "Ubicación",
+    locationSubtitle: "Ver en Google Maps",
+    hoursTitle: "Horario",
+    hours: [
+      { label: "Lunes - Viernes", value: "9:00 - 20:00" },
+      { label: "Sábado", value: "9:00 - 14:00" },
+      { label: "Domingo", value: "Cerrado" },
+    ],
+    addressTitle: "Dirección",
+    addressText: "Herencia Floristería",
+    mapButtonLabel: "Ver en Google Maps",
+    mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3037.5!2d-3.7!3d40.4!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDDCsDI0JzAwLjAiTiAzwrA0MicwMC4wIlc!5e0!3m2!1sen!2ses!4v1234567890",
+    helpTitle: "¿Necesitas ayuda?",
+    helpIntro: "Nuestro equipo está disponible para ayudarte con:",
+    helpItems: [
+      "Asesoramiento sobre plantas",
+      "Pedidos especiales",
+      "Servicios de jardinería",
+      "Entregas a domicilio",
+    ],
+  },
 };
 
 function mergeLinks(defaults: SiteLink[], incoming: unknown): SiteLink[] {
@@ -249,6 +296,21 @@ export function parseSiteContent(raw: string | null): SiteContent {
       floatingWhatsapp: {
         ...defaultSiteContent.floatingWhatsapp,
         ...(parsed.floatingWhatsapp || {}),
+      },
+      contactPage: {
+        ...defaultSiteContent.contactPage,
+        ...(parsed.contactPage || {}),
+        hours: defaultSiteContent.contactPage.hours.map((item, index) => ({
+          ...item,
+          ...(Array.isArray(parsed.contactPage?.hours) && parsed.contactPage.hours[index]
+            ? parsed.contactPage.hours[index]
+            : {}),
+        })),
+        helpItems: defaultSiteContent.contactPage.helpItems.map((item, index) =>
+          Array.isArray(parsed.contactPage?.helpItems) && parsed.contactPage.helpItems[index]
+            ? String(parsed.contactPage.helpItems[index])
+            : item
+        ),
       },
     };
   } catch {
