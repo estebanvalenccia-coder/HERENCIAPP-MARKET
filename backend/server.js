@@ -146,6 +146,8 @@ const protectedKeys = new Set([
   "shippingSettings",
   "aiSettings",
   "tpvLayoutSettings",
+  "posCustomers",
+  "posFiscalSettings",
   "adminProducts",
   "adminFlowerCosts",
   "adminLatestFlowerQuote",
@@ -1055,9 +1057,66 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   const { status } = req.body;
 
+  const { data: previousOrder, error: previousOrderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", req.params.id)
+    .maybeSingle();
+
+  if (previousOrderError) {
+    return res.status(500).json({ error: previousOrderError.message });
+  }
+
+  if (!previousOrder) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+
+  let nextMetadata = previousOrder.metadata || {};
+  const isTpvOrder = String(nextMetadata.source || "").startsWith("TPV_ADMIN");
+
+  if (
+    status === "cancelled" &&
+    previousOrder.status !== "cancelled" &&
+    isTpvOrder &&
+    nextMetadata.inventoryCommittedAt &&
+    !nextMetadata.inventoryRestockedAt
+  ) {
+    try {
+      const currentProducts = parseStoredJson(await readStorageValue("adminProducts"), []);
+      const quantities = new Map();
+
+      for (const item of previousOrder.items || []) {
+        const id = String(item?.id ?? "");
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        if (id && qty > 0) quantities.set(id, (quantities.get(id) || 0) + qty);
+      }
+
+      const restockedProducts = currentProducts.map((product) => {
+        const id = String(product?.id ?? "");
+        const qty = quantities.get(id) || 0;
+        if (!qty) return product;
+        return {
+          ...product,
+          stock: Math.max(0, Math.floor(Number(product.stock || 0))) + qty,
+        };
+      });
+
+      await upsertStorageValue("adminProducts", JSON.stringify(restockedProducts));
+      nextMetadata = {
+        ...nextMetadata,
+        inventoryRestockedAt: new Date().toISOString(),
+        inventoryRestockReason: "order_cancelled",
+      };
+    } catch (stockError) {
+      return res.status(500).json({
+        error: `No se pudo devolver el stock al cancelar: ${stockError.message}`,
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("orders")
-    .update({ status })
+    .update({ status, metadata: nextMetadata })
     .eq("id", req.params.id)
     .select("*")
     .single();
@@ -1435,10 +1494,12 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       if (error) throw error;
       savedOrder = data;
 
-      try {
-        await sendOrderConfirmationEmails(savedOrder, "pos_sale_created");
-      } catch (emailError) {
-        console.error("Error enviando emails de venta TPV:", emailError.message);
+      if (status === "paid") {
+        try {
+          await sendOrderConfirmationEmails(savedOrder, "pos_sale_created");
+        } catch (emailError) {
+          console.error("Error enviando emails de venta TPV:", emailError.message);
+        }
       }
     }
 
