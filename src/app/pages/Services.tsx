@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Calendar, Clock, MapPin, Users, Scissors, BookOpen, Check } from "lucide-react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { useLocation } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
@@ -29,8 +28,6 @@ export function Services() {
   const callStore = () => {
     window.location.href = `tel:${normalizePhoneForHref(site.footer.callPhone)}`;
   };
-  const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
 
   // Leer tipo de servicio desde la URL
   useEffect(() => {
@@ -107,15 +104,7 @@ export function Services() {
     },
   ];
 
-  const handleServiceBooking = (serviceId: string) => {
-    setSelectedService(serviceId);
-    toast.success("Solicitud enviada. Te contactaremos pronto para confirmar tu cita.");
-  };
 
-  const handleCourseEnrollment = (courseId: string) => {
-    setSelectedCourse(courseId);
-    toast.success("¡Inscripción exitosa! Recibirás un email con los detalles.");
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,7 +115,7 @@ export function Services() {
             {site.servicesPage.title}
           </h1>
           <p className="text-muted-foreground max-w-2xl">
-            Expertos en jardinería y educación para transformar tus espacios verdes
+            {site.servicesPage.subtitle}
           </p>
         </div>
       </div>
@@ -169,7 +158,7 @@ export function Services() {
                 </div>
 
                 <button
-                  onClick={() => handleServiceBooking(service.id)}
+                  onClick={() => openWhatsApp(`Hola, quiero información sobre el servicio: ${service.title}.`)}
                   className="w-full py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"
                 >
                   Agendar cita
@@ -237,7 +226,7 @@ export function Services() {
                   </div>
 
                   <button
-                    onClick={() => handleCourseEnrollment(course.id)}
+                    onClick={() => openWhatsApp(`Hola, quiero información sobre el curso: ${course.title}.`)}
                     className="w-full py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"
                   >
                     Inscribirse ahora
@@ -291,7 +280,7 @@ export function Services() {
               {site.servicesPage.advisoryHeading}
             </h2>
             <p className="text-muted-foreground">
-              Consultoría experta para el cuidado de tus plantas
+              {site.servicesPage.advisoryDescription}
             </p>
           </div>
 
@@ -306,7 +295,7 @@ export function Services() {
               </p>
               <p className="text-lg font-bold text-primary mb-4">$40</p>
               <button
-                onClick={() => toast.success("Solicitud enviada. Te contactaremos pronto.")}
+                onClick={() => openWhatsApp("Hola, quiero solicitar una asesoría personalizada.")}
                 className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 Agendar
@@ -323,7 +312,7 @@ export function Services() {
               </p>
               <p className="text-lg font-bold text-primary mb-4">$80</p>
               <button
-                onClick={() => toast.success("Solicitud enviada. Te contactaremos pronto.")}
+                onClick={() => openWhatsApp("Hola, quiero solicitar una asesoría personalizada.")}
                 className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 Solicitar
@@ -340,7 +329,7 @@ export function Services() {
               </p>
               <p className="text-lg font-bold text-primary mb-4">$120/mes</p>
               <button
-                onClick={() => toast.success("Solicitud enviada. Te contactaremos pronto.")}
+                onClick={() => openWhatsApp("Hola, quiero solicitar una asesoría personalizada.")}
                 className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 Contratar
@@ -360,21 +349,21 @@ export function Services() {
             {site.servicesPage.ctaTitle}
           </h2>
           <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-            Contáctanos para diseñar un plan a medida según tus necesidades
+            {site.servicesPage.ctaDescription}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={() => toast.info("WhatsApp: +1 234 567 8900")}
+              onClick={() => openWhatsApp("Hola, necesito información sobre un servicio personalizado.")}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"
             >
               <MapPin className="w-5 h-5" />
-              Contactar por WhatsApp
+              {site.servicesPage.whatsappButtonLabel}
             </button>
             <button
-              onClick={() => toast.info("Tel: +1 234 567 8900")}
+              onClick={callStore}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 border border-border bg-background text-foreground rounded-xl hover:bg-accent transition-colors"
             >
-              Llamar ahora
+              {site.servicesPage.callButtonLabel}
             </button>
           </div>
         </motion.section>
