@@ -98,11 +98,14 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     if (saved) {
       setProducts(JSON.parse(saved));
     } else {
-      const productsWithState = initialProducts.map(p => ({
+      const productsWithState = initialProducts.map((p, index) => ({
         ...p,
         active: true,
         onSale: p.featured || false,
-        salePrice: p.featured ? p.price * 0.8 : undefined
+        salePrice: p.featured ? p.price * 0.8 : undefined,
+        sku: `SKU-${String(p.id ?? index + 1).padStart(4, "0")}`,
+        stock: 0,
+        iva: 21,
       }));
       setProducts(productsWithState);
       backendStorage.setItem("adminProducts", JSON.stringify(productsWithState));
