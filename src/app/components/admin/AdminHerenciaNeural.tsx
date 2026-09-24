@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
+import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { toast } from "sonner";
 
@@ -23,12 +23,13 @@ export function AdminHerenciaNeural(){
  const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"HERENCIA Neural Command Center. Esta conversación envía órdenes al Neural Core independiente."}]);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState<string|null>(null);
+ const [brief,setBrief]=useState<any>(null);
  const [trace,setTrace]=useState<any>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
-  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph()]);
-  const [s,a,t,g,act,sig,gr]=results;
+  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief()]);
+  const [s,a,t,g,act,sig,gr,br]=results;
   if(s.status==="fulfilled"){setStatus(s.value);setError(null)}else setError(s.reason?.message||"Neural no disponible");
   if(a.status==="fulfilled")setAgents(a.value.agents||[]);
   if(t.status==="fulfilled")setTasks(t.value.tasks||[]);
@@ -36,6 +37,7 @@ export function AdminHerenciaNeural(){
   if(act.status==="fulfilled")setActivity(act.value.events||[]);
   if(sig.status==="fulfilled")setSignals(sig.value.signals||[]);
   if(gr.status==="fulfilled")setGraph(gr.value||{nodes:[],edges:[]});
+  if(br.status==="fulfilled")setBrief(br.value);
   setLoading(false);
  },[]);
 
@@ -87,6 +89,17 @@ export function AdminHerenciaNeural(){
    </Panel>
    <Panel title="Señales detectadas" icon={AlertTriangle} className="xl:col-span-2">
     {signals.length? <div className="grid md:grid-cols-2 gap-3">{signals.map((s:any,i)=><div key={s.entity||i} className="border rounded-2xl p-4"><div className="font-bold">{s.message||s.type}</div><div className="text-xs text-muted-foreground mt-1">{s.severity||"signal"} · {s.type}</div></div>)}</div>:<Empty text="No hay señales detectadas en el Digital Twin actual."/>}
+   </Panel>
+   <Panel title="Brief del negocio" icon={Brain} className="xl:col-span-2">
+    {brief?<div className="grid gap-3 md:grid-cols-4">
+      <Metric icon={ShoppingBag} label="Ventas verificadas" value={String(brief.business?.verifiedSales||0)}/>
+      <Metric icon={CircleDollarSign} label="Ingresos verificados" value={new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(Number(brief.business?.verifiedRevenue||0))}/>
+      <Metric icon={Package} label="Productos" value={String(brief.business?.products||0)}/>
+      <Metric icon={AlertTriangle} label="Atención" value={String((brief.attention?.signals||[]).length)}/>
+      <div className="md:col-span-4 rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
+        Neural resume únicamente el estado que observa en Herencia. Las ventas e ingresos aquí mostrados proceden de pedidos con estado verificado.
+      </div>
+    </div>:<Empty text="El brief aparecerá cuando Neural pueda observar Herencia."/>}
    </Panel>
    <Panel title="Aprobaciones pendientes" icon={ShieldCheck}>
     {approvals.length?<div className="space-y-2">{approvals.slice(0,5).map((t:any)=><div key={t.id} className="border rounded-xl p-3"><b className="text-sm">{t.title}</b><button onClick={()=>void approve(t.id)} className="mt-2 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold">Aprobar</button></div>)}</div>:<Empty text="No hay tareas esperando autorización."/>}
