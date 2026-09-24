@@ -1126,7 +1126,14 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   const shouldNotifyCustomer = ["confirmed", "preparing", "processing", "ready", "delivered"].includes(status);
   let statusEmailResult = null;
 
-  if (shouldNotifyCustomer) {
+  if (status === "paid" && isTpvOrder && previousOrder.status !== "paid") {
+    try {
+      statusEmailResult = await sendOrderConfirmationEmails(data, "pos_payment_verified");
+    } catch (emailError) {
+      console.error("Error enviando confirmación de pago TPV:", emailError.message);
+      statusEmailResult = { error: emailError.message };
+    }
+  } else if (shouldNotifyCustomer) {
     try {
       statusEmailResult = await sendOrderStatusUpdateEmail(data, "admin_status_change");
     } catch (emailError) {
