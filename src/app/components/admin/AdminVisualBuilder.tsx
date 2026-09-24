@@ -777,7 +777,14 @@ export function AdminVisualBuilder({
             className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
             style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
           >
-            <div className="flex min-h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
+            <div
+              className="flex min-h-14 items-center justify-between border-b px-4"
+              style={{
+                backgroundColor: site.builder.headerStyle.backgroundColor,
+                borderColor: site.builder.headerStyle.borderColor,
+                color: site.builder.headerStyle.textColor,
+              }}
+            >
               <button type="button" onClick={() => setSelected("header")} className={`text-left ${selected === "header" ? "rounded ring-2 ring-emerald-600" : ""}`}>
                 {site.brand.logoUrl ? (
                   <img src={site.brand.logoUrl} alt={site.brand.logoAlt} className="h-10 w-auto" />
@@ -815,7 +822,11 @@ export function AdminVisualBuilder({
             <button
               type="button"
               onClick={() => setSelected("footer")}
-              className={`grid w-full gap-5 bg-[#edf4ef] p-6 text-left text-xs md:grid-cols-4 ${selected === "footer" ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+              className={`grid w-full gap-5 p-6 text-left text-xs md:grid-cols-4 ${selected === "footer" ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+              style={{
+                backgroundColor: site.builder.footerStyle.backgroundColor,
+                color: site.builder.footerStyle.textColor,
+              }}
             >
               <div><p className="font-black">{site.brand.name}</p><p className="mt-2 text-slate-600">{site.footer.description}</p></div>
               <div><p className="font-black">{site.footer.productsTitle}</p>{site.footer.productLinks.slice(0, 3).map((link, index) => <p key={index} className="mt-2 text-slate-600">{link.label}</p>)}</div>
@@ -841,7 +852,7 @@ export function AdminVisualBuilder({
               )}
             </div>
 
-            {selectedBlock && (
+            {(selectedBlock || selected === "header" || selected === "footer") && (
               <div className="mt-3 grid grid-cols-3 rounded-xl bg-slate-100 p-1">
                 {([
                   ["contenido", "Contenido"],
@@ -857,8 +868,22 @@ export function AdminVisualBuilder({
           </div>
 
           <div className="space-y-4 p-4">
-            {selected === "header" && <HeaderEditor site={site} updateSite={updateSite} />}
-            {selected === "footer" && <FooterEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && tab === "contenido" && <HeaderEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && tab === "diseno" && <HeaderDesignEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && tab === "avanzado" && (
+              <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                El header usa los enlaces globales del sitio. Puedes cambiar sus destinos en Contenido y su apariencia en Diseño.
+              </div>
+            )}
+
+            {selected === "footer" && tab === "contenido" && <FooterEditor site={site} updateSite={updateSite} />}
+            {selected === "footer" && tab === "diseno" && <FooterDesignEditor site={site} updateSite={updateSite} />}
+            {selected === "footer" && tab === "avanzado" && (
+              <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                El footer es global: los cambios se aplican a todas las páginas.
+              </div>
+            )}
+
             {selected === "contact" && <ContactEditor site={site} updateSite={updateSite} />}
 
             {selectedBlock && tab === "contenido" && (
@@ -972,6 +997,98 @@ function HeaderEditor({
       ))}
       <TextField label="Destino del carrito" value={site.headerActions.cartHref} onChange={(cartHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, cartHref } }))} />
       <TextField label="Destino del perfil" value={site.headerActions.profileHref} onChange={(profileHref) => updateSite((current) => ({ ...current, headerActions: { ...current.headerActions, profileHref } }))} />
+    </div>
+  );
+}
+
+function HeaderDesignEditor({
+  site,
+  updateSite,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+}) {
+  const design = site.builder.headerStyle;
+  const patch = (value: Partial<SiteContent["builder"]["headerStyle"]>) =>
+    updateSite((current) => ({
+      ...current,
+      builder: {
+        ...current.builder,
+        headerStyle: { ...current.builder.headerStyle, ...value },
+      },
+    }));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Fondo</span>
+          <input type="color" value={design.backgroundColor} onChange={(event) => patch({ backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Texto</span>
+          <input type="color" value={design.textColor} onChange={(event) => patch({ textColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Activo</span>
+          <input type="color" value={design.activeColor} onChange={(event) => patch({ activeColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Fondo activo</span>
+          <input type="color" value={design.activeBackground} onChange={(event) => patch({ activeBackground: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Borde</span>
+          <input type="color" value={design.borderColor} onChange={(event) => patch({ borderColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+      </div>
+      <RangeField label="Altura del logo" value={design.logoHeight} min={36} max={96} suffix="px" onChange={(logoHeight) => patch({ logoHeight })} />
+      <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-bold">
+        Header fijo al hacer scroll
+        <input type="checkbox" checked={design.sticky} onChange={(event) => patch({ sticky: event.target.checked })} />
+      </label>
+    </div>
+  );
+}
+
+function FooterDesignEditor({
+  site,
+  updateSite,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+}) {
+  const design = site.builder.footerStyle;
+  const patch = (value: Partial<SiteContent["builder"]["footerStyle"]>) =>
+    updateSite((current) => ({
+      ...current,
+      builder: {
+        ...current.builder,
+        footerStyle: { ...current.builder.footerStyle, ...value },
+      },
+    }));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Fondo</span>
+          <input type="color" value={design.backgroundColor} onChange={(event) => patch({ backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Texto</span>
+          <input type="color" value={design.textColor} onChange={(event) => patch({ textColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Títulos</span>
+          <input type="color" value={design.headingColor} onChange={(event) => patch({ headingColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+        <label className="block text-xs font-bold text-slate-700">
+          <span className="mb-1.5 block">Borde</span>
+          <input type="color" value={design.borderColor} onChange={(event) => patch({ borderColor: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200" />
+        </label>
+      </div>
+      <RangeField label="Espaciado vertical" value={design.paddingY} min={20} max={120} suffix="px" onChange={(paddingY) => patch({ paddingY })} />
     </div>
   );
 }
