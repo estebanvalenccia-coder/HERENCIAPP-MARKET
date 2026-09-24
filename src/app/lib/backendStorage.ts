@@ -282,10 +282,6 @@ async function readErrorResponse(response: Response) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!API_BASE) {
-    throw new Error("Backend no configurado. Define VITE_API_URL o revisa DEFAULT_API_BASE.");
-  }
-
   let response: Response;
 
   try {
@@ -382,11 +378,6 @@ export const backendApi = {
   },
 
   async preload() {
-    if (!API_BASE) {
-      preloadPromise = Promise.resolve();
-      return preloadPromise;
-    }
-
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")
         .then(({ data }) => {
