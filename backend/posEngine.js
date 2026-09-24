@@ -76,15 +76,42 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
   const normalizedProducts = products.map(normalizePosProduct);
   const byId = new Map(normalizedProducts.map((product) => [product.id, product]));
   const mergedRequested = new Map();
+  const manualItems = [];
 
   for (const raw of requestedItems) {
     const id = String(raw?.id ?? "").trim();
     const qty = Math.floor(asNumber(raw?.quantity ?? raw?.qty, 0));
     if (!id || qty <= 0) throw new Error("Artículo o cantidad inválida");
+
+    const isManual = raw?.manual === true && id.startsWith("manual-");
+    if (isManual) {
+      const rawPrice = asNumber(raw?.price, NaN);
+      if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+        throw new Error("El artículo manual necesita un importe válido");
+      }
+
+      const price = Math.round(rawPrice * 100) / 100;
+      const iva = Math.max(0, Math.min(100, asNumber(raw?.iva, 21)));
+      const name = String(raw?.name || "Artículo").trim() || "Artículo";
+
+      manualItems.push({
+        id,
+        name,
+        sku: String(raw?.sku || "VENTA-LIBRE"),
+        category: "Venta libre",
+        price,
+        iva,
+        quantity: qty,
+        qty,
+        manual: true,
+      });
+      continue;
+    }
+
     mergedRequested.set(id, (mergedRequested.get(id) || 0) + qty);
   }
 
-  const authoritativeItems = [];
+  const authoritativeItems = [...manualItems];
 
   for (const [id, qty] of mergedRequested.entries()) {
     const product = byId.get(id);
