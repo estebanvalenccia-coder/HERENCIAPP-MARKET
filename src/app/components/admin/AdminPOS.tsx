@@ -606,6 +606,7 @@ export function AdminPOS() {
       documentType,
       received,
       notes,
+      staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
       ...(payment === "Mixto" ? { payments: mixedPaymentsPayload() } : {}),
     };
   }
@@ -675,6 +676,7 @@ export function AdminPOS() {
         payload.delta = type === "manual" ? units : -Math.abs(units);
       }
 
+      payload.staff = currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" };
       const result = await backendApi.adjustPosInventory(payload);
       setProducts((result.inventory || []).map(toPosItem));
       setOperations(result.operations);
@@ -716,6 +718,7 @@ export function AdminPOS() {
       const result = await backendApi.createPosPurchase({
         supplierId,
         items: [{ id: product.id, quantity, unitCost }],
+        staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
       });
       setProducts((result.inventory || []).map(toPosItem));
       setOperations(result.operations);
@@ -870,7 +873,11 @@ export function AdminPOS() {
     if (reason === null) return;
 
     try {
-      const result = await backendApi.refundPosSale({ orderId, reason });
+      const result = await backendApi.refundPosSale({
+        orderId,
+        reason,
+        staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
       setRecentSales((current) => current.map((item) =>
         String(item.id) === String(orderId) ? result.order : item
