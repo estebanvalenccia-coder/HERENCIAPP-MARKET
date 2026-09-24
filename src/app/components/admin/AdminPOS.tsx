@@ -264,8 +264,18 @@ export function AdminPOS() {
   }
 
   function useCalculatorAsCash() {
+    if (!cart.length || totals.total <= 0) {
+      toast.error("Primero añade al menos un producto a la venta");
+      return;
+    }
+
     const amount = keypadNumber();
-    if (amount < 0) return toast.error("El efectivo no puede ser negativo");
+    if (amount <= 0) {
+      toast.error("Escribe el efectivo recibido antes de aplicarlo");
+      return;
+    }
+
+    setPayment("Efectivo");
     setReceived(Math.round(amount * 100) / 100);
     setKeypad("");
     setCalcAccumulator(null);
@@ -788,9 +798,36 @@ export function AdminPOS() {
             </label>
 
             {payment === "Efectivo" && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-emerald-50 p-3"><p className="text-xs font-bold uppercase text-emerald-700">Recibido</p><p className="text-xl font-black">{money(received)}</p></div>
-                <div className="rounded-xl bg-amber-50 p-3"><p className="text-xs font-bold uppercase text-amber-700">Cambio</p><p className="text-xl font-black">{money(totals.change)}</p></div>
+              <div className="mt-3 space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-zinc-100 p-3">
+                    <p className="text-xs font-bold uppercase text-zinc-600">A cobrar</p>
+                    <p className="text-xl font-black">{money(totals.total)}</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 p-3">
+                    <p className="text-xs font-bold uppercase text-emerald-700">Recibido</p>
+                    <p className="text-xl font-black">{money(received)}</p>
+                  </div>
+                  <div className="rounded-xl bg-amber-50 p-3">
+                    <p className="text-xs font-bold uppercase text-amber-700">Cambio</p>
+                    <p className="text-xl font-black">{money(totals.change)}</p>
+                  </div>
+                </div>
+                {cart.length > 0 && totals.total > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setReceived(totals.total)}
+                    className="w-full rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-sm font-black text-emerald-700"
+                  >
+                    Pago exacto · {money(totals.total)}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!cart.length && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+                La venta está vacía. Selecciona un producto arriba antes de introducir el efectivo y cobrar.
               </div>
             )}
 
@@ -807,7 +844,13 @@ export function AdminPOS() {
                 <button onClick={pressEquals} className="rounded-xl bg-emerald-600 py-3 text-xl">=</button>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-black">
-                <button onClick={useCalculatorAsCash} className="rounded-xl bg-amber-500 py-3 text-zinc-950">Aplicar a efectivo</button>
+                <button
+                  onClick={useCalculatorAsCash}
+                  disabled={!cart.length || totals.total <= 0}
+                  className="rounded-xl bg-amber-500 py-3 text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Aplicar a efectivo
+                </button>
                 <button onClick={setSelectedQty} className="rounded-xl bg-blue-600 py-3">Aplicar a Uds.</button>
                 <button onClick={clearCalculator} className="rounded-xl bg-zinc-700 py-3">C</button>
               </div>
@@ -822,17 +865,24 @@ export function AdminPOS() {
               disabled={
                 submitting ||
                 !cart.length ||
+                totals.total <= 0 ||
+                (payment === "Efectivo" && cashSession?.status !== "open") ||
+                (payment === "Efectivo" && received < totals.total) ||
                 (payment === "Tarjeta" && !cardReady)
               }
               onClick={() => payment === "Tarjeta" ? void startCardPayment() : void completeNonCardSale()}
-              className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:opacity-50"
+              className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting
                 ? "Procesando..."
+                : !cart.length || totals.total <= 0
+                ? "Añade un producto para cobrar"
                 : payment === "Efectivo" && cashSession?.status !== "open"
                 ? "Abre caja para cobrar"
+                : payment === "Efectivo" && received < totals.total
+                ? `Faltan ${money(totals.total - received)}`
                 : payment === "Bizum" || payment === "Transferencia"
-                ? `Registrar ${payment}`
+                ? `Registrar ${payment} · ${money(totals.total)}`
                 : payment === "Tarjeta" && !cardReady
                 ? "Configura Stripe para cobrar"
                 : `Cobrar ${money(totals.total)}`}
