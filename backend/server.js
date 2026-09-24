@@ -2478,6 +2478,279 @@ function requireNeuralBridge(req, res, next) {
   next();
 }
 
+
+function requireNeuralActionId(req, res) {
+  const actionId = String(req.get("X-Neural-Action-Id") || req.body?.actionId || "").trim();
+  if (!actionId) {
+    res.status(400).json({ error: "X-Neural-Action-Id requerido para acciones de escritura" });
+    return null;
+  }
+  return actionId;
+}
+
+async function readNeuralProducts() {
+  return parseStoredJson(await readStorageValue("adminProducts"), []);
+}
+
+async function writeNeuralProducts(products) {
+  await upsertStorageValue("adminProducts", JSON.stringify(products));
+  return products;
+}
+
+function normalizeNeuralProduct(input = {}) {
+  const name = String(input.name || input.title || "").trim();
+  if (!name) throw new Error("El producto necesita nombre");
+  const price = Number(input.price || 0);
+  const stock = Math.max(0, Math.floor(Number(input.stock || 0)));
+  if (!Number.isFinite(price) || price < 0) throw new Error("Precio inválido");
+  return {
+    ...input,
+    id: String(input.id || crypto.randomUUID()),
+    name,
+    price,
+    stock,
+    category: String(input.category || "Sin categoría").trim(),
+    sku: String(input.sku || "").trim(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+app.patch("/api/neural-bridge/products/:id/stock", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const current = Math.max(0, Math.floor(Number(products[index].stock || 0)));
+    const nextStock = req.body?.stock != null
+      ? Math.max(0, Math.floor(Number(req.body.stock)))
+      : Math.max(0, current + Math.floor(Number(req.body?.delta || 0)));
+    if (!Number.isFinite(nextStock)) return res.status(400).json({ error: "Stock inválido" });
+    products[index] = { ...products[index], stock: nextStock, updatedAt: new Date().toISOString() };
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("inventory.changed", { actionId, product: products[index], previousStock: current, nextStock });
+    res.json({ ok: true, actionId, product: products[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo modificar stock" });
+  }
+});
+
+app.patch("/api/neural-bridge/products/:id/price", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const price = Number(req.body?.price);
+    if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Precio inválido" });
+    const products = await readNeuralProducts();
+    const index = products.findIndex(p => String(p.id) === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Producto no encontrado" });
+    const previousPrice = Number(products[index].price || 0);
+    products[index] = { ...products[index], price, updatedAt: new Date().toISOString() };
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.price_changed", { actionId, product: products[index], previousPrice, price });
+    res.json({ ok: true, actionId, product: products[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo modificar precio" });
+  }
+});
+
+app.post("/api/neural-bridge/products", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const products = await readNeuralProducts();
+    const product = normalizeNeuralProduct(req.body?.product || req.body || {});
+    if (products.some(p => String(p.id) === product.id || (product.sku && String(p.sku || "").toLowerCase() === product.sku.toLowerCase()))) {
+      return res.status(409).json({ error: "Ya existe un producto con ese ID o SKU" });
+    }
+    products.push(product);
+    await writeNeuralProducts(products);
+    void emitNeuralBusinessEvent("product.created", { actionId, product });
+    res.status(201).json({ ok: true, actionId, product });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo crear el producto" });
+  }
+});
+
+function safeClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function setDeepValue(root, path, value) {
+  const parts = String(path || "").split(".").filter(Boolean);
+  const allowedRoots = new Set(["brand","navigation","headerActions","hero","features","categories","categoriesHeading","categoriesDescription","cta","footer","floatingWhatsapp","contactPage","customSections"]);
+  if (!parts.length || !allowedRoots.has(parts[0])) throw new Error("Ruta de contenido no permitida");
+  let cursor = root;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = /^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i];
+    if (cursor[key] == null || typeof cursor[key] !== "object") cursor[key] = /^\d+$/.test(parts[i + 1]) ? [] : {};
+    cursor = cursor[key];
+  }
+  const last = /^\d+$/.test(parts.at(-1)) ? Number(parts.at(-1)) : parts.at(-1);
+  cursor[last] = value;
+}
+
+function normalizeCustomSection(section = {}) {
+  return {
+    id: String(section.id || crypto.randomUUID()),
+    title: String(section.title || "Nueva sección").trim(),
+    subtitle: String(section.subtitle || "").trim(),
+    columns: Math.max(1, Math.min(4, Number(section.columns || 3))),
+    items: Array.isArray(section.items) ? section.items.map(item => ({
+      id: String(item?.id || crypto.randomUUID()),
+      title: String(item?.title || "").trim(),
+      description: String(item?.description || "").trim(),
+      imageUrl: String(item?.imageUrl || "").trim(),
+      href: String(item?.href || "/").trim() || "/",
+      buttonLabel: String(item?.buttonLabel || "Ver más").trim() || "Ver más",
+    })) : [],
+  };
+}
+
+function applyNeuralWebOperations(siteInput, operations = []) {
+  const site = safeClone(siteInput || {});
+  site.customSections = Array.isArray(site.customSections) ? site.customSections : [];
+  for (const op of operations) {
+    switch (op?.type) {
+      case "updateText":
+      case "setImage":
+      case "updateButtonAction":
+        setDeepValue(site, op.path || op.target, op.value);
+        break;
+      case "createSection":
+        site.customSections.push(normalizeCustomSection(op.section || op.value || {}));
+        break;
+      case "moveSection": {
+        const from = site.customSections.findIndex(s => s.id === op.sectionId);
+        if (from < 0) throw new Error("Sección no encontrada");
+        const [section] = site.customSections.splice(from, 1);
+        const to = Math.max(0, Math.min(site.customSections.length, Number(op.toIndex || 0)));
+        site.customSections.splice(to, 0, section);
+        break;
+      }
+      case "removeElement":
+        if (op.sectionId) site.customSections = site.customSections.filter(s => s.id !== op.sectionId);
+        else throw new Error("removeElement requiere sectionId en esta versión");
+        break;
+      case "setGrid": {
+        const section = site.customSections.find(s => s.id === op.sectionId);
+        if (!section) throw new Error("Sección no encontrada");
+        section.columns = Math.max(1, Math.min(4, Number(op.columns || op.value || 3)));
+        break;
+      }
+      case "createButton": {
+        const section = site.customSections.find(s => s.id === op.sectionId);
+        const item = section?.items?.find(i => i.id === op.itemId);
+        if (!item) throw new Error("Elemento no encontrado para createButton");
+        item.buttonLabel = String(op.label || "Ver más");
+        item.href = String(op.href || "/");
+        break;
+      }
+      default:
+        throw new Error(`Operación web no soportada: ${op?.type}`);
+    }
+  }
+  return site;
+}
+
+async function readNeuralWebDrafts() {
+  return parseStoredJson(await readStorageValue("neuralWebDrafts"), []);
+}
+async function readNeuralWebVersions() {
+  return parseStoredJson(await readStorageValue("neuralWebVersions"), []);
+}
+
+app.get("/api/neural-bridge/web/drafts", requireNeuralBridge, async (_req, res) => {
+  res.json({ drafts: await readNeuralWebDrafts() });
+});
+
+app.post("/api/neural-bridge/web/drafts", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const current = parseStoredJson(await readStorageValue("siteContent"), {});
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    const preview = applyNeuralWebOperations(current, operations);
+    const drafts = await readNeuralWebDrafts();
+    const draft = {
+      id: crypto.randomUUID(),
+      actionId,
+      title: String(req.body?.title || "Neural web draft"),
+      operations,
+      preview,
+      status: "DRAFT",
+      createdAt: new Date().toISOString(),
+    };
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify([draft, ...drafts].slice(0, 100)));
+    res.status(201).json({ draft });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo crear el borrador" });
+  }
+});
+
+app.get("/api/neural-bridge/web/versions", requireNeuralBridge, async (_req, res) => {
+  const versions = await readNeuralWebVersions();
+  res.json({ versions: versions.map(({ snapshot, ...meta }) => meta) });
+});
+
+app.post("/api/neural-bridge/web/drafts/:id/publish", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const drafts = await readNeuralWebDrafts();
+    const draft = drafts.find(d => d.id === req.params.id);
+    if (!draft) return res.status(404).json({ error: "Borrador no encontrado" });
+    const current = parseStoredJson(await readStorageValue("siteContent"), {});
+    const versions = await readNeuralWebVersions();
+    const version = {
+      id: crypto.randomUUID(),
+      actionId,
+      sourceDraftId: draft.id,
+      createdAt: new Date().toISOString(),
+      reason: String(req.body?.reason || draft.title || "Neural publish"),
+      snapshot: current,
+    };
+    await upsertStorageValue("neuralWebVersions", JSON.stringify([version, ...versions].slice(0, 100)));
+    await upsertStorageValue("siteContent", JSON.stringify(draft.preview));
+    if (draft.preview?.hero?.imageUrl) await upsertStorageValue("heroBanner", JSON.stringify({ imageUrl: draft.preview.hero.imageUrl }));
+    if (draft.preview?.cta?.imageUrl) await upsertStorageValue("ctaBanner", JSON.stringify({ imageUrl: draft.preview.cta.imageUrl }));
+    draft.status = "PUBLISHED";
+    draft.publishedAt = new Date().toISOString();
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify(drafts));
+    void emitNeuralBusinessEvent("web.published", { actionId, draftId: draft.id, versionId: version.id });
+    res.json({ ok: true, draftId: draft.id, versionId: version.id, publishedAt: draft.publishedAt });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo publicar" });
+  }
+});
+
+app.post("/api/neural-bridge/web/versions/:id/rollback", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const versions = await readNeuralWebVersions();
+    const target = versions.find(v => v.id === req.params.id);
+    if (!target) return res.status(404).json({ error: "Versión no encontrada" });
+    const current = parseStoredJson(await readStorageValue("siteContent"), {});
+    const safetyVersion = {
+      id: crypto.randomUUID(),
+      actionId,
+      createdAt: new Date().toISOString(),
+      reason: `Snapshot previo a rollback hacia ${target.id}`,
+      snapshot: current,
+    };
+    await upsertStorageValue("neuralWebVersions", JSON.stringify([safetyVersion, ...versions].slice(0, 100)));
+    await upsertStorageValue("siteContent", JSON.stringify(target.snapshot || {}));
+    if (target.snapshot?.hero?.imageUrl) await upsertStorageValue("heroBanner", JSON.stringify({ imageUrl: target.snapshot.hero.imageUrl }));
+    if (target.snapshot?.cta?.imageUrl) await upsertStorageValue("ctaBanner", JSON.stringify({ imageUrl: target.snapshot.cta.imageUrl }));
+    void emitNeuralBusinessEvent("web.rollback", { actionId, restoredVersionId: target.id, safetyVersionId: safetyVersion.id });
+    res.json({ ok: true, restoredVersionId: target.id, safetyVersionId: safetyVersion.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo restaurar la versión" });
+  }
+});
+
 app.get("/api/neural-bridge/orders", requireNeuralBridge, async (_req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(500);
