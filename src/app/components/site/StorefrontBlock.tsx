@@ -73,7 +73,7 @@ function Heading({
   return (
     <h2
       className={`font-serif font-black leading-tight ${className}`}
-      style={{ fontSize: `calc(2rem * ${scale})` }}
+      style={{ fontSize: `${2 * scale}rem` }}
     >
       {children}
     </h2>
@@ -85,12 +85,14 @@ export function StorefrontBlock({
   site,
   heroFallback = "",
   ctaFallback = "",
+  logoFallback = "",
   preview = false,
 }: {
   block: BuilderBlock;
   site: SiteContent;
   heroFallback?: string;
   ctaFallback?: string;
+  logoFallback?: string;
   preview?: boolean;
 }) {
   if (!block.visible) return null;
@@ -133,9 +135,9 @@ export function StorefrontBlock({
               {heading}
             </Heading>
           ) : block.data?.showLogo !== false ? (
-            site.brand.logoUrl ? (
+            site.brand.logoUrl || logoFallback ? (
               <img
-                src={site.brand.logoUrl}
+                src={site.brand.logoUrl || logoFallback}
                 alt={site.brand.logoAlt || site.brand.name}
                 className="mb-5 max-h-40 w-auto max-w-[80%] object-contain"
               />
