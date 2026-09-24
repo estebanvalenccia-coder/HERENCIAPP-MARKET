@@ -49,7 +49,9 @@ export function calculatePosTotals(items = [], received = 0) {
     const qty = Math.max(0, Math.floor(asNumber(item.quantity ?? item.qty, 0)));
     const price = Math.max(0, asNumber(item.price, 0));
     const iva = Math.max(0, asNumber(item.iva, 21));
-    const lineTotal = price * qty;
+    const discountPercent = Math.max(0, Math.min(100, asNumber(item.discountPercent ?? item.discount, 0)));
+    const grossLineTotal = price * qty;
+    const lineTotal = grossLineTotal * (1 - discountPercent / 100);
     total += lineTotal;
     subtotal += lineTotal / (1 + iva / 100);
   }
@@ -93,6 +95,7 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
       const price = Math.round(rawPrice * 100) / 100;
       const iva = Math.max(0, Math.min(100, asNumber(raw?.iva, 21)));
       const name = String(raw?.name || "Artículo").trim() || "Artículo";
+      const discountPercent = Math.max(0, Math.min(100, asNumber(raw?.discountPercent ?? raw?.discount, 0)));
 
       manualItems.push({
         id,
@@ -104,6 +107,7 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
         quantity: qty,
         qty,
         manual: true,
+        discountPercent,
       });
       continue;
     }
@@ -121,6 +125,9 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
       throw new Error(`Stock insuficiente para ${product.name}. Disponible: ${product.stock}`);
     }
 
+    const requested = requestedItems.find((raw) => String(raw?.id ?? "").trim() === id);
+    const discountPercent = Math.max(0, Math.min(100, asNumber(requested?.discountPercent ?? requested?.discount, 0)));
+
     authoritativeItems.push({
       id: product.id,
       name: product.name,
@@ -130,6 +137,7 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
       iva: product.iva,
       quantity: qty,
       qty,
+      discountPercent,
     });
   }
 
