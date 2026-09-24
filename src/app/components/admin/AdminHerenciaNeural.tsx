@@ -191,8 +191,9 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
  const [subtitle,setSubtitle]=useState("");
  const [columns,setColumns]=useState(2);
  const [type,setType]=useState("textImage");
- const [imageData,setImageData]=useState("");
+ const [imageUrl,setImageUrl]=useState("");
  const [loading,setLoading]=useState(false);
+ const [uploading,setUploading]=useState(false);
 
  const load=useCallback(async()=>{
    try{
@@ -213,11 +214,14 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
 
  const upload=async(file?:File)=>{
    if(!file)return;
+   setUploading(true);
    try{
-     const result=await compressNeuralImage(file);
-     setImageData(result);
-     toast.success("Imagen preparada para el borrador");
-   }catch(e:any){toast.error(e.message||"No se pudo procesar la imagen")}
+     const dataUrl=await compressNeuralImage(file);
+     const result=await backendApi.uploadSiteMedia({dataUrl,filename:file.name});
+     setImageUrl(result.media.url);
+     toast.success("Imagen subida a la biblioteca multimedia");
+   }catch(e:any){toast.error(e.message||"No se pudo subir la imagen")}
+   finally{setUploading(false)}
  };
 
  const create=async()=>{
@@ -225,11 +229,10 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
    setLoading(true);
    try{
      const sectionId=`neural-${crypto.randomUUID()}`;
-     const operations:any[]=[{type:"createSection",section:{id:sectionId,type,title:title.trim(),subtitle:subtitle.trim(),columns,items:[]}}];
-     if(imageData&&["textImage","cta","hero"].includes(type))operations.push({type:"uploadAsset",sectionId,dataUrl:imageData,field:"imageUrl"});
+     const operations:any[]=[{type:"createSection",section:{id:sectionId,type,title:title.trim(),subtitle:subtitle.trim(),columns,items:[],imageUrl:["textImage","cta","hero"].includes(type)?imageUrl:""}}];
      const result=await backendApi.neuralCreateWebDraft({title:`Nueva sección: ${title.trim()}`,operations});
      toast.success("Borrador creado. Aún no está publicado.");
-     setTitle("");setSubtitle("");setImageData("");
+     setTitle("");setSubtitle("");setImageUrl("");
      await load();
      const createdId=result?.result?.draft?.id||result?.draft?.id;
      if(createdId)setSelectedId(createdId);
@@ -263,10 +266,10 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
        <label className="cursor-pointer text-sm font-bold">Imagen opcional
         <input type="file" accept="image/png,image/jpeg,image/webp" className="mt-2 block w-full text-xs" onChange={e=>void upload(e.target.files?.[0])}/>
        </label>
-       {imageData&&<img src={imageData} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
-       <p className="mt-2 text-xs text-muted-foreground">Se comprime antes de enviar y el backend limita el resultado a 2 MB.</p>
+       {uploading&&<p className="mt-2 text-xs font-bold text-emerald-700">Subiendo a Supabase Storage…</p>}{imageUrl&&<img src={imageUrl} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
+       <p className="mt-2 text-xs text-muted-foreground">Se comprime en el navegador y se guarda en la biblioteca multimedia real de Herencia.</p>
       </div>}
-      <button disabled={loading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button>
+      <button disabled={loading||uploading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button>
      </div>
     </div>
 
