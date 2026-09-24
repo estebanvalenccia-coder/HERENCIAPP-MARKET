@@ -2718,8 +2718,32 @@ function applyNeuralWebOperations(siteInput, operations = []) {
         block.data = { ...(block.data || {}), button: { label: String(op.label || "Ver más"), href: String(op.href || "/") } };
         break;
       }
-      case "uploadAsset":
-        throw new Error("uploadAsset requiere un adaptador de almacenamiento de archivos; no se simula como operativo");
+      case "uploadAsset": {
+        const dataUrl = String(op.dataUrl || op.value || "");
+        if (!/^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(dataUrl)) {
+          throw new Error("uploadAsset solo acepta imágenes PNG, JPEG o WebP en data URL");
+        }
+        const comma = dataUrl.indexOf(",");
+        const base64 = comma >= 0 ? dataUrl.slice(comma + 1).replace(/\s/g, "") : "";
+        const approxBytes = Math.floor((base64.length * 3) / 4);
+        if (approxBytes <= 0 || approxBytes > 2 * 1024 * 1024) {
+          throw new Error("La imagen debe pesar como máximo 2 MB después de comprimir");
+        }
+        const blockId = op.sectionId || op.blockId;
+        if (blockId) {
+          const block = blocks.find((item) => item.id === blockId);
+          if (!block) throw new Error("Sección no encontrada para uploadAsset");
+          const field = String(op.field || "imageUrl");
+          const allowedFields = new Set(["imageUrl"]);
+          if (!allowedFields.has(field)) throw new Error("Campo de imagen no permitido");
+          block.data = { ...(block.data || {}), [field]: dataUrl };
+        } else if (op.path || op.target) {
+          neuralSetDeepValue(site, op.path || op.target, dataUrl);
+        } else {
+          throw new Error("uploadAsset requiere sectionId o path");
+        }
+        break;
+      }
       default:
         throw new Error(`Operación web no soportada: ${op?.type}`);
     }
