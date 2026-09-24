@@ -1250,6 +1250,20 @@ function DesignEditor({
           </select>
         </label>
       </div>
+      <label className="block text-xs font-bold text-slate-700">
+        <span className="mb-1.5 block">Tipografía</span>
+        <select
+          value={design.fontFamily || "inherit"}
+          onChange={(event) => update({ fontFamily: event.target.value })}
+          className="w-full rounded-xl border border-slate-200 px-3 py-2.5"
+        >
+          <option value="inherit">Tipografía del sitio</option>
+          <option value="Georgia, 'Times New Roman', serif">Editorial / Serif</option>
+          <option value="Inter, system-ui, sans-serif">Inter / Moderna</option>
+          <option value="'Helvetica Neue', Arial, sans-serif">Helvetica / Limpia</option>
+          <option value="'Trebuchet MS', Arial, sans-serif">Trebuchet / Amable</option>
+        </select>
+      </label>
       <RangeField label="Altura / relleno vertical" value={design.paddingY} min={16} max={160} suffix="px" onChange={(paddingY) => update({ paddingY })} />
       <RangeField label="Ancho máximo" value={design.maxWidth} min={760} max={1600} step={20} suffix="px" onChange={(maxWidth) => update({ maxWidth })} />
       <RangeField label="Tamaño del título" value={design.headingScale} min={70} max={180} suffix="%" onChange={(headingScale) => update({ headingScale })} />
