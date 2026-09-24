@@ -1909,6 +1909,116 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/pos/sales", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 50)));
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .in("delivery_method", ["mostrador"])
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    res.json({ sales: (data || []).map(posOrderResponse) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/refund", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const orderId = String(req.body?.orderId || "").trim();
+    const reason = String(req.body?.reason || "Devolución TPV").trim();
+    if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Venta no encontrada" });
+    if (order?.metadata?.refundedAt || order.status === "refunded") {
+      return res.status(409).json({ error: "Esta venta ya está devuelta" });
+    }
+    if (order.delivery_method !== "mostrador") {
+      return res.status(400).json({ error: "La devolución TPV solo admite ventas de mostrador" });
+    }
+
+    const bootstrap = await loadPosBootstrap();
+    const items = Array.isArray(order.items) ? order.items : [];
+    const quantities = new Map();
+    for (const item of items) {
+      if (item?.manual === true) continue;
+      const id = String(item?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+      if (id && qty > 0) quantities.set(id, (quantities.get(id) || 0) + qty);
+    }
+
+    const restoredProducts = bootstrap.products.map((product) => {
+      const qty = quantities.get(String(product?.id || "")) || 0;
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+
+    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+
+    const refundNumber = `REF-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`;
+    const refundedAt = new Date().toISOString();
+    const metadata = {
+      ...(order.metadata || {}),
+      refundedAt,
+      refundReason: reason,
+      refundNumber,
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ status: "refunded", metadata })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+
+    if (normalizePaymentMethod(order.payment_method) === "cash") {
+      const session = await readPosCashSession();
+      if (session?.status === "open") {
+        const amount = normalizeMoney(order.total);
+        const next = {
+          ...session,
+          cashSales: normalizeMoney(Math.max(0, Number(session.cashSales || 0) - amount)),
+          cashOut: normalizeMoney(Number(session.cashOut || 0) + amount),
+          expectedCash: normalizeMoney(Number(session.expectedCash || 0) - amount),
+          movements: [
+            ...(Array.isArray(session.movements) ? session.movements : []),
+            {
+              id: crypto.randomUUID(),
+              type: "refund",
+              amount,
+              note: `${refundNumber}: ${reason}`,
+              orderId,
+              createdAt: refundedAt,
+            },
+          ],
+        };
+        await writePosCashSession(next);
+      }
+    }
+
+    broadcastAdminOrderEvent(updated, "order_refunded");
+    res.json({
+      ok: true,
+      order: posOrderResponse(updated),
+      inventory: restoredProducts,
+      refundNumber,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   if (!stripe) {
