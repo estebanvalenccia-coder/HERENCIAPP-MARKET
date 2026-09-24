@@ -107,7 +107,7 @@ app.options(
   })
 );
 
-const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
+const adminUsername = String(\n  process.env.ADMIN_USERNAME ||\n  Object.entries(process.env).find(([key]) => key.trim() === "ADMIN_USERNAME")?.[1] ||\n  ""\n).trim();
 const adminPassword = String(process.env.ADMIN_PASSWORD || "");
 const configuredSessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
