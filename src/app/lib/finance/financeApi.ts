@@ -1,4 +1,5 @@
 import { backendStorage } from "../backendStorage";
+import { backendStorage } from "../backendStorage";
 import type { CashClosure, DailyExpense, DailySale } from "./financeTypes";
 
 const SALES_KEY = "herencia_finance_sales";
