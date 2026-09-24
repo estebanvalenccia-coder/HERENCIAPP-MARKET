@@ -150,6 +150,8 @@ export function AdminPOS() {
   const [report, setReport] = useState<any | null>(null);
   const [currentStaff, setCurrentStaff] = useState<any | null>(null);
   const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [heldSales, setHeldSales] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
   });
@@ -176,6 +178,41 @@ export function AdminPOS() {
       }));
       setProducts(realProducts);
       setCustomers(realCustomers);
+
+      if (!draftReady) {
+        try {
+          const storedDraft = JSON.parse(localStorage.getItem("herencia_pos_current_sale") || "null");
+          if (storedDraft && Array.isArray(storedDraft.cart) && storedDraft.cart.length) {
+            const restoredCart: CartLine[] = storedDraft.cart.flatMap((line: any) => {
+              if (line?.manual === true) {
+                return [{
+                  ...line,
+                  id: String(line.id || `manual-${crypto.randomUUID()}`),
+                  qty: Math.max(1, Number(line.qty || 1)),
+                  stock: 999999,
+                  manual: true,
+                }];
+              }
+              const product = realProducts.find((item) => item.id === String(line?.id || ""));
+              if (!product || product.stock <= 0) return [];
+              return [{ ...product, qty: Math.min(product.stock, Math.max(1, Number(line?.qty || 1))), discountPercent: Number(line?.discountPercent || 0) }];
+            });
+            if (restoredCart.length) {
+              setCart(restoredCart);
+              setCustomer(storedDraft.customer || WALK_IN);
+              setPayment(storedDraft.payment || "Efectivo");
+              setDocumentType(storedDraft.documentType === "invoice" ? "invoice" : "ticket");
+              setNotes(String(storedDraft.notes || ""));
+              setGlobalDiscount(Number(storedDraft.globalDiscount || 0));
+              setMixed(storedDraft.mixed || { cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
+              toast.info("Venta en curso recuperada");
+            }
+          }
+        } catch {
+          // Un borrador local dañado no debe bloquear la caja.
+        }
+        setDraftReady(true);
+      }
       setFiscal({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       setFiscalDraft({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       const backendStripeKey = String(data.stripeSettings?.publishableKey || "").trim();
@@ -206,6 +243,35 @@ export function AdminPOS() {
   }
 
   useEffect(() => { void loadData(); }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      localStorage.setItem("herencia_pos_current_sale", JSON.stringify({
+        cart,
+        customer,
+        payment,
+        documentType,
+        notes,
+        globalDiscount,
+        mixed,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // El backend sigue siendo la fuente de verdad aunque localStorage no esté disponible.
+    }
+  }, [draftReady, cart, customer, payment, documentType, notes, globalDiscount, mixed]);
 
   const categories = useMemo(() => ["Todos", ...Array.from(new Set(products.map((product) => product.category)))], [products]);
   const filteredProducts = useMemo(() => {
@@ -1118,7 +1184,10 @@ export function AdminPOS() {
           <div className="flex items-center gap-2">
             <h2 className="text-3xl font-black text-zinc-950">TPV / Caja</h2>
             <span className={`rounded-full px-3 py-1 text-xs font-black ${backendConnected ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-              {backendConnected ? "Backend conectado" : "Sin conexión"}
+              {backendConnected ? "Backend conectado" : "Backend sin conexión"}
+            </span>
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${online ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-800"}`}>
+              {online ? "Online" : "Modo borrador sin red"}
             </span>
           </div>
           <p className="mt-1 text-sm text-zinc-500">Catálogo, stock, clientes, pagos, pedidos y documentos conectados al backend.</p>
@@ -1536,6 +1605,8 @@ export function AdminPOS() {
             <button
               disabled={
                 submitting ||
+                !online ||
+                !backendConnected ||
                 !cart.length ||
                 totals.total <= 0 ||
                 (payment === "Efectivo" && cashSession?.status !== "open") ||
@@ -1551,6 +1622,10 @@ export function AdminPOS() {
             >
               {submitting
                 ? "Procesando..."
+                : !online
+                ? "Sin red · venta guardada como borrador"
+                : !backendConnected
+                ? "Backend no disponible"
                 : !cart.length || totals.total <= 0
                 ? "Añade un producto para cobrar"
                 : payment === "Efectivo" && cashSession?.status !== "open"
