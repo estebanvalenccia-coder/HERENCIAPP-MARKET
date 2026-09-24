@@ -858,8 +858,8 @@ async function ensureSiteMediaBucket() {
   const { data: buckets, error: listError } = await supabase.storage.listBuckets();
   if (listError) throw listError;
 
-  const exists = (buckets || []).some((bucket) => bucket.name === SITE_MEDIA_BUCKET);
-  if (!exists) {
+  const existingBucket = (buckets || []).find((bucket) => bucket.name === SITE_MEDIA_BUCKET);
+  if (!existingBucket) {
     const { error: createError } = await supabase.storage.createBucket(SITE_MEDIA_BUCKET, {
       public: true,
       fileSizeLimit: 6 * 1024 * 1024,
@@ -868,6 +868,13 @@ async function ensureSiteMediaBucket() {
     if (createError && !/already exists/i.test(createError.message || "")) {
       throw createError;
     }
+  } else if (existingBucket.public === false) {
+    const { error: updateError } = await supabase.storage.updateBucket(SITE_MEDIA_BUCKET, {
+      public: true,
+      fileSizeLimit: 6 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    });
+    if (updateError) throw updateError;
   }
 }
 
