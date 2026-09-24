@@ -178,7 +178,7 @@ export function StorefrontBlock({
       <section className={hiddenMobileClass} style={sectionStyle(block)}>
         <div style={containerStyle(block)}>
           <div
-            className="grid"
+            className="builder-grid grid"
             style={{
               gridTemplateColumns: `repeat(${Math.max(
                 1,
@@ -223,7 +223,7 @@ export function StorefrontBlock({
             )}
           </div>
           <div
-            className="grid"
+            className="builder-grid grid"
             style={{
               gridTemplateColumns: `repeat(${Math.max(
                 1,
