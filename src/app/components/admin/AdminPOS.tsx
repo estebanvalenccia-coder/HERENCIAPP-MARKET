@@ -142,6 +142,8 @@ export function AdminPOS() {
   const [manualName, setManualName] = useState("Artículo");
   const [manualIva, setManualIva] = useState(21);
   const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [heldSales, setHeldSales] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
   });
@@ -176,6 +178,12 @@ export function AdminPOS() {
       setStripeEnabled(Boolean(data.stripeSettings?.enabled && resolvedStripeKey));
       setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
       setCashSession(data.cashSession || null);
+      try {
+        const history = await backendApi.listPosSales(30);
+        setRecentSales(Array.isArray(history.sales) ? history.sales : []);
+      } catch {
+        setRecentSales([]);
+      }
       setBackendConnected(true);
     } catch (error: any) {
       setBackendConnected(false);
@@ -485,7 +493,25 @@ export function AdminPOS() {
     };
   }
 
-  async function completeNonCardSale() {
+  async function refundSale(orderId: string) {
+    const sale = recentSales.find((item) => String(item.id) === String(orderId));
+    if (!sale) return;
+    const reason = window.prompt("Motivo de la devolución", "Devolución de cliente");
+    if (reason === null) return;
+
+    try {
+      const result = await backendApi.refundPosSale({ orderId, reason });
+      setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      setRecentSales((current) => current.map((item) =>
+        String(item.id) === String(orderId) ? result.order : item
+      ));
+      toast.success(`Devolución registrada: ${result.refundNumber}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la devolución");
+    }
+  }
+
+    async function completeNonCardSale() {
     if (!cart.length) return toast.error("Añade productos a la venta");
     if (!invoiceRequirementsOk()) return;
     if (payment === "Efectivo" && cashSession?.status !== "open") {
@@ -507,6 +533,7 @@ export function AdminPOS() {
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
       if (result.cashSession) setCashSession(result.cashSession);
+      setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
       if (payment === "Bizum" || payment === "Transferencia") {
         toast.success(`${result.documentNumber} registrado. Pago pendiente de verificación.`);
@@ -1084,6 +1111,47 @@ export function AdminPOS() {
                 ? "Configura Stripe para cobrar"
                 : `Cobrar ${money(totals.total)}`}
             </button>
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setShowHistory((value) => !value)}
+              className="flex w-full items-center justify-between font-black"
+            >
+              <span>Historial de ventas</span>
+              <span className="text-sm text-zinc-500">{recentSales.length} recientes · {showHistory ? "Ocultar" : "Ver"}</span>
+            </button>
+            {showHistory && (
+              <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+                {recentSales.length === 0 && <p className="py-6 text-center text-sm text-zinc-400">Sin ventas recientes</p>}
+                {recentSales.map((sale) => (
+                  <div key={sale.id} className="rounded-xl border border-zinc-100 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold">{sale.customerName || "Cliente mostrador"}</p>
+                        <p className="text-xs text-zinc-500">
+                          {sale.metadata?.invoiceNumber || String(sale.id).slice(0, 8)} · {sale.paymentMethod || sale.payment_method || ""}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-emerald-700">{money(Number(sale.total || 0))}</p>
+                        <p className="text-xs font-bold uppercase text-zinc-500">{sale.status || ""}</p>
+                      </div>
+                    </div>
+                    {sale.status !== "refunded" && (
+                      <button
+                        type="button"
+                        onClick={() => void refundSale(String(sale.id))}
+                        className="mt-2 rounded-lg border border-rose-200 px-3 py-1 text-xs font-black text-rose-700"
+                      >
+                        Devolver venta
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {lastReceipt && (
