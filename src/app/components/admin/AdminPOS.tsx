@@ -147,6 +147,7 @@ export function AdminPOS() {
   const [showOperations, setShowOperations] = useState(false);
   const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
   const [currentStaff, setCurrentStaff] = useState<any | null>(null);
+  const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
   const [heldSales, setHeldSales] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
   });
@@ -454,6 +455,7 @@ export function AdminPOS() {
     setDocumentType("ticket");
     setGlobalDiscount(0);
     setSelectedLineId(null);
+    setActiveQuoteId(null);
   }
 
   function invoiceRequirementsOk() {
@@ -608,6 +610,70 @@ export function AdminPOS() {
     }
   }
 
+    async function saveCurrentQuote() {
+    if (!cart.length) return toast.error("Añade artículos antes de guardar un presupuesto");
+    try {
+      const result = await backendApi.createPosQuote({
+        customer,
+        items: saleItemsPayload(),
+        notes,
+      });
+      setOperations(result.operations);
+      setActiveQuoteId(result.quote.id);
+      toast.success(`Presupuesto ${result.quote.quoteNumber} guardado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el presupuesto");
+    }
+  }
+
+  function loadQuote(quote: any) {
+    const nextCart: CartLine[] = (Array.isArray(quote?.items) ? quote.items : []).map((item: any) => {
+      if (item.manual === true) {
+        return {
+          id: String(item.id),
+          name: String(item.name || "Artículo"),
+          sku: String(item.sku || "VENTA-LIBRE"),
+          price: Number(item.price || 0),
+          iva: Number(item.iva || 21),
+          stock: 999999,
+          category: "Venta libre",
+          manual: true,
+          qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
+          discountPercent: Number(item.discountPercent || 0),
+        };
+      }
+      const product = products.find((candidate) => candidate.id === String(item.id));
+      return {
+        ...(product || {
+          id: String(item.id),
+          name: String(item.name || "Producto"),
+          sku: String(item.sku || ""),
+          price: Number(item.price || 0),
+          iva: Number(item.iva || 21),
+          stock: Math.max(0, Number(item.quantity ?? item.qty ?? 1)),
+          category: String(item.category || "Presupuesto"),
+        }),
+        qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
+        discountPercent: Number(item.discountPercent || 0),
+      } as CartLine;
+    });
+    setCart(nextCart);
+    setCustomer(quote?.customer || WALK_IN);
+    setNotes(String(quote?.notes || ""));
+    setActiveQuoteId(String(quote?.id || ""));
+    toast.success(`${quote?.quoteNumber || "Presupuesto"} cargado`);
+  }
+
+  async function markActiveQuoteConverted(orderId: string) {
+    if (!activeQuoteId) return;
+    try {
+      const result = await backendApi.updatePosQuote(activeQuoteId, { status: "converted", orderId });
+      setOperations(result.operations);
+    } catch {
+      // La venta ya está completada; un fallo al marcar el presupuesto no debe duplicar el cobro.
+    }
+  }
+
     async function createQuickFloristOrder() {
     const concept = window.prompt("Concepto del encargo", "Ramo personalizado");
     if (!concept) return;
@@ -686,6 +752,7 @@ export function AdminPOS() {
       if (result.cashSession) setCashSession(result.cashSession);
       setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
+      await markActiveQuoteConverted(String(result.order?.id || ""));
       if (payment === "Bizum" || payment === "Transferencia") {
         toast.success(`${result.documentNumber} registrado. Pago pendiente de verificación.`);
       } else {
@@ -746,6 +813,7 @@ export function AdminPOS() {
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
       setBackendConnected(true);
+      await markActiveQuoteConverted(String(result.order?.id || ""));
       setCardSession(null);
       toast.success(`${result.documentNumber} cobrado con tarjeta y stock actualizado`);
       clearSale();
@@ -758,6 +826,7 @@ export function AdminPOS() {
   }
 
   async function openCashDrawer() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede abrir la caja");
     const raw = window.prompt("Fondo inicial de caja (€)", "0");
     if (raw === null) return;
     const openingAmount = Number(String(raw).replace(",", "."));
@@ -776,6 +845,7 @@ export function AdminPOS() {
   }
 
   async function addCashMovement(type: "in" | "out") {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede hacer movimientos de caja");
     const raw = window.prompt(type === "in" ? "Entrada de efectivo (€)" : "Salida de efectivo (€)", "");
     if (raw === null) return;
     const amount = Number(String(raw).replace(",", "."));
@@ -795,6 +865,7 @@ export function AdminPOS() {
   }
 
   async function closeCashDrawer() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede cerrar la caja");
     if (cashSession?.status !== "open") return toast.error("No hay caja abierta");
     const suggested = String(Number(cashSession.expectedCash || 0).toFixed(2)).replace(".", ",");
     const raw = window.prompt("Efectivo contado al cerrar (€)", suggested);
@@ -1069,7 +1140,7 @@ export function AdminPOS() {
                 {[0, 5, 10, 15, 20].map((value) => (
                   <button
                     key={value}
-                    onClick={() => setGlobalDiscount(value)}
+                    onClick={() => hasPosPermission("discount") ? setGlobalDiscount(value) : toast.error("Este empleado no puede aplicar descuentos")}
                     className={`rounded-lg px-2 py-1 text-xs font-black ${globalDiscount === value ? "bg-emerald-600 text-white" : "bg-zinc-100"}`}
                   >
                     {value}%
@@ -1292,12 +1363,30 @@ export function AdminPOS() {
                   <button onClick={() => void createSupplier()} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">+ Proveedor</button>
                   <button onClick={() => void receivePurchase()} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-sm font-black text-cyan-800">Entrada stock</button>
                   <button onClick={() => void createStaffMember()} className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-black">+ Empleado</button>
+                  <button onClick={() => void saveCurrentQuote()} disabled={!cart.length} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-black text-emerald-800 disabled:opacity-40">Guardar presupuesto</button>
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-sm">
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.floristOrders?.length || 0}</b><p className="text-zinc-500">Encargos</p></div>
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Regalo</p></div>
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.suppliers?.length || 0}</b><p className="text-zinc-500">Proveedores</p></div>
                   <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.staff?.length || 0}</b><p className="text-zinc-500">Personal</p></div>
+                </div>
+                <div className="rounded-xl bg-zinc-50 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <b>Presupuestos</b>
+                    <span className="text-zinc-500">{operations.quotes?.length || 0}</span>
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {(operations.quotes || []).slice(0, 5).map((quote: any) => (
+                      <div key={quote.id} className="flex items-center justify-between gap-2 rounded-lg bg-white p-2">
+                        <div>
+                          <p className="font-bold">{quote.quoteNumber}</p>
+                          <p className="text-xs text-zinc-500">{quote.customer?.name || "Cliente"} · {money(quote.total)} · {quote.status}</p>
+                        </div>
+                        <button onClick={() => loadQuote(quote)} className="rounded-lg border px-2 py-1 text-xs font-black">Cargar</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 {(operations.floristOrders || []).slice(0, 5).map((order: any) => (
                   <div key={order.id} className="rounded-xl border p-3 text-sm">
