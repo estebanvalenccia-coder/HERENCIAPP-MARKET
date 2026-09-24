@@ -796,6 +796,8 @@ app.post(
         if (error) {
           console.error("Error actualizando pedido pagado:", error.message);
         } else {
+          broadcastAdminOrderEvent(updatedOrder, "order_paid");
+
           try {
             await sendOrderConfirmationEmails(updatedOrder, "stripe_payment_succeeded");
           } catch (emailError) {
@@ -839,6 +841,91 @@ app.post("/api/admin/logout", (_req, res) => {
 
 app.get("/api/admin/session", (req, res) => {
   res.json({ authenticated: isAdmin(req) });
+});
+
+const adminOrderEventClients = new Set();
+const recentAdminOrderEventKeys = new Map();
+
+function serializeAdminOrderEvent(order, kind = "order_created") {
+  const normalized = normalizeOrder(order);
+  const metadata = normalized.metadata || {};
+  const shippingAddress = metadata.shippingAddress || {};
+
+  return {
+    eventId: crypto.randomUUID(),
+    kind,
+    id: normalized.id,
+    customerName: normalized.customerName,
+    customerEmail: normalized.customerEmail,
+    customerPhone: metadata.phone || metadata.customerPhone || "",
+    address: shippingAddress,
+    items: normalized.items,
+    subtotal: normalized.subtotal,
+    shipping: normalized.shipping,
+    total: normalized.total,
+    paymentMethod: normalized.paymentMethod,
+    deliveryMethod: normalized.deliveryMethod,
+    status: normalized.status,
+    date: normalized.date,
+  };
+}
+
+function broadcastAdminOrderEvent(order, kind = "order_created") {
+  const payload = serializeAdminOrderEvent(order, kind);
+  const now = Date.now();
+  const dedupeKey = `${payload.id}:${kind}:${payload.status}`;
+
+  for (const [key, timestamp] of recentAdminOrderEventKeys.entries()) {
+    if (now - timestamp > 10 * 60 * 1000) {
+      recentAdminOrderEventKeys.delete(key);
+    }
+  }
+
+  if (recentAdminOrderEventKeys.has(dedupeKey)) return false;
+  recentAdminOrderEventKeys.set(dedupeKey, now);
+
+  const message = `event: order\ndata: ${JSON.stringify(payload)}\n\n`;
+
+  for (const client of [...adminOrderEventClients]) {
+    try {
+      client.res.write(message);
+    } catch {
+      clearInterval(client.heartbeat);
+      adminOrderEventClients.delete(client);
+    }
+  }
+
+  return true;
+}
+
+app.get("/api/admin/order-events", requireAdmin, (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  res.write("retry: 3000\n");
+  res.write(`event: ready\ndata: ${JSON.stringify({ ok: true, connectedAt: new Date().toISOString() })}\n\n`);
+
+  const client = {
+    res,
+    heartbeat: setInterval(() => {
+      try {
+        res.write(`: heartbeat ${Date.now()}\n\n`);
+      } catch {
+        // El cierre de la conexión se limpia abajo.
+      }
+    }, 20000),
+  };
+
+  adminOrderEventClients.add(client);
+
+  req.on("close", () => {
+    clearInterval(client.heartbeat);
+    adminOrderEventClients.delete(client);
+  });
 });
 
 app.get("/api/storage", async (req, res) => {
@@ -1044,6 +1131,8 @@ app.post("/api/orders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  broadcastAdminOrderEvent(data, "order_created");
 
   try {
     await sendOrderConfirmationEmails(data, "order_created");
@@ -2277,6 +2366,8 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   let emailResults = null;
 
   if (isPaid) {
+    broadcastAdminOrderEvent(updatedOrder, "order_paid");
+
     try {
       emailResults = await sendOrderConfirmationEmails(
         updatedOrder,
