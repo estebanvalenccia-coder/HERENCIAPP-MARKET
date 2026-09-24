@@ -144,6 +144,8 @@ export function AdminPOS() {
   const [globalDiscount, setGlobalDiscount] = useState(0);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showOperations, setShowOperations] = useState(false);
+  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
   const [heldSales, setHeldSales] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
   });
@@ -179,8 +181,9 @@ export function AdminPOS() {
       setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
       setCashSession(data.cashSession || null);
       try {
-        const history = await backendApi.listPosSales(30);
+        const [history, ops] = await Promise.all([backendApi.listPosSales(30), backendApi.getPosOperations()]);
         setRecentSales(Array.isArray(history.sales) ? history.sales : []);
+        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} });
       } catch {
         setRecentSales([]);
       }
@@ -493,7 +496,42 @@ export function AdminPOS() {
     };
   }
 
-  async function refundSale(orderId: string) {
+  async function createQuickFloristOrder() {
+    const concept = window.prompt("Concepto del encargo", "Ramo personalizado");
+    if (!concept) return;
+    const total = Number(window.prompt("Total del encargo (€)", "50") || 0);
+    if (!Number.isFinite(total) || total <= 0) return toast.error("Total inválido");
+    const deposit = Number(window.prompt("Anticipo recibido (€)", "0") || 0);
+    const dueAt = window.prompt("Fecha/hora de entrega (ej. 2026-09-30 18:00)", "") || "";
+    try {
+      const result = await backendApi.createFloristOrder({
+        customerName: customer.name || "Cliente mostrador",
+        customerPhone: customer.phone || "",
+        concept,
+        total,
+        deposit,
+        dueAt: dueAt || null,
+      });
+      setOperations(result.operations);
+      toast.success(`Encargo creado · pendiente ${money(result.order.pending)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear el encargo");
+    }
+  }
+
+  async function createQuickGiftCard() {
+    const amount = Number(window.prompt("Saldo de la tarjeta regalo (€)", "50") || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Saldo inválido");
+    try {
+      const result = await backendApi.createGiftCard({ amount });
+      setOperations(result.operations);
+      toast.success(`Tarjeta regalo ${result.card.code} creada`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear la tarjeta regalo");
+    }
+  }
+
+    async function refundSale(orderId: string) {
     const sale = recentSales.find((item) => String(item.id) === String(orderId));
     if (!sale) return;
     const reason = window.prompt("Motivo de la devolución", "Devolución de cliente");
@@ -1111,6 +1149,35 @@ export function AdminPOS() {
                 ? "Configura Stripe para cobrar"
                 : `Cobrar ${money(totals.total)}`}
             </button>
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <button type="button" onClick={() => setShowOperations((value) => !value)} className="flex w-full items-center justify-between font-black">
+              <span>Operaciones de tienda</span>
+              <span className="text-sm text-zinc-500">{showOperations ? "Ocultar" : "Abrir"}</span>
+            </button>
+            {showOperations && (
+              <div className="mt-3 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => void createQuickFloristOrder()} className="rounded-xl bg-emerald-700 px-3 py-3 text-sm font-black text-white">
+                    + Encargo floral
+                  </button>
+                  <button onClick={() => void createQuickGiftCard()} className="rounded-xl bg-violet-700 px-3 py-3 text-sm font-black text-white">
+                    + Tarjeta regalo
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.floristOrders?.length || 0}</b><p className="text-zinc-500">Encargos</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Tarjetas regalo</p></div>
+                </div>
+                {(operations.floristOrders || []).slice(0, 5).map((order: any) => (
+                  <div key={order.id} className="rounded-xl border p-3 text-sm">
+                    <div className="flex justify-between gap-2"><b>{order.concept}</b><b>{money(order.total)}</b></div>
+                    <p className="text-zinc-500">{order.customerName} · pendiente {money(order.pending)} · {order.status}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
