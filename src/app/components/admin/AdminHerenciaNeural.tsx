@@ -29,11 +29,15 @@ export function AdminHerenciaNeural(){
  const [demand,setDemand]=useState<any>(null);
  const [patterns,setPatterns]=useState<any>(null);
  const [diagnostic,setDiagnostic]=useState<any>(null);
+ const [twin,setTwin]=useState<any>(null);
+ const [resources,setResources]=useState<any>(null);
+ const [proactive,setProactive]=useState<any>(null);
+ const [scheduler,setScheduler]=useState<any>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
-  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns(),backendApi.neuralSelfTest()]);
-  const [s,a,t,g,act,sig,gr,br,self,dmd,pat,diag]=results;
+  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns(),backendApi.neuralSelfTest(),backendApi.neuralTwin(),backendApi.neuralResources(),backendApi.neuralProactiveStatus(),backendApi.neuralScheduler()]);
+  const [s,a,t,g,act,sig,gr,br,self,dmd,pat,diag,tw,resrc,pro,sched]=results;
   if(s.status==="fulfilled"){setStatus(s.value);setError(null)}else setError(s.reason?.message||"Neural no disponible");
   if(a.status==="fulfilled")setAgents(a.value.agents||[]);
   if(t.status==="fulfilled")setTasks(t.value.tasks||[]);
@@ -46,6 +50,10 @@ export function AdminHerenciaNeural(){
   if(dmd.status==="fulfilled")setDemand(dmd.value);
   if(pat.status==="fulfilled")setPatterns(pat.value);
   if(diag.status==="fulfilled")setDiagnostic(diag.value); else if(diag.status==="rejected")setDiagnostic({ok:false,tests:[],error:diag.reason?.message});
+  if(tw.status==="fulfilled")setTwin(tw.value);
+  if(resrc.status==="fulfilled")setResources(resrc.value);
+  if(pro.status==="fulfilled")setProactive(pro.value);
+  if(sched.status==="fulfilled")setScheduler(sched.value);
   setLoading(false);
  },[]);
 
@@ -65,7 +73,7 @@ export function AdminHerenciaNeural(){
  const approve=async(id:string)=>{try{await backendApi.neuralApproveTask(id);toast.success("Tarea aprobada");await refresh()}catch(e:any){toast.error(e.message)}};
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
 
- const tabs=[["command","Command Center",Brain],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
+ const tabs=[["command","Command Center",Brain],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["business","Negocio / Digital Twin",ShoppingBag],["crm","Clientes / CRM",Bot],["automations","Automatizaciones",Activity],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
 
  return <div className="space-y-6">
   <div className="rounded-3xl border bg-gradient-to-r from-emerald-950 to-emerald-800 text-white p-6 shadow-xl">
@@ -120,6 +128,29 @@ export function AdminHerenciaNeural(){
   {tab==="brain"&&<Panel title="Cerebro / Self Model" icon={Brain}>{selfModel?<div className="grid gap-5 xl:grid-cols-3"><div className="xl:col-span-2 rounded-2xl border p-5"><div className="text-xs uppercase tracking-wider text-muted-foreground">Identidad persistente</div><h3 className="mt-1 text-2xl font-black">{selfModel.identity||"HERENCIA Neural"}</h3><p className="mt-3 text-muted-foreground">{selfModel.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(selfModel.principles||[]).map((x:string)=><span key={x} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><div className="text-sm font-black">Continuidad</div><div className="mt-3 space-y-2 text-sm"><Row label="Versión" value={selfModel.version||"—"}/><Row label="Generación" value={String(selfModel.generation||1)}/><Row label="Capacidades" value={String((selfModel.capabilities||[]).length)}/><Row label="Limitaciones" value={String((selfModel.limitations||[]).length)}/><Row label="Aprendizajes" value={String((selfModel.learnings||[]).length)}/></div></div><div className="rounded-2xl border p-5"><b>Capacidades</b><div className="mt-3 flex flex-wrap gap-2">{(selfModel.capabilities||[]).map((x:string)=><span key={x} className="rounded-lg bg-muted px-2 py-1 text-xs">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><b>Limitaciones conocidas</b>{(selfModel.limitations||[]).length?<ul className="mt-3 space-y-2 text-sm">{selfModel.limitations.map((x:string)=><li key={x}>• {x}</li>)}</ul>:<p className="mt-3 text-sm text-muted-foreground">No hay limitaciones registradas en el Self Model actual.</p>}</div><div className="rounded-2xl border p-5"><b>Estado cognitivo</b><div className="mt-3 space-y-2 text-sm"><Row label="Tareas activas" value={String((selfModel.tasks||[]).length)}/><Row label="Errores recientes" value={String((selfModel.errors||[]).length)}/><Row label="Correcciones" value={String((selfModel.corrections||[]).length)}/></div></div></div>:<Empty text="Self Model no disponible."/ >}</Panel>}
 
   {tab==="learning"&&<Panel title="Aprendizaje y patrones" icon={Sparkles}><div className="grid gap-5 xl:grid-cols-2"><div className="rounded-2xl border p-5"><h3 className="font-black">Demanda aprendida de conversaciones</h3><p className="mt-1 text-sm text-muted-foreground">Las conversaciones siguen siendo provisionales; Neural agrega señales de demanda sin convertirlas en hechos.</p><div className="mt-4 space-y-2">{(demand?.topics||[]).slice(0,20).map((entry:any,i:number)=>{const key=Array.isArray(entry)?entry[0]:entry?.topic;const rows=Array.isArray(entry)?entry[1]:entry?.rows;return <div key={key||i} className="flex items-center justify-between rounded-xl bg-muted/50 p-3"><span className="font-medium">{key||"sin tema"}</span><b>{Array.isArray(rows)?rows.length:Number(entry?.count||0)}</b></div>})}{!(demand?.topics||[]).length&&<Empty text="Todavía no hay suficiente demanda agregada."/>}</div></div><div className="rounded-2xl border p-5"><h3 className="font-black">Patrones de negocio</h3><p className="mt-1 text-sm text-muted-foreground">Descriptivos, no causales. La confianza depende del tamaño de la muestra.</p><div className="mt-4 grid grid-cols-2 gap-3"><Mini label="Ventas muestra" value={String(patterns?.sample?.verifiedSales||0)}/><Mini label="Confianza" value={String(patterns?.confidence||"—")}/><Mini label="Clientes recurrentes" value={String(patterns?.repeatCustomers||0)}/><Mini label="Combos detectados" value={String((patterns?.coPurchases||[]).length)}/></div><div className="mt-4 space-y-2">{(patterns?.topProducts||[]).slice(0,8).map((p:any)=><div key={p.id} className="flex justify-between rounded-xl border p-3 text-sm"><span>{p.name}</span><b>{p.units} uds.</b></div>)}</div></div></div></Panel>}
+
+
+  {tab==="business"&&<Panel title="Business Digital Twin" icon={ShoppingBag}>{twin?<div className="grid gap-5 xl:grid-cols-3">
+    <div className="xl:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <Mini label="Productos" value={String((twin.products||[]).length)}/><Mini label="Inventario" value={String((twin.inventory||[]).length)}/><Mini label="Pedidos" value={String((twin.orders||[]).length)}/><Mini label="Ventas" value={String((twin.sales||[]).length)}/>
+      <Mini label="Clientes" value={String((twin.customers||[]).length)}/><Mini label="Proveedores" value={String((twin.suppliers||[]).length)}/><Mini label="Conversaciones" value={String((twin.conversations||[]).length)}/><Mini label="Revisión" value={String(twin.revision||0)}/>
+    </div>
+    <div className="rounded-2xl border p-5"><b>Finanzas observadas</b><div className="mt-3 space-y-2 text-sm"><Row label="Ingresos" value={money(twin.finance?.revenue||0)}/><Row label="Gastos registrados" value={money((twin.finance?.recordedExpenses||[]).reduce((sum:number,x:any)=>sum+Number(x.amount||0),0))}/><Row label="Neto observado" value={money(twin.finance?.netAfterRecordedExpenses||0)}/><Row label="Ticket medio" value={money(twin.finance?.averageTicket||0)}/></div></div>
+    <div className="rounded-2xl border p-5 xl:col-span-2"><b>Inventario con atención</b><div className="mt-3 grid gap-2 md:grid-cols-2">{(twin.inventory||[]).filter((x:any)=>Number(x.stock||0)<=2).slice(0,12).map((x:any)=><div key={x.id} className="flex justify-between rounded-xl bg-amber-50 p-3 text-sm"><span>{x.name||x.id}</span><b>{x.stock} uds.</b></div>)}{!(twin.inventory||[]).some((x:any)=>Number(x.stock||0)<=2)&&<span className="text-sm text-muted-foreground">No hay stock crítico observado.</span>}</div></div>
+    <div className="rounded-2xl border p-5"><b>Caja</b><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{JSON.stringify(twin.cash||{status:"sin datos"},null,2)}</pre></div>
+  </div>:<Empty text="Digital Twin no disponible."/>}</Panel>}
+
+  {tab==="crm"&&<Panel title="Clientes / CRM Neural" icon={Bot}>{twin?<div className="grid gap-5 xl:grid-cols-2">
+    <div><h3 className="mb-3 font-black">Clientes observados</h3><div className="space-y-2">{(twin.customers||[]).slice(0,50).map((x:any,i:number)=><div key={x.id||x.email||x.phone||i} className="rounded-xl border p-3"><b>{x.name||x.email||x.phone||"Cliente"}</b><p className="mt-1 text-xs text-muted-foreground">{x.email||"sin email"}{x.phone?" · "+x.phone:""}</p></div>)}{!(twin.customers||[]).length&&<Empty text="No hay clientes observados."/>}</div></div>
+    <div><h3 className="mb-3 font-black">Señales de conversaciones</h3><div className="space-y-2">{(twin.conversations||[]).slice(0,50).map((x:any,i:number)=><div key={x.id||i} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><b className="text-sm">{x.topic||x.intent||x.type||"conversación"}</b><span className="text-[10px] rounded-full bg-amber-50 px-2 py-1 text-amber-800">{x.verified?"verificado":"provisional"}</span></div><p className="mt-2 text-xs text-muted-foreground">{x.text||"Sin texto almacenado"}</p></div>)}{!(twin.conversations||[]).length&&<Empty text="Todavía no hay señales del chat."/>}</div></div>
+  </div>:<Empty text="CRM Neural no disponible."/>}</Panel>}
+
+  {tab==="automations"&&<Panel title="Automatizaciones y ciclos autónomos" icon={Activity}><div className="grid gap-5 xl:grid-cols-3">
+    <div className="rounded-2xl border p-5"><b>Scheduler cognitivo</b><div className="mt-3 space-y-2 text-sm"><Row label="Activo" value={scheduler?.cognitive?.running?"Sí":"No"}/><Row label="Ticks" value={String(scheduler?.cognitive?.ticks||0)}/><Row label="Intervalo" value={scheduler?.cognitive?.intervalMs?Math.round(scheduler.cognitive.intervalMs/1000)+" s":"—"}/><Row label="Reflexión cada" value={String(scheduler?.cognitive?.reflectionEvery||"—")}/></div></div>
+    <div className="rounded-2xl border p-5"><b>Observador de Herencia</b><div className="mt-3 space-y-2 text-sm"><Row label="Activo" value={scheduler?.observer?.running?"Sí":"No"}/><Row label="Intervalo" value={scheduler?.observer?.intervalMs?Math.round(scheduler.observer.intervalMs/1000)+" s":"—"}/><Row label="Autonomía" value={autonomy?"ACTIVE":"STOPPED"}/></div></div>
+    <div className="rounded-2xl border p-5"><b>Recursos</b><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{JSON.stringify(resources||{},null,2)}</pre></div>
+    <div className="rounded-2xl border p-5 xl:col-span-3"><b>Motor proactivo</b><p className="mt-1 text-sm text-muted-foreground">Convierte señales repetidas o críticas en tareas sin saltarse el Permission Kernel.</p><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{JSON.stringify(proactive||{},null,2)}</pre></div>
+  </div></Panel>}
 
   {tab==="tasks"&&<Panel title="Cola de tareas Neural" icon={ListTodo}>{tasks.length?<div className="space-y-3">{tasks.map((t:any)=><div key={t.id} className="border rounded-2xl p-4 flex flex-col md:flex-row md:items-center gap-3 justify-between"><div><b>{t.title}</b><p className="text-xs text-muted-foreground mt-1">{t.intent} · {t.assignedCell||"sin asignar"} · {t.status}</p></div>{(t.status==="WAITING_APPROVAL"||t.requiresApproval)&&<button onClick={()=>void approve(t.id)} className="px-4 py-2 rounded-xl bg-amber-100 text-amber-900 font-bold">Aprobar</button>}</div>)}</div>:<Empty text="La cola está vacía."/>}</Panel>}
 
@@ -183,6 +214,7 @@ function LabPanel(){
 }
 function Panel({title,icon:Icon,children,className=""}:any){return <section className={`bg-card border rounded-3xl p-5 shadow-sm ${className}`}><h2 className="font-black text-lg flex items-center gap-2 mb-4"><Icon className="w-5 h-5 text-primary"/>{title}</h2>{children}</section>}
 function InfoPanel({title,icon,text}:any){return <Panel title={title} icon={icon}><div className="min-h-56 flex items-center justify-center"><div className="max-w-2xl text-center"><p className="text-lg text-muted-foreground">{text}</p></div></div></Panel>}
+function money(value:number){return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(Number(value||0))}
 function Row({label,value}:{label:string;value:string}){return <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{label}</span><b>{value}</b></div>}
 function Mini({label,value}:{label:string;value:string}){return <div className="rounded-xl bg-muted/50 p-3"><div className="text-xs text-muted-foreground">{label}</div><b className="mt-1 block">{value}</b></div>}
 function Empty({text}:{text:string}){return <div className="py-10 text-center text-sm text-muted-foreground">{text}</div>}
