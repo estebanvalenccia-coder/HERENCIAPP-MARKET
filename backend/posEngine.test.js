@@ -26,6 +26,29 @@ test("venta ficticia descuenta stock y calcula totales", () => {
   assert.equal(result.totals.tax > 0, true);
 });
 
+
+test("permite artículo manual sin descontar stock", () => {
+  const result = validateAndApplyStock(products, [
+    { id: "manual-test-1", name: "Artículo", price: 4, iva: 21, quantity: 1, manual: true },
+  ]);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].manual, true);
+  assert.equal(result.items[0].name, "Artículo");
+  assert.equal(result.items[0].price, 4);
+  assert.equal(result.totals.total, 4);
+  assert.equal(result.updatedProducts[0].stock, 5);
+  assert.equal(result.updatedProducts[1].stock, 10);
+});
+
+test("rechaza artículo manual con importe inválido", () => {
+  assert.throws(
+    () => validateAndApplyStock(products, [
+      { id: "manual-test-2", name: "Artículo", price: 0, iva: 21, quantity: 1, manual: true },
+    ]),
+    /importe válido/
+  );
+});
+
 test("no permite vender por encima del stock", () => {
   assert.throws(
     () => validateAndApplyStock(products, [{ id: 1, quantity: 6 }]),
