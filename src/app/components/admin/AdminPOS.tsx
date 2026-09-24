@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
-type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
+type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia" | "Mixto";
 type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; image?: string; manual?: boolean };
 type CartLine = PosItem & { qty: number; discountPercent?: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string; phone?: string };
@@ -132,7 +132,8 @@ export function AdminPOS() {
   const [showFiscalModal, setShowFiscalModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Customer>({ id: "", name: "", nif: "", email: "", address: "", phone: "" });
   const [fiscalDraft, setFiscalDraft] = useState<FiscalSettings>(EMPTY_FISCAL);
-  const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId: string } | null>(null);
+  const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId?: string; mode: "full" | "mixed" } | null>(null);
+  const [mixed, setMixed] = useState({ cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
   const [cashSession, setCashSession] = useState<any | null>(null);
   const [autoPrint, setAutoPrint] = useState(false);
@@ -456,6 +457,7 @@ export function AdminPOS() {
     setGlobalDiscount(0);
     setSelectedLineId(null);
     setActiveQuoteId(null);
+    setMixed({ cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
   }
 
   function invoiceRequirementsOk() {
@@ -489,6 +491,41 @@ export function AdminPOS() {
     );
   }
 
+  function mixedPaymentsPayload() {
+    const rows: Array<{ method: string; amount: number; code?: string }> = [];
+    if (mixed.cash > 0) rows.push({ method: "cash", amount: Math.round(mixed.cash * 100) / 100 });
+    if (mixed.card > 0) rows.push({ method: "card", amount: Math.round(mixed.card * 100) / 100 });
+    if (mixed.bizum > 0) rows.push({ method: "bizum", amount: Math.round(mixed.bizum * 100) / 100 });
+    if (mixed.transfer > 0) rows.push({ method: "transfer", amount: Math.round(mixed.transfer * 100) / 100 });
+    if (mixed.giftCard > 0) rows.push({ method: "gift_card", amount: Math.round(mixed.giftCard * 100) / 100, code: mixed.giftCardCode.trim().toUpperCase() });
+    return rows;
+  }
+
+  function mixedAssignedTotal() {
+    return Math.round(mixedPaymentsPayload().reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
+  }
+
+  function validateMixedPayment() {
+    const assigned = mixedAssignedTotal();
+    if (Math.abs(assigned - totals.total) > 0.01) {
+      toast.error(`El pago mixto suma ${money(assigned)} y debe sumar ${money(totals.total)}`);
+      return false;
+    }
+    if (mixed.cash > 0 && cashSession?.status !== "open") {
+      toast.error("Abre la caja para usar efectivo en el pago mixto");
+      return false;
+    }
+    if (mixed.card > 0 && !cardReady) {
+      toast.error("Stripe debe estar configurado para usar tarjeta en pago mixto");
+      return false;
+    }
+    if (mixed.giftCard > 0 && !mixed.giftCardCode.trim()) {
+      toast.error("Introduce el código de la tarjeta regalo");
+      return false;
+    }
+    return true;
+  }
+
   function salePayload() {
     return {
       customer,
@@ -497,6 +534,7 @@ export function AdminPOS() {
       documentType,
       received,
       notes,
+      ...(payment === "Mixto" ? { payments: mixedPaymentsPayload() } : {}),
     };
   }
 
@@ -736,6 +774,8 @@ export function AdminPOS() {
       return;
     }
     if (payment === "Efectivo" && received < totals.total) return toast.error("El efectivo recibido es inferior al total");
+    if (payment === "Mixto" && !validateMixedPayment()) return;
+    if (payment === "Mixto" && mixed.card > 0) return toast.error("Confirma primero la parte de tarjeta");
 
     setSubmitting(true);
     try {
@@ -784,7 +824,7 @@ export function AdminPOS() {
         documentType,
         notes,
       });
-      setCardSession({ clientSecret: result.clientSecret, orderId: result.orderId });
+      setCardSession({ clientSecret: result.clientSecret, orderId: result.orderId, mode: "full" });
     } catch (error: any) {
       toast.error(error?.message || "No se pudo iniciar el cobro con tarjeta");
     } finally {
@@ -796,30 +836,76 @@ export function AdminPOS() {
     if (!cardSession) return;
     setSubmitting(true);
     try {
-      await backendApi.confirmStripeOrder({ orderId: cardSession.orderId, paymentIntentId });
-      const result = await backendApi.completePosSale({
-        ...salePayload(),
-        paymentMethod: "Tarjeta",
-        existingOrderId: cardSession.orderId,
-        paymentIntentId,
-      });
+      let result: any;
+      let receiptMethod: PosPaymentMethod;
+
+      if (cardSession.mode === "mixed") {
+        result = await backendApi.completePosSale({
+          ...salePayload(),
+          paymentMethod: "Mixto",
+          payments: mixedPaymentsPayload(),
+          paymentIntentId,
+        });
+        receiptMethod = "Mixto";
+      } else {
+        if (!cardSession.orderId) throw new Error("Falta el pedido de Stripe");
+        await backendApi.confirmStripeOrder({ orderId: cardSession.orderId, paymentIntentId });
+        result = await backendApi.completePosSale({
+          ...salePayload(),
+          paymentMethod: "Tarjeta",
+          existingOrderId: cardSession.orderId,
+          paymentIntentId,
+        });
+        receiptMethod = "Tarjeta";
+      }
+
       setLastReceipt({
         order: result.order,
         totals: result.totals,
         documentNumber: result.documentNumber,
-        paymentMethod: "Tarjeta",
+        paymentMethod: receiptMethod,
         customer,
         fiscal,
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      if (result.cashSession) setCashSession(result.cashSession);
+      setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
       await markActiveQuoteConverted(String(result.order?.id || ""));
       setCardSession(null);
-      toast.success(`${result.documentNumber} cobrado con tarjeta y stock actualizado`);
+      toast.success(`${result.documentNumber} cobrado correctamente`);
       clearSale();
       if (autoPrint) setTimeout(() => window.print(), 200);
     } catch (error: any) {
-      toast.error(error?.message || "El pago se cobró pero no se pudo cerrar la venta");
+      toast.error(error?.message || "El pago se procesó pero no se pudo cerrar la venta");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function startMixedPayment() {
+    if (!cart.length) return toast.error("Añade productos a la venta");
+    if (!invoiceRequirementsOk()) return;
+    if (!validateMixedPayment()) return;
+
+    if (mixed.card <= 0) {
+      await completeNonCardSale();
+      return;
+    }
+
+    if (!stripePromise) return toast.error("No se pudo cargar Stripe");
+    setSubmitting(true);
+    try {
+      const result = await backendApi.createPosMixedCardIntent({
+        customer,
+        items: saleItemsPayload(),
+        documentType,
+        notes,
+        cardAmount: mixed.card,
+      });
+      setCardSession({ clientSecret: result.clientSecret, mode: "mixed" });
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar la parte de tarjeta del pago mixto");
     } finally {
       setSubmitting(false);
     }
@@ -969,7 +1055,9 @@ export function AdminPOS() {
       ? "Cobro real mediante Stripe. El stock baja solo después del pago confirmado."
       : payment === "Bizum"
       ? "Se registra pendiente de verificar Bizum antes de tratarlo como ingreso pagado."
-      : "Se registra pendiente de verificar la transferencia.";
+      : payment === "Transferencia"
+      ? "Se registra pendiente de verificar la transferencia."
+      : "Divide el total entre efectivo, tarjeta, Bizum, transferencia y tarjeta regalo. La suma debe coincidir exactamente con la venta.";
 
   return (
     <div className="space-y-6 print:bg-white">
@@ -1124,7 +1212,65 @@ export function AdminPOS() {
                   </div>
                 </div>
               ))}
-              {!cart.length && (
+              {payment === "Mixto" && (
+              <div className="mt-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-blue-950">Pago mixto</p>
+                  <p className={`text-sm font-black ${Math.abs(mixedAssignedTotal() - totals.total) <= 0.01 ? "text-emerald-700" : "text-amber-700"}`}>
+                    Asignado {money(mixedAssignedTotal())} / {money(totals.total)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["cash", "Efectivo"],
+                    ["card", "Tarjeta"],
+                    ["bizum", "Bizum"],
+                    ["transfer", "Transferencia"],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="rounded-xl bg-white p-2 text-xs font-bold text-zinc-600">
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={mixed[key] || ""}
+                        onChange={(e) => setMixed((current) => ({ ...current, [key]: Math.max(0, Number(e.target.value || 0)) }))}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-base font-black text-zinc-900"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_120px] gap-2">
+                  <input
+                    value={mixed.giftCardCode}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCardCode: e.target.value.toUpperCase() }))}
+                    placeholder="Código tarjeta regalo"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={mixed.giftCard || ""}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCard: Math.max(0, Number(e.target.value || 0)) }))}
+                    placeholder="Importe"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 font-black"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const assignedWithoutCash = mixed.card + mixed.bizum + mixed.transfer + mixed.giftCard;
+                    setMixed((current) => ({ ...current, cash: Math.max(0, Math.round((totals.total - assignedWithoutCash) * 100) / 100) }));
+                  }}
+                  className="w-full rounded-xl border border-blue-200 bg-white py-2 text-sm font-black text-blue-800"
+                >
+                  Completar resto en efectivo
+                </button>
+              </div>
+            )}
+
+            {!cart.length && (
                 <div className="p-8 text-center text-sm text-zinc-400">
                   Sin artículos. Puedes elegir un producto o crear un artículo libre con el teclado.
                 </div>
@@ -1186,7 +1332,7 @@ export function AdminPOS() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              {(["Efectivo", "Tarjeta", "Bizum", "Transferencia"] as PosPaymentMethod[]).map((method) => (
+              {(["Efectivo", "Tarjeta", "Bizum", "Transferencia", "Mixto"] as PosPaymentMethod[]).map((method) => (
                 <button key={method} onClick={() => setPayment(method)} className={`rounded-xl border px-3 py-2 font-bold ${payment === method ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-200"}`}>{method}</button>
               ))}
             </div>
@@ -1314,9 +1460,13 @@ export function AdminPOS() {
                 totals.total <= 0 ||
                 (payment === "Efectivo" && cashSession?.status !== "open") ||
                 (payment === "Efectivo" && received < totals.total) ||
-                (payment === "Tarjeta" && !cardReady)
+                (payment === "Tarjeta" && !cardReady) ||
+                (payment === "Mixto" && Math.abs(mixedAssignedTotal() - totals.total) > 0.01) ||
+                (payment === "Mixto" && mixed.cash > 0 && cashSession?.status !== "open") ||
+                (payment === "Mixto" && mixed.card > 0 && !cardReady) ||
+                (payment === "Mixto" && mixed.giftCard > 0 && !mixed.giftCardCode.trim())
               }
-              onClick={() => payment === "Tarjeta" ? void startCardPayment() : void completeNonCardSale()}
+              onClick={() => payment === "Tarjeta" ? void startCardPayment() : payment === "Mixto" ? void startMixedPayment() : void completeNonCardSale()}
               className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting
@@ -1329,6 +1479,12 @@ export function AdminPOS() {
                 ? `Faltan ${money(totals.total - received)}`
                 : payment === "Bizum" || payment === "Transferencia"
                 ? `Registrar ${payment} · ${money(totals.total)}`
+                : payment === "Mixto" && Math.abs(mixedAssignedTotal() - totals.total) > 0.01
+                ? `Faltan por asignar ${money(Math.max(0, totals.total - mixedAssignedTotal()))}`
+                : payment === "Mixto" && mixed.card > 0
+                ? `Cobrar mixto · tarjeta ${money(mixed.card)}`
+                : payment === "Mixto"
+                ? `Registrar pago mixto · ${money(totals.total)}`
                 : payment === "Tarjeta" && !cardReady
                 ? "Configura Stripe para cobrar"
                 : `Cobrar ${money(totals.total)}`}
