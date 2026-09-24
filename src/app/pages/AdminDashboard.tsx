@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -53,6 +53,19 @@ type AdminSection =
   | "content"
   | "settings";
 
+type AdminOrderAlert = {
+  eventId: string;
+  kind: string;
+  id: string;
+  customerName: string;
+  customerEmail?: string;
+  total: number;
+  status: string;
+  items: any[];
+  date: string;
+  read: boolean;
+};
+
 export function AdminDashboard() {
   const navigate = useNavigate();
 
@@ -66,6 +79,26 @@ export function AdminDashboard() {
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [productsMenuOpen, setProductsMenuOpen] = useState(true);
+  const [orderAlerts, setOrderAlerts] = useState<AdminOrderAlert[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
+  const seenOrderEventsRef = useRef(new Set<string>());
+
+  const unreadOrderAlerts = orderAlerts.filter((alert) => !alert.read).length;
+
+  const markOrderAlertsRead = () => {
+    setOrderAlerts((current) =>
+      current.map((alert) => (alert.read ? alert : { ...alert, read: true }))
+    );
+  };
+
+  const openOrders = () => {
+    markOrderAlertsRead();
+    setNotificationsOpen(false);
+    setCurrentSection("orders");
+    setSidebarOpen(false);
+  };
 
   useEffect(() => {
     if (!backendApi.enabled) {
@@ -84,6 +117,132 @@ export function AdminDashboard() {
       })
       .finally(() => setIsCheckingSession(false));
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !backendApi.enabled) {
+      setRealtimeConnected(false);
+      return;
+    }
+
+    let cancelled = false;
+    let eventSource: EventSource | null = null;
+    let fallbackTimer: number | undefined;
+    const knownOrderIds = new Set<string>();
+
+    const showOrderAlert = (payload: any) => {
+      if (!payload?.id) return;
+
+      const eventKey =
+        payload.eventId ||
+        `${payload.id}:${payload.kind || "order"}:${payload.status || ""}`;
+
+      if (seenOrderEventsRef.current.has(eventKey)) return;
+      seenOrderEventsRef.current.add(eventKey);
+      knownOrderIds.add(String(payload.id));
+
+      const alert: AdminOrderAlert = {
+        eventId: eventKey,
+        kind: String(payload.kind || "order_created"),
+        id: String(payload.id),
+        customerName: String(payload.customerName || "Cliente"),
+        customerEmail: payload.customerEmail ? String(payload.customerEmail) : "",
+        total: Number(payload.total || 0),
+        status: String(payload.status || "pending"),
+        items: Array.isArray(payload.items) ? payload.items : [],
+        date: String(payload.date || new Date().toISOString()),
+        read: false,
+      };
+
+      setOrderAlerts((current) => [alert, ...current].slice(0, 20));
+      setOrdersRefreshKey((value) => value + 1);
+      window.dispatchEvent(new Event("backend-storage"));
+
+      toast.success(
+        alert.kind === "order_paid" ? "💳 Nueva venta pagada" : "🛍️ Nuevo pedido recibido",
+        {
+          description: `${alert.customerName} · €${alert.total.toFixed(2)}`,
+          duration: 12000,
+          action: {
+            label: "Ver pedido",
+            onClick: () => {
+              setOrderAlerts((current) =>
+                current.map((item) => ({ ...item, read: true }))
+              );
+              setNotificationsOpen(false);
+              setCurrentSection("orders");
+            },
+          },
+        }
+      );
+    };
+
+    const syncOrdersFallback = async (seedOnly = false) => {
+      try {
+        const { orders } = await backendApi.listOrders();
+        const rows = Array.isArray(orders) ? orders : [];
+
+        if (seedOnly) {
+          rows.forEach((order: any) => knownOrderIds.add(String(order.id)));
+          return;
+        }
+
+        const newOrders = rows
+          .filter((order: any) => order?.id && !knownOrderIds.has(String(order.id)))
+          .reverse();
+
+        for (const order of newOrders) {
+          showOrderAlert({
+            ...order,
+            eventId: `fallback:${order.id}`,
+            kind: ["paid", "confirmed", "preparing", "ready", "delivered", "completed"].includes(order.status)
+              ? "order_paid"
+              : "order_created",
+          });
+        }
+      } catch {
+        // EventSource se reconecta solo. El polling es únicamente un respaldo.
+      }
+    };
+
+    void syncOrdersFallback(true);
+
+    try {
+      eventSource = new EventSource("/api/admin/order-events", {
+        withCredentials: true,
+      });
+
+      eventSource.addEventListener("ready", () => {
+        if (!cancelled) setRealtimeConnected(true);
+      });
+
+      eventSource.addEventListener("order", (event) => {
+        if (cancelled) return;
+        try {
+          const payload = JSON.parse((event as MessageEvent).data);
+          showOrderAlert(payload);
+        } catch (error) {
+          console.error("No se pudo leer la notificación de pedido", error);
+        }
+      });
+
+      eventSource.onerror = () => {
+        if (!cancelled) setRealtimeConnected(false);
+      };
+    } catch {
+      setRealtimeConnected(false);
+    }
+
+    fallbackTimer = window.setInterval(() => {
+      void syncOrdersFallback(false);
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      setRealtimeConnected(false);
+      eventSource?.close();
+      if (fallbackTimer) window.clearInterval(fallbackTimer);
+    };
+  }, [isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +296,12 @@ export function AdminDashboard() {
       badge: "NUEVO",
     },
     { id: "offers" as AdminSection, label: "Ofertas", icon: Tag },
-    { id: "orders" as AdminSection, label: "Pedidos", icon: ShoppingBag },
+    {
+      id: "orders" as AdminSection,
+      label: "Pedidos",
+      icon: ShoppingBag,
+      badge: unreadOrderAlerts > 0 ? String(unreadOrderAlerts) : undefined,
+    },
     {
       id: "finance" as AdminSection,
       label: "Finanzas",
@@ -368,6 +532,10 @@ export function AdminDashboard() {
               <motion.button
                 key={item.id}
                 onClick={() => {
+                  if (item.id === "orders") {
+                    markOrderAlertsRead();
+                    setNotificationsOpen(false);
+                  }
                   setCurrentSection(item.id);
                   setSidebarOpen(false);
                 }}
@@ -460,10 +628,90 @@ export function AdminDashboard() {
                   />
                 </div>
 
-                <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
-                  <Bell className="w-5 h-5 text-foreground" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setNotificationsOpen((open) => !open);
+                      markOrderAlertsRead();
+                    }}
+                    className="relative p-2 hover:bg-accent rounded-lg transition-colors"
+                    title={
+                      realtimeConnected
+                        ? "Notificaciones de ventas en tiempo real activas"
+                        : "Reconectando notificaciones de ventas"
+                    }
+                  >
+                    <Bell className="w-5 h-5 text-foreground" />
+                    {unreadOrderAlerts > 0 ? (
+                      <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold shadow">
+                        {unreadOrderAlerts > 99 ? "99+" : unreadOrderAlerts}
+                      </span>
+                    ) : (
+                      <span
+                        className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
+                          realtimeConnected ? "bg-emerald-500" : "bg-amber-500 animate-pulse"
+                        }`}
+                      />
+                    )}
+                  </button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl z-50">
+                      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                        <div>
+                          <p className="font-bold text-foreground">Ventas y pedidos</p>
+                          <p className="text-xs text-muted-foreground">
+                            {realtimeConnected ? "Conectado en tiempo real" : "Reconectando…"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={openOrders}
+                          className="text-xs font-bold text-primary hover:underline"
+                        >
+                          Ver todos
+                        </button>
+                      </div>
+
+                      <div className="max-h-96 overflow-y-auto">
+                        {orderAlerts.length === 0 ? (
+                          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                            No hay ventas nuevas en esta sesión.
+                          </div>
+                        ) : (
+                          orderAlerts.slice(0, 8).map((alert) => (
+                            <button
+                              key={alert.eventId}
+                              onClick={openOrders}
+                              className="w-full border-b border-border/60 px-4 py-3 text-left hover:bg-muted/50 last:border-b-0"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-foreground truncate">
+                                    {alert.kind === "order_paid" ? "Venta pagada" : "Nuevo pedido"} · {alert.customerName}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground truncate">
+                                    {alert.items.length
+                                      ? alert.items
+                                          .slice(0, 2)
+                                          .map((item: any) => `${item.name || "Producto"} x${item.quantity || 1}`)
+                                          .join(", ")
+                                      : alert.customerEmail || "Sin detalle de productos"}
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    {new Date(alert.date).toLocaleString("es-ES")}
+                                  </p>
+                                </div>
+                                <span className="font-black text-primary whitespace-nowrap">
+                                  €{alert.total.toFixed(2)}
+                                </span>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={() => navigate("/")}
@@ -501,7 +749,7 @@ export function AdminDashboard() {
 
           {currentSection === "offers" && <AdminOffers />}
 
-          {currentSection === "orders" && <AdminOrders />}
+          {currentSection === "orders" && <AdminOrders key={ordersRefreshKey} />}
 
           {currentSection === "finance" && <AdminFinance />}
 
