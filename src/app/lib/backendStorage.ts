@@ -603,6 +603,10 @@ export const backendApi = {
     return request<any>("/api/neural/scheduler");
   },
 
+  async neuralReflect() {
+    return request<any>("/api/neural/reflect", { method: "POST", body: "{}" });
+  },
+
   async neuralConsolidatePatterns() {
     return request<any>("/api/neural/learning/consolidate", { method: "POST", body: "{}" });
   },
