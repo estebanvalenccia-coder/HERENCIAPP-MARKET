@@ -604,6 +604,20 @@ export const backendApi = {
     });
   },
 
+  async createPosQuote(payload: any) {
+    return request<{ quote: any; operations: any }>("/api/pos/quotes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updatePosQuote(id: string, payload: any) {
+    return request<{ quote: any; operations: any }>(`/api/pos/quotes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async listPosSales(limit = 50) {
     return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
   },
