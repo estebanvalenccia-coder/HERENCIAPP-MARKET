@@ -615,7 +615,7 @@ export function AdminPOS() {
           </button>
           <button onClick={() => setShowFiscalModal(true)} className="flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 font-bold"><Settings className="h-4 w-4" /> Datos fiscales</button>
           <span className={`rounded-xl px-3 py-2 text-xs font-bold ${printerReady ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-            {printerReady ? "Impresión del sistema lista" : "Impresión no disponible"}
+            {printerReady ? "Impresión del navegador disponible" : "Impresión no disponible"}
           </span>
           <button
             onClick={printReceipt}
@@ -653,7 +653,7 @@ export function AdminPOS() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="font-black text-amber-950">
-              Caja física · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
+              Caja de efectivo · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
             </p>
             <p className="text-sm text-amber-800">
               Fondo {money(Number(cashSession?.openingAmount || 0))} · Ventas efectivo {money(Number(cashSession?.cashSales || 0))} · Esperado {money(Number(cashSession?.expectedCash || 0))}
