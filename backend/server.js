@@ -2249,6 +2249,130 @@ app.patch("/api/pos/quotes/:id", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const bootstrap = await loadPosBootstrap();
+    const productId = String(req.body?.productId || "").trim();
+    const type = ["count", "waste", "breakage", "manual"].includes(String(req.body?.type || ""))
+      ? String(req.body.type)
+      : "manual";
+    const reason = String(req.body?.reason || "").trim();
+    const product = bootstrap.products.find((item) => String(item?.id) === productId);
+    if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+
+    const before = Math.max(0, Math.floor(Number(product.stock || 0)));
+    let after = before;
+    if (req.body?.countedStock != null) {
+      const counted = Math.floor(Number(req.body.countedStock));
+      if (!Number.isFinite(counted) || counted < 0) return res.status(400).json({ error: "Stock contado inválido" });
+      after = counted;
+    } else {
+      const delta = Math.trunc(Number(req.body?.delta || 0));
+      if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: "Ajuste de stock inválido" });
+      after = Math.max(0, before + delta);
+    }
+
+    const updatedProducts = bootstrap.products.map((item) =>
+      String(item?.id) === productId ? { ...item, stock: after } : item
+    );
+    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const adjustment = {
+      id: crypto.randomUUID(),
+      productId,
+      productName: String(product.name || "Producto"),
+      sku: String(product.sku || ""),
+      type,
+      reason,
+      before,
+      after,
+      delta: after - before,
+      createdAt: new Date().toISOString(),
+    };
+    operations.inventoryAdjustments = [adjustment, ...(Array.isArray(operations.inventoryAdjustments) ? operations.inventoryAdjustments : [])].slice(0, 500);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+
+    res.json({ adjustment, inventory: updatedProducts, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/pos/reports/summary", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const now = new Date();
+    const fromRaw = String(req.query?.from || "").trim();
+    const toRaw = String(req.query?.to || "").trim();
+    const from = fromRaw ? new Date(fromRaw) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const to = toRaw ? new Date(toRaw) : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return res.status(400).json({ error: "Rango de fechas inválido" });
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("delivery_method", "mostrador")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+
+    const orders = (data || []).filter((order) => {
+      const at = new Date(order.created_at || 0).getTime();
+      return at >= from.getTime() && at < to.getTime();
+    });
+
+    const completed = orders.filter((order) => order.status !== "refunded" && order.status !== "payment_error" && order.status !== "payment_pending");
+    const refunded = orders.filter((order) => order.status === "refunded");
+    const revenue = normalizeMoney(completed.reduce((sum, order) => sum + Number(order.total || 0), 0));
+    const refundedTotal = normalizeMoney(refunded.reduce((sum, order) => sum + Number(order.total || 0), 0));
+    const tax = normalizeMoney(completed.reduce((sum, order) => sum + Number(order.metadata?.tax || 0), 0));
+    const byPayment = {};
+    const products = new Map();
+
+    for (const order of completed) {
+      const method = normalizePaymentMethod(order.payment_method);
+      byPayment[method] = normalizeMoney(Number(byPayment[method] || 0) + Number(order.total || 0));
+      for (const item of Array.isArray(order.items) ? order.items : []) {
+        const key = String(item?.id || item?.name || "sin-id");
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        const lineTotal = normalizeMoney(Number(item?.price || 0) * qty * (1 - Math.max(0, Math.min(100, Number(item?.discountPercent || 0))) / 100));
+        const current = products.get(key) || { id: key, name: String(item?.name || "Artículo"), units: 0, revenue: 0 };
+        current.units += qty;
+        current.revenue = normalizeMoney(current.revenue + lineTotal);
+        products.set(key, current);
+      }
+    }
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const report = {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      transactions: completed.length,
+      refunds: refunded.length,
+      revenue,
+      refundedTotal,
+      netRevenue: normalizeMoney(revenue - refundedTotal),
+      tax,
+      averageTicket: completed.length ? normalizeMoney(revenue / completed.length) : 0,
+      byPayment,
+      topProducts: Array.from(products.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+      pendingFloristOrders: (operations.floristOrders || []).filter((item) => !["entregado", "cancelado"].includes(String(item?.status || ""))).length,
+      inventoryAdjustments: (operations.inventoryAdjustments || []).filter((item) => {
+        const at = new Date(item?.createdAt || 0).getTime();
+        return at >= from.getTime() && at < to.getTime();
+      }).length,
+    };
+
+    res.json({ report });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/pos/sales", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
