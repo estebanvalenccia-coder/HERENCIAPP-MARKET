@@ -530,6 +530,17 @@ export const backendApi = {
     });
   },
 
+  async listPosSales(limit = 50) {
+    return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
+  },
+
+  async refundPosSale(payload: { orderId: string; reason?: string }) {
+    return request<{ ok: boolean; order: any; inventory: any[]; refundNumber: string }>("/api/pos/refund", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async completePosSale(payload: any) {
     return request<{
       ok: boolean;
