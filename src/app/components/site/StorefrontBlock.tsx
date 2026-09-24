@@ -40,6 +40,7 @@ function sectionStyle(block: BuilderBlock): React.CSSProperties {
   return {
     backgroundColor: design.backgroundColor || undefined,
     color: design.textColor || undefined,
+    fontFamily: design.fontFamily && design.fontFamily !== "inherit" ? design.fontFamily : undefined,
     paddingTop: `${Math.max(0, Number(design.paddingY || 0))}px`,
     paddingBottom: `${Math.max(0, Number(design.paddingY || 0))}px`,
   };
@@ -73,7 +74,13 @@ function Heading({
   return (
     <h2
       className={`font-serif font-black leading-tight ${className}`}
-      style={{ fontSize: `${2 * scale}rem` }}
+      style={{
+        fontSize: `${2 * scale}rem`,
+        fontFamily:
+          block.design.fontFamily && block.design.fontFamily !== "inherit"
+            ? block.design.fontFamily
+            : undefined,
+      }}
     >
       {children}
     </h2>
