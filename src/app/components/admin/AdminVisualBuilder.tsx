@@ -1408,6 +1408,8 @@ function DesignEditor({
       {["hero", "cta"].includes(block.type) && (
         <>
           <RangeField label="Oscurecer imagen" value={design.overlay} min={0} max={85} suffix="%" onChange={(overlay) => update({ overlay })} />
+          <RangeField label="Zoom de imagen" value={design.imageZoom || 100} min={100} max={180} suffix="%" onChange={(imageZoom) => update({ imageZoom })} />
+          <RangeField label="Altura de sección" value={design.minHeight || (block.type === "hero" ? 650 : 0)} min={block.type === "hero" ? 360 : 0} max={900} step={10} suffix="px" onChange={(minHeight) => update({ minHeight })} />
           <label className="block text-xs font-bold text-slate-700">
             <span className="mb-1.5 block">Posición de la imagen</span>
             <select value={design.imagePosition} onChange={(event) => update({ imagePosition: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5">
