@@ -3359,6 +3359,31 @@ app.post("/api/neural-bridge/web/drafts", requireNeuralBridge, async (req, res) 
   }
 });
 
+app.post("/api/neural-bridge/web/drafts/:id/operations", requireNeuralBridge, async (req, res) => {
+  const actionId = requireNeuralActionId(req, res);
+  if (!actionId) return;
+  try {
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    if (!operations.length) return res.status(400).json({ error: "No hay operaciones para aplicar" });
+    const drafts = await readNeuralWebDrafts();
+    const draft = drafts.find((item) => item.id === req.params.id);
+    if (!draft) return res.status(404).json({ error: "Borrador no encontrado" });
+    if (draft.status === "PUBLISHED") return res.status(409).json({ error: "Un borrador publicado no se edita; crea una nueva versión" });
+    const base = draft.preview && typeof draft.preview === "object"
+      ? draft.preview
+      : parseStoredJson(await readStorageValue("siteContent"), {});
+    draft.preview = applyNeuralWebOperations(base, operations);
+    draft.operations = [...(Array.isArray(draft.operations) ? draft.operations : []), ...operations].slice(-500);
+    draft.updatedAt = new Date().toISOString();
+    draft.lastActionId = actionId;
+    await upsertStorageValue("neuralWebDrafts", JSON.stringify(drafts.slice(0, 100)));
+    void emitNeuralBusinessEvent("web.draft_updated", { actionId, draftId: draft.id, operationCount: operations.length });
+    res.json({ ok: true, actionId, draft });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo actualizar el borrador" });
+  }
+});
+
 app.get("/api/neural-bridge/web/versions", requireNeuralBridge, async (_req, res) => {
   const history = await readSiteHistory();
   res.json({ versions: history.map(({ content, ...meta }) => meta) });
