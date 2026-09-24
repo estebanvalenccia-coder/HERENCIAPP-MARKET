@@ -1170,6 +1170,57 @@ function FooterEditor({
       <TextField label="Texto ubicación" value={site.footer.mapsLabel} onChange={(mapsLabel) => updateFooter({ mapsLabel })} />
       <TextField label="URL Google Maps" value={site.footer.mapsUrl} onChange={(mapsUrl) => updateFooter({ mapsUrl })} />
       <TextField label="Copyright" value={site.footer.copyright} onChange={(copyright) => updateFooter({ copyright })} />
+      <TextField label="Crédito / desarrollador" value={site.footer.developerLabel} onChange={(developerLabel) => updateFooter({ developerLabel })} />
+      <LinkFields
+        label="Privacidad"
+        value={{ label: site.footer.privacyLabel, href: site.footer.privacyHref }}
+        onChange={(value) => updateFooter({ privacyLabel: value.label, privacyHref: value.href })}
+      />
+      <LinkFields
+        label="Cookies"
+        value={{ label: site.footer.cookiesLabel, href: site.footer.cookiesHref }}
+        onChange={(value) => updateFooter({ cookiesLabel: value.label, cookiesHref: value.href })}
+      />
+      <LinkFields
+        label="Términos"
+        value={{ label: site.footer.termsLabel, href: site.footer.termsHref }}
+        onChange={(value) => updateFooter({ termsLabel: value.label, termsHref: value.href })}
+      />
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <label className="flex items-center justify-between text-sm font-bold">
+          Botón flotante de WhatsApp
+          <input
+            type="checkbox"
+            checked={site.floatingWhatsapp.enabled}
+            onChange={(event) =>
+              updateSite((current) => ({
+                ...current,
+                floatingWhatsapp: { ...current.floatingWhatsapp, enabled: event.target.checked },
+              }))
+            }
+          />
+        </label>
+        <TextField
+          label="Número del botón flotante"
+          value={site.floatingWhatsapp.phone}
+          onChange={(phone) =>
+            updateSite((current) => ({
+              ...current,
+              floatingWhatsapp: { ...current.floatingWhatsapp, phone },
+            }))
+          }
+        />
+        <TextField
+          label="Descripción accesible"
+          value={site.floatingWhatsapp.ariaLabel}
+          onChange={(ariaLabel) =>
+            updateSite((current) => ({
+              ...current,
+              floatingWhatsapp: { ...current.floatingWhatsapp, ariaLabel },
+            }))
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -1192,7 +1243,15 @@ function ContactEditor({
     <div className="space-y-4">
       <TextField label="Título" value={site.contactPage.title} onChange={(title) => patch({ title })} />
       <TextField label="Subtítulo" value={site.contactPage.subtitle} onChange={(subtitle) => patch({ subtitle })} multiline />
+      <TextField label="Título WhatsApp" value={site.contactPage.whatsappTitle} onChange={(whatsappTitle) => patch({ whatsappTitle })} />
+      <TextField label="Texto bajo WhatsApp" value={site.contactPage.whatsappSubtitle} onChange={(whatsappSubtitle) => patch({ whatsappSubtitle })} />
+      <TextField label="Título teléfono" value={site.contactPage.callTitle} onChange={(callTitle) => patch({ callTitle })} />
+      <TextField label="Texto bajo teléfono" value={site.contactPage.callSubtitle} onChange={(callSubtitle) => patch({ callSubtitle })} />
+      <TextField label="Título ubicación" value={site.contactPage.locationTitle} onChange={(locationTitle) => patch({ locationTitle })} />
+      <TextField label="Texto bajo ubicación" value={site.contactPage.locationSubtitle} onChange={(locationSubtitle) => patch({ locationSubtitle })} />
+      <TextField label="Título dirección" value={site.contactPage.addressTitle} onChange={(addressTitle) => patch({ addressTitle })} />
       <TextField label="Dirección" value={site.contactPage.addressText} onChange={(addressText) => patch({ addressText })} multiline />
+      <TextField label="Texto botón de mapa" value={site.contactPage.mapButtonLabel} onChange={(mapButtonLabel) => patch({ mapButtonLabel })} />
       <TextField label="URL del mapa" value={site.footer.mapsUrl} onChange={(mapsUrl) => updateSite((current) => ({ ...current, footer: { ...current.footer, mapsUrl } }))} />
       <TextField label="URL mapa embebido" value={site.contactPage.mapEmbedUrl} onChange={(mapEmbedUrl) => patch({ mapEmbedUrl })} />
       <TextField label="Título Horario" value={site.contactPage.hoursTitle} onChange={(hoursTitle) => patch({ hoursTitle })} />
