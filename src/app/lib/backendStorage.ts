@@ -75,6 +75,8 @@ const remotelySyncedKeys = new Set([
   "__backendStorage_test__",
   "cart",
   "user",
+  "neuralAutonomy",
+  "neuralPermissions",
 ]);
 
 const fallbackBouquetImages = [
