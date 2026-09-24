@@ -555,6 +555,55 @@ export const backendApi = {
     });
   },
 
+  async updateFloristOrder(id: string, payload: any) {
+    return request<{ order: any; operations: any }>(`/api/pos/florist-orders/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async redeemGiftCard(payload: { code: string; amount: number }) {
+    return request<{ card: any; operations: any }>("/api/pos/gift-cards/redeem", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async savePosSupplier(payload: any) {
+    return request<{ supplier: any; operations: any }>("/api/pos/suppliers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosPurchase(payload: any) {
+    return request<{ purchase: any; inventory: any[]; operations: any }>("/api/pos/purchases", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async savePosStaff(payload: { name: string; role: "admin" | "manager" | "seller"; pin: string }) {
+    return request<{ staff: any; operations: any }>("/api/pos/staff", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async unlockPosStaff(pin: string) {
+    return request<{ staff: any }>("/api/pos/staff/unlock", {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    });
+  },
+
+  async adjustPosLoyalty(payload: { customerId: string; delta: number }) {
+    return request<{ loyalty: any; operations: any }>("/api/pos/loyalty/adjust", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async listPosSales(limit = 50) {
     return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
   },
