@@ -2724,6 +2724,68 @@ async function readSiteHistory() {
   return parseStoredJson(await readStorageValue("siteContentHistory"), []);
 }
 
+
+const neuralCustomerEventRate = new Map();
+
+function redactCustomerChatText(value) {
+  return String(value || "")
+    .slice(0, 2000)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/(?:\+?34)?[\s.-]?(?:\d[\s.-]?){9,}/g, "[phone]")
+    .replace(/\b\d{8}[A-Z]\b/gi, "[id]");
+}
+
+function allowCustomerNeuralEvent(req) {
+  const key = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const now = Date.now();
+  const windowMs = 60_000;
+  const max = 30;
+  const entry = neuralCustomerEventRate.get(key) || { startedAt: now, count: 0 };
+  if (now - entry.startedAt > windowMs) {
+    entry.startedAt = now;
+    entry.count = 0;
+  }
+  entry.count += 1;
+  neuralCustomerEventRate.set(key, entry);
+  return entry.count <= max;
+}
+
+app.post("/api/neural/customer-chat-event", async (req, res) => {
+  if (!allowCustomerNeuralEvent(req)) {
+    return res.status(429).json({ error: "Demasiados eventos de chat" });
+  }
+  const allowedTypes = new Set([
+    "conversation.message",
+    "conversation.unanswered",
+    "conversation.intent",
+    "web.demand_signal",
+  ]);
+  const type = String(req.body?.type || "");
+  if (!allowedTypes.has(type)) {
+    return res.status(400).json({ error: "Tipo de evento de chat no permitido" });
+  }
+  const text = redactCustomerChatText(req.body?.text);
+  if (!text && type !== "conversation.intent") {
+    return res.status(400).json({ error: "Evento sin contenido" });
+  }
+  const payload = {
+    conversationId: String(req.body?.conversationId || "").slice(0, 120) || crypto.randomUUID(),
+    text,
+    intent: String(req.body?.intent || "").slice(0, 120),
+    topic: String(req.body?.topic || "").slice(0, 120),
+    suggestion: redactCustomerChatText(req.body?.suggestion || ""),
+    page: String(req.body?.page || "").slice(0, 300),
+    trust: "customer_unverified",
+    receivedAt: new Date().toISOString(),
+  };
+  const emitted = await emitNeuralBusinessEvent(type, payload);
+  res.status(emitted?.ok ? 202 : 503).json({
+    accepted: Boolean(emitted?.ok),
+    provisional: true,
+    reason: emitted?.reason || emitted?.error || null,
+  });
+});
+
 app.get("/api/neural-bridge/orders", requireNeuralBridge, async (_req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000);
