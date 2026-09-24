@@ -37,6 +37,20 @@ export type SiteContent = {
   }>;
   categoriesHeading: string;
   categoriesDescription: string;
+  customSections: Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    columns: number;
+    items: Array<{
+      id: string;
+      title: string;
+      description: string;
+      imageUrl: string;
+      href: string;
+      buttonLabel: string;
+    }>;
+  }>;
   cta: {
     title: string;
     subtitle: string;
@@ -151,6 +165,7 @@ export const defaultSiteContent: SiteContent = {
       href: "/productos?categoria=plantas-exterior",
     },
   ],
+  customSections: [],
   cta: {
     title: "¿Listo para transformar tu espacio?",
     subtitle: "Descubre nuestra colección completa de flores, plantas y accesorios para el jardín",
@@ -279,6 +294,26 @@ export function parseSiteContent(raw: string | null): SiteContent {
           ? parsed.categories[index]
           : {}),
       })),
+      customSections: Array.isArray(parsed.customSections)
+        ? parsed.customSections
+            .filter((section: any) => section && typeof section === "object")
+            .map((section: any, sectionIndex: number) => ({
+              id: String(section.id || `section-${sectionIndex + 1}`),
+              title: String(section.title || ""),
+              subtitle: String(section.subtitle || ""),
+              columns: Math.max(1, Math.min(4, Number(section.columns || 3))),
+              items: Array.isArray(section.items)
+                ? section.items.map((item: any, itemIndex: number) => ({
+                    id: String(item?.id || `item-${itemIndex + 1}`),
+                    title: String(item?.title || ""),
+                    description: String(item?.description || ""),
+                    imageUrl: String(item?.imageUrl || ""),
+                    href: String(item?.href || "/"),
+                    buttonLabel: String(item?.buttonLabel || "Ver más"),
+                  }))
+                : [],
+            }))
+        : defaultSiteContent.customSections,
       cta: {
         ...defaultSiteContent.cta,
         ...(parsed.cta || {}),
