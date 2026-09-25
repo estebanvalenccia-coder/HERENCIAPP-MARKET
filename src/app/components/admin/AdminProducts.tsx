@@ -30,6 +30,7 @@ interface Product {
   occasion?: string;
   allowDedication?: boolean;
   variants?: Array<{ name: string; price?: number; stock?: number }>;
+  deletedAt?: string;
 }
 
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -93,6 +94,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -164,11 +166,23 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   };
 
   const deleteProduct = (id: number) => {
-    if (confirm("¿Estás seguro de eliminar este producto?")) {
-      const updated = products.filter(p => p.id !== id);
+    if (confirm("¿Mover este producto a la papelera? Podrás restaurarlo después.")) {
+      const updated = products.map(p => p.id === id ? { ...p, active: false, deletedAt: new Date().toISOString() } : p);
       saveProducts(updated);
-      toast.success("Producto eliminado");
+      toast.success("Producto movido a la papelera");
     }
+  };
+
+  const restoreProduct = (id: number) => {
+    const updated = products.map(p => p.id === id ? { ...p, active: true, deletedAt: undefined } : p);
+    saveProducts(updated);
+    toast.success("Producto restaurado");
+  };
+
+  const permanentlyDeleteProduct = (id: number) => {
+    if (!confirm("Esta acción es definitiva. ¿Eliminar permanentemente?")) return;
+    saveProducts(products.filter(p => p.id !== id));
+    toast.success("Producto eliminado permanentemente");
   };
 
   const startEdit = (product: Product) => {
@@ -264,19 +278,17 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Gestión de Productos</h2>
-          <p className="text-muted-foreground">{products.length} productos totales</p>
+          <p className="text-muted-foreground">{products.filter(p=>!p.deletedAt).length} activos · {products.filter(p=>p.deletedAt).length} en papelera</p>
         </div>
-        <button
-          onClick={onAddNew}
-          className="px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"
-        >
-          + Añadir Producto
-        </button>
+        <div className="flex gap-2">
+          <button onClick={()=>setShowTrash(!showTrash)} className="px-4 py-3 bg-muted text-foreground rounded-xl hover:bg-accent">{showTrash ? "Ver productos" : "Papelera"}</button>
+          <button onClick={onAddNew} className="px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">+ Añadir Producto</button>
+        </div>
       </div>
 
       {/* Products Grid */}
       <div className="grid grid-cols-1 gap-4">
-        {products.map((product, index) => (
+        {products.filter((product)=>showTrash ? Boolean(product.deletedAt) : !product.deletedAt).map((product, index) => (
           <motion.div
             key={product.id}
             initial={{ opacity: 0, y: 20 }}
@@ -388,13 +400,10 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                     <span className="text-sm">Editar</span>
                   </button>
 
-                  <button
-                    onClick={() => deleteProduct(product.id)}
-                    className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span className="text-sm">Eliminar</span>
-                  </button>
+                  {product.deletedAt ? <>
+                    <button onClick={() => restoreProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20"><Eye className="w-4 h-4"/><span className="text-sm">Restaurar</span></button>
+                    <button onClick={() => permanentlyDeleteProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20"><Trash2 className="w-4 h-4"/><span className="text-sm">Eliminar definitivamente</span></button>
+                  </> : <button onClick={() => deleteProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20"><Trash2 className="w-4 h-4"/><span className="text-sm">Papelera</span></button>}
                 </div>
               </div>
             </div>

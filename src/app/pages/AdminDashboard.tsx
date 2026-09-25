@@ -28,6 +28,7 @@ import {
   Boxes,
   Trash2,
   Workflow,
+  DatabaseBackup,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -55,6 +56,7 @@ import { AdminSuppliersPanel } from "../components/admin/AdminSuppliersPanel";
 import { AdminStockControl } from "../components/admin/AdminStockControl";
 import { AdminWasteControl } from "../components/admin/AdminWasteControl";
 import { AdminAutomationCenter } from "../components/admin/AdminAutomationCenter";
+import { AdminBackupCenter } from "../components/admin/AdminBackupCenter";
 
 type AdminSection =
   | "dashboard"
@@ -78,6 +80,7 @@ type AdminSection =
   | "stock"
   | "waste"
   | "automations"
+  | "backups"
   | "settings";
 
 type AdminOrderAlert = {
@@ -347,6 +350,7 @@ export function AdminDashboard() {
     { id: "stock" as AdminSection, label: "Stock", icon: Boxes },
     { id: "waste" as AdminSection, label: "Mermas", icon: Trash2 },
     { id: "automations" as AdminSection, label: "Automatizaciones", icon: Workflow, badge: "AUTO" },
+    { id: "backups" as AdminSection, label: "Copias de seguridad", icon: DatabaseBackup },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -812,6 +816,8 @@ export function AdminDashboard() {
           {currentSection === "waste" && <AdminWasteControl />}
 
           {currentSection === "automations" && <AdminAutomationCenter />}
+
+          {currentSection === "backups" && <AdminBackupCenter />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

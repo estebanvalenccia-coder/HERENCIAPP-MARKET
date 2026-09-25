@@ -1836,6 +1836,79 @@ app.patch("/api/admin/automations/notifications/:id", requireAdmin, async (req, 
   }
 });
 
+
+const BACKUP_STORAGE_KEYS = [
+  "adminProducts",
+  "posCustomers",
+  "posFiscalSettings",
+  "posOperations",
+  "shippingSettings",
+  "siteContent",
+  "siteContentDraft",
+  "siteContentHistory",
+  "customTheme",
+  "menuIcons",
+  "heroBanner",
+  "ctaBanner",
+  "businessSuiteSettings",
+  "automationRules",
+];
+
+app.get("/api/admin/backup", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const storage = {};
+    for (const key of BACKUP_STORAGE_KEYS) {
+      storage[key] = await readStorageValue(key);
+    }
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+    res.json({
+      version: 1,
+      createdAt: new Date().toISOString(),
+      storage,
+      orders: orders || [],
+      restoreScope: "configuration_catalog_operations_only",
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo crear la copia" });
+  }
+});
+
+app.post("/api/admin/backup/restore", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const backup = req.body?.backup;
+    if (!backup || typeof backup !== "object" || !backup.storage || typeof backup.storage !== "object") {
+      return res.status(400).json({ error: "Archivo de copia no válido" });
+    }
+
+    const snapshot = {};
+    for (const key of BACKUP_STORAGE_KEYS) snapshot[key] = await readStorageValue(key);
+    await upsertStorageValue(
+      `backup:auto:${Date.now()}`,
+      JSON.stringify({ createdAt: new Date().toISOString(), storage: snapshot })
+    );
+
+    const restored = [];
+    for (const key of BACKUP_STORAGE_KEYS) {
+      if (!(key in backup.storage)) continue;
+      const value = backup.storage[key];
+      if (value == null) continue;
+      await upsertStorageValue(key, typeof value === "string" ? value : JSON.stringify(value));
+      restored.push(key);
+    }
+
+    res.json({ ok: true, restored, note: "Los pedidos históricos no se sobrescriben durante una restauración." });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo restaurar la copia" });
+  }
+});
+
 app.get("/api/orders", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
 

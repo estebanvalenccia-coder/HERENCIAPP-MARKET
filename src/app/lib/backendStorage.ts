@@ -786,6 +786,17 @@ export const backendApi = {
     });
   },
 
+  async createAdminBackup() {
+    return request<any>("/api/admin/backup");
+  },
+
+  async restoreAdminBackup(backup: any) {
+    return request<{ ok: boolean; restored: string[]; note?: string }>("/api/admin/backup/restore", {
+      method: "POST",
+      body: JSON.stringify({ backup }),
+    });
+  },
+
   async createOrder(payload: any) {
     return request<{ order: any }>("/api/orders", {
       method: "POST",
