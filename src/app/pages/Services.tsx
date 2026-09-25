@@ -3,14 +3,14 @@ import { Calendar, Clock, MapPin, Users, Scissors, BookOpen, Check, MessageCircl
 import { motion } from "motion/react";
 import { useLocation } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
-import { defaultSiteContent, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
+import { defaultSiteContent, normalizePhoneForHref, normalizeWhatsAppPhone, readPreviewSiteContent, SiteContent } from "../lib/siteContent";
 
 export function Services() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
 
   useEffect(() => {
-    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    const load = () => setSite(readPreviewSiteContent(backendStorage.getItem("siteContent")));
     load();
     window.addEventListener("storage", load);
     window.addEventListener("backend-storage", load);

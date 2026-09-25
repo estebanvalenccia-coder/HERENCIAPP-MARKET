@@ -1,6 +1,7 @@
 export type SiteLink = {
   label: string;
   href: string;
+  showIcon?: boolean;
 };
 
 export type BuilderBlockType =
@@ -10,7 +11,11 @@ export type BuilderBlockType =
   | "cta"
   | "textImage"
   | "gallery"
-  | "testimonials";
+  | "testimonials"
+  | "services"
+  | "products"
+  | "buttons"
+  | "elements";
 
 export type BuilderAlignment = "left" | "center" | "right";
 
@@ -21,6 +26,8 @@ export type BuilderBlockDesign = {
   paddingY: number;
   maxWidth: number;
   columns: number;
+  columnsTablet?: number;
+  columnsMobile?: number;
   gap: number;
   radius: number;
   overlay: number;
@@ -383,6 +390,8 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
     paddingY: 64,
     maxWidth: 1280,
     columns: 4,
+    columnsTablet: 2,
+    columnsMobile: 1,
     gap: 24,
     radius: 16,
     overlay: 42,
@@ -436,6 +445,10 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
 
   if (type === "testimonials") {
     return { ...base, backgroundColor: "#f6f4ee", columns: 3, paddingY: 72 };
+  }
+
+  if (type === "products" || type === "services") {
+    return { ...base, columns: 4, paddingY: 72 };
   }
 
   return base;
@@ -542,6 +555,22 @@ export function createBuilderBlock(
       },
       design: defaultBlockDesign(type),
     };
+  }
+
+  if (type === "services") {
+    return { id, type, name: "Servicios", visible: true, data: { heading: "Servicios para tu espacio", description: site.servicesPage.subtitle, button: { label: "Ver todos los servicios", href: "/servicios" } }, design: defaultBlockDesign(type) };
+  }
+
+  if (type === "products") {
+    return { id, type, name: "Productos destacados", visible: true, data: { heading: "Productos destacados", description: "Selección de nuestra tienda", button: { label: "Ver todos los productos", href: "/productos" } }, design: defaultBlockDesign(type) };
+  }
+
+  if (type === "buttons") {
+    return { id, type, name: "Botones", visible: true, data: { heading: "", buttons: [] }, design: { ...defaultBlockDesign(type), paddingY: 32 } };
+  }
+
+  if (type === "elements") {
+    return { id, type, name: "Contenido personalizado", visible: true, data: { elements: [] }, design: { ...defaultBlockDesign(type), paddingY: 48 } };
   }
 
   return {
@@ -815,4 +844,15 @@ export function normalizeWhatsAppPhone(value: string) {
 
 export function isExternalHref(href: string) {
   return /^(https?:|mailto:|tel:|sms:|whatsapp:)/i.test(String(href || "").trim());
+}
+
+/** The draft preview is private to the browser tab opened by the administrator. */
+export function readPreviewSiteContent(published: string | null): SiteContent {
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "builder") {
+    try {
+      const draft = window.sessionStorage.getItem("herenciaBuilderPreview");
+      if (draft) return parseSiteContent(draft);
+    } catch { /* Private browsing may block session storage. */ }
+  }
+  return parseSiteContent(published);
 }

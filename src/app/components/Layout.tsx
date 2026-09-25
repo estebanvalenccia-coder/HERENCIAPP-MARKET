@@ -5,7 +5,7 @@ import {
   Scissors, Store, Building, Brain, Zap, Star
 } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
-import { defaultSiteContent, isExternalHref, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
+import { defaultSiteContent, isExternalHref, normalizePhoneForHref, normalizeWhatsAppPhone, readPreviewSiteContent, SiteContent } from "../lib/siteContent";
 import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import { ChatboxWidget } from "./ChatboxWidget";
@@ -20,6 +20,7 @@ const iconMap: Record<string, any> = {
 
 export function Layout() {
   const location = useLocation();
+  const isDraftPreview = new URLSearchParams(location.search).get("preview") === "builder";
   const [cartCount, setCartCount] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
   const [herenciaEnabled, setHerenciaEnabled] = useState(false);
@@ -48,18 +49,22 @@ export function Layout() {
   // Cargar configuración de Herenc(IA) e iconos
   useEffect(() => {
     const loadSettings = () => {
-      const herenciaSettings = backendStorage.getItem("herenciaSettings");
+      let previewAux: any = null;
+      if (new URLSearchParams(window.location.search).get("preview") === "builder") {
+        try { previewAux = JSON.parse(window.sessionStorage.getItem("herenciaBuilderPreviewAux") || "null"); } catch { /* Keep published settings. */ }
+      }
+      const herenciaSettings = previewAux?.herenciaSettings ? JSON.stringify(previewAux.herenciaSettings) : backendStorage.getItem("herenciaSettings");
       if (herenciaSettings) {
         const parsed = JSON.parse(herenciaSettings);
         setHerenciaEnabled(parsed.enabled || false);
       }
 
-      const savedIcons = backendStorage.getItem("menuIcons");
+      const savedIcons = previewAux?.menuIcons ? JSON.stringify(previewAux.menuIcons) : backendStorage.getItem("menuIcons");
       if (savedIcons) {
         setMenuIcons(JSON.parse(savedIcons));
       }
 
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      setSite(readPreviewSiteContent(backendStorage.getItem("siteContent")));
     };
 
     loadSettings();
@@ -84,6 +89,7 @@ export function Layout() {
   return (
     <>
       <Toaster position="top-right" richColors />
+      {isDraftPreview && <div className="sticky top-0 z-[100] bg-[#213d2c] px-4 py-2 text-center text-xs font-semibold text-white">Vista previa del borrador · Los clientes siguen viendo la versión publicada</div>}
       <div className="min-h-screen bg-background">
       {/* Header */}
       <header

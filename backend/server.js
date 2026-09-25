@@ -164,6 +164,7 @@ const protectedKeys = new Set([
   "siteContent",
   "siteContentDraft",
   "siteContentHistory",
+  "visualBuilderAuxDraft",
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
@@ -184,6 +185,7 @@ const adminOnlyStorageKeys = [
   "adminSuppliers",
   "siteContentDraft",
   "siteContentHistory",
+  "visualBuilderAuxDraft",
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
@@ -1182,6 +1184,50 @@ app.get("/api/storage/:key", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+const publishSiteKeys = ["siteContent", "siteContentDraft", "siteContentHistory", "visualBuilderAuxDraft", "menuIcons", "herenciaSettings", "heroBanner", "ctaBanner"];
+
+app.post("/api/admin/site-publish", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const values = req.body?.values;
+    if (!values || typeof values !== "object" || Object.keys(values).length !== publishSiteKeys.length) {
+      return res.status(400).json({ error: "Publicación incompleta" });
+    }
+    for (const key of publishSiteKeys) {
+      if (typeof values[key] !== "string" || values[key].length > (key === "siteContent" || key === "siteContentDraft" ? 8_000_000 : 5_000_000)) {
+        return res.status(400).json({ error: `Valor no válido: ${key}` });
+      }
+      JSON.parse(values[key]);
+    }
+    const site = JSON.parse(values.siteContent);
+    if (!Array.isArray(site?.builder?.blocks) || !site?.brand || !site?.navigation) {
+      return res.status(400).json({ error: "El contenido del sitio no es válido" });
+    }
+    const invalidButton = site.builder.blocks.some((block) => block?.type === "buttons" && Array.isArray(block.data?.buttons) && block.data.buttons.some((button) => {
+      const destination = String(button.href || "").trim();
+      if (button.visible === false) return false;
+      if (!String(button.label || "").trim()) return true;
+      if (!["page", "url", "product", "category", "service", "whatsapp", "email", "phone", "cart", "checkout"].includes(button.action)) return true;
+      if (["cart", "checkout"].includes(button.action)) return false;
+      if (button.action === "url") return !/^https?:\/\/[^\s]+$/i.test(destination);
+      if (button.action === "page") return !destination.startsWith("/") || destination.startsWith("//");
+      if (button.action === "email") return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination);
+      return !destination;
+    }));
+    if (invalidButton) return res.status(400).json({ error: "Hay botones visibles sin un destino válido" });
+
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("app_storage").upsert(
+      publishSiteKeys.map((key) => ({ key, value: values[key], updated_at: now })),
+      { onConflict: "key" }
+    );
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo publicar el sitio" });
   }
 });
 

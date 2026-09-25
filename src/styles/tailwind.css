@@ -3,20 +3,45 @@
 
 @import 'tw-animate-css';
 
+.builder-custom-button:hover {
+  background-color: var(--button-hover-bg) !important;
+}
+
+[contenteditable="true"]:hover {
+  outline: 2px dashed #7da98b;
+  outline-offset: 5px;
+  cursor: text;
+}
+
+[contenteditable="true"]:focus {
+  outline: 2px solid #2f6848;
+  outline-offset: 5px;
+  cursor: text;
+}
+
 
 /* Responsive page-builder grids also react inside the admin device preview. */
 .builder-page-container {
   container-type: inline-size;
 }
 
+@container (min-width: 1025px) {
+  .builder-hide-desktop { display: none !important; }
+}
+
 @container (max-width: 700px) {
+  .builder-hide-mobile { display: none !important; }
   .builder-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(var(--builder-mobile-columns, 1), minmax(0, 1fr)) !important;
+  }
+  .builder-preview-nav {
+    display: none !important;
   }
 }
 
 @container (min-width: 701px) and (max-width: 1024px) {
+  .builder-hide-tablet { display: none !important; }
   .builder-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(var(--builder-tablet-columns, 2), minmax(0, 1fr)) !important;
   }
 }

@@ -5,7 +5,7 @@ import { products, categories } from "../data/products";
 import { toast } from "sonner";
 import { useLocation, Link } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
-import { defaultSiteContent, parseSiteContent, SiteContent } from "../lib/siteContent";
+import { defaultSiteContent, readPreviewSiteContent, SiteContent } from "../lib/siteContent";
 
 export function Products() {
   const location = useLocation();
@@ -32,7 +32,7 @@ export function Products() {
           setDisplayProducts(products);
         }
       }
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      setSite(readPreviewSiteContent(backendStorage.getItem("siteContent")));
     };
     load();
     window.addEventListener("storage", load);

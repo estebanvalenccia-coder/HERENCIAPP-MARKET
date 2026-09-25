@@ -20,6 +20,7 @@ import {
   Layers3,
   CreditCard,
   Brain,
+  PanelsTopLeft,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -30,6 +31,7 @@ import { AdminAddProduct } from "../components/admin/AdminAddProduct";
 import { AdminBulkProductImport } from "../components/admin/AdminBulkProductImport";
 import { AdminOffers } from "../components/admin/AdminOffers";
 import { AdminContent } from "../components/admin/AdminContent";
+import { AdminVisualBuilder } from "../components/admin/AdminVisualBuilder";
 import { AdminSettings } from "../components/admin/AdminSettings";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
@@ -55,6 +57,7 @@ type AdminSection =
   | "calculator"
   | "flower-costs"
   | "content"
+  | "visual-editor"
   | "neural"
   | "settings";
 
@@ -317,6 +320,7 @@ export function AdminDashboard() {
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
+    { id: "visual-editor" as AdminSection, label: "Editor visual", icon: PanelsTopLeft },
     { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
@@ -766,6 +770,7 @@ export function AdminDashboard() {
           {currentSection === "flower-costs" && <AdminFlowerCosts />}
 
           {currentSection === "content" && <AdminContent />}
+          {currentSection === "visual-editor" && <AdminVisualBuilder onClose={() => setCurrentSection("content")} onOpenTheme={() => setCurrentSection("settings")} />}
 
           {currentSection === "delivery" && <AdminDeliveryPanel />}
 
