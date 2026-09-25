@@ -136,6 +136,9 @@ export function AdminPOS() {
   const [mixed, setMixed] = useState({ cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
   const [cashSession, setCashSession] = useState<any | null>(null);
+  const [registerId, setRegisterId] = useState(() => {
+    try { return localStorage.getItem("herencia_pos_register_id") || "caja-01"; } catch { return "caja-01"; }
+  });
   const [autoPrint, setAutoPrint] = useState(false);
   const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
   const [calcOperator, setCalcOperator] = useState<"+" | "-" | "×" | "÷" | null>(null);
@@ -228,8 +231,20 @@ export function AdminPOS() {
           backendApi.getPosReportSummary(),
         ]);
         setRecentSales(Array.isArray(history.sales) ? history.sales : []);
-        setOperations(ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+        const loadedOperations = ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+        setOperations(loadedOperations);
         setReport(reportResult.report || null);
+
+        const availableRegisters = Array.isArray(loadedOperations.registers) && loadedOperations.registers.length
+          ? loadedOperations.registers
+          : [{ id: "caja-01", name: "Caja 01", active: true }];
+        const selectedRegister = availableRegisters.some((item: any) => item.id === registerId)
+          ? registerId
+          : String(availableRegisters[0].id || "caja-01");
+        setRegisterId(selectedRegister);
+        try { localStorage.setItem("herencia_pos_register_id", selectedRegister); } catch {}
+        const cashResult = await backendApi.getPosCashSession(selectedRegister);
+        setCashSession(cashResult.session || null);
       } catch {
         setRecentSales([]);
       }
@@ -607,6 +622,7 @@ export function AdminPOS() {
       received,
       notes,
       staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      registerId,
       ...(payment === "Mixto" ? { payments: mixedPaymentsPayload() } : {}),
     };
   }
@@ -666,7 +682,34 @@ export function AdminPOS() {
     }
   }
 
-  async function refreshReport() {
+  async function changeRegister(nextRegisterId: string) {
+    if (!nextRegisterId || nextRegisterId === registerId) return;
+    try {
+      const result = await backendApi.getPosCashSession(nextRegisterId);
+      setRegisterId(nextRegisterId);
+      setCashSession(result.session || null);
+      try { localStorage.setItem("herencia_pos_register_id", nextRegisterId); } catch {}
+      toast.success(`Caja activa: ${(operations.registers || []).find((item: any) => item.id === nextRegisterId)?.name || nextRegisterId}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cambiar de caja");
+    }
+  }
+
+  async function createRegister() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede crear cajas");
+    const name = window.prompt("Nombre de la nueva caja", `Caja ${(operations.registers?.length || 1) + 1}`);
+    if (!name) return;
+    try {
+      const result = await backendApi.createPosRegister({ name });
+      setOperations(result.operations);
+      await changeRegister(result.register.id);
+      toast.success(`${result.register.name} creada`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear la caja");
+    }
+  }
+
+    async function refreshReport() {
     try {
       const result = await backendApi.getPosReportSummary();
       setReport(result.report || null);
@@ -1069,7 +1112,7 @@ export function AdminPOS() {
     }
 
     try {
-      const result = await backendApi.openPosCashSession(openingAmount);
+      const result = await backendApi.openPosCashSession(openingAmount, registerId);
       setCashSession(result.session);
       toast.success(`Caja abierta con ${money(openingAmount)}`);
     } catch (error: any) {
@@ -1089,7 +1132,7 @@ export function AdminPOS() {
     const note = window.prompt("Concepto / nota", type === "in" ? "Entrada manual" : "Salida manual") || "";
 
     try {
-      const result = await backendApi.addPosCashMovement({ type, amount, note });
+      const result = await backendApi.addPosCashMovement({ type, amount, note, registerId });
       setCashSession(result.session);
       toast.success(type === "in" ? "Entrada registrada" : "Salida registrada");
     } catch (error: any) {
@@ -1110,7 +1153,7 @@ export function AdminPOS() {
     }
 
     try {
-      const result = await backendApi.closePosCashSession(countedCash);
+      const result = await backendApi.closePosCashSession(countedCash, registerId);
       setCashSession(result.session);
       const diff = Number(result.session?.difference || 0);
       toast.success(`Caja cerrada. Diferencia: ${money(diff)}`);
@@ -1269,14 +1312,26 @@ export function AdminPOS() {
       <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4 print:hidden">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="font-black text-amber-950">
-              Caja de efectivo · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-black text-amber-950">
+                Caja de efectivo · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
+              </p>
+              <select
+                value={registerId}
+                onChange={(e) => void changeRegister(e.target.value)}
+                className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-sm font-bold text-zinc-800"
+              >
+                {(operations.registers || [{ id: "caja-01", name: "Caja 01" }]).map((register: any) => (
+                  <option key={register.id} value={register.id}>{register.name}</option>
+                ))}
+              </select>
+            </div>
             <p className="text-sm text-amber-800">
               Fondo {money(Number(cashSession?.openingAmount || 0))} · Ventas efectivo {money(Number(cashSession?.cashSales || 0))} · Esperado {money(Number(cashSession?.expectedCash || 0))}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button onClick={() => void createRegister()} className="rounded-xl bg-white px-4 py-2 font-bold text-amber-800">+ Caja</button>
             {cashSession?.status !== "open" ? (
               <button onClick={() => void openCashDrawer()} className="rounded-xl bg-emerald-600 px-4 py-2 font-black text-white">Abrir caja</button>
             ) : (
