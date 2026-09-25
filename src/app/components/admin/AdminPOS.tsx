@@ -997,7 +997,45 @@ export function AdminPOS() {
     }
   }
 
-  function reprintSale(sale: any) {
+  async function exportSalesCsv() {
+    try {
+      const result = await backendApi.listPosSales(100, saleSearch);
+      const rows = Array.isArray(result.sales) ? result.sales : [];
+      const escapeCsv = (value: any) => {
+        const text = String(value ?? "");
+        return `"${text.replaceAll('"', '""')}"`;
+      };
+      const header = ["Documento", "Fecha", "Cliente", "Email", "Pago", "Estado", "Base", "IVA", "Total", "Caja", "Empleado"];
+      const body = rows.map((sale: any) => [
+        sale.metadata?.invoiceNumber || sale.id,
+        sale.date || "",
+        sale.customerName || "",
+        sale.customerEmail || "",
+        sale.paymentMethod || sale.payment_method || "",
+        sale.status || "",
+        Number(sale.subtotal || 0).toFixed(2),
+        Number(sale.metadata?.tax || 0).toFixed(2),
+        Number(sale.total || 0).toFixed(2),
+        sale.metadata?.registerId || "caja-01",
+        sale.metadata?.staff?.name || "",
+      ].map(escapeCsv).join(";"));
+      const csv = "\uFEFF" + [header.map(escapeCsv).join(";"), ...body].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `herencia-ventas-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`${rows.length} ventas exportadas`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo exportar el historial");
+    }
+  }
+
+    function reprintSale(sale: any) {
     const metadata = sale?.metadata || {};
     const customerFromSale: Customer = {
       id: String(metadata.customerId || sale?.customerEmail || sale?.customerName || "history"),
@@ -1448,6 +1486,24 @@ export function AdminPOS() {
           <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-xs font-bold uppercase text-amber-700">IVA</p><p className="text-2xl font-black text-amber-950">{money(report.tax)}</p></div>
           <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4"><p className="text-xs font-bold uppercase text-rose-700">Devoluciones</p><p className="text-2xl font-black text-rose-950">{report.refunds || 0}</p></div>
           <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4"><p className="text-xs font-bold uppercase text-violet-700">Encargos pendientes</p><p className="text-2xl font-black text-violet-950">{report.pendingFloristOrders || 0}</p></div>
+          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-zinc-100 bg-white p-4">
+            <p className="text-xs font-bold uppercase text-zinc-500">Ventas por método</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(report.byPayment || {}).map(([method, amount]) => (
+                <span key={method} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold">{method}: {money(Number(amount || 0))}</span>
+              ))}
+              {!Object.keys(report.byPayment || {}).length && <span className="text-sm text-zinc-400">Sin ventas todavía</span>}
+            </div>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-zinc-100 bg-white p-4">
+            <p className="text-xs font-bold uppercase text-zinc-500">Más vendidos hoy</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(report.topProducts || []).slice(0, 5).map((item: any) => (
+                <span key={item.id} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{item.name} · {item.units} uds. · {money(item.revenue)}</span>
+              ))}
+              {!(report.topProducts || []).length && <span className="text-sm text-zinc-400">Sin datos todavía</span>}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1944,6 +2000,13 @@ export function AdminPOS() {
                       Limpiar
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void exportSalesCsv()}
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800"
+                  >
+                    CSV
+                  </button>
                 </div>
                 <div className="max-h-80 space-y-2 overflow-y-auto">
                 {recentSales.length === 0 && <p className="py-6 text-center text-sm text-zinc-400">Sin ventas encontradas</p>}
