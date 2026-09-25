@@ -126,7 +126,7 @@ export function Layout() {
   return (
     <>
       <Toaster position="top-right" richColors />
-      <div className="min-h-screen bg-[#fbfaf6] text-[#173126]">
+      <div className="herencia-marketfront min-h-screen bg-[#fbfaf6] text-[#173126]">
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-full focus:bg-[#315b42] focus:px-4 focus:py-2 focus:text-white"
