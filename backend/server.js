@@ -1909,27 +1909,6 @@ async function evaluateDelayedOrders() {
   if (!rules.delayedOrder?.enabled || !supabase) return;
   const minutes = Math.max(15, Number(rules.delayedOrder?.minutes ?? 90));
   const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-  if (
-    status === "cancelled" &&
-    previousOrder.status !== "cancelled" &&
-    isOnlineOrder &&
-    nextMetadata.inventoryCommittedAt &&
-    !nextMetadata.inventoryRestockedAt
-  ) {
-    try {
-      await restockOnlineOrderInventory(previousOrder);
-      nextMetadata = {
-        ...nextMetadata,
-        inventoryRestockedAt: new Date().toISOString(),
-        inventoryRestockReason: "online_order_cancelled",
-      };
-    } catch (stockError) {
-      return res.status(500).json({
-        error: `No se pudo devolver el stock online al cancelar: ${stockError.message}`,
-      });
-    }
-  }
-
   const { data, error } = await supabase
     .from("orders")
     .select("id,customer_name,status,created_at")
@@ -2257,6 +2236,27 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     } catch (stockError) {
       return res.status(500).json({
         error: `No se pudo devolver el stock al cancelar: ${stockError.message}`,
+      });
+    }
+  }
+
+  if (
+    status === "cancelled" &&
+    previousOrder.status !== "cancelled" &&
+    isOnlineOrder &&
+    nextMetadata.inventoryCommittedAt &&
+    !nextMetadata.inventoryRestockedAt
+  ) {
+    try {
+      await restockOnlineOrderInventory(previousOrder);
+      nextMetadata = {
+        ...nextMetadata,
+        inventoryRestockedAt: new Date().toISOString(),
+        inventoryRestockReason: "online_order_cancelled",
+      };
+    } catch (stockError) {
+      return res.status(500).json({
+        error: `No se pudo devolver el stock online al cancelar: ${stockError.message}`,
       });
     }
   }
