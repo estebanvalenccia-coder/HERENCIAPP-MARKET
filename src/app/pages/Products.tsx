@@ -71,7 +71,7 @@ export function Products() {
 
   const filteredProducts = useMemo(() => {
     const rows = displayProducts.filter((product) => {
-      const stock = Math.max(0, Number(product.stock || 0));
+      const stock = Math.max(0, Number(product.stock ?? 999));
       const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
       const searchText = [product.name, product.description, product.category, product.tags, product.occasion, product.light, product.environment, product.size].filter(Boolean).join(" ");
       const matchesCategory = selectedCategory === "todos" || String(product.category || "") === selectedCategory;
@@ -112,7 +112,7 @@ export function Products() {
     const product = displayProducts.find((item) => String(item.id) === String(productId));
     if (!product) return toast.error("Producto no encontrado");
     if (!product.price || Number(product.price) <= 0) return toast.error("Este producto no tiene un precio válido");
-    const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+    const stock = Math.max(0, Math.floor(Number(product.stock ?? 999)));
     if (stock <= 0) return toast.error(site.productsPage.outOfStockText);
     const existingItem = cart.find((item: any) => String(item.id) === String(productId));
     const nextQuantity = Number(existingItem?.quantity || 0) + 1;
@@ -166,7 +166,7 @@ export function Products() {
         {filteredProducts.length === 0 ? <div className="text-center py-20"><Filter className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="text-muted-foreground text-lg">{site.productsPage.emptyText}</p><button onClick={resetFilters} className="mt-4 text-primary font-semibold">Quitar filtros</button></div> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product, index) => {
-              const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+              const stock = Math.max(0, Math.floor(Number(product.stock ?? 999)));
               const favorite = favorites.includes(String(product.id));
               return <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, .3) }} className="group bg-card border border-border rounded-3xl overflow-hidden hover:shadow-lg transition-all">
                 <Link to={`/producto/${product.id}`} className="relative h-64 overflow-hidden bg-muted block">
