@@ -18,6 +18,9 @@ export function ProductDetail() {
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewForm, setReviewForm] = useState({ name: "", email: "", rating: 5, comment: "" });
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [questionForm, setQuestionForm] = useState({ name: "", email: "", question: "" });
+  const [allProducts, setAllProducts] = useState<any[]>([]);
   const { scrollY } = useScroll();
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
@@ -27,6 +30,7 @@ export function ProductDetail() {
     if (adminProducts) {
       try {
         const rows = JSON.parse(adminProducts);
+        setAllProducts(Array.isArray(rows) ? rows : []);
         const found = rows.find((p: any) => String(p.id) === String(id));
         if (found) {
           setProduct(found);
@@ -37,6 +41,7 @@ export function ProductDetail() {
     }
     try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
     if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
+    if (id) backendApi.listProductQuestions(String(id)).then((r) => setQuestions(r.questions || [])).catch(() => setQuestions([]));
   }, [id]);
 
   useEffect(() => {
@@ -135,6 +140,22 @@ export function ProductDetail() {
     }
   };
 
+  const submitQuestion = async () => {
+    try {
+      await backendApi.submitProductQuestion({
+        productId: String(product.id),
+        productName: product.name,
+        name: questionForm.name,
+        email: questionForm.email,
+        question: questionForm.question,
+      });
+      setQuestionForm({ name: "", email: "", question: "" });
+      toast.success("Pregunta enviada. La publicaremos cuando tenga respuesta.");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo enviar la pregunta");
+    }
+  };
+
   const addToCart = () => {
     if (!product || stock <= 0) return toast.error("Producto agotado");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
@@ -193,6 +214,13 @@ export function ProductDetail() {
         </div>}
       </motion.div>
 
+      <section className="mt-14">
+        <div className="mb-5"><h2 className="text-3xl font-bold">Completa tu compra</h2><p className="mt-1 text-muted-foreground">Productos relacionados que pueden combinar bien con esta elección.</p></div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {allProducts.filter((p:any)=>p.active!==false&&!p.deletedAt&&String(p.id)!==String(product.id)&&(p.category===product.category||p.featured)).slice(0,4).map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
+        </div>
+      </section>
+
       <section className="mt-14 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-2xl font-bold">Reseñas de clientes</h2>
@@ -210,6 +238,17 @@ export function ProductDetail() {
             <textarea value={reviewForm.comment} onChange={(e)=>setReviewForm({...reviewForm,comment:e.target.value})} placeholder="Cuéntanos tu experiencia…" className="min-h-28 w-full rounded-xl border border-border bg-background p-3" />
             <button onClick={() => void submitReview()} className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Enviar reseña</button>
           </div>
+        </div>
+      </section>
+
+      <section className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-2xl font-bold">Preguntas sobre este producto</h2>
+          <div className="mt-5 space-y-3">{questions.length===0?<p className="text-sm text-muted-foreground">Todavía no hay preguntas respondidas.</p>:questions.map((q:any)=><div key={q.id} className="rounded-xl border border-border p-4"><p className="font-semibold">P: {q.question}</p><p className="mt-2 text-sm text-muted-foreground"><strong className="text-foreground">Herencia:</strong> {q.answer}</p></div>)}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-2xl font-bold">Pregunta a Herencia</h2>
+          <div className="mt-4 space-y-3"><input value={questionForm.name} onChange={(e)=>setQuestionForm({...questionForm,name:e.target.value})} placeholder="Nombre" className="w-full rounded-xl border border-border p-3"/><input type="email" value={questionForm.email} onChange={(e)=>setQuestionForm({...questionForm,email:e.target.value})} placeholder="Email" className="w-full rounded-xl border border-border p-3"/><textarea value={questionForm.question} onChange={(e)=>setQuestionForm({...questionForm,question:e.target.value})} placeholder="¿Qué quieres saber?" className="min-h-28 w-full rounded-xl border border-border p-3"/><button onClick={()=>void submitQuestion()} className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Enviar pregunta</button></div>
         </div>
       </section>
     </div>

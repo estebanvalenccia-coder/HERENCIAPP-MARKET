@@ -55,6 +55,8 @@ export function AdminBusinessSuite() {
   const [filter, setFilter] = useState("");
   const [waitlist, setWaitlist] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [answers, setAnswers] = useState<Record<string,string>>({});
 
   useEffect(() => {
     try {
@@ -63,8 +65,8 @@ export function AdminBusinessSuite() {
     } catch {
       setSettings(defaults);
     }
-    Promise.all([backendApi.adminExperienceWaitlist(), backendApi.adminExperienceReviews()])
-      .then(([w, r]) => { setWaitlist(w.entries || []); setReviews(r.reviews || []); })
+    Promise.all([backendApi.adminExperienceWaitlist(), backendApi.adminExperienceReviews(), backendApi.adminExperienceQuestions()])
+      .then(([w, r, q]) => { setWaitlist(w.entries || []); setReviews(r.reviews || []); setQuestions(q.questions || []); })
       .catch(() => {});
   }, []);
 
@@ -147,6 +149,14 @@ export function AdminBusinessSuite() {
           <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
             {reviews.slice(0,30).map((review) => <div key={review.id} className="rounded-xl border border-border p-3"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{review.productName || review.productId} · {review.rating}/5</p><p className="text-xs text-muted-foreground">{review.name}{review.verifiedPurchase ? " · Compra verificada" : ""}</p></div><select value={review.status} onChange={async(e)=>{const status=e.target.value as "pending"|"approved"|"rejected"; await backendApi.adminModerateReview(review.id,status); setReviews((rows)=>rows.map((x)=>x.id===review.id?{...x,status}:x));}} className="rounded-lg border border-border bg-background px-2 py-1 text-xs"><option value="pending">Pendiente</option><option value="approved">Aprobar</option><option value="rejected">Rechazar</option></select></div><p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{review.comment}</p></div>)}
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h3 className="text-xl font-bold">Preguntas de clientes</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{questions.filter((q)=>q.status==="pending").length} pendientes de respuesta.</p>
+        <div className="mt-4 max-h-96 space-y-3 overflow-y-auto">
+          {questions.filter((q)=>q.status==="pending").length===0?<p className="text-sm text-muted-foreground">No hay preguntas pendientes.</p>:questions.filter((q)=>q.status==="pending").map((q)=><div key={q.id} className="rounded-xl border border-border p-4"><p className="font-semibold">{q.productName||q.productId}</p><p className="mt-1 text-sm">{q.question}</p><p className="mt-1 text-xs text-muted-foreground">{q.name} · {q.email}</p><div className="mt-3 flex gap-2"><textarea value={answers[q.id]||""} onChange={(e)=>setAnswers({...answers,[q.id]:e.target.value})} placeholder="Respuesta de Herencia…" className="min-h-20 flex-1 rounded-xl border border-border bg-background p-3"/><button onClick={async()=>{const answer=(answers[q.id]||"").trim();if(!answer)return toast.error("Escribe una respuesta");const r=await backendApi.adminAnswerProductQuestion(q.id,answer);setQuestions(rows=>rows.map(x=>x.id===q.id?r.question:x));setAnswers({...answers,[q.id]:""});toast.success("Respuesta publicada");}} className="self-end rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">Publicar</button></div></div>)}
         </div>
       </section>
 

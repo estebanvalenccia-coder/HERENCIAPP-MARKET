@@ -1765,6 +1765,7 @@ app.get("/api/settings/public", async (_req, res) => {
 
 const EXPERIENCE_WAITLIST_KEY = "experienceWaitlist";
 const EXPERIENCE_REVIEWS_KEY = "experienceReviews";
+const EXPERIENCE_QUESTIONS_KEY = "experienceQuestions";
 
 function cleanText(value, max = 500) {
   return String(value || "").trim().slice(0, max);
@@ -1930,6 +1931,82 @@ app.post("/api/experience/reviews", async (req, res) => {
     res.json({ ok: true, review });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo guardar la reseña" });
+  }
+});
+
+
+app.get("/api/experience/questions/:productId", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const productId = cleanText(req.params.productId, 120);
+    const rows = await readExperienceList(EXPERIENCE_QUESTIONS_KEY);
+    const questions = rows
+      .filter((row) => row.productId === productId && row.status === "answered" && row.answer)
+      .sort((a, b) => String(b.answeredAt || b.createdAt).localeCompare(String(a.answeredAt || a.createdAt)));
+    res.json({ questions });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar las preguntas" });
+  }
+});
+
+app.post("/api/experience/questions", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const productId = cleanText(req.body?.productId, 120);
+    const productName = cleanText(req.body?.productName, 180);
+    const name = cleanText(req.body?.name, 120);
+    const email = cleanText(req.body?.email, 220).toLowerCase();
+    const question = cleanText(req.body?.question, 1000);
+    if (!productId || !name || !isValidEmail(email) || !question) {
+      return res.status(400).json({ error: "Completa nombre, email y pregunta" });
+    }
+    const rows = await readExperienceList(EXPERIENCE_QUESTIONS_KEY);
+    const item = {
+      id: crypto.randomUUID(),
+      productId,
+      productName,
+      name,
+      email,
+      question,
+      answer: "",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    rows.unshift(item);
+    await writeExperienceList(EXPERIENCE_QUESTIONS_KEY, rows.slice(0, 5000));
+    res.json({ ok: true, question: item });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo enviar la pregunta" });
+  }
+});
+
+app.get("/api/admin/experience/questions", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    res.json({ questions: await readExperienceList(EXPERIENCE_QUESTIONS_KEY) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar las preguntas" });
+  }
+});
+
+app.patch("/api/admin/experience/questions/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const rows = await readExperienceList(EXPERIENCE_QUESTIONS_KEY);
+    const index = rows.findIndex((row) => row.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Pregunta no encontrada" });
+    const answer = cleanText(req.body?.answer, 2000);
+    const status = answer ? "answered" : "pending";
+    rows[index] = {
+      ...rows[index],
+      answer,
+      status,
+      answeredAt: answer ? new Date().toISOString() : null,
+    };
+    await writeExperienceList(EXPERIENCE_QUESTIONS_KEY, rows);
+    res.json({ question: rows[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo responder la pregunta" });
   }
 });
 

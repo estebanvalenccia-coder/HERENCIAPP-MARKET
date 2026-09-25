@@ -857,6 +857,28 @@ export const backendApi = {
     });
   },
 
+  async listProductQuestions(productId: string) {
+    return request<{ questions: any[] }>(`/api/experience/questions/${encodeURIComponent(productId)}`);
+  },
+
+  async submitProductQuestion(payload: { productId: string; productName?: string; name: string; email: string; question: string }) {
+    return request<{ ok: boolean; question: any }>("/api/experience/questions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async adminExperienceQuestions() {
+    return request<{ questions: any[] }>("/api/admin/experience/questions");
+  },
+
+  async adminAnswerProductQuestion(id: string, answer: string) {
+    return request<{ question: any }>(`/api/admin/experience/questions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ answer }),
+    });
+  },
+
   async adminExperienceWaitlist() {
     return request<{ entries: any[] }>("/api/admin/experience/waitlist");
   },
