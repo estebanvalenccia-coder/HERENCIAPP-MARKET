@@ -316,7 +316,9 @@ export function AdminDashboard() {
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
-    { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },\n    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },\n    { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
+    { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
+    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
+    { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -765,7 +767,11 @@ export function AdminDashboard() {
 
           {currentSection === "content" && <AdminContent />}
 
-          {currentSection === "delivery" && <AdminDeliveryPanel />}\n\n          {currentSection === "neural" && <AdminHerenciaNeural />}\n\n          {currentSection === "audit" && <AdminSystemAudit />}
+          {currentSection === "delivery" && <AdminDeliveryPanel />}
+
+          {currentSection === "neural" && <AdminHerenciaNeural />}
+
+          {currentSection === "audit" && <AdminSystemAudit />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>
