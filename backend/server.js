@@ -107,27 +107,18 @@ app.options(
   })
 );
 
-const adminUsername = String(
-  process.env.ADMIN_USERNAME ||
-  Object.entries(process.env).find(([key]) => key.trim() === "ADMIN_USERNAME")?.[1] ||
-  ""
-).trim();
-const adminPassword = String(process.env.ADMIN_PASSWORD || "");
-const configuredSessionSecret =
+const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
+const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
+const sessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "";
-const sessionSecret =
-  configuredSessionSecret || crypto.randomBytes(32).toString("hex");
-const adminAuthConfigured = Boolean(
-  adminUsername &&
-  adminPassword &&
-  configuredSessionSecret
-);
+  "change-me-in-production";
+const usingDefaultAdminCredentials =
+  !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
 
-if (!adminAuthConfigured) {
+if (usingDefaultAdminCredentials) {
   console.warn(
-    "Admin auth deshabilitado: configura ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET (o SUPABASE_SERVICE_ROLE_KEY)."
+    "Admin auth usando credenciales por defecto. Configura ADMIN_USERNAME y ADMIN_PASSWORD para endurecer producción."
   );
 }
 
