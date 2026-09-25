@@ -15,6 +15,9 @@ export function Profile() {
   const [reminderForm, setReminderForm] = useState({ title: "", date: "", leadDays: 7 });
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [profileForm, setProfileForm] = useState({ name: "", phone: "" });
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [newAddress, setNewAddress] = useState({ label: "Casa", address: "", city: "Barcelona", postalCode: "", province: "Barcelona" });
   const navigate = useNavigate();
 
   const load = async () => {
@@ -22,6 +25,8 @@ export function Profile() {
     try {
       const [account, wishlistResult] = await Promise.all([backendApi.customerAccount(), backendApi.customerWishlist()]);
       setUser(account.user);
+      setProfileForm({ name: account.user?.name || "", phone: account.user?.phone || "" });
+      setAddresses(Array.isArray(account.user?.addresses) ? account.user.addresses : []);
       setOrders(account.orders || []);
       setLoyalty(account.loyalty || null);
       setReminders(account.reminders || []);
@@ -86,6 +91,62 @@ export function Profile() {
     if (!code) return;
     await navigator.clipboard?.writeText(code);
     toast.success("Código de referido copiado");
+  };
+
+  const saveProfile = async () => {
+    try {
+      const result = await backendApi.customerUpdateProfile({
+        name: profileForm.name,
+        phone: profileForm.phone,
+        addresses,
+      });
+      setUser(result.user);
+      await backendStorage.setItem("user", JSON.stringify({ ...result.user, isLoggedIn: true }));
+      toast.success("Perfil actualizado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el perfil");
+    }
+  };
+
+  const addAddress = async () => {
+    if (!newAddress.address.trim() || !newAddress.postalCode.trim()) return toast.error("Completa dirección y código postal");
+    const next = [
+      ...addresses,
+      { ...newAddress, id: crypto.randomUUID(), isDefault: addresses.length === 0 },
+    ];
+    setAddresses(next);
+    setNewAddress({ label: "Casa", address: "", city: "Barcelona", postalCode: "", province: "Barcelona" });
+    try {
+      const result = await backendApi.customerUpdateProfile({ addresses: next });
+      setUser(result.user);
+      toast.success("Dirección guardada");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar la dirección");
+    }
+  };
+
+  const removeAddress = async (id: string) => {
+    let next = addresses.filter((item) => item.id !== id);
+    if (next.length && !next.some((item) => item.isDefault)) next = next.map((item, index) => ({ ...item, isDefault: index === 0 }));
+    setAddresses(next);
+    try {
+      await backendApi.customerUpdateProfile({ addresses: next });
+      toast.success("Dirección eliminada");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar");
+    }
+  };
+
+  const setDefaultAddress = async (id: string) => {
+    const next = addresses.map((item) => ({ ...item, isDefault: item.id === id }));
+    setAddresses(next);
+    try {
+      const result = await backendApi.customerUpdateProfile({ addresses: next });
+      setUser(result.user);
+      toast.success("Dirección predeterminada actualizada");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar");
+    }
   };
 
   const exportPrivacyData = async () => {
@@ -182,6 +243,30 @@ export function Profile() {
             </motion.div>)}
           </div>}
         </div>
+
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-xl font-bold">Perfil y direcciones</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input value={profileForm.name} onChange={(e)=>setProfileForm({...profileForm,name:e.target.value})} placeholder="Nombre" className="rounded-xl border border-border bg-background p-3"/>
+            <input value={profileForm.phone} onChange={(e)=>setProfileForm({...profileForm,phone:e.target.value})} placeholder="Teléfono" className="rounded-xl border border-border bg-background p-3"/>
+          </div>
+          <button onClick={()=>void saveProfile()} className="mt-3 rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Guardar perfil</button>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <h3 className="font-bold">Direcciones guardadas</h3>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              {addresses.map((a:any)=><div key={a.id} className="rounded-xl border border-border p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><p className="font-semibold">{a.label}</p>{a.isDefault&&<span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">Predeterminada</span>}</div><p className="mt-1 text-sm text-muted-foreground">{a.address}, {a.postalCode} {a.city}, {a.province}</p></div></div><div className="mt-3 flex gap-3">{!a.isDefault&&<button onClick={()=>void setDefaultAddress(a.id)} className="text-xs font-semibold text-primary">Usar por defecto</button>}<button onClick={()=>void removeAddress(a.id)} className="text-xs font-semibold text-destructive">Eliminar</button></div></div>)}
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-5">
+              <input value={newAddress.label} onChange={(e)=>setNewAddress({...newAddress,label:e.target.value})} placeholder="Nombre" className="rounded-xl border border-border p-2"/>
+              <input value={newAddress.address} onChange={(e)=>setNewAddress({...newAddress,address:e.target.value})} placeholder="Dirección" className="rounded-xl border border-border p-2 md:col-span-2"/>
+              <input value={newAddress.postalCode} onChange={(e)=>setNewAddress({...newAddress,postalCode:e.target.value})} placeholder="CP" className="rounded-xl border border-border p-2"/>
+              <button onClick={()=>void addAddress()} className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 font-semibold text-primary">Añadir</button>
+              <input value={newAddress.city} onChange={(e)=>setNewAddress({...newAddress,city:e.target.value})} placeholder="Ciudad" className="rounded-xl border border-border p-2 md:col-span-2"/>
+              <input value={newAddress.province} onChange={(e)=>setNewAddress({...newAddress,province:e.target.value})} placeholder="Provincia" className="rounded-xl border border-border p-2 md:col-span-2"/>
+            </div>
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-xl font-bold">Tus favoritos</h2>

@@ -785,6 +785,13 @@ export const backendApi = {
     });
   },
 
+  async customerUpdateProfile(payload: { name?: string; phone?: string; address?: string; addresses?: any[] }) {
+    return request<{ user: any }>("/api/customer/profile", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async customerWishlist() {
     return request<{ wishlist: string[] }>("/api/customer/wishlist");
   },

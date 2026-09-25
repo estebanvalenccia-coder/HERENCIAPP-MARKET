@@ -1306,6 +1306,54 @@ app.post("/api/customer/logout", (_req, res) => {
 });
 
 
+
+app.patch("/api/customer/profile", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const accounts = await loadCustomerAccounts();
+    const index = accounts.findIndex((item) => item.id === req.customerSession.customerId);
+    if (index < 0) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+    const current = accounts[index];
+    const name = cleanText(req.body?.name ?? current.name, 120);
+    const phone = cleanText(req.body?.phone ?? current.phone, 60);
+    const address = cleanText(req.body?.address ?? current.address, 300);
+    const addresses = Array.isArray(req.body?.addresses)
+      ? req.body.addresses.slice(0, 10).map((item) => ({
+          id: String(item?.id || crypto.randomUUID()),
+          label: cleanText(item?.label, 80) || "Dirección",
+          address: cleanText(item?.address, 220),
+          city: cleanText(item?.city, 100),
+          postalCode: cleanText(item?.postalCode, 20),
+          province: cleanText(item?.province, 100),
+          isDefault: Boolean(item?.isDefault),
+        })).filter((item) => item.address)
+      : (Array.isArray(current.addresses) ? current.addresses : []);
+
+    if (!name) return res.status(400).json({ error: "El nombre no puede estar vacío" });
+    if (addresses.filter((item) => item.isDefault).length > 1) {
+      let foundDefault = false;
+      for (const item of addresses) {
+        if (item.isDefault && !foundDefault) foundDefault = true;
+        else if (item.isDefault) item.isDefault = false;
+      }
+    }
+
+    accounts[index] = {
+      ...current,
+      name,
+      phone,
+      address,
+      addresses,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveCustomerAccounts(accounts);
+    res.json({ user: safeCustomer(accounts[index]) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar el perfil" });
+  }
+});
+
 app.get("/api/customer/wishlist", requireCustomer, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
