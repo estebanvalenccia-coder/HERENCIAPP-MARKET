@@ -839,11 +839,27 @@ app.post(
         if (error) {
           console.error("Error actualizando pedido pagado:", error.message);
         } else {
-          broadcastAdminOrderEvent(updatedOrder, "order_paid");
-          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
+          let inventoryOrder = updatedOrder;
+          try {
+            const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
+            inventoryOrder = inventoryResult.order || updatedOrder;
+          } catch (inventoryError) {
+            console.error("Webhook pagado con incidencia de inventario:", inventoryError?.message || inventoryError);
+            await addAutomationNotification({
+              type: "inventory_payment_conflict",
+              title: "Pago con incidencia de stock",
+              message: `Pedido #${String(updatedOrder.id).slice(0,8)} pagado, pero el inventario no pudo confirmarse: ${inventoryError?.message || inventoryError}`,
+              entityType: "order",
+              entityId: String(updatedOrder.id),
+              dedupeKey: `inventory-payment:${updatedOrder.id}`,
+            }).catch(() => null);
+          }
+
+          broadcastAdminOrderEvent(inventoryOrder, "order_paid");
+          void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
 
           try {
-            await sendOrderConfirmationEmails(updatedOrder, "stripe_payment_succeeded");
+            await sendOrderConfirmationEmails(inventoryOrder, "stripe_payment_succeeded");
           } catch (emailError) {
             console.error("Error enviando emails de confirmación:", emailError.message);
           }
@@ -1893,6 +1909,27 @@ async function evaluateDelayedOrders() {
   if (!rules.delayedOrder?.enabled || !supabase) return;
   const minutes = Math.max(15, Number(rules.delayedOrder?.minutes ?? 90));
   const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  if (
+    status === "cancelled" &&
+    previousOrder.status !== "cancelled" &&
+    isOnlineOrder &&
+    nextMetadata.inventoryCommittedAt &&
+    !nextMetadata.inventoryRestockedAt
+  ) {
+    try {
+      await restockOnlineOrderInventory(previousOrder);
+      nextMetadata = {
+        ...nextMetadata,
+        inventoryRestockedAt: new Date().toISOString(),
+        inventoryRestockReason: "online_order_cancelled",
+      };
+    } catch (stockError) {
+      return res.status(500).json({
+        error: `No se pudo devolver el stock online al cancelar: ${stockError.message}`,
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .select("id,customer_name,status,created_at")
@@ -2182,6 +2219,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   let nextMetadata = previousOrder.metadata || {};
   const isTpvOrder = String(nextMetadata.source || "").startsWith("TPV_ADMIN");
+  const isOnlineOrder = String(nextMetadata.source || "") === "frontend_checkout";
 
   if (
     status === "cancelled" &&
@@ -4777,6 +4815,175 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
   }
 });
 
+
+async function commitOnlineOrderInventory(order) {
+  if (!order || String(order?.metadata?.source || "") !== "frontend_checkout") {
+    return { skipped: true, reason: "not_frontend_checkout", order };
+  }
+
+  const { data: freshOrder, error: freshError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", order.id)
+    .maybeSingle();
+  if (freshError) throw freshError;
+  if (!freshOrder) throw new Error("Pedido no encontrado al confirmar inventario");
+  if (freshOrder?.metadata?.inventoryCommittedAt) {
+    return { skipped: true, reason: "already_committed", order: freshOrder };
+  }
+
+  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const byId = new Map((Array.isArray(products) ? products : []).map((product) => [String(product?.id ?? ""), product]));
+  const requirements = new Map();
+
+  for (const item of Array.isArray(freshOrder.items) ? freshOrder.items : []) {
+    const id = String(item?.id ?? "").trim();
+    const variantName = String(item?.selectedVariant || "").trim();
+    const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+    if (!id || qty <= 0) continue;
+    const key = `${id}::${variantName || "base"}`;
+    requirements.set(key, {
+      id,
+      variantName,
+      qty: Number(requirements.get(key)?.qty || 0) + qty,
+    });
+  }
+
+  for (const requirement of requirements.values()) {
+    const product = byId.get(requirement.id);
+    if (!product) throw new Error(`Producto no encontrado al confirmar stock: ${requirement.id}`);
+    if (requirement.variantName) {
+      const variant = (Array.isArray(product.variants) ? product.variants : []).find(
+        (entry) => String(entry?.name || entry) === requirement.variantName
+      );
+      if (!variant) throw new Error(`Variante no encontrada: ${product.name} · ${requirement.variantName}`);
+      const available = Math.max(0, Math.floor(Number(variant.stock ?? 0)));
+      if (available < requirement.qty) {
+        throw new Error(`Stock insuficiente tras el pago para ${product.name} (${requirement.variantName}). Disponible: ${available}`);
+      }
+    } else {
+      const available = Math.max(0, Math.floor(Number(product.stock ?? 0)));
+      if (available < requirement.qty) {
+        throw new Error(`Stock insuficiente tras el pago para ${product.name}. Disponible: ${available}`);
+      }
+    }
+  }
+
+  const updatedProducts = products.map((product) => {
+    const id = String(product?.id ?? "");
+    const baseRequirement = requirements.get(`${id}::base`);
+    let next = product;
+
+    if (baseRequirement) {
+      next = {
+        ...next,
+        stock: Math.max(0, Math.floor(Number(next.stock || 0)) - baseRequirement.qty),
+      };
+    }
+
+    if (Array.isArray(next.variants) && next.variants.length) {
+      next = {
+        ...next,
+        variants: next.variants.map((variant) => {
+          const name = String(variant?.name || variant);
+          const requirement = requirements.get(`${id}::${name}`);
+          if (!requirement || typeof variant !== "object") return variant;
+          return {
+            ...variant,
+            stock: Math.max(0, Math.floor(Number(variant.stock || 0)) - requirement.qty),
+          };
+        }),
+      };
+    }
+
+    return next;
+  });
+
+  const committedAt = new Date().toISOString();
+  const nextMetadata = {
+    ...(freshOrder.metadata || {}),
+    inventoryCommittedAt: committedAt,
+    inventoryCommitSource: "online_payment",
+  };
+
+  // Mark the order first to make repeated Stripe confirmations idempotent in normal retry flows.
+  const { data: markedOrder, error: markError } = await supabase
+    .from("orders")
+    .update({ metadata: nextMetadata, updated_at: committedAt })
+    .eq("id", freshOrder.id)
+    .select("*")
+    .single();
+  if (markError) throw markError;
+
+  try {
+    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+    void evaluateInventoryAutomations(updatedProducts).catch((error) =>
+      console.warn("Automations post-sale stock check:", error?.message || error)
+    );
+  } catch (error) {
+    await supabase
+      .from("orders")
+      .update({
+        metadata: {
+          ...(freshOrder.metadata || {}),
+          inventoryCommitError: error?.message || String(error),
+          inventoryCommitFailedAt: new Date().toISOString(),
+        },
+      })
+      .eq("id", freshOrder.id);
+    throw error;
+  }
+
+  return { committed: true, products: updatedProducts, order: markedOrder };
+}
+
+async function restockOnlineOrderInventory(order) {
+  if (
+    !order ||
+    String(order?.metadata?.source || "") !== "frontend_checkout" ||
+    !order?.metadata?.inventoryCommittedAt ||
+    order?.metadata?.inventoryRestockedAt
+  ) {
+    return { skipped: true };
+  }
+
+  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const quantities = new Map();
+
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    const id = String(item?.id ?? "").trim();
+    const variantName = String(item?.selectedVariant || "").trim();
+    const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+    if (!id || qty <= 0) continue;
+    const key = `${id}::${variantName || "base"}`;
+    quantities.set(key, Number(quantities.get(key) || 0) + qty);
+  }
+
+  const restoredProducts = products.map((product) => {
+    const id = String(product?.id ?? "");
+    const baseQty = Number(quantities.get(`${id}::base`) || 0);
+    let next = baseQty
+      ? { ...product, stock: Math.max(0, Math.floor(Number(product.stock || 0))) + baseQty }
+      : product;
+
+    if (Array.isArray(next.variants) && next.variants.length) {
+      next = {
+        ...next,
+        variants: next.variants.map((variant) => {
+          const name = String(variant?.name || variant);
+          const qty = Number(quantities.get(`${id}::${name}`) || 0);
+          if (!qty || typeof variant !== "object") return variant;
+          return { ...variant, stock: Math.max(0, Math.floor(Number(variant.stock || 0))) + qty };
+        }),
+      };
+    }
+    return next;
+  });
+
+  await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+  return { restored: true, products: restoredProducts };
+}
+
 app.post("/api/stripe/confirm-order", async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -4882,12 +5089,28 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   let emailResults = null;
 
   if (isPaid) {
-    broadcastAdminOrderEvent(updatedOrder, "order_paid");
-          void emitNeuralBusinessEvent("order.paid", normalizeOrder(updatedOrder));
+    let inventoryOrder = updatedOrder;
+    try {
+      const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
+      inventoryOrder = inventoryResult.order || updatedOrder;
+    } catch (inventoryError) {
+      console.error("Pago confirmado pero falló el compromiso de inventario:", inventoryError?.message || inventoryError);
+      await addAutomationNotification({
+        type: "inventory_payment_conflict",
+        title: "Pago con incidencia de stock",
+        message: `Pedido #${String(updatedOrder.id).slice(0,8)} pagado, pero el inventario no pudo confirmarse: ${inventoryError?.message || inventoryError}`,
+        entityType: "order",
+        entityId: String(updatedOrder.id),
+        dedupeKey: `inventory-payment:${updatedOrder.id}`,
+      }).catch(() => null);
+    }
+
+    broadcastAdminOrderEvent(inventoryOrder, "order_paid");
+    void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
 
     try {
       emailResults = await sendOrderConfirmationEmails(
-        updatedOrder,
+        inventoryOrder,
         "stripe_confirm_order"
       );
     } catch (emailError) {
