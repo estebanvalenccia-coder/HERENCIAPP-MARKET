@@ -362,6 +362,11 @@ function normalizeOrder(order) {
 function renderOrderEmail(order, recipientType = "customer") {
   const normalized = normalizeOrder(order);
   const isAdminEmail = recipientType === "admin";
+  const fiscal = normalized.metadata?.fiscalSnapshot || {};
+  const taxAmount = Math.max(0, Number(normalized.metadata?.tax || 0));
+  const documentNumber = normalized.metadata?.invoiceNumber || normalized.id;
+  const customerNif = String(normalized.metadata?.customerNif || "");
+  const customerAddress = String(normalized.metadata?.customerAddress || "");
   const itemsHtml = normalized.items.length
     ? normalized.items
         .map((item) => {
@@ -426,8 +431,8 @@ function renderOrderEmail(order, recipientType = "customer") {
                 <h1 style="margin:0;font-size:28px;line-height:1.15;">${
                   isAdminEmail ? "Nuevo pedido en Herencia Market" : "¡Gracias por tu compra!"
                 }</h1>
-                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Pedido #${escapeHtml(
-                  normalized.id
+                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Documento #${escapeHtml(
+                  documentNumber
                 )}</p>
               </td>
             </tr>
@@ -450,6 +455,8 @@ function renderOrderEmail(order, recipientType = "customer") {
                     <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Email</td>
                     <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(normalized.customerEmail || "No indicado")}</td>
                   </tr>
+                  ${customerNif ? `<tr><td style="padding:6px 0;color:#8b6b61;font-size:13px;">NIF/CIF cliente</td><td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(customerNif)}</td></tr>` : ""}
+                  ${customerAddress ? `<tr><td style="padding:6px 0;color:#8b6b61;font-size:13px;">Dirección fiscal</td><td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(customerAddress)}</td></tr>` : ""}
                   <tr>
                     <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Entrega</td>
                     <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(deliveryLabel)}</td>
@@ -467,9 +474,10 @@ function renderOrderEmail(order, recipientType = "customer") {
 
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#2b1712;color:#fff;border-radius:20px;padding:18px;">
                   <tr>
-                    <td style="padding:5px 0;color:#f8d8cc;">Subtotal</td>
+                    <td style="padding:5px 0;color:#f8d8cc;">${taxAmount > 0 ? "Base imponible" : "Subtotal"}</td>
                     <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.subtotal)}</td>
                   </tr>
+                  ${taxAmount > 0 ? `<tr><td style="padding:5px 0;color:#f8d8cc;">IVA</td><td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(taxAmount)}</td></tr>` : ""}
                   <tr>
                     <td style="padding:5px 0;color:#f8d8cc;">Envío</td>
                     <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.shipping)}</td>
@@ -480,11 +488,19 @@ function renderOrderEmail(order, recipientType = "customer") {
                   </tr>
                 </table>
 
+                ${fiscal.businessName || fiscal.nif || fiscal.address ? `
+                  <div style="margin-top:22px;background:#fffaf7;border:1px solid #f1e7df;border-radius:18px;padding:16px;color:#4d3128;font-size:13px;line-height:1.6;">
+                    <strong style="display:block;color:#2b1712;margin-bottom:4px;">Datos fiscales del emisor</strong>
+                    ${fiscal.businessName ? `${escapeHtml(fiscal.businessName)}<br/>` : ""}
+                    ${fiscal.nif ? `NIF/CIF: ${escapeHtml(fiscal.nif)}<br/>` : ""}
+                    ${fiscal.address ? `${escapeHtml(fiscal.address)}<br/>` : ""}
+                    ${fiscal.email ? `${escapeHtml(fiscal.email)}` : ""}
+                  </div>` : ""}
                 <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#8b6b61;text-align:center;">
                   ${
                     isAdminEmail
                       ? "Revisa el panel de administración para gestionar este pedido."
-                      : "Prepararemos tu pedido con mucho cariño. Si tienes cualquier duda, responde a este correo."
+                      : "Gracias por tu compra. Conserva este correo como justificante de la operación. Si tienes cualquier duda, responde a este correo."
                   }
                 </p>
               </td>
@@ -1534,17 +1550,37 @@ function normalizeMoney(value) {
   return Math.round(amount * 100) / 100;
 }
 
-async function readPosCashSession() {
-  return parseStoredJson(await readStorageValue("posCashSession"), null);
+function sanitizePosOperations(operations = {}) {
+  return {
+    ...operations,
+    staff: (Array.isArray(operations.staff) ? operations.staff : []).map(({ pinHash, pinSalt, ...item }) => item),
+  };
 }
 
-async function writePosCashSession(session) {
-  await upsertStorageValue("posCashSession", JSON.stringify(session));
-  return session;
+function normalizeRegisterId(value) {
+  const normalized = String(value || "caja-01").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return normalized || "caja-01";
 }
 
-async function registerCashSaleInSession(amount, orderId) {
-  const session = await readPosCashSession();
+function posCashSessionKey(registerId = "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  return id === "caja-01" ? "posCashSession" : `posCashSession:${id}`;
+}
+
+async function readPosCashSession(registerId = "caja-01") {
+  return parseStoredJson(await readStorageValue(posCashSessionKey(registerId)), null);
+}
+
+async function writePosCashSession(session, registerId = session?.registerId || "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  const next = { ...(session || {}), registerId: id };
+  await upsertStorageValue(posCashSessionKey(id), JSON.stringify(next));
+  return next;
+}
+
+async function registerCashSaleInSession(amount, orderId, registerId = "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  const session = await readPosCashSession(id);
   if (!session || session.status !== "open") {
     throw new Error("La caja está cerrada. Ábrela antes de cobrar en efectivo.");
   }
@@ -1552,6 +1588,7 @@ async function registerCashSaleInSession(amount, orderId) {
   const saleAmount = normalizeMoney(amount);
   const next = {
     ...session,
+    registerId: id,
     cashSales: normalizeMoney(Number(session.cashSales || 0) + saleAmount),
     expectedCash: normalizeMoney(Number(session.expectedCash || 0) + saleAmount),
     movements: [
@@ -1561,6 +1598,7 @@ async function registerCashSaleInSession(amount, orderId) {
         type: "sale",
         amount: saleAmount,
         orderId,
+        registerId: id,
         note: "Venta en efectivo",
         at: new Date().toISOString(),
       },
@@ -1568,7 +1606,7 @@ async function registerCashSaleInSession(amount, orderId) {
     updatedAt: new Date().toISOString(),
   };
 
-  await writePosCashSession(next);
+  await writePosCashSession(next, id);
   return next;
 }
 
@@ -1583,10 +1621,11 @@ app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
   }
 });
 
-app.get("/api/pos/cash-session", requireAdmin, async (_req, res) => {
+app.get("/api/pos/cash-session", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    res.json({ session: await readPosCashSession() });
+    const registerId = normalizeRegisterId(req.query?.registerId);
+    res.json({ session: await readPosCashSession(registerId) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1595,7 +1634,8 @@ app.get("/api/pos/cash-session", requireAdmin, async (_req, res) => {
 app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const current = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const current = await readPosCashSession(registerId);
     if (current?.status === "open") {
       return res.status(409).json({ error: "Ya hay una caja abierta" });
     }
@@ -1608,6 +1648,7 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
     const now = new Date().toISOString();
     const session = {
       id: crypto.randomUUID(),
+      registerId,
       status: "open",
       openedAt: now,
       closedAt: null,
@@ -1639,7 +1680,8 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
 app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const session = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const session = await readPosCashSession(registerId);
     if (!session || session.status !== "open") {
       return res.status(409).json({ error: "La caja está cerrada" });
     }
@@ -1687,7 +1729,8 @@ app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
 app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const session = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const session = await readPosCashSession(registerId);
     if (!session || session.status !== "open") {
       return res.status(409).json({ error: "No hay una caja abierta" });
     }
@@ -1909,6 +1952,1204 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+    const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
+    const operations = { ...defaults, ...(saved || {}) };
+    if (!Array.isArray(operations.registers) || !operations.registers.length) {
+      operations.registers = defaults.registers;
+    }
+    res.json({ operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/registers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "La caja necesita un nombre" });
+    const requestedId = normalizeRegisterId(req.body?.id || name);
+    if ((operations.registers || []).some((item) => String(item?.id) === requestedId)) {
+      return res.status(409).json({ error: "Ya existe una caja con ese identificador" });
+    }
+    const register = { id: requestedId, name, active: true, createdAt: new Date().toISOString() };
+    operations.registers = [...(operations.registers || []), register];
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ register, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/pos/operations", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const next = { ...current, ...(req.body || {}) };
+    await upsertStorageValue("posOperations", JSON.stringify(next));
+    res.json({ operations: sanitizePosOperations(next) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/held-sales", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ error: "No hay artículos para aparcar" });
+
+    const heldSale = {
+      id: String(req.body?.id || crypto.randomUUID()),
+      createdAt: req.body?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      customer: normalizePosCustomer(req.body?.customer || {}),
+      items,
+      paymentMethod: String(req.body?.paymentMethod || "Efectivo"),
+      documentType: req.body?.documentType === "invoice" ? "invoice" : "ticket",
+      notes: String(req.body?.notes || ""),
+      globalDiscount: Math.max(0, Math.min(100, Number(req.body?.globalDiscount || 0))),
+      mixed: req.body?.mixed && typeof req.body.mixed === "object" ? req.body.mixed : null,
+      registerId: normalizeRegisterId(req.body?.registerId),
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
+    };
+
+    operations.heldSales = [
+      heldSale,
+      ...(Array.isArray(operations.heldSales) ? operations.heldSales : []).filter((item) => String(item?.id) !== heldSale.id),
+    ].slice(0, 100);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ heldSale, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/pos/held-sales/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const exists = (operations.heldSales || []).some((item) => String(item?.id) === id);
+    if (!exists) return res.status(404).json({ error: "Venta aparcada no encontrada" });
+    operations.heldSales = (operations.heldSales || []).filter((item) => String(item?.id) !== id);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ ok: true, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const total = normalizeMoney(req.body?.total);
+    const deposit = normalizeMoney(req.body?.deposit);
+    if (total <= 0) return res.status(400).json({ error: "El encargo necesita un total válido" });
+    if (deposit < 0 || deposit > total) return res.status(400).json({ error: "Anticipo inválido" });
+    const order = {
+      id: crypto.randomUUID(),
+      customerName: String(req.body?.customerName || "Cliente mostrador").trim(),
+      customerPhone: String(req.body?.customerPhone || "").trim(),
+      concept: String(req.body?.concept || "Encargo floral").trim(),
+      dedication: String(req.body?.dedication || "").trim(),
+      deliveryAddress: String(req.body?.deliveryAddress || "").trim(),
+      dueAt: req.body?.dueAt || null,
+      assignedTo: String(req.body?.assignedTo || "").trim(),
+      total,
+      deposit,
+      pending: normalizeMoney(total - deposit),
+      status: String(req.body?.status || "pendiente"),
+      createdAt: new Date().toISOString(),
+    };
+    current.floristOrders = [order, ...(Array.isArray(current.floristOrders) ? current.floristOrders : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ order, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const amount = normalizeMoney(req.body?.amount);
+    if (amount <= 0) return res.status(400).json({ error: "El saldo debe ser mayor que 0" });
+    const code = String(req.body?.code || `HER-${crypto.randomUUID().slice(0, 8).toUpperCase()}`).trim().toUpperCase();
+    if ((current.giftCards || []).some((card) => card.code === code)) return res.status(409).json({ error: "Ese código ya existe" });
+    const card = { id: crypto.randomUUID(), code, initialBalance: amount, balance: amount, active: true, createdAt: new Date().toISOString() };
+    current.giftCards = [card, ...(Array.isArray(current.giftCards) ? current.giftCards : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ card, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/pos/florist-orders/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const index = (current.floristOrders || []).findIndex((item) => String(item?.id) === id);
+    if (index < 0) return res.status(404).json({ error: "Encargo no encontrado" });
+    const previous = current.floristOrders[index];
+    const total = req.body?.total == null ? Number(previous.total || 0) : normalizeMoney(req.body.total);
+    const deposit = req.body?.deposit == null ? Number(previous.deposit || 0) : normalizeMoney(req.body.deposit);
+    if (total <= 0 || deposit < 0 || deposit > total) return res.status(400).json({ error: "Importes del encargo inválidos" });
+    const updated = {
+      ...previous,
+      ...(req.body || {}),
+      id,
+      total,
+      deposit,
+      pending: normalizeMoney(total - deposit),
+      updatedAt: new Date().toISOString(),
+    };
+    current.floristOrders = current.floristOrders.map((item, itemIndex) => itemIndex === index ? updated : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ order: updated, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const code = String(req.body?.code || "").trim().toUpperCase();
+    const amount = normalizeMoney(req.body?.amount);
+    if (!code || amount <= 0) return res.status(400).json({ error: "Código e importe válidos son obligatorios" });
+    const index = (current.giftCards || []).findIndex((card) => String(card?.code || "").toUpperCase() === code);
+    if (index < 0) return res.status(404).json({ error: "Tarjeta regalo no encontrada" });
+    const card = current.giftCards[index];
+    if (card.active === false) return res.status(409).json({ error: "La tarjeta regalo está desactivada" });
+    if (Number(card.balance || 0) < amount) return res.status(409).json({ error: "Saldo insuficiente" });
+    const nextCard = {
+      ...card,
+      balance: normalizeMoney(Number(card.balance || 0) - amount),
+      updatedAt: new Date().toISOString(),
+      active: normalizeMoney(Number(card.balance || 0) - amount) > 0,
+    };
+    current.giftCards = current.giftCards.map((item, itemIndex) => itemIndex === index ? nextCard : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ card: nextCard, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const supplier = {
+      id: String(req.body?.id || crypto.randomUUID()),
+      name: String(req.body?.name || "").trim(),
+      nif: String(req.body?.nif || "").trim(),
+      email: String(req.body?.email || "").trim(),
+      phone: String(req.body?.phone || "").trim(),
+      notes: String(req.body?.notes || "").trim(),
+      active: req.body?.active !== false,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
+    if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
+    current.suppliers = [supplier, ...(current.suppliers || []).filter((item) => String(item?.id) !== supplier.id)];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ supplier, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const bootstrap = await loadPosBootstrap();
+    const requested = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!requested.length) return res.status(400).json({ error: "Añade productos a la compra" });
+
+    const quantities = new Map();
+    const purchaseLines = [];
+    for (const raw of requested) {
+      const id = String(raw?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
+      const unitCost = normalizeMoney(raw?.unitCost);
+      const product = bootstrap.products.find((item) => String(item?.id) === id);
+      if (!product || qty <= 0) return res.status(400).json({ error: `Producto o cantidad inválida: ${id || "sin id"}` });
+      quantities.set(id, (quantities.get(id) || 0) + qty);
+      purchaseLines.push({
+        id,
+        name: String(product.name || "Producto"),
+        sku: String(product.sku || ""),
+        quantity: qty,
+        unitCost,
+        totalCost: normalizeMoney(qty * unitCost),
+      });
+    }
+
+    const updatedProducts = bootstrap.products.map((product) => {
+      const qty = quantities.get(String(product?.id || "")) || 0;
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+
+    const purchase = {
+      id: crypto.randomUUID(),
+      supplierId: String(req.body?.supplierId || "").trim(),
+      reference: String(req.body?.reference || "").trim(),
+      items: purchaseLines,
+      total: normalizeMoney(purchaseLines.reduce((sum, line) => sum + Number(line.totalCost || 0), 0)),
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    current.purchases = [purchase, ...(Array.isArray(current.purchases) ? current.purchases : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ purchase, inventory: updatedProducts, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const name = String(req.body?.name || "").trim();
+    const role = ["admin", "manager", "seller"].includes(String(req.body?.role || "")) ? String(req.body.role) : "seller";
+    const pin = String(req.body?.pin || "").trim();
+    if (!name) return res.status(400).json({ error: "El empleado necesita un nombre" });
+    if (!/^\d{4,8}$/.test(pin)) return res.status(400).json({ error: "El PIN debe tener entre 4 y 8 dígitos" });
+    const salt = crypto.randomBytes(16).toString("hex");
+    const pinHash = crypto.scryptSync(pin, salt, 32).toString("hex");
+    const permissionsByRole = {
+      admin: ["sell", "discount", "refund", "cash", "inventory", "settings"],
+      manager: ["sell", "discount", "refund", "cash", "inventory"],
+      seller: ["sell"],
+    };
+    const staff = {
+      id: crypto.randomUUID(),
+      name,
+      role,
+      permissions: permissionsByRole[role],
+      pinSalt: salt,
+      pinHash,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    current.staff = [staff, ...(Array.isArray(current.staff) ? current.staff : [])];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    const { pinHash: _hash, pinSalt: _salt, ...safeStaff } = staff;
+    res.json({ staff: safeStaff, operations: { ...current, staff: current.staff.map(({ pinHash, pinSalt, ...item }) => item) } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff/unlock", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const pin = String(req.body?.pin || "").trim();
+    const match = (current.staff || []).find((staff) => {
+      if (staff?.active === false || !staff?.pinSalt || !staff?.pinHash) return false;
+      const candidate = crypto.scryptSync(pin, staff.pinSalt, 32).toString("hex");
+      const left = Buffer.from(candidate, "hex");
+      const right = Buffer.from(staff.pinHash, "hex");
+      return left.length === right.length && crypto.timingSafeEqual(left, right);
+    });
+    if (!match) return res.status(401).json({ error: "PIN incorrecto" });
+    const { pinHash, pinSalt, ...safeStaff } = match;
+    res.json({ staff: safeStaff });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff-shifts/start", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const staffId = String(req.body?.staffId || "").trim();
+    const staff = (operations.staff || []).find((item) => String(item?.id) === staffId && item?.active !== false);
+    if (!staff) return res.status(404).json({ error: "Empleado no encontrado" });
+    const openShift = (operations.staffShifts || []).find((item) => String(item?.staffId) === staffId && !item?.endedAt);
+    if (openShift) return res.status(409).json({ error: "Este empleado ya tiene un turno abierto" });
+    const shift = {
+      id: crypto.randomUUID(),
+      staffId,
+      staffName: String(staff.name || "Empleado"),
+      role: String(staff.role || "seller"),
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      durationMinutes: null,
+    };
+    operations.staffShifts = [shift, ...(Array.isArray(operations.staffShifts) ? operations.staffShifts : [])].slice(0, 1000);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ shift, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/staff-shifts/end", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const staffId = String(req.body?.staffId || "").trim();
+    const index = (operations.staffShifts || []).findIndex((item) => String(item?.staffId) === staffId && !item?.endedAt);
+    if (index < 0) return res.status(404).json({ error: "No hay un turno abierto para este empleado" });
+    const previous = operations.staffShifts[index];
+    const endedAt = new Date();
+    const durationMinutes = Math.max(0, Math.round((endedAt.getTime() - new Date(previous.startedAt).getTime()) / 60000));
+    const shift = { ...previous, endedAt: endedAt.toISOString(), durationMinutes };
+    operations.staffShifts = operations.staffShifts.map((item, itemIndex) => itemIndex === index ? shift : item);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ shift, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const customerId = String(req.body?.customerId || "").trim();
+    const delta = Math.trunc(Number(req.body?.delta || 0));
+    if (!customerId || !Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: "Cliente y puntos son obligatorios" });
+    const previous = Number(current.loyalty?.[customerId]?.points || 0);
+    const entry = {
+      points: Math.max(0, previous + delta),
+      updatedAt: new Date().toISOString(),
+    };
+    current.loyalty = { ...(current.loyalty || {}), [customerId]: entry };
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ loyalty: entry, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/quotes", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const bootstrap = await loadPosBootstrap();
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const prepared = validateAndApplyStock(bootstrap.products, req.body?.items || []);
+    const totals = calculatePosTotals(prepared.items);
+    const now = new Date();
+    const expiresAt = req.body?.expiresAt || new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString();
+    const quote = {
+      id: crypto.randomUUID(),
+      quoteNumber: `PRE-${now.getFullYear()}-${String(Date.now()).slice(-8)}`,
+      customer,
+      items: prepared.items,
+      subtotal: totals.subtotal,
+      tax: totals.tax,
+      total: totals.total,
+      notes: String(req.body?.notes || "").trim(),
+      status: "draft",
+      createdAt: now.toISOString(),
+      expiresAt,
+    };
+    current.quotes = [quote, ...(Array.isArray(current.quotes) ? current.quotes : [])].slice(0, 100);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ quote, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/pos/quotes/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const index = (current.quotes || []).findIndex((item) => String(item?.id) === id);
+    if (index < 0) return res.status(404).json({ error: "Presupuesto no encontrado" });
+    const updated = { ...current.quotes[index], ...(req.body || {}), id, updatedAt: new Date().toISOString() };
+    current.quotes = current.quotes.map((item, itemIndex) => itemIndex === index ? updated : item);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ quote: updated, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const bootstrap = await loadPosBootstrap();
+    const productId = String(req.body?.productId || "").trim();
+    const type = ["count", "waste", "breakage", "manual"].includes(String(req.body?.type || ""))
+      ? String(req.body.type)
+      : "manual";
+    const reason = String(req.body?.reason || "").trim();
+    const product = bootstrap.products.find((item) => String(item?.id) === productId);
+    if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+
+    const before = Math.max(0, Math.floor(Number(product.stock || 0)));
+    let after = before;
+    if (req.body?.countedStock != null) {
+      const counted = Math.floor(Number(req.body.countedStock));
+      if (!Number.isFinite(counted) || counted < 0) return res.status(400).json({ error: "Stock contado inválido" });
+      after = counted;
+    } else {
+      const delta = Math.trunc(Number(req.body?.delta || 0));
+      if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: "Ajuste de stock inválido" });
+      after = Math.max(0, before + delta);
+    }
+
+    const updatedProducts = bootstrap.products.map((item) =>
+      String(item?.id) === productId ? { ...item, stock: after } : item
+    );
+    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const adjustment = {
+      id: crypto.randomUUID(),
+      productId,
+      productName: String(product.name || "Producto"),
+      sku: String(product.sku || ""),
+      type,
+      reason,
+      before,
+      after,
+      delta: after - before,
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    operations.inventoryAdjustments = [adjustment, ...(Array.isArray(operations.inventoryAdjustments) ? operations.inventoryAdjustments : [])].slice(0, 500);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+
+    res.json({ adjustment, inventory: updatedProducts, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/pos/reports/summary", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const now = new Date();
+    const fromRaw = String(req.query?.from || "").trim();
+    const toRaw = String(req.query?.to || "").trim();
+    const from = fromRaw ? new Date(fromRaw) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const to = toRaw ? new Date(toRaw) : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return res.status(400).json({ error: "Rango de fechas inválido" });
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("delivery_method", "mostrador")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+
+    const orders = (data || []).filter((order) => {
+      const at = new Date(order.created_at || 0).getTime();
+      return at >= from.getTime() && at < to.getTime();
+    });
+
+    const completed = orders.filter((order) => order.status !== "refunded" && order.status !== "payment_error" && order.status !== "payment_pending");
+    const refunded = orders.filter((order) => order.status === "refunded");
+    const revenue = normalizeMoney(completed.reduce((sum, order) => sum + Number(order.total || 0), 0));
+    const refundedTotal = normalizeMoney(refunded.reduce((sum, order) => sum + Number(order.total || 0), 0));
+    const tax = normalizeMoney(completed.reduce((sum, order) => sum + Number(order.metadata?.tax || 0), 0));
+    const byPayment = {};
+    const products = new Map();
+
+    for (const order of completed) {
+      const method = normalizePaymentMethod(order.payment_method);
+      byPayment[method] = normalizeMoney(Number(byPayment[method] || 0) + Number(order.total || 0));
+      for (const item of Array.isArray(order.items) ? order.items : []) {
+        const key = String(item?.id || item?.name || "sin-id");
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        const lineTotal = normalizeMoney(Number(item?.price || 0) * qty * (1 - Math.max(0, Math.min(100, Number(item?.discountPercent || 0))) / 100));
+        const current = products.get(key) || { id: key, name: String(item?.name || "Artículo"), units: 0, revenue: 0 };
+        current.units += qty;
+        current.revenue = normalizeMoney(current.revenue + lineTotal);
+        products.set(key, current);
+      }
+    }
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const report = {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      transactions: completed.length,
+      refunds: refunded.length,
+      revenue,
+      refundedTotal,
+      netRevenue: normalizeMoney(revenue - refundedTotal),
+      tax,
+      averageTicket: completed.length ? normalizeMoney(revenue / completed.length) : 0,
+      byPayment,
+      topProducts: Array.from(products.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+      pendingFloristOrders: (operations.floristOrders || []).filter((item) => !["entregado", "cancelado"].includes(String(item?.status || ""))).length,
+      inventoryAdjustments: (operations.inventoryAdjustments || []).filter((item) => {
+        const at = new Date(item?.createdAt || 0).getTime();
+        return at >= from.getTime() && at < to.getTime();
+      }).length,
+    };
+
+    res.json({ report });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/pos/sales", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 50)));
+    const query = String(req.query?.q || "").trim().toLowerCase();
+    const fetchLimit = query ? 500 : limit;
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .in("delivery_method", ["mostrador"])
+      .order("created_at", { ascending: false })
+      .limit(fetchLimit);
+    if (error) throw error;
+
+    const filtered = query
+      ? (data || []).filter((order) => {
+          const haystack = [
+            order.id,
+            order.customer_name,
+            order.customer_email,
+            order.metadata?.invoiceNumber,
+            order.payment_method,
+          ].map((value) => String(value || "").toLowerCase()).join(" ");
+          return haystack.includes(query);
+        }).slice(0, limit)
+      : (data || []);
+
+    res.json({ sales: filtered.map(posOrderResponse) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/refund", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const orderId = String(req.body?.orderId || "").trim();
+    const reason = String(req.body?.reason || "Devolución TPV").trim();
+    const refundStaff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
+    if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Venta no encontrada" });
+    if (order?.metadata?.refundedAt || order.status === "refunded") {
+      return res.status(409).json({ error: "Esta venta ya está devuelta" });
+    }
+    if (Array.isArray(order?.metadata?.refunds) && order.metadata.refunds.length > 0) {
+      return res.status(409).json({ error: "Esta venta ya tiene devoluciones parciales. Devuelve únicamente las unidades restantes." });
+    }
+    if (order.delivery_method !== "mostrador") {
+      return res.status(400).json({ error: "La devolución TPV solo admite ventas de mostrador" });
+    }
+
+    const orderPaymentMethod = normalizePaymentMethod(order.payment_method);
+    const paymentBreakdown = Array.isArray(order.metadata?.paymentBreakdown) ? order.metadata.paymentBreakdown : [];
+    const cashRefundAmount = orderPaymentMethod === "cash"
+      ? normalizeMoney(order.total)
+      : orderPaymentMethod === "mixed"
+      ? normalizeMoney(paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "cash").reduce((sum, entry) => sum + Number(entry?.amount || 0), 0))
+      : 0;
+    const cardRefundAmount = orderPaymentMethod === "card"
+      ? normalizeMoney(order.total)
+      : orderPaymentMethod === "mixed"
+      ? normalizeMoney(paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "card").reduce((sum, entry) => sum + Number(entry?.amount || 0), 0))
+      : 0;
+    const giftRefunds = paymentBreakdown.filter((entry) => normalizePaymentMethod(entry?.method) === "gift_card");
+
+    let stripeRefundId = "";
+    if (cardRefundAmount > 0) {
+      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado para devolver la parte de tarjeta" });
+      const paymentIntentId = orderPaymentMethod === "card"
+        ? String(order.stripe_payment_intent_id || "")
+        : String(order.metadata?.mixedCardPaymentIntentId || "");
+      if (!paymentIntentId) {
+        return res.status(409).json({ error: "No se encontró el pago de Stripe asociado a esta venta" });
+      }
+      const stripeRefund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        amount: Math.round(cardRefundAmount * 100),
+        metadata: { orderId, source: "TPV_REFUND" },
+      });
+      stripeRefundId = stripeRefund.id;
+    }
+
+    const bootstrap = await loadPosBootstrap();
+    const items = Array.isArray(order.items) ? order.items : [];
+    const quantities = new Map();
+    for (const item of items) {
+      if (item?.manual === true) continue;
+      const id = String(item?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+      if (id && qty > 0) quantities.set(id, (quantities.get(id) || 0) + qty);
+    }
+
+    const restoredProducts = bootstrap.products.map((product) => {
+      const qty = quantities.get(String(product?.id || "")) || 0;
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+
+    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+
+    const refundNumber = `REF-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`;
+    const refundedAt = new Date().toISOString();
+    const metadata = {
+      ...(order.metadata || {}),
+      refundedAt,
+      refundReason: reason,
+      refundNumber,
+      stripeRefundId: stripeRefundId || undefined,
+      refundedBy: refundStaff,
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ status: "refunded", metadata })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+
+    const loyaltyCustomerId = String(order.metadata?.customerId || "").trim();
+    const loyaltyPointsEarned = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
+    if ((loyaltyCustomerId && loyaltyPointsEarned > 0) || giftRefunds.length) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+      let posOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+
+      if (giftRefunds.length) {
+        const refundsByCode = new Map();
+        for (const entry of giftRefunds) {
+          const code = String(entry?.code || "").trim().toUpperCase();
+          const amount = normalizeMoney(entry?.amount);
+          if (code && amount > 0) refundsByCode.set(code, normalizeMoney((refundsByCode.get(code) || 0) + amount));
+        }
+        posOperations = {
+          ...posOperations,
+          giftCards: (posOperations.giftCards || []).map((card) => {
+            const code = String(card?.code || "").toUpperCase();
+            const amount = refundsByCode.get(code) || 0;
+            if (!amount) return card;
+            return {
+              ...card,
+              balance: normalizeMoney(Number(card.balance || 0) + amount),
+              active: true,
+              updatedAt: refundedAt,
+            };
+          }),
+        };
+      }
+
+      if (loyaltyCustomerId && loyaltyPointsEarned > 0) {
+        const previousPoints = Number(posOperations.loyalty?.[loyaltyCustomerId]?.points || 0);
+        posOperations = {
+          ...posOperations,
+          loyalty: {
+            ...(posOperations.loyalty || {}),
+            [loyaltyCustomerId]: {
+              points: Math.max(0, previousPoints - loyaltyPointsEarned),
+              updatedAt: refundedAt,
+              lastRefundOrderId: orderId,
+            },
+          },
+        };
+      }
+
+      await upsertStorageValue("posOperations", JSON.stringify(posOperations));
+    }
+
+    if (cashRefundAmount > 0) {
+      const registerId = normalizeRegisterId(order.metadata?.registerId);
+      const session = await readPosCashSession(registerId);
+      if (session?.status === "open") {
+        const amount = cashRefundAmount;
+        const next = {
+          ...session,
+          cashSales: normalizeMoney(Math.max(0, Number(session.cashSales || 0) - amount)),
+          cashOut: normalizeMoney(Number(session.cashOut || 0) + amount),
+          expectedCash: normalizeMoney(Number(session.expectedCash || 0) - amount),
+          movements: [
+            ...(Array.isArray(session.movements) ? session.movements : []),
+            {
+              id: crypto.randomUUID(),
+              type: "refund",
+              amount,
+              note: `${refundNumber}: ${reason}`,
+              orderId,
+              createdAt: refundedAt,
+            },
+          ],
+        };
+        await writePosCashSession(next, registerId);
+      }
+    }
+
+    broadcastAdminOrderEvent(updated, "order_refunded");
+    res.json({
+      ok: true,
+      order: posOrderResponse(updated),
+      inventory: restoredProducts,
+      refundNumber,
+      stripeRefundId: stripeRefundId || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const orderId = String(req.body?.orderId || "").trim();
+    const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const reason = String(req.body?.reason || "Devolución parcial TPV").trim();
+    const refundStaff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
+
+    if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
+    if (!requestedItems.length) return res.status(400).json({ error: "Selecciona al menos un artículo para devolver" });
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Venta no encontrada" });
+    if (order.delivery_method !== "mostrador") return res.status(400).json({ error: "La devolución parcial solo admite ventas de mostrador" });
+    if (order?.metadata?.refundedAt || order.status === "refunded") return res.status(409).json({ error: "Esta venta ya está devuelta por completo" });
+
+    const originalItems = Array.isArray(order.items) ? order.items : [];
+    const previousRefunds = Array.isArray(order.metadata?.refunds) ? order.metadata.refunds : [];
+    const alreadyRefundedById = new Map();
+
+    for (const refund of previousRefunds) {
+      for (const item of Array.isArray(refund?.items) ? refund.items : []) {
+        const id = String(item?.id || "").trim();
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        if (id && qty) alreadyRefundedById.set(id, (alreadyRefundedById.get(id) || 0) + qty);
+      }
+    }
+
+    const refundItems = [];
+    let refundTotal = 0;
+    let refundSubtotal = 0;
+    const stockRestoreById = new Map();
+
+    for (const requested of requestedItems) {
+      const id = String(requested?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(requested?.quantity ?? requested?.qty ?? 0)));
+      if (!id || qty <= 0) return res.status(400).json({ error: "Artículo o cantidad de devolución inválida" });
+
+      const original = originalItems.find((item) => String(item?.id || "") === id);
+      if (!original) return res.status(400).json({ error: `El artículo ${id} no pertenece a la venta` });
+
+      const soldQty = Math.max(0, Math.floor(Number(original?.quantity ?? original?.qty ?? 0)));
+      const alreadyRefunded = Number(alreadyRefundedById.get(id) || 0);
+      const remainingQty = Math.max(0, soldQty - alreadyRefunded);
+      if (qty > remainingQty) {
+        return res.status(409).json({ error: `Solo quedan ${remainingQty} uds. por devolver de ${original.name || id}` });
+      }
+
+      const price = Math.max(0, Number(original.price || 0));
+      const iva = Math.max(0, Number(original.iva || 0));
+      const discountPercent = Math.max(0, Math.min(100, Number(original.discountPercent || 0)));
+      const lineTotal = normalizeMoney(price * qty * (1 - discountPercent / 100));
+      const lineSubtotal = normalizeMoney(lineTotal / (1 + iva / 100));
+
+      refundTotal = normalizeMoney(refundTotal + lineTotal);
+      refundSubtotal = normalizeMoney(refundSubtotal + lineSubtotal);
+      refundItems.push({
+        id,
+        name: String(original.name || "Artículo"),
+        sku: String(original.sku || ""),
+        price,
+        iva,
+        discountPercent,
+        quantity: qty,
+        qty,
+        manual: original.manual === true,
+        refundTotal: lineTotal,
+      });
+
+      if (original.manual !== true) {
+        stockRestoreById.set(id, (stockRestoreById.get(id) || 0) + qty);
+      }
+    }
+
+    if (refundTotal <= 0) return res.status(400).json({ error: "El importe de la devolución debe ser mayor que 0" });
+
+    const originalTotal = normalizeMoney(order.total);
+    const previouslyRefundedTotal = normalizeMoney(previousRefunds.reduce((sum, refund) => sum + Number(refund?.total || 0), 0));
+    const remainingRefundable = normalizeMoney(Math.max(0, originalTotal - previouslyRefundedTotal));
+    if (refundTotal > remainingRefundable + 0.01) {
+      return res.status(409).json({ error: "La devolución supera el importe pendiente de la venta" });
+    }
+
+    const orderPaymentMethod = normalizePaymentMethod(order.payment_method);
+    const originalBreakdown = orderPaymentMethod === "mixed"
+      ? (Array.isArray(order.metadata?.paymentBreakdown) ? order.metadata.paymentBreakdown : [])
+      : [{ method: orderPaymentMethod, amount: originalTotal }];
+
+    const refundedByMethod = new Map();
+    for (const refund of previousRefunds) {
+      for (const payment of Array.isArray(refund?.paymentBreakdown) ? refund.paymentBreakdown : []) {
+        const method = normalizePaymentMethod(payment?.method);
+        const amount = normalizeMoney(payment?.amount);
+        const code = String(payment?.code || "").trim().toUpperCase();
+        const key = `${method}|${code}`;
+        refundedByMethod.set(key, normalizeMoney((refundedByMethod.get(key) || 0) + amount));
+      }
+    }
+
+    const remainingPayments = originalBreakdown.map((entry) => {
+      const method = normalizePaymentMethod(entry?.method);
+      const code = String(entry?.code || "").trim().toUpperCase();
+      const key = `${method}|${code}`;
+      return {
+        method,
+        code,
+        amount: normalizeMoney(entry?.amount),
+        remaining: normalizeMoney(Math.max(0, Number(entry?.amount || 0) - Number(refundedByMethod.get(key) || 0))),
+      };
+    }).filter((entry) => entry.remaining > 0);
+
+    const remainingPaymentTotal = normalizeMoney(remainingPayments.reduce((sum, entry) => sum + entry.remaining, 0));
+    if (remainingPaymentTotal + 0.01 < refundTotal) {
+      return res.status(409).json({ error: "No queda suficiente importe en los métodos de pago originales para devolver" });
+    }
+
+    let centsLeft = Math.round(refundTotal * 100);
+    let remainingWeightCents = Math.max(1, Math.round(remainingPaymentTotal * 100));
+    const refundPaymentBreakdown = [];
+
+    remainingPayments.forEach((entry, index) => {
+      if (centsLeft <= 0) return;
+      const capacityCents = Math.round(entry.remaining * 100);
+      let allocationCents;
+      if (index === remainingPayments.length - 1) {
+        allocationCents = Math.min(centsLeft, capacityCents);
+      } else {
+        allocationCents = Math.min(
+          capacityCents,
+          Math.max(0, Math.round(centsLeft * (capacityCents / remainingWeightCents)))
+        );
+      }
+      if (allocationCents > 0) {
+        refundPaymentBreakdown.push({
+          method: entry.method,
+          amount: allocationCents / 100,
+          ...(entry.code ? { code: entry.code } : {}),
+        });
+        centsLeft -= allocationCents;
+      }
+      remainingWeightCents -= capacityCents;
+    });
+
+    if (centsLeft > 0) {
+      for (const entry of remainingPayments) {
+        if (centsLeft <= 0) break;
+        const allocated = refundPaymentBreakdown
+          .filter((payment) => payment.method === entry.method && String(payment.code || "") === entry.code)
+          .reduce((sum, payment) => sum + Math.round(Number(payment.amount || 0) * 100), 0);
+        const spare = Math.max(0, Math.round(entry.remaining * 100) - allocated);
+        const add = Math.min(spare, centsLeft);
+        if (!add) continue;
+        const existing = refundPaymentBreakdown.find((payment) => payment.method === entry.method && String(payment.code || "") === entry.code);
+        if (existing) existing.amount = normalizeMoney(Number(existing.amount || 0) + add / 100);
+        else refundPaymentBreakdown.push({ method: entry.method, amount: add / 100, ...(entry.code ? { code: entry.code } : {}) });
+        centsLeft -= add;
+      }
+    }
+
+    if (centsLeft !== 0) return res.status(500).json({ error: "No se pudo distribuir el importe de la devolución entre los pagos originales" });
+
+    const cashRefundAmount = normalizeMoney(refundPaymentBreakdown.filter((entry) => entry.method === "cash").reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+    const cardRefundAmount = normalizeMoney(refundPaymentBreakdown.filter((entry) => entry.method === "card").reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+    const giftRefunds = refundPaymentBreakdown.filter((entry) => entry.method === "gift_card");
+    const manualRefunds = refundPaymentBreakdown.filter((entry) => entry.method === "bizum" || entry.method === "transfer");
+
+    const registerId = normalizeRegisterId(order.metadata?.registerId);
+    let cashSession = null;
+    if (cashRefundAmount > 0) {
+      cashSession = await readPosCashSession(registerId);
+      if (!cashSession || cashSession.status !== "open") {
+        return res.status(409).json({ error: "Abre la caja original antes de hacer una devolución parcial en efectivo" });
+      }
+      if (Number(cashSession.expectedCash || 0) + 0.001 < cashRefundAmount) {
+        return res.status(409).json({ error: "No hay suficiente efectivo esperado en la caja para esta devolución" });
+      }
+    }
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+
+    if (giftRefunds.length) {
+      const giftByCode = new Map();
+      for (const entry of giftRefunds) {
+        const code = String(entry.code || "").trim().toUpperCase();
+        if (!code) return res.status(409).json({ error: "La venta no conserva el código de una tarjeta regalo utilizada" });
+        giftByCode.set(code, normalizeMoney((giftByCode.get(code) || 0) + Number(entry.amount || 0)));
+      }
+      for (const [code] of giftByCode.entries()) {
+        if (!(operations.giftCards || []).some((card) => String(card?.code || "").toUpperCase() === code)) {
+          return res.status(409).json({ error: `Tarjeta regalo no encontrada: ${code}` });
+        }
+      }
+    }
+
+    const refundSequence = previousRefunds.length + 1;
+    const refundNumber = `REF-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}-${refundSequence}`;
+    const refundedAt = new Date().toISOString();
+    let stripeRefundId = "";
+
+    if (cardRefundAmount > 0) {
+      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado para devolver la parte de tarjeta" });
+      const paymentIntentId = orderPaymentMethod === "card"
+        ? String(order.stripe_payment_intent_id || "")
+        : String(order.metadata?.mixedCardPaymentIntentId || "");
+      if (!paymentIntentId) return res.status(409).json({ error: "No se encontró el pago de Stripe asociado a esta venta" });
+      const stripeRefund = await stripe.refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          amount: Math.round(cardRefundAmount * 100),
+          metadata: { orderId, refundNumber, source: "TPV_PARTIAL_REFUND" },
+        },
+        { idempotencyKey: `pos-partial-refund-${orderId}-${refundSequence}` }
+      );
+      stripeRefundId = stripeRefund.id;
+    }
+
+    const bootstrap = await loadPosBootstrap();
+    const restoredProducts = bootstrap.products.map((product) => {
+      const qty = Number(stockRestoreById.get(String(product?.id || "")) || 0);
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+
+    if (giftRefunds.length) {
+      const giftByCode = new Map();
+      for (const entry of giftRefunds) {
+        const code = String(entry.code || "").trim().toUpperCase();
+        giftByCode.set(code, normalizeMoney((giftByCode.get(code) || 0) + Number(entry.amount || 0)));
+      }
+      operations.giftCards = (operations.giftCards || []).map((card) => {
+        const code = String(card?.code || "").toUpperCase();
+        const amount = Number(giftByCode.get(code) || 0);
+        if (!amount) return card;
+        return {
+          ...card,
+          balance: normalizeMoney(Number(card.balance || 0) + amount),
+          active: true,
+          updatedAt: refundedAt,
+        };
+      });
+    }
+
+    const originalPoints = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
+    const previousPointsReversed = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsReversed || 0)));
+    const totalRefundedAfter = normalizeMoney(previouslyRefundedTotal + refundTotal);
+    const fullRefund = totalRefundedAfter >= originalTotal - 0.01;
+    const pointsRemaining = Math.max(0, originalPoints - previousPointsReversed);
+    const pointsToReverse = fullRefund ? pointsRemaining : Math.min(pointsRemaining, Math.floor(refundTotal));
+    const customerId = String(order.metadata?.customerId || "").trim();
+
+    if (customerId && pointsToReverse > 0) {
+      const previousPoints = Number(operations.loyalty?.[customerId]?.points || 0);
+      operations.loyalty = {
+        ...(operations.loyalty || {}),
+        [customerId]: {
+          points: Math.max(0, previousPoints - pointsToReverse),
+          updatedAt: refundedAt,
+          lastRefundOrderId: orderId,
+        },
+      };
+    }
+
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+
+    if (cashRefundAmount > 0 && cashSession) {
+      const nextCashSession = {
+        ...cashSession,
+        cashSales: normalizeMoney(Math.max(0, Number(cashSession.cashSales || 0) - cashRefundAmount)),
+        cashOut: normalizeMoney(Number(cashSession.cashOut || 0) + cashRefundAmount),
+        expectedCash: normalizeMoney(Number(cashSession.expectedCash || 0) - cashRefundAmount),
+        movements: [
+          ...(Array.isArray(cashSession.movements) ? cashSession.movements : []),
+          {
+            id: crypto.randomUUID(),
+            type: "partial_refund",
+            amount: cashRefundAmount,
+            note: `${refundNumber}: ${reason}`,
+            orderId,
+            registerId,
+            createdAt: refundedAt,
+          },
+        ],
+        updatedAt: refundedAt,
+      };
+      await writePosCashSession(nextCashSession, registerId);
+      cashSession = nextCashSession;
+    }
+
+    const refundRecord = {
+      id: crypto.randomUUID(),
+      refundNumber,
+      createdAt: refundedAt,
+      reason,
+      items: refundItems,
+      subtotal: refundSubtotal,
+      tax: normalizeMoney(refundTotal - refundSubtotal),
+      total: refundTotal,
+      paymentBreakdown: refundPaymentBreakdown,
+      stripeRefundId: stripeRefundId || null,
+      manualRefunds,
+      staff: refundStaff,
+    };
+
+    const metadata = {
+      ...(order.metadata || {}),
+      refunds: [...previousRefunds, refundRecord],
+      refundedTotal: totalRefundedAfter,
+      loyaltyPointsReversed: previousPointsReversed + pointsToReverse,
+      ...(fullRefund ? { refundedAt, refundNumber } : {}),
+      ...(manualRefunds.length ? { manualRefundPending: true } : {}),
+    };
+
+    const nextStatus = fullRefund ? "refunded" : manualRefunds.length ? "partially_refunded_pending_manual" : "partially_refunded";
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ status: nextStatus, metadata })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+
+    broadcastAdminOrderEvent(updated, fullRefund ? "order_refunded" : "order_partially_refunded");
+    res.json({
+      ok: true,
+      order: posOrderResponse(updated),
+      inventory: restoredProducts,
+      refund: refundRecord,
+      cashSession,
+      manualRefunds,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo completar la devolución parcial" });
+  }
+});
+
+app.post("/api/pos/mixed-card-intent", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
+
+  try {
+    const { products, fiscalSettings } = await loadPosBootstrap();
+    const customer = normalizePosCustomer(req.body?.customer || {});
+    const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
+    validatePosInvoiceData(documentType, customer, fiscalSettings);
+
+    const prepared = validateAndApplyStock(products, req.body?.items || []);
+    const totals = calculatePosTotals(prepared.items);
+    const cardAmount = normalizeMoney(req.body?.cardAmount);
+
+    if (cardAmount <= 0 || cardAmount > totals.total) {
+      return res.status(400).json({ error: "Importe de tarjeta inválido para el pago mixto" });
+    }
+
+    const amountCents = Math.round(cardAmount * 100);
+    if (amountCents < 50) {
+      return res.status(400).json({ error: "La parte de tarjeta debe ser de al menos 0,50 €" });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: "eur",
+      receipt_email: customer.email || undefined,
+      metadata: {
+        source: "TPV_ADMIN_MIXED",
+        customerId: customer.id,
+      },
+      payment_method_types: ["card"],
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      cardAmount,
+      totals,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo iniciar la parte de tarjeta" });
+  }
+});
+
 app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   if (!stripe) {
@@ -1923,6 +3164,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
 
     const prepared = validateAndApplyStock(products, req.body?.items || []);
     const totals = calculatePosTotals(prepared.items);
+    const loyaltyPointsEarned = customer.id && customer.id !== "walk-in" ? Math.max(0, Math.floor(totals.total)) : 0;
     const totalCents = Math.round(totals.total * 100);
 
     if (!Number.isFinite(totalCents) || totalCents < 50) {
@@ -1937,6 +3179,8 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       customerNif: customer.nif,
       customerAddress: customer.address,
       customerPhone: customer.phone,
+      customerId: customer.id,
+      loyaltyPointsEarned,
       fiscalSnapshot: fiscalSettings,
       inventoryCommittedAt: null,
     };
@@ -2003,6 +3247,9 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
   let createdOrderId = null;
   let originalCashSession = null;
   let cashSessionWasWritten = false;
+  let originalPosOperations = null;
+  let posOperationsWasWritten = false;
+  let activeRegisterId = "caja-01";
 
   try {
     const bootstrap = await loadPosBootstrap();
@@ -2012,6 +3259,13 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
     const paymentMethod = normalizePaymentMethod(req.body?.paymentMethod);
     const existingOrderId = String(req.body?.existingOrderId || "").trim();
+    activeRegisterId = normalizeRegisterId(req.body?.registerId);
+    const registerId = activeRegisterId;
+    const staff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
 
     validatePosInvoiceData(documentType, customer, fiscalSettings);
 
@@ -2055,20 +3309,112 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     );
     const received = Number(req.body?.received || 0);
     const totals = calculatePosTotals(prepared.items, received);
+    const loyaltyPointsEarned = customer.id && customer.id !== "walk-in" ? Math.max(0, Math.floor(totals.total)) : 0;
+
+    let mixedPayments = [];
+    let mixedCashAmount = 0;
+    let pendingPosOperations = null;
+
+    if (paymentMethod === "mixed") {
+      const rawPayments = Array.isArray(req.body?.payments) ? req.body.payments : [];
+      mixedPayments = rawPayments
+        .map((entry) => ({
+          method: normalizePaymentMethod(entry?.method),
+          amount: normalizeMoney(entry?.amount),
+          code: String(entry?.code || "").trim().toUpperCase(),
+        }))
+        .filter((entry) => entry.amount > 0);
+
+      if (!mixedPayments.length) {
+        return res.status(400).json({ error: "Añade al menos un método al pago mixto" });
+      }
+
+      const validMixedMethods = new Set(["cash", "card", "bizum", "transfer", "gift_card"]);
+      if (mixedPayments.some((entry) => !validMixedMethods.has(entry.method))) {
+        return res.status(400).json({ error: "El pago mixto contiene un método no admitido" });
+      }
+
+      const mixedTotal = normalizeMoney(mixedPayments.reduce((sum, entry) => sum + entry.amount, 0));
+      if (Math.abs(mixedTotal - totals.total) > 0.01) {
+        return res.status(400).json({ error: `El pago mixto suma ${mixedTotal.toFixed(2)} € y la venta es de ${totals.total.toFixed(2)} €` });
+      }
+
+      mixedCashAmount = normalizeMoney(
+        mixedPayments.filter((entry) => entry.method === "cash").reduce((sum, entry) => sum + entry.amount, 0)
+      );
+      const mixedCardAmount = normalizeMoney(
+        mixedPayments.filter((entry) => entry.method === "card").reduce((sum, entry) => sum + entry.amount, 0)
+      );
+
+      if (mixedCardAmount > 0) {
+        if (!stripe) return res.status(503).json({ error: "Stripe no está configurado" });
+        const paymentIntentId = String(req.body?.paymentIntentId || "").trim();
+        if (!paymentIntentId) return res.status(400).json({ error: "Falta confirmar la parte de tarjeta" });
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (intent.status !== "succeeded") {
+          return res.status(409).json({ error: "La parte de tarjeta todavía no está pagada" });
+        }
+        const paidCardAmount = normalizeMoney(Number(intent.amount_received || intent.amount || 0) / 100);
+        if (Math.abs(paidCardAmount - mixedCardAmount) > 0.01) {
+          return res.status(409).json({ error: "El importe confirmado por Stripe no coincide con la parte de tarjeta" });
+        }
+      }
+
+      if (mixedCashAmount > 0) {
+        const cashSession = await readPosCashSession(registerId);
+        if (!cashSession || cashSession.status !== "open") {
+          return res.status(409).json({ error: "La caja está cerrada. Ábrela para usar efectivo en un pago mixto." });
+        }
+        originalCashSession = cashSession;
+      }
+
+      const giftEntries = mixedPayments.filter((entry) => entry.method === "gift_card");
+      if (giftEntries.length) {
+        const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+        const storedOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+        originalPosOperations = storedOperations;
+        const requestedByCode = new Map();
+        for (const entry of giftEntries) {
+          if (!entry.code) return res.status(400).json({ error: "Falta el código de una tarjeta regalo" });
+          requestedByCode.set(entry.code, normalizeMoney((requestedByCode.get(entry.code) || 0) + entry.amount));
+        }
+        const nextCards = (storedOperations.giftCards || []).map((card) => {
+          const code = String(card?.code || "").toUpperCase();
+          const requestedAmount = requestedByCode.get(code) || 0;
+          if (!requestedAmount) return card;
+          if (card.active === false) throw new Error(`La tarjeta regalo ${code} está desactivada`);
+          if (Number(card.balance || 0) + 0.001 < requestedAmount) throw new Error(`Saldo insuficiente en ${code}`);
+          requestedByCode.delete(code);
+          const balance = normalizeMoney(Number(card.balance || 0) - requestedAmount);
+          return { ...card, balance, active: balance > 0, updatedAt: new Date().toISOString() };
+        });
+        if (requestedByCode.size) {
+          throw new Error(`Tarjeta regalo no encontrada: ${Array.from(requestedByCode.keys())[0]}`);
+        }
+        pendingPosOperations = { ...storedOperations, giftCards: nextCards };
+      }
+    }
 
     if (paymentMethod === "cash" && totals.total > 0 && received < totals.total) {
       return res.status(400).json({ error: "El efectivo recibido es inferior al total" });
     }
 
     if (paymentMethod === "cash") {
-      const cashSession = await readPosCashSession();
+      const cashSession = await readPosCashSession(registerId);
       if (!cashSession || cashSession.status !== "open") {
         return res.status(409).json({ error: "La caja está cerrada. Ábrela antes de cobrar en efectivo." });
       }
       originalCashSession = cashSession;
     }
 
-    const status = existingOrder ? "paid" : paymentStatusForMethod(paymentMethod);
+    const mixedNeedsReview =
+      paymentMethod === "mixed" &&
+      mixedPayments.some((entry) => entry.method === "bizum" || entry.method === "transfer");
+    const status = existingOrder
+      ? "paid"
+      : paymentMethod === "mixed"
+      ? (mixedNeedsReview ? "pending_manual_review" : "paid")
+      : paymentStatusForMethod(paymentMethod);
     const documentNumber = await reservePosDocumentNumber(documentType);
     const now = new Date().toISOString();
     const metadata = {
@@ -2080,9 +3426,15 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       customerNif: customer.nif,
       customerAddress: customer.address,
       customerPhone: customer.phone,
+      customerId: customer.id,
+      loyaltyPointsEarned,
+      mixedCardPaymentIntentId: paymentMethod === "mixed" ? String(req.body?.paymentIntentId || "") : undefined,
+      staff,
+      registerId,
       fiscalSnapshot: fiscalSettings,
       tax: totals.tax,
-      received: paymentMethod === "cash" ? totals.received : totals.total,
+      paymentBreakdown: paymentMethod === "mixed" ? mixedPayments : undefined,
+      received: paymentMethod === "cash" ? totals.received : paymentMethod === "mixed" ? mixedCashAmount : totals.total,
       change: paymentMethod === "cash" ? totals.change : 0,
       inventoryCommittedAt: now,
     };
@@ -2137,8 +3489,37 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let cashSession = null;
     if (paymentMethod === "cash") {
-      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
+      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id, registerId);
       cashSessionWasWritten = true;
+    } else if (paymentMethod === "mixed" && mixedCashAmount > 0) {
+      cashSession = await registerCashSaleInSession(mixedCashAmount, savedOrder.id, registerId);
+      cashSessionWasWritten = true;
+    }
+
+    if (loyaltyPointsEarned > 0 || pendingPosOperations) {
+      const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
+      let posOperations = pendingPosOperations;
+      if (!posOperations) {
+        const storedOperations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+        if (!originalPosOperations) originalPosOperations = storedOperations;
+        posOperations = storedOperations;
+      }
+      if (loyaltyPointsEarned > 0) {
+        const previousPoints = Number(posOperations.loyalty?.[customer.id]?.points || 0);
+        posOperations = {
+          ...posOperations,
+          loyalty: {
+            ...(posOperations.loyalty || {}),
+            [customer.id]: {
+              points: previousPoints + loyaltyPointsEarned,
+              updatedAt: now,
+              lastOrderId: savedOrder.id,
+            },
+          },
+        };
+      }
+      await upsertStorageValue("posOperations", JSON.stringify(posOperations));
+      posOperationsWasWritten = true;
     }
 
     if (!existingOrder) {
@@ -2165,9 +3546,17 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
   } catch (error) {
     if (cashSessionWasWritten && originalCashSession) {
       try {
-        await writePosCashSession(originalCashSession);
+        await writePosCashSession(originalCashSession, activeRegisterId);
       } catch (rollbackError) {
         console.error("No se pudo revertir la caja tras fallo TPV:", rollbackError.message);
+      }
+    }
+
+    if (posOperationsWasWritten && originalPosOperations) {
+      try {
+        await upsertStorageValue("posOperations", JSON.stringify(originalPosOperations));
+      } catch (rollbackError) {
+        console.error("No se pudieron revertir operaciones TPV tras fallo:", rollbackError.message);
       }
     }
 

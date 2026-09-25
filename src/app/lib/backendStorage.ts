@@ -468,28 +468,28 @@ export const backendApi = {
     }>("/api/pos/bootstrap");
   },
 
-  async getPosCashSession() {
-    return request<{ session: any | null }>("/api/pos/cash-session");
+  async getPosCashSession(registerId = "caja-01") {
+    return request<{ session: any | null }>(`/api/pos/cash-session?registerId=${encodeURIComponent(registerId)}`);
   },
 
-  async openPosCashSession(openingAmount: number) {
+  async openPosCashSession(openingAmount: number, registerId = "caja-01") {
     return request<{ session: any }>("/api/pos/cash-session/open", {
       method: "POST",
-      body: JSON.stringify({ openingAmount }),
+      body: JSON.stringify({ openingAmount, registerId }),
     });
   },
 
-  async addPosCashMovement(payload: { type: "in" | "out"; amount: number; note?: string }) {
+  async addPosCashMovement(payload: { type: "in" | "out"; amount: number; note?: string; registerId?: string }) {
     return request<{ session: any }>("/api/pos/cash-session/movement", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
-  async closePosCashSession(countedCash: number) {
+  async closePosCashSession(countedCash: number, registerId = "caja-01") {
     return request<{ session: any }>("/api/pos/cash-session/close", {
       method: "POST",
-      body: JSON.stringify({ countedCash }),
+      body: JSON.stringify({ countedCash, registerId }),
     });
   },
 
@@ -518,6 +518,13 @@ export const backendApi = {
     });
   },
 
+  async createPosMixedCardIntent(payload: any) {
+    return request<{ clientSecret: string; paymentIntentId: string; cardAmount: number; totals: any }>("/api/pos/mixed-card-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async createPosCardIntent(payload: any) {
     return request<{
       clientSecret: string;
@@ -525,6 +532,168 @@ export const backendApi = {
       orderId: string;
       totals: { subtotal: number; tax: number; total: number };
     }>("/api/pos/card-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosRegister(payload: { name: string; id?: string }) {
+    return request<{ register: any; operations: any }>("/api/pos/registers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getPosOperations() {
+    return request<{ operations: any }>("/api/pos/operations");
+  },
+
+  async savePosOperations(payload: any) {
+    return request<{ operations: any }>("/api/pos/operations", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async saveHeldPosSale(payload: any) {
+    return request<{ heldSale: any; operations: any }>("/api/pos/held-sales", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteHeldPosSale(id: string) {
+    return request<{ ok: boolean; operations: any }>(`/api/pos/held-sales/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
+  async createFloristOrder(payload: any) {
+    return request<{ order: any; operations: any }>("/api/pos/florist-orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createGiftCard(payload: { amount: number; code?: string }) {
+    return request<{ card: any; operations: any }>("/api/pos/gift-cards", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateFloristOrder(id: string, payload: any) {
+    return request<{ order: any; operations: any }>(`/api/pos/florist-orders/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async redeemGiftCard(payload: { code: string; amount: number }) {
+    return request<{ card: any; operations: any }>("/api/pos/gift-cards/redeem", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async savePosSupplier(payload: any) {
+    return request<{ supplier: any; operations: any }>("/api/pos/suppliers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosPurchase(payload: any) {
+    return request<{ purchase: any; inventory: any[]; operations: any }>("/api/pos/purchases", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async savePosStaff(payload: { name: string; role: "admin" | "manager" | "seller"; pin: string }) {
+    return request<{ staff: any; operations: any }>("/api/pos/staff", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async unlockPosStaff(pin: string) {
+    return request<{ staff: any }>("/api/pos/staff/unlock", {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    });
+  },
+
+  async startPosStaffShift(staffId: string) {
+    return request<{ shift: any; operations: any }>("/api/pos/staff-shifts/start", {
+      method: "POST",
+      body: JSON.stringify({ staffId }),
+    });
+  },
+
+  async endPosStaffShift(staffId: string) {
+    return request<{ shift: any; operations: any }>("/api/pos/staff-shifts/end", {
+      method: "POST",
+      body: JSON.stringify({ staffId }),
+    });
+  },
+
+  async adjustPosLoyalty(payload: { customerId: string; delta: number }) {
+    return request<{ loyalty: any; operations: any }>("/api/pos/loyalty/adjust", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosQuote(payload: any) {
+    return request<{ quote: any; operations: any }>("/api/pos/quotes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updatePosQuote(id: string, payload: any) {
+    return request<{ quote: any; operations: any }>(`/api/pos/quotes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async adjustPosInventory(payload: { productId: string; type: "count" | "waste" | "breakage" | "manual"; reason?: string; delta?: number; countedStock?: number; staff?: { id: string; name: string; role: string } }) {
+    return request<{ adjustment: any; inventory: any[]; operations: any }>("/api/pos/inventory-adjustments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getPosReportSummary(params?: { from?: string; to?: string }) {
+    const search = new URLSearchParams();
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<{ report: any }>(`/api/pos/reports/summary${suffix}`);
+  },
+
+  async listPosSales(limit = 50, query = "") {
+    const search = new URLSearchParams({ limit: String(limit) });
+    if (query.trim()) search.set("q", query.trim());
+    return request<{ sales: any[] }>(`/api/pos/sales?${search.toString()}`);
+  },
+
+  async refundPartialPosSale(payload: {
+    orderId: string;
+    items: Array<{ id: string; quantity: number }>;
+    reason?: string;
+    staff?: { id: string; name: string; role: string };
+  }) {
+    return request<{ ok: boolean; order: any; inventory: any[]; refund: any; cashSession?: any; manualRefunds?: any[] }>("/api/pos/refund-partial", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async refundPosSale(payload: { orderId: string; reason?: string; staff?: { id: string; name: string; role: string } }) {
+    return request<{ ok: boolean; order: any; inventory: any[]; refundNumber: string }>("/api/pos/refund", {
       method: "POST",
       body: JSON.stringify(payload),
     });

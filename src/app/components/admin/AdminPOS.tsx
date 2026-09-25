@@ -18,9 +18,9 @@ import {
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
-type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia";
+type PosPaymentMethod = "Efectivo" | "Tarjeta" | "Bizum" | "Transferencia" | "Mixto";
 type PosItem = { id: string; name: string; sku: string; price: number; iva: number; stock: number; category: string; image?: string; manual?: boolean };
-type CartLine = PosItem & { qty: number };
+type CartLine = PosItem & { qty: number; discountPercent?: number };
 type Customer = { id: string; name: string; nif: string; email: string; address: string; phone?: string };
 type FiscalSettings = { businessName: string; nif: string; address: string; email: string; phone: string };
 type SaleReceipt = {
@@ -132,13 +132,34 @@ export function AdminPOS() {
   const [showFiscalModal, setShowFiscalModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Customer>({ id: "", name: "", nif: "", email: "", address: "", phone: "" });
   const [fiscalDraft, setFiscalDraft] = useState<FiscalSettings>(EMPTY_FISCAL);
-  const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId: string } | null>(null);
+  const [cardSession, setCardSession] = useState<{ clientSecret: string; orderId?: string; mode: "full" | "mixed" } | null>(null);
+  const [mixed, setMixed] = useState({ cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
   const [cashSession, setCashSession] = useState<any | null>(null);
+  const [registerId, setRegisterId] = useState(() => {
+    try { return localStorage.getItem("herencia_pos_register_id") || "caja-01"; } catch { return "caja-01"; }
+  });
   const [autoPrint, setAutoPrint] = useState(false);
   const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
   const [calcOperator, setCalcOperator] = useState<"+" | "-" | "×" | "÷" | null>(null);
   const [testingSystem, setTestingSystem] = useState(false);
+  const [manualName, setManualName] = useState("Artículo");
+  const [manualIva, setManualIva] = useState(21);
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [saleSearch, setSaleSearch] = useState("");
+  const [searchingSales, setSearchingSales] = useState(false);
+  const [showOperations, setShowOperations] = useState(false);
+  const [operations, setOperations] = useState<any>({ giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] });
+  const [report, setReport] = useState<any | null>(null);
+  const [currentStaff, setCurrentStaff] = useState<any | null>(null);
+  const [activeQuoteId, setActiveQuoteId] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [heldSales, setHeldSales] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem("herencia_pos_held_sales") || "[]"); } catch { return []; }
+  });
   const [selfTestResult, setSelfTestResult] = useState<{
     ok: boolean;
     cardReady: boolean;
@@ -162,6 +183,41 @@ export function AdminPOS() {
       }));
       setProducts(realProducts);
       setCustomers(realCustomers);
+
+      if (!draftReady) {
+        try {
+          const storedDraft = JSON.parse(localStorage.getItem("herencia_pos_current_sale") || "null");
+          if (storedDraft && Array.isArray(storedDraft.cart) && storedDraft.cart.length) {
+            const restoredCart: CartLine[] = storedDraft.cart.flatMap((line: any) => {
+              if (line?.manual === true) {
+                return [{
+                  ...line,
+                  id: String(line.id || `manual-${crypto.randomUUID()}`),
+                  qty: Math.max(1, Number(line.qty || 1)),
+                  stock: 999999,
+                  manual: true,
+                }];
+              }
+              const product = realProducts.find((item) => item.id === String(line?.id || ""));
+              if (!product || product.stock <= 0) return [];
+              return [{ ...product, qty: Math.min(product.stock, Math.max(1, Number(line?.qty || 1))), discountPercent: Number(line?.discountPercent || 0) }];
+            });
+            if (restoredCart.length) {
+              setCart(restoredCart);
+              setCustomer(storedDraft.customer || WALK_IN);
+              setPayment(storedDraft.payment || "Efectivo");
+              setDocumentType(storedDraft.documentType === "invoice" ? "invoice" : "ticket");
+              setNotes(String(storedDraft.notes || ""));
+              setGlobalDiscount(Number(storedDraft.globalDiscount || 0));
+              setMixed(storedDraft.mixed || { cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
+              toast.info("Venta en curso recuperada");
+            }
+          }
+        } catch {
+          // Un borrador local dañado no debe bloquear la caja.
+        }
+        setDraftReady(true);
+      }
       setFiscal({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       setFiscalDraft({ ...EMPTY_FISCAL, ...(data.fiscalSettings || {}) });
       const backendStripeKey = String(data.stripeSettings?.publishableKey || "").trim();
@@ -170,6 +226,34 @@ export function AdminPOS() {
       setStripeEnabled(Boolean(data.stripeSettings?.enabled && resolvedStripeKey));
       setStripeSecretConfigured(Boolean(data.stripeSettings?.secretConfigured));
       setCashSession(data.cashSession || null);
+      try {
+        const [history, ops, reportResult] = await Promise.all([
+          backendApi.listPosSales(30),
+          backendApi.getPosOperations(),
+          backendApi.getPosReportSummary(),
+        ]);
+        setRecentSales(Array.isArray(history.sales) ? history.sales : []);
+        const loadedOperations = ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+        setOperations(loadedOperations);
+        if (Array.isArray(loadedOperations.heldSales)) {
+          setHeldSales(loadedOperations.heldSales);
+          try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(loadedOperations.heldSales)); } catch {}
+        }
+        setReport(reportResult.report || null);
+
+        const availableRegisters = Array.isArray(loadedOperations.registers) && loadedOperations.registers.length
+          ? loadedOperations.registers
+          : [{ id: "caja-01", name: "Caja 01", active: true }];
+        const selectedRegister = availableRegisters.some((item: any) => item.id === registerId)
+          ? registerId
+          : String(availableRegisters[0].id || "caja-01");
+        setRegisterId(selectedRegister);
+        try { localStorage.setItem("herencia_pos_register_id", selectedRegister); } catch {}
+        const cashResult = await backendApi.getPosCashSession(selectedRegister);
+        setCashSession(cashResult.session || null);
+      } catch {
+        setRecentSales([]);
+      }
       setBackendConnected(true);
     } catch (error: any) {
       setBackendConnected(false);
@@ -180,6 +264,35 @@ export function AdminPOS() {
   }
 
   useEffect(() => { void loadData(); }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      localStorage.setItem("herencia_pos_current_sale", JSON.stringify({
+        cart,
+        customer,
+        payment,
+        documentType,
+        notes,
+        globalDiscount,
+        mixed,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // El backend sigue siendo la fuente de verdad aunque localStorage no esté disponible.
+    }
+  }, [draftReady, cart, customer, payment, documentType, notes, globalDiscount, mixed]);
 
   const categories = useMemo(() => ["Todos", ...Array.from(new Set(products.map((product) => product.category)))], [products]);
   const filteredProducts = useMemo(() => {
@@ -195,7 +308,8 @@ export function AdminPOS() {
     let total = 0;
     let subtotal = 0;
     for (const line of cart) {
-      const lineTotal = line.price * line.qty;
+      const lineDiscount = Math.max(0, Math.min(100, Number(line.discountPercent || globalDiscount || 0)));
+      const lineTotal = line.price * line.qty * (1 - lineDiscount / 100);
       total += lineTotal;
       subtotal += lineTotal / (1 + line.iva / 100);
     }
@@ -204,7 +318,7 @@ export function AdminPOS() {
     const tax = Math.round((total - subtotal) * 100) / 100;
     const change = Math.max(0, Math.round((received - total) * 100) / 100);
     return { subtotal, tax, total, change };
-  }, [cart, received]);
+  }, [cart, received, globalDiscount]);
 
   function addItem(product: PosItem) {
     if (product.stock <= 0) return toast.error("Este producto no tiene stock");
@@ -218,6 +332,102 @@ export function AdminPOS() {
       }
       return current.map((line) => line.id === product.id ? { ...line, qty: line.qty + 1 } : line);
     });
+  }
+
+  function findAndAddByCode(value: string) {
+    const code = value.trim().toLowerCase();
+    if (!code) return false;
+    const product = products.find((item) =>
+      item.sku.toLowerCase() === code || item.id.toLowerCase() === code
+    );
+    if (!product) return false;
+    addItem(product);
+    setQuery("");
+    toast.success(`${product.name} añadido`);
+    return true;
+  }
+
+  async function parkSale() {
+    if (!cart.length) return toast.error("No hay una venta para aparcar");
+    const sale = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      items: cart,
+      customer,
+      paymentMethod: payment,
+      documentType,
+      notes,
+      globalDiscount,
+      mixed,
+      registerId,
+      staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+    };
+
+    try {
+      const result = await backendApi.saveHeldPosSale(sale);
+      const next = Array.isArray(result.operations?.heldSales) ? result.operations.heldSales : [result.heldSale, ...heldSales];
+      setHeldSales(next);
+      setOperations(result.operations || operations);
+      try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+      clearSale();
+      toast.success("Venta aparcada y sincronizada");
+    } catch (error: any) {
+      const localSale = { ...sale, cart: cart };
+      const next = [localSale, ...heldSales].slice(0, 100);
+      setHeldSales(next);
+      try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+      clearSale();
+      toast.warning(error?.message ? `Venta aparcada solo en este dispositivo: ${error.message}` : "Venta aparcada solo en este dispositivo");
+    }
+  }
+
+  async function restoreHeldSale(id: string) {
+    const sale = heldSales.find((item) => item.id === id);
+    if (!sale) return;
+    const storedLines = Array.isArray(sale.items) ? sale.items : Array.isArray(sale.cart) ? sale.cart : [];
+    const restored: CartLine[] = storedLines.flatMap((line: any) => {
+      if (line?.manual === true) {
+        return [{ ...line, qty: Math.max(1, Number(line.qty ?? line.quantity ?? 1)), stock: 999999, manual: true }];
+      }
+      const currentProduct = products.find((product) => product.id === String(line?.id || ""));
+      if (!currentProduct || currentProduct.stock <= 0) return [];
+      const requestedQty = Math.max(1, Number(line?.qty ?? line?.quantity ?? 1));
+      return [{ ...currentProduct, qty: Math.min(currentProduct.stock, requestedQty), discountPercent: Number(line?.discountPercent || 0) }];
+    });
+
+    if (!restored.length) return toast.error("Los artículos de esta venta ya no están disponibles");
+    if (restored.length < storedLines.length) toast.warning("Algunos artículos aparcados ya no tienen stock y se omitieron");
+
+    setCart(restored);
+    setCustomer(sale.customer || WALK_IN);
+    setPayment((sale.paymentMethod || sale.payment || "Efectivo") as PosPaymentMethod);
+    setDocumentType(sale.documentType || "ticket");
+    setNotes(sale.notes || "");
+    setGlobalDiscount(Number(sale.globalDiscount || 0));
+    if (sale.mixed) setMixed(sale.mixed);
+    if (sale.registerId && sale.registerId !== registerId) await changeRegister(String(sale.registerId));
+
+    const next = heldSales.filter((item) => item.id !== id);
+    setHeldSales(next);
+    try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+
+    try {
+      const result = await backendApi.deleteHeldPosSale(id);
+      setOperations(result.operations || operations);
+      if (Array.isArray(result.operations?.heldSales)) setHeldSales(result.operations.heldSales);
+    } catch {
+      // Si era un aparcado local, no existe en backend; la recuperación sigue siendo válida.
+    }
+    toast.success("Venta recuperada");
+  }
+
+  function applyDiscountToSelected(percent: number) {
+    if (!hasPosPermission("discount")) return toast.error("Este empleado no puede aplicar descuentos");
+    if (!selectedLineId) return toast.error("Selecciona una línea de la venta");
+    const safe = Math.max(0, Math.min(100, Number(percent || 0)));
+    setCart((current) => current.map((line) =>
+      line.id === selectedLineId ? { ...line, discountPercent: safe } : line
+    ));
   }
 
   function changeQty(id: string, delta: number) {
@@ -292,10 +502,10 @@ export function AdminPOS() {
     const id = `manual-${crypto.randomUUID()}`;
     const line: CartLine = {
       id,
-      name: "Artículo",
+      name: manualName.trim() || "Artículo",
       sku: "VENTA-LIBRE",
       price: amount,
-      iva: 21,
+      iva: manualIva,
       stock: 999999,
       category: "Venta libre",
       manual: true,
@@ -308,7 +518,7 @@ export function AdminPOS() {
     setKeypad("");
     setCalcAccumulator(null);
     setCalcOperator(null);
-    toast.success(`Artículo libre añadido por ${money(amount)}`);
+    toast.success(`${line.name} añadido por ${money(amount)}`);
   }
 
   function pressOperator(operator: "+" | "-" | "×" | "÷") {
@@ -377,6 +587,10 @@ export function AdminPOS() {
     setCalcOperator(null);
     setPayment("Efectivo");
     setDocumentType("ticket");
+    setGlobalDiscount(0);
+    setSelectedLineId(null);
+    setActiveQuoteId(null);
+    setMixed({ cash: 0, card: 0, bizum: 0, transfer: 0, giftCard: 0, giftCardCode: "" });
   }
 
   function invoiceRequirementsOk() {
@@ -402,11 +616,47 @@ export function AdminPOS() {
             sku: line.sku,
             price: line.price,
             iva: line.iva,
+            discountPercent: line.discountPercent ?? globalDiscount,
             quantity: line.qty,
             manual: true,
           }
-        : { id: line.id, quantity: line.qty }
+        : { id: line.id, quantity: line.qty, discountPercent: line.discountPercent ?? globalDiscount }
     );
+  }
+
+  function mixedPaymentsPayload() {
+    const rows: Array<{ method: string; amount: number; code?: string }> = [];
+    if (mixed.cash > 0) rows.push({ method: "cash", amount: Math.round(mixed.cash * 100) / 100 });
+    if (mixed.card > 0) rows.push({ method: "card", amount: Math.round(mixed.card * 100) / 100 });
+    if (mixed.bizum > 0) rows.push({ method: "bizum", amount: Math.round(mixed.bizum * 100) / 100 });
+    if (mixed.transfer > 0) rows.push({ method: "transfer", amount: Math.round(mixed.transfer * 100) / 100 });
+    if (mixed.giftCard > 0) rows.push({ method: "gift_card", amount: Math.round(mixed.giftCard * 100) / 100, code: mixed.giftCardCode.trim().toUpperCase() });
+    return rows;
+  }
+
+  function mixedAssignedTotal() {
+    return Math.round(mixedPaymentsPayload().reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
+  }
+
+  function validateMixedPayment() {
+    const assigned = mixedAssignedTotal();
+    if (Math.abs(assigned - totals.total) > 0.01) {
+      toast.error(`El pago mixto suma ${money(assigned)} y debe sumar ${money(totals.total)}`);
+      return false;
+    }
+    if (mixed.cash > 0 && cashSession?.status !== "open") {
+      toast.error("Abre la caja para usar efectivo en el pago mixto");
+      return false;
+    }
+    if (mixed.card > 0 && !cardReady) {
+      toast.error("Stripe debe estar configurado para usar tarjeta en pago mixto");
+      return false;
+    }
+    if (mixed.giftCard > 0 && !mixed.giftCardCode.trim()) {
+      toast.error("Introduce el código de la tarjeta regalo");
+      return false;
+    }
+    return true;
   }
 
   function salePayload() {
@@ -417,10 +667,491 @@ export function AdminPOS() {
       documentType,
       received,
       notes,
+      staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      registerId,
+      ...(payment === "Mixto" ? { payments: mixedPaymentsPayload() } : {}),
     };
   }
 
-  async function completeNonCardSale() {
+  function hasPosPermission(permission: string) {
+    if (!currentStaff) return true;
+    return Array.isArray(currentStaff.permissions) && currentStaff.permissions.includes(permission);
+  }
+
+  async function unlockStaff() {
+    const pin = window.prompt("PIN del empleado");
+    if (!pin) return;
+    try {
+      const result = await backendApi.unlockPosStaff(pin);
+      setCurrentStaff(result.staff);
+      toast.success(`Sesión TPV: ${result.staff.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "PIN incorrecto");
+    }
+  }
+
+  async function startStaffShift() {
+    if (!currentStaff?.id) return toast.error("Selecciona un empleado con PIN");
+    try {
+      const result = await backendApi.startPosStaffShift(currentStaff.id);
+      setOperations(result.operations);
+      toast.success(`Turno iniciado: ${currentStaff.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar el turno");
+    }
+  }
+
+  async function endStaffShift() {
+    if (!currentStaff?.id) return toast.error("Selecciona un empleado con PIN");
+    try {
+      const result = await backendApi.endPosStaffShift(currentStaff.id);
+      setOperations(result.operations);
+      toast.success(`Turno cerrado · ${result.shift.durationMinutes} min`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cerrar el turno");
+    }
+  }
+
+    async function createStaffMember() {
+    const name = window.prompt("Nombre del empleado");
+    if (!name) return;
+    const roleRaw = (window.prompt("Rol: admin, manager o seller", "seller") || "seller").toLowerCase();
+    const role = (["admin", "manager", "seller"].includes(roleRaw) ? roleRaw : "seller") as "admin" | "manager" | "seller";
+    const pin = window.prompt("PIN de 4 a 8 dígitos");
+    if (!pin) return;
+    try {
+      const result = await backendApi.savePosStaff({ name, role, pin });
+      setOperations(result.operations);
+      toast.success(`Empleado ${result.staff.name} creado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear el empleado");
+    }
+  }
+
+  async function changeRegister(nextRegisterId: string) {
+    if (!nextRegisterId || nextRegisterId === registerId) return;
+    try {
+      const result = await backendApi.getPosCashSession(nextRegisterId);
+      setRegisterId(nextRegisterId);
+      setCashSession(result.session || null);
+      try { localStorage.setItem("herencia_pos_register_id", nextRegisterId); } catch {}
+      toast.success(`Caja activa: ${(operations.registers || []).find((item: any) => item.id === nextRegisterId)?.name || nextRegisterId}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cambiar de caja");
+    }
+  }
+
+  async function createRegister() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede crear cajas");
+    const name = window.prompt("Nombre de la nueva caja", `Caja ${(operations.registers?.length || 1) + 1}`);
+    if (!name) return;
+    try {
+      const result = await backendApi.createPosRegister({ name });
+      setOperations(result.operations);
+      await changeRegister(result.register.id);
+      toast.success(`${result.register.name} creada`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear la caja");
+    }
+  }
+
+    async function refreshReport() {
+    try {
+      const result = await backendApi.getPosReportSummary();
+      setReport(result.report || null);
+    } catch {
+      // El resto del TPV puede seguir funcionando aunque el panel analítico no cargue.
+    }
+  }
+
+  async function adjustInventory() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede ajustar inventario");
+    const sku = window.prompt("SKU o ID del producto");
+    if (!sku) return;
+    const product = products.find((item) => item.sku.toLowerCase() === sku.toLowerCase() || item.id === sku);
+    if (!product) return toast.error("Producto no encontrado");
+
+    const typeRaw = (window.prompt("Tipo: count, waste, breakage o manual", "count") || "count").toLowerCase();
+    const type = (["count", "waste", "breakage", "manual"].includes(typeRaw) ? typeRaw : "manual") as "count" | "waste" | "breakage" | "manual";
+    const reason = window.prompt("Motivo del ajuste", type === "count" ? "Inventario físico" : "") || "";
+
+    try {
+      let payload: any = { productId: product.id, type, reason };
+      if (type === "count") {
+        const countedStock = Math.floor(Number(window.prompt("Stock contado", String(product.stock)) || -1));
+        if (!Number.isFinite(countedStock) || countedStock < 0) return toast.error("Stock contado inválido");
+        payload.countedStock = countedStock;
+      } else {
+        const units = Math.floor(Number(window.prompt(type === "manual" ? "Ajuste de unidades (+/-)" : "Unidades a descontar", "1") || 0));
+        if (!Number.isFinite(units) || units === 0) return toast.error("Cantidad inválida");
+        payload.delta = type === "manual" ? units : -Math.abs(units);
+      }
+
+      payload.staff = currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" };
+      const result = await backendApi.adjustPosInventory(payload);
+      setProducts((result.inventory || []).map(toPosItem));
+      setOperations(result.operations);
+      await refreshReport();
+      toast.success(`Stock actualizado: ${result.adjustment.productName} ${result.adjustment.before} → ${result.adjustment.after}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo ajustar el inventario");
+    }
+  }
+
+    async function createSupplier() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede gestionar proveedores");
+    const name = window.prompt("Nombre del proveedor");
+    if (!name) return;
+    const email = window.prompt("Email del proveedor", "") || "";
+    const phone = window.prompt("Teléfono del proveedor", "") || "";
+    try {
+      const result = await backendApi.savePosSupplier({ name, email, phone });
+      setOperations(result.operations);
+      toast.success(`Proveedor ${result.supplier.name} guardado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el proveedor");
+    }
+  }
+
+  async function receivePurchase() {
+    if (!hasPosPermission("inventory")) return toast.error("Este empleado no puede modificar inventario");
+    const sku = window.prompt("SKU o ID del producto recibido");
+    if (!sku) return;
+    const product = products.find((item) => item.sku.toLowerCase() === sku.toLowerCase() || item.id === sku);
+    if (!product) return toast.error("Producto no encontrado");
+    const quantity = Math.floor(Number(window.prompt("Cantidad recibida", "1") || 0));
+    const unitCost = Number(window.prompt("Coste por unidad (€)", "0") || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+      return toast.error("Cantidad o coste inválido");
+    }
+    const supplierId = operations.suppliers?.[0]?.id || "";
+    try {
+      const result = await backendApi.createPosPurchase({
+        supplierId,
+        items: [{ id: product.id, quantity, unitCost }],
+        staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      });
+      setProducts((result.inventory || []).map(toPosItem));
+      setOperations(result.operations);
+      await refreshReport();
+      toast.success(`Entrada registrada: +${quantity} ${product.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la compra");
+    }
+  }
+
+  async function redeemGiftCard() {
+    const code = window.prompt("Código de la tarjeta regalo");
+    if (!code) return;
+    const amount = Number(window.prompt("Importe a canjear (€)", String(Math.max(0, totals.total))) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Importe inválido");
+    try {
+      const result = await backendApi.redeemGiftCard({ code, amount });
+      setOperations(result.operations);
+      toast.success(`Canje realizado · saldo restante ${money(result.card.balance)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo canjear la tarjeta regalo");
+    }
+  }
+
+  async function adjustLoyalty() {
+    if (!customer?.id || customer.id === WALK_IN.id) return toast.error("Selecciona un cliente registrado");
+    const delta = Math.trunc(Number(window.prompt("Puntos a sumar (usa negativo para restar)", "10") || 0));
+    if (!delta) return;
+    try {
+      const result = await backendApi.adjustPosLoyalty({ customerId: customer.id, delta });
+      setOperations(result.operations);
+      toast.success(`Saldo de fidelización: ${result.loyalty.points} puntos`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los puntos");
+    }
+  }
+
+  async function updateFloristStatus(id: string, status: string) {
+    try {
+      const result = await backendApi.updateFloristOrder(id, { status });
+      setOperations(result.operations);
+      toast.success(`Encargo marcado como ${status}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el encargo");
+    }
+  }
+
+    async function saveCurrentQuote() {
+    if (!cart.length) return toast.error("Añade artículos antes de guardar un presupuesto");
+    try {
+      const result = await backendApi.createPosQuote({
+        customer,
+        items: saleItemsPayload(),
+        notes,
+      });
+      setOperations(result.operations);
+      setActiveQuoteId(result.quote.id);
+      toast.success(`Presupuesto ${result.quote.quoteNumber} guardado`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el presupuesto");
+    }
+  }
+
+  function loadQuote(quote: any) {
+    const nextCart: CartLine[] = (Array.isArray(quote?.items) ? quote.items : []).map((item: any) => {
+      if (item.manual === true) {
+        return {
+          id: String(item.id),
+          name: String(item.name || "Artículo"),
+          sku: String(item.sku || "VENTA-LIBRE"),
+          price: Number(item.price || 0),
+          iva: Number(item.iva || 21),
+          stock: 999999,
+          category: "Venta libre",
+          manual: true,
+          qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
+          discountPercent: Number(item.discountPercent || 0),
+        };
+      }
+      const product = products.find((candidate) => candidate.id === String(item.id));
+      return {
+        ...(product || {
+          id: String(item.id),
+          name: String(item.name || "Producto"),
+          sku: String(item.sku || ""),
+          price: Number(item.price || 0),
+          iva: Number(item.iva || 21),
+          stock: Math.max(0, Number(item.quantity ?? item.qty ?? 1)),
+          category: String(item.category || "Presupuesto"),
+        }),
+        qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
+        discountPercent: Number(item.discountPercent || 0),
+      } as CartLine;
+    });
+    setCart(nextCart);
+    setCustomer(quote?.customer || WALK_IN);
+    setNotes(String(quote?.notes || ""));
+    setActiveQuoteId(String(quote?.id || ""));
+    toast.success(`${quote?.quoteNumber || "Presupuesto"} cargado`);
+  }
+
+  async function markActiveQuoteConverted(orderId: string) {
+    if (!activeQuoteId) return;
+    try {
+      const result = await backendApi.updatePosQuote(activeQuoteId, { status: "converted", orderId });
+      setOperations(result.operations);
+    } catch {
+      // La venta ya está completada; un fallo al marcar el presupuesto no debe duplicar el cobro.
+    }
+  }
+
+    async function createQuickFloristOrder() {
+    const concept = window.prompt("Concepto del encargo", "Ramo personalizado");
+    if (!concept) return;
+    const total = Number(window.prompt("Total del encargo (€)", "50") || 0);
+    if (!Number.isFinite(total) || total <= 0) return toast.error("Total inválido");
+    const deposit = Number(window.prompt("Anticipo recibido (€)", "0") || 0);
+    const dueAt = window.prompt("Fecha/hora de entrega (ej. 2026-09-30 18:00)", "") || "";
+    try {
+      const result = await backendApi.createFloristOrder({
+        customerName: customer.name || "Cliente mostrador",
+        customerPhone: customer.phone || "",
+        concept,
+        total,
+        deposit,
+        dueAt: dueAt || null,
+      });
+      setOperations(result.operations);
+      toast.success(`Encargo creado · pendiente ${money(result.order.pending)}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear el encargo");
+    }
+  }
+
+  async function createQuickGiftCard() {
+    const amount = Number(window.prompt("Saldo de la tarjeta regalo (€)", "50") || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Saldo inválido");
+    try {
+      const result = await backendApi.createGiftCard({ amount });
+      setOperations(result.operations);
+      toast.success(`Tarjeta regalo ${result.card.code} creada`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear la tarjeta regalo");
+    }
+  }
+
+    function paymentLabel(value: string): PosPaymentMethod {
+    const method = String(value || "").toLowerCase();
+    if (method === "card" || method === "tarjeta") return "Tarjeta";
+    if (method === "bizum") return "Bizum";
+    if (method === "transfer" || method === "transferencia") return "Transferencia";
+    if (method === "mixed" || method === "mixto") return "Mixto";
+    return "Efectivo";
+  }
+
+  async function searchSales(query = saleSearch) {
+    setSearchingSales(true);
+    try {
+      const result = await backendApi.listPosSales(50, query);
+      setRecentSales(Array.isArray(result.sales) ? result.sales : []);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo buscar en el historial");
+    } finally {
+      setSearchingSales(false);
+    }
+  }
+
+  async function exportSalesCsv() {
+    try {
+      const result = await backendApi.listPosSales(100, saleSearch);
+      const rows = Array.isArray(result.sales) ? result.sales : [];
+      const escapeCsv = (value: any) => {
+        const text = String(value ?? "");
+        return `"${text.replaceAll('"', '""')}"`;
+      };
+      const header = ["Documento", "Fecha", "Cliente", "Email", "Pago", "Estado", "Base", "IVA", "Total", "Caja", "Empleado"];
+      const body = rows.map((sale: any) => [
+        sale.metadata?.invoiceNumber || sale.id,
+        sale.date || "",
+        sale.customerName || "",
+        sale.customerEmail || "",
+        sale.paymentMethod || sale.payment_method || "",
+        sale.status || "",
+        Number(sale.subtotal || 0).toFixed(2),
+        Number(sale.metadata?.tax || 0).toFixed(2),
+        Number(sale.total || 0).toFixed(2),
+        sale.metadata?.registerId || "caja-01",
+        sale.metadata?.staff?.name || "",
+      ].map(escapeCsv).join(";"));
+      const csv = "\uFEFF" + [header.map(escapeCsv).join(";"), ...body].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `herencia-ventas-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`${rows.length} ventas exportadas`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo exportar el historial");
+    }
+  }
+
+    function reprintSale(sale: any) {
+    const metadata = sale?.metadata || {};
+    const customerFromSale: Customer = {
+      id: String(metadata.customerId || sale?.customerEmail || sale?.customerName || "history"),
+      name: String(sale?.customerName || "Cliente mostrador"),
+      nif: String(metadata.customerNif || ""),
+      email: String(sale?.customerEmail || ""),
+      address: String(metadata.customerAddress || ""),
+      phone: String(metadata.customerPhone || ""),
+    };
+    const receipt: SaleReceipt = {
+      order: sale,
+      totals: {
+        subtotal: Number(sale?.subtotal || 0),
+        tax: Number(metadata.tax || 0),
+        total: Number(sale?.total || 0),
+        received: Number(metadata.received ?? sale?.total ?? 0),
+        change: Number(metadata.change || 0),
+      },
+      documentNumber: String(metadata.invoiceNumber || sale?.id || "DOCUMENTO"),
+      paymentMethod: paymentLabel(sale?.paymentMethod || sale?.payment_method),
+      customer: customerFromSale,
+      fiscal: { ...EMPTY_FISCAL, ...(metadata.fiscalSnapshot || fiscal) },
+    };
+    setLastReceipt(receipt);
+    setTimeout(() => window.print(), 100);
+  }
+
+    async function refundPartialSale(orderId: string) {
+    const sale = recentSales.find((item) => String(item.id) === String(orderId));
+    if (!sale) return;
+    if (!hasPosPermission("refund")) return toast.error("Este empleado no puede realizar devoluciones");
+    const saleItems = Array.isArray(sale.items) ? sale.items : [];
+    if (!saleItems.length) return toast.error("Esta venta no conserva líneas para una devolución parcial");
+
+    const previousRefunds = Array.isArray(sale.metadata?.refunds) ? sale.metadata.refunds : [];
+    const alreadyRefunded = new Map<string, number>();
+    for (const refund of previousRefunds) {
+      for (const item of Array.isArray(refund?.items) ? refund.items : []) {
+        const id = String(item?.id || "");
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        if (id && qty) alreadyRefunded.set(id, (alreadyRefunded.get(id) || 0) + qty);
+      }
+    }
+
+    const selected: Array<{ id: string; quantity: number }> = [];
+    for (const item of saleItems) {
+      const id = String(item?.id || "");
+      const soldQty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+      const remainingQty = Math.max(0, soldQty - Number(alreadyRefunded.get(id) || 0));
+      if (!id || remainingQty <= 0) continue;
+      const raw = window.prompt(
+        `${item?.name || "Artículo"} · disponibles para devolver: ${remainingQty}. Cantidad a devolver:`,
+        "0"
+      );
+      if (raw === null) return;
+      const quantity = Math.floor(Number(String(raw).replace(",", ".")));
+      if (!Number.isFinite(quantity) || quantity < 0 || quantity > remainingQty) {
+        return toast.error(`Cantidad inválida para ${item?.name || "el artículo"}`);
+      }
+      if (quantity > 0) selected.push({ id, quantity });
+    }
+
+    if (!selected.length) return toast.error("No seleccionaste unidades para devolver");
+    const reason = window.prompt("Motivo de la devolución parcial", "Devolución parcial de cliente");
+    if (reason === null) return;
+
+    try {
+      const result = await backendApi.refundPartialPosSale({
+        orderId,
+        items: selected,
+        reason,
+        staff: currentStaff
+          ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role }
+          : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      });
+      setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      if (result.cashSession) setCashSession(result.cashSession);
+      setRecentSales((current) => current.map((item) =>
+        String(item.id) === String(orderId) ? result.order : item
+      ));
+      await refreshReport();
+      if (Array.isArray(result.manualRefunds) && result.manualRefunds.length) {
+        toast.warning(`${result.refund.refundNumber}: devolución registrada. Revisa el reintegro manual de Bizum/transferencia.`);
+      } else {
+        toast.success(`Devolución parcial registrada: ${result.refund.refundNumber}`);
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la devolución parcial");
+    }
+  }
+
+    async function refundSale(orderId: string) {
+    const sale = recentSales.find((item) => String(item.id) === String(orderId));
+    if (!sale) return;
+    if (!hasPosPermission("refund")) return toast.error("Este empleado no puede realizar devoluciones");
+    const reason = window.prompt("Motivo de la devolución", "Devolución de cliente");
+    if (reason === null) return;
+
+    try {
+      const result = await backendApi.refundPosSale({
+        orderId,
+        reason,
+        staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
+      });
+      setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      setRecentSales((current) => current.map((item) =>
+        String(item.id) === String(orderId) ? result.order : item
+      ));
+      await refreshReport();
+      toast.success(`Devolución registrada: ${result.refundNumber}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la devolución");
+    }
+  }
+
+    async function completeNonCardSale() {
     if (!cart.length) return toast.error("Añade productos a la venta");
     if (!invoiceRequirementsOk()) return;
     if (payment === "Efectivo" && cashSession?.status !== "open") {
@@ -428,6 +1159,8 @@ export function AdminPOS() {
       return;
     }
     if (payment === "Efectivo" && received < totals.total) return toast.error("El efectivo recibido es inferior al total");
+    if (payment === "Mixto" && !validateMixedPayment()) return;
+    if (payment === "Mixto" && mixed.card > 0) return toast.error("Confirma primero la parte de tarjeta");
 
     setSubmitting(true);
     try {
@@ -442,7 +1175,10 @@ export function AdminPOS() {
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
       if (result.cashSession) setCashSession(result.cashSession);
+      setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
+      await markActiveQuoteConverted(String(result.order?.id || ""));
+      await refreshReport();
       if (payment === "Bizum" || payment === "Transferencia") {
         toast.success(`${result.documentNumber} registrado. Pago pendiente de verificación.`);
       } else {
@@ -474,7 +1210,7 @@ export function AdminPOS() {
         documentType,
         notes,
       });
-      setCardSession({ clientSecret: result.clientSecret, orderId: result.orderId });
+      setCardSession({ clientSecret: result.clientSecret, orderId: result.orderId, mode: "full" });
     } catch (error: any) {
       toast.error(error?.message || "No se pudo iniciar el cobro con tarjeta");
     } finally {
@@ -486,35 +1222,84 @@ export function AdminPOS() {
     if (!cardSession) return;
     setSubmitting(true);
     try {
-      await backendApi.confirmStripeOrder({ orderId: cardSession.orderId, paymentIntentId });
-      const result = await backendApi.completePosSale({
-        ...salePayload(),
-        paymentMethod: "Tarjeta",
-        existingOrderId: cardSession.orderId,
-        paymentIntentId,
-      });
+      let result: any;
+      let receiptMethod: PosPaymentMethod;
+
+      if (cardSession.mode === "mixed") {
+        result = await backendApi.completePosSale({
+          ...salePayload(),
+          paymentMethod: "Mixto",
+          payments: mixedPaymentsPayload(),
+          paymentIntentId,
+        });
+        receiptMethod = "Mixto";
+      } else {
+        if (!cardSession.orderId) throw new Error("Falta el pedido de Stripe");
+        await backendApi.confirmStripeOrder({ orderId: cardSession.orderId, paymentIntentId });
+        result = await backendApi.completePosSale({
+          ...salePayload(),
+          paymentMethod: "Tarjeta",
+          existingOrderId: cardSession.orderId,
+          paymentIntentId,
+        });
+        receiptMethod = "Tarjeta";
+      }
+
       setLastReceipt({
         order: result.order,
         totals: result.totals,
         documentNumber: result.documentNumber,
-        paymentMethod: "Tarjeta",
+        paymentMethod: receiptMethod,
         customer,
         fiscal,
       });
       setProducts((Array.isArray(result.inventory) ? result.inventory : []).map(toPosItem));
+      if (result.cashSession) setCashSession(result.cashSession);
+      setRecentSales((current) => [result.order, ...current.filter((item) => item.id !== result.order?.id)].slice(0, 30));
       setBackendConnected(true);
+      await markActiveQuoteConverted(String(result.order?.id || ""));
+      await refreshReport();
       setCardSession(null);
-      toast.success(`${result.documentNumber} cobrado con tarjeta y stock actualizado`);
+      toast.success(`${result.documentNumber} cobrado correctamente`);
       clearSale();
       if (autoPrint) setTimeout(() => window.print(), 200);
     } catch (error: any) {
-      toast.error(error?.message || "El pago se cobró pero no se pudo cerrar la venta");
+      toast.error(error?.message || "El pago se procesó pero no se pudo cerrar la venta");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function startMixedPayment() {
+    if (!cart.length) return toast.error("Añade productos a la venta");
+    if (!invoiceRequirementsOk()) return;
+    if (!validateMixedPayment()) return;
+
+    if (mixed.card <= 0) {
+      await completeNonCardSale();
+      return;
+    }
+
+    if (!stripePromise) return toast.error("No se pudo cargar Stripe");
+    setSubmitting(true);
+    try {
+      const result = await backendApi.createPosMixedCardIntent({
+        customer,
+        items: saleItemsPayload(),
+        documentType,
+        notes,
+        cardAmount: mixed.card,
+      });
+      setCardSession({ clientSecret: result.clientSecret, mode: "mixed" });
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar la parte de tarjeta del pago mixto");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function openCashDrawer() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede abrir la caja");
     const raw = window.prompt("Fondo inicial de caja (€)", "0");
     if (raw === null) return;
     const openingAmount = Number(String(raw).replace(",", "."));
@@ -524,7 +1309,7 @@ export function AdminPOS() {
     }
 
     try {
-      const result = await backendApi.openPosCashSession(openingAmount);
+      const result = await backendApi.openPosCashSession(openingAmount, registerId);
       setCashSession(result.session);
       toast.success(`Caja abierta con ${money(openingAmount)}`);
     } catch (error: any) {
@@ -533,6 +1318,7 @@ export function AdminPOS() {
   }
 
   async function addCashMovement(type: "in" | "out") {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede hacer movimientos de caja");
     const raw = window.prompt(type === "in" ? "Entrada de efectivo (€)" : "Salida de efectivo (€)", "");
     if (raw === null) return;
     const amount = Number(String(raw).replace(",", "."));
@@ -543,7 +1329,7 @@ export function AdminPOS() {
     const note = window.prompt("Concepto / nota", type === "in" ? "Entrada manual" : "Salida manual") || "";
 
     try {
-      const result = await backendApi.addPosCashMovement({ type, amount, note });
+      const result = await backendApi.addPosCashMovement({ type, amount, note, registerId });
       setCashSession(result.session);
       toast.success(type === "in" ? "Entrada registrada" : "Salida registrada");
     } catch (error: any) {
@@ -552,6 +1338,7 @@ export function AdminPOS() {
   }
 
   async function closeCashDrawer() {
+    if (!hasPosPermission("cash")) return toast.error("Este empleado no puede cerrar la caja");
     if (cashSession?.status !== "open") return toast.error("No hay caja abierta");
     const suggested = String(Number(cashSession.expectedCash || 0).toFixed(2)).replace(".", ",");
     const raw = window.prompt("Efectivo contado al cerrar (€)", suggested);
@@ -563,7 +1350,7 @@ export function AdminPOS() {
     }
 
     try {
-      const result = await backendApi.closePosCashSession(countedCash);
+      const result = await backendApi.closePosCashSession(countedCash, registerId);
       setCashSession(result.session);
       const diff = Number(result.session?.difference || 0);
       toast.success(`Caja cerrada. Diferencia: ${money(diff)}`);
@@ -655,7 +1442,9 @@ export function AdminPOS() {
       ? "Cobro real mediante Stripe. El stock baja solo después del pago confirmado."
       : payment === "Bizum"
       ? "Se registra pendiente de verificar Bizum antes de tratarlo como ingreso pagado."
-      : "Se registra pendiente de verificar la transferencia.";
+      : payment === "Transferencia"
+      ? "Se registra pendiente de verificar la transferencia."
+      : "Divide el total entre efectivo, tarjeta, Bizum, transferencia y tarjeta regalo. La suma debe coincidir exactamente con la venta.";
 
   return (
     <div className="space-y-6 print:bg-white">
@@ -664,7 +1453,10 @@ export function AdminPOS() {
           <div className="flex items-center gap-2">
             <h2 className="text-3xl font-black text-zinc-950">TPV / Caja</h2>
             <span className={`rounded-full px-3 py-1 text-xs font-black ${backendConnected ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-              {backendConnected ? "Backend conectado" : "Sin conexión"}
+              {backendConnected ? "Backend conectado" : "Backend sin conexión"}
+            </span>
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${online ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-800"}`}>
+              {online ? "Online" : "Modo borrador sin red"}
             </span>
           </div>
           <p className="mt-1 text-sm text-zinc-500">Catálogo, stock, clientes, pagos, pedidos y documentos conectados al backend.</p>
@@ -717,14 +1509,26 @@ export function AdminPOS() {
       <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-4 print:hidden">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="font-black text-amber-950">
-              Caja de efectivo · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-black text-amber-950">
+                Caja de efectivo · {cashSession?.status === "open" ? "ABIERTA" : "CERRADA"}
+              </p>
+              <select
+                value={registerId}
+                onChange={(e) => void changeRegister(e.target.value)}
+                className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-sm font-bold text-zinc-800"
+              >
+                {(operations.registers || [{ id: "caja-01", name: "Caja 01" }]).map((register: any) => (
+                  <option key={register.id} value={register.id}>{register.name}</option>
+                ))}
+              </select>
+            </div>
             <p className="text-sm text-amber-800">
               Fondo {money(Number(cashSession?.openingAmount || 0))} · Ventas efectivo {money(Number(cashSession?.cashSales || 0))} · Esperado {money(Number(cashSession?.expectedCash || 0))}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button onClick={() => void createRegister()} className="rounded-xl bg-white px-4 py-2 font-bold text-amber-800">+ Caja</button>
             {cashSession?.status !== "open" ? (
               <button onClick={() => void openCashDrawer()} className="rounded-xl bg-emerald-600 px-4 py-2 font-black text-white">Abrir caja</button>
             ) : (
@@ -738,12 +1542,51 @@ export function AdminPOS() {
         </div>
       </div>
 
+      {report && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 print:hidden">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">Ventas hoy</p><p className="text-2xl font-black text-emerald-950">{money(report.revenue)}</p></div>
+          <div className="rounded-2xl border border-zinc-100 bg-white p-4"><p className="text-xs font-bold uppercase text-zinc-500">Operaciones</p><p className="text-2xl font-black">{report.transactions || 0}</p></div>
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-700">Ticket medio</p><p className="text-2xl font-black text-blue-950">{money(report.averageTicket)}</p></div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-xs font-bold uppercase text-amber-700">IVA</p><p className="text-2xl font-black text-amber-950">{money(report.tax)}</p></div>
+          <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4"><p className="text-xs font-bold uppercase text-rose-700">Devoluciones</p><p className="text-2xl font-black text-rose-950">{report.refunds || 0}</p></div>
+          <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4"><p className="text-xs font-bold uppercase text-violet-700">Encargos pendientes</p><p className="text-2xl font-black text-violet-950">{report.pendingFloristOrders || 0}</p></div>
+          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-zinc-100 bg-white p-4">
+            <p className="text-xs font-bold uppercase text-zinc-500">Ventas por método</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(report.byPayment || {}).map(([method, amount]) => (
+                <span key={method} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold">{method}: {money(Number(amount || 0))}</span>
+              ))}
+              {!Object.keys(report.byPayment || {}).length && <span className="text-sm text-zinc-400">Sin ventas todavía</span>}
+            </div>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-zinc-100 bg-white p-4">
+            <p className="text-xs font-bold uppercase text-zinc-500">Más vendidos hoy</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(report.topProducts || []).slice(0, 5).map((item: any) => (
+                <span key={item.id} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{item.name} · {item.units} uds. · {money(item.revenue)}</span>
+              ))}
+              {!(report.topProducts || []).length && <span className="text-sm text-zinc-400">Sin datos todavía</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_430px] print:hidden">
         <section className="space-y-5">
           <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, SKU o categoría..." className="w-full rounded-2xl border border-zinc-200 py-3 pl-12 pr-4 outline-none focus:border-emerald-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && query.trim()) {
+                    if (!findAndAddByCode(query)) toast.error("Código/SKU no encontrado");
+                  }
+                }}
+                placeholder="Buscar producto o escanear SKU/código y Enter..."
+                className="w-full rounded-2xl border border-zinc-200 py-3 pl-12 pr-4 outline-none focus:border-emerald-400"
+              />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {categories.map((item) => (
@@ -806,11 +1649,18 @@ export function AdminPOS() {
                       <span className="w-8 text-center font-black">{line.qty}</span>
                       <button onClick={() => changeQty(line.id, 1)} className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-100"><Plus className="h-4 w-4" /></button>
                     </div>
-                    <span className="font-black text-emerald-700">{money(line.price * line.qty)}</span>
+                    <div className="text-right">
+                      {Number(line.discountPercent || globalDiscount || 0) > 0 && (
+                        <p className="text-[11px] font-bold text-rose-600">−{Number(line.discountPercent || globalDiscount || 0)}%</p>
+                      )}
+                      <span className="font-black text-emerald-700">
+                        {money(line.price * line.qty * (1 - Math.max(0, Math.min(100, Number(line.discountPercent || globalDiscount || 0))) / 100))}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
-              {!cart.length && (
+            {!cart.length && (
                 <div className="p-8 text-center text-sm text-zinc-400">
                   Sin artículos. Puedes elegir un producto o crear un artículo libre con el teclado.
                 </div>
@@ -821,18 +1671,58 @@ export function AdminPOS() {
               <div className="flex justify-between"><span>Base</span><b>{money(totals.subtotal)}</b></div>
               <div className="flex justify-between"><span>IVA</span><b>{money(totals.tax)}</b></div>
               <div className="flex justify-between text-2xl text-emerald-700"><span className="font-black">Total</span><b>{money(totals.total)}</b></div>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs font-bold uppercase text-zinc-500">Descuento venta</span>
+                {[0, 5, 10, 15, 20].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => hasPosPermission("discount") ? setGlobalDiscount(value) : toast.error("Este empleado no puede aplicar descuentos")}
+                    className={`rounded-lg px-2 py-1 text-xs font-black ${globalDiscount === value ? "bg-emerald-600 text-white" : "bg-zinc-100"}`}
+                  >
+                    {value}%
+                  </button>
+                ))}
+              </div>
+              {selectedLineId && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-500">Línea seleccionada:</span>
+                  {[0, 5, 10, 20, 50].map((value) => (
+                    <button key={value} onClick={() => applyDiscountToSelected(value)} className="rounded-lg border px-2 py-1 text-xs font-bold">
+                      {value}%
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Notas de la venta" className="mt-4 w-full rounded-xl border border-zinc-200 p-3 text-sm" />
           </section>
 
           <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button onClick={() => void parkSale()} disabled={!cart.length} className="rounded-xl border border-amber-300 bg-amber-50 py-2 text-sm font-black text-amber-800 disabled:opacity-40">
+                Aparcar venta
+              </button>
+              <select
+                value=""
+                onChange={(e) => e.target.value && void restoreHeldSale(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-2 py-2 text-sm font-bold"
+              >
+                <option value="">Recuperar ({heldSales.length})</option>
+                {heldSales.map((sale) => (
+                  <option key={sale.id} value={sale.id}>
+                    {new Date(sale.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} · {sale.cart?.length || 0} líneas
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="mb-3 flex gap-2">
               <button onClick={() => setDocumentType("ticket")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "ticket" ? "bg-zinc-900 text-white" : "border"}`}>Ticket</button>
               <button onClick={() => setDocumentType("invoice")} className={`flex-1 rounded-xl py-2 font-bold ${documentType === "invoice" ? "bg-zinc-900 text-white" : "border"}`}>Factura</button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              {(["Efectivo", "Tarjeta", "Bizum", "Transferencia"] as PosPaymentMethod[]).map((method) => (
+              {(["Efectivo", "Tarjeta", "Bizum", "Transferencia", "Mixto"] as PosPaymentMethod[]).map((method) => (
                 <button key={method} onClick={() => setPayment(method)} className={`rounded-xl border px-3 py-2 font-bold ${payment === method ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-zinc-200"}`}>{method}</button>
               ))}
             </div>
@@ -876,6 +1766,78 @@ export function AdminPOS() {
                     Pago exacto · {money(totals.total)}
                   </button>
                 )}
+                {cart.length > 0 && totals.total > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {[10, 20, 50, 100].map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => setReceived(amount)}
+                        className="rounded-xl border border-zinc-200 py-2 text-sm font-black"
+                      >
+                        {amount} €
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {payment === "Mixto" && (
+              <div className="mt-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-blue-950">Pago mixto</p>
+                  <p className={`text-sm font-black ${Math.abs(mixedAssignedTotal() - totals.total) <= 0.01 ? "text-emerald-700" : "text-amber-700"}`}>
+                    Asignado {money(mixedAssignedTotal())} / {money(totals.total)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["cash", "Efectivo"],
+                    ["card", "Tarjeta"],
+                    ["bizum", "Bizum"],
+                    ["transfer", "Transferencia"],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="rounded-xl bg-white p-2 text-xs font-bold text-zinc-600">
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={mixed[key] || ""}
+                        onChange={(e) => setMixed((current) => ({ ...current, [key]: Math.max(0, Number(e.target.value || 0)) }))}
+                        className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-2 text-base font-black text-zinc-900"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_120px] gap-2">
+                  <input
+                    value={mixed.giftCardCode}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCardCode: e.target.value.toUpperCase() }))}
+                    placeholder="Código tarjeta regalo"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={mixed.giftCard || ""}
+                    onChange={(e) => setMixed((current) => ({ ...current, giftCard: Math.max(0, Number(e.target.value || 0)) }))}
+                    placeholder="Importe"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 font-black"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const assignedWithoutCash = mixed.card + mixed.bizum + mixed.transfer + mixed.giftCard;
+                    setMixed((current) => ({ ...current, cash: Math.max(0, Math.round((totals.total - assignedWithoutCash) * 100) / 100) }));
+                  }}
+                  className="w-full rounded-xl border border-blue-200 bg-white py-2 text-sm font-black text-blue-800"
+                >
+                  Completar resto en efectivo
+                </button>
               </div>
             )}
 
@@ -885,7 +1847,23 @@ export function AdminPOS() {
               </div>
             )}
 
-            <div className="mt-4 rounded-2xl bg-zinc-950 p-4 text-white">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                value={manualName}
+                onChange={(e) => setManualName(e.target.value)}
+                placeholder="Concepto del artículo libre"
+                className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+              />
+              <select
+                value={manualIva}
+                onChange={(e) => setManualIva(Number(e.target.value))}
+                className="rounded-xl border border-zinc-200 px-3 py-2 text-sm font-bold"
+              >
+                {[0, 4, 10, 21].map((iva) => <option key={iva} value={iva}>IVA {iva}%</option>)}
+              </select>
+            </div>
+
+            <div className="mt-3 rounded-2xl bg-zinc-950 p-4 text-white">
               <div className="mb-3 text-right text-3xl font-black">{keypad ? `${keypad.replace(".", ",")} €` : money(0)}</div>
               <div className="grid grid-cols-3 gap-2">
                 {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00", "."].map((key) => <button key={key} onClick={() => pressKey(key)} className="rounded-xl bg-white/10 py-3 text-lg font-black hover:bg-white/20">{key}</button>)}
@@ -926,17 +1904,27 @@ export function AdminPOS() {
             <button
               disabled={
                 submitting ||
+                !online ||
+                !backendConnected ||
                 !cart.length ||
                 totals.total <= 0 ||
                 (payment === "Efectivo" && cashSession?.status !== "open") ||
                 (payment === "Efectivo" && received < totals.total) ||
-                (payment === "Tarjeta" && !cardReady)
+                (payment === "Tarjeta" && !cardReady) ||
+                (payment === "Mixto" && Math.abs(mixedAssignedTotal() - totals.total) > 0.01) ||
+                (payment === "Mixto" && mixed.cash > 0 && cashSession?.status !== "open") ||
+                (payment === "Mixto" && mixed.card > 0 && !cardReady) ||
+                (payment === "Mixto" && mixed.giftCard > 0 && !mixed.giftCardCode.trim())
               }
-              onClick={() => payment === "Tarjeta" ? void startCardPayment() : void completeNonCardSale()}
+              onClick={() => payment === "Tarjeta" ? void startCardPayment() : payment === "Mixto" ? void startMixedPayment() : void completeNonCardSale()}
               className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 py-4 text-lg font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting
                 ? "Procesando..."
+                : !online
+                ? "Sin red · venta guardada como borrador"
+                : !backendConnected
+                ? "Backend no disponible"
                 : !cart.length || totals.total <= 0
                 ? "Añade un producto para cobrar"
                 : payment === "Efectivo" && cashSession?.status !== "open"
@@ -945,10 +1933,195 @@ export function AdminPOS() {
                 ? `Faltan ${money(totals.total - received)}`
                 : payment === "Bizum" || payment === "Transferencia"
                 ? `Registrar ${payment} · ${money(totals.total)}`
+                : payment === "Mixto" && Math.abs(mixedAssignedTotal() - totals.total) > 0.01
+                ? `Faltan por asignar ${money(Math.max(0, totals.total - mixedAssignedTotal()))}`
+                : payment === "Mixto" && mixed.card > 0
+                ? `Cobrar mixto · tarjeta ${money(mixed.card)}`
+                : payment === "Mixto"
+                ? `Registrar pago mixto · ${money(totals.total)}`
                 : payment === "Tarjeta" && !cardReady
                 ? "Configura Stripe para cobrar"
                 : `Cobrar ${money(totals.total)}`}
             </button>
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <button type="button" onClick={() => setShowOperations((value) => !value)} className="flex w-full items-center justify-between font-black">
+              <span>Operaciones de tienda</span>
+              <span className="text-sm text-zinc-500">{showOperations ? "Ocultar" : "Abrir"}</span>
+            </button>
+            {showOperations && (
+              <div className="mt-3 space-y-3">
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-zinc-500">Empleado activo</p>
+                      <p className="font-black">{currentStaff ? `${currentStaff.name} · ${currentStaff.role}` : "Propietario / administrador"}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => void unlockStaff()} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Cambiar</button>
+                      {currentStaff && (
+                        <>
+                          {(operations.staffShifts || []).some((shift: any) => shift.staffId === currentStaff.id && !shift.endedAt) ? (
+                            <button onClick={() => void endStaffShift()} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-700">Fin turno</button>
+                          ) : (
+                            <button onClick={() => void startStaffShift()} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700">Iniciar turno</button>
+                          )}
+                          <button onClick={() => setCurrentStaff(null)} className="rounded-lg border bg-white px-3 py-2 text-xs font-black">Salir</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => void createQuickFloristOrder()} className="rounded-xl bg-emerald-700 px-3 py-3 text-sm font-black text-white">+ Encargo floral</button>
+                  <button onClick={() => void createQuickGiftCard()} className="rounded-xl bg-violet-700 px-3 py-3 text-sm font-black text-white">+ Tarjeta regalo</button>
+                  <button onClick={() => void redeemGiftCard()} className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-black text-violet-800">Canjear regalo</button>
+                  <button onClick={() => void adjustLoyalty()} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-black text-amber-800">Puntos cliente</button>
+                  <button onClick={() => void createSupplier()} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">+ Proveedor</button>
+                  <button onClick={() => void receivePurchase()} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-sm font-black text-cyan-800">Entrada stock</button>
+                  <button onClick={() => void adjustInventory()} className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-3 text-sm font-black text-orange-800">Ajustar inventario</button>
+                  <button onClick={() => void createStaffMember()} className="rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm font-black">+ Empleado</button>
+                  <button onClick={() => void saveCurrentQuote()} disabled={!cart.length} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-black text-emerald-800 disabled:opacity-40">Guardar presupuesto</button>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-sm">
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.floristOrders?.length || 0}</b><p className="text-zinc-500">Encargos</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.giftCards?.length || 0}</b><p className="text-zinc-500">Regalo</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3"><b>{operations.suppliers?.length || 0}</b><p className="text-zinc-500">Proveedores</p></div>
+                  <div className="rounded-xl bg-zinc-50 p-3">
+                    <b>{operations.staff?.length || 0}</b>
+                    <p className="text-zinc-500">Personal · {(operations.staffShifts || []).filter((shift: any) => !shift.endedAt).length} en turno</p>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-zinc-50 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <b>Presupuestos</b>
+                    <span className="text-zinc-500">{operations.quotes?.length || 0}</span>
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {(operations.quotes || []).slice(0, 5).map((quote: any) => (
+                      <div key={quote.id} className="flex items-center justify-between gap-2 rounded-lg bg-white p-2">
+                        <div>
+                          <p className="font-bold">{quote.quoteNumber}</p>
+                          <p className="text-xs text-zinc-500">{quote.customer?.name || "Cliente"} · {money(quote.total)} · {quote.status}</p>
+                        </div>
+                        <button onClick={() => loadQuote(quote)} className="rounded-lg border px-2 py-1 text-xs font-black">Cargar</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {(operations.floristOrders || []).slice(0, 5).map((order: any) => (
+                  <div key={order.id} className="rounded-xl border p-3 text-sm">
+                    <div className="flex justify-between gap-2"><b>{order.concept}</b><b>{money(order.total)}</b></div>
+                    <p className="text-zinc-500">{order.customerName} · pendiente {money(order.pending)} · {order.status}</p>
+                    <div className="mt-2 flex gap-2">
+                      {order.status !== "listo" && <button onClick={() => void updateFloristStatus(order.id, "listo")} className="rounded-lg border px-2 py-1 text-xs font-bold">Listo</button>}
+                      {order.status !== "entregado" && <button onClick={() => void updateFloristStatus(order.id, "entregado")} className="rounded-lg border px-2 py-1 text-xs font-bold">Entregado</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setShowHistory((value) => !value)}
+              className="flex w-full items-center justify-between font-black"
+            >
+              <span>Historial de ventas</span>
+              <span className="text-sm text-zinc-500">{recentSales.length} recientes · {showHistory ? "Ocultar" : "Ver"}</span>
+            </button>
+            {showHistory && (
+              <div className="mt-3 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    value={saleSearch}
+                    onChange={(e) => setSaleSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && void searchSales()}
+                    placeholder="Ticket, factura, cliente, email o pago..."
+                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void searchSales()}
+                    disabled={searchingSales}
+                    className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-black text-white disabled:opacity-50"
+                  >
+                    {searchingSales ? "..." : "Buscar"}
+                  </button>
+                  {saleSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSaleSearch("");
+                        void searchSales("");
+                      }}
+                      className="rounded-xl border px-3 py-2 text-sm font-black"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void exportSalesCsv()}
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800"
+                  >
+                    CSV
+                  </button>
+                </div>
+                <div className="max-h-80 space-y-2 overflow-y-auto">
+                {recentSales.length === 0 && <p className="py-6 text-center text-sm text-zinc-400">Sin ventas encontradas</p>}
+                {recentSales.map((sale) => (
+                  <div key={sale.id} className="rounded-xl border border-zinc-100 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold">{sale.customerName || "Cliente mostrador"}</p>
+                        <p className="text-xs text-zinc-500">
+                          {sale.metadata?.invoiceNumber || String(sale.id).slice(0, 8)} · {sale.paymentMethod || sale.payment_method || ""}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-emerald-700">{money(Number(sale.total || 0))}</p>
+                        <p className="text-xs font-bold uppercase text-zinc-500">{sale.status || ""}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => reprintSale(sale)}
+                        className="rounded-lg border border-zinc-200 px-3 py-1 text-xs font-black"
+                      >
+                        Reimprimir
+                      </button>
+                      {sale.status !== "refunded" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void refundPartialSale(String(sale.id))}
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-black text-amber-800"
+                          >
+                            Devolver artículos
+                          </button>
+                          {!Array.isArray(sale.metadata?.refunds) || sale.metadata.refunds.length === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => void refundSale(String(sale.id))}
+                              className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-black text-rose-700"
+                            >
+                              Devolver todo
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                </div>
+              </div>
+            )}
           </section>
 
           {lastReceipt && (

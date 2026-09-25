@@ -1,20 +1,40 @@
 name: Herencia CI
 on:
   push:
-    branches: ["feature/herencia-neural-command-center","feature/herencia-neural-v2"]
+    branches: ["feature/herencia-neural-command-center", "feature/herencia-neural-v2", "feat/professional-pos-suite"]
   pull_request:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
+
       - name: Install
         run: npm install
-      - name: Build
-        run: npm run build
+
+      - name: POS tests
+        run: npm run test:pos 2>&1 | tee pos-tests.log
+
       - name: Backend syntax
-        run: node --check backend/server.js
+        run: node --check backend/server.js 2>&1 | tee backend-syntax.log
+
+      - name: Frontend build
+        run: npx vite build 2>&1 | tee vite-build.log
+
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: herencia-ci-diagnostics
+          path: |
+            pos-tests.log
+            backend-syntax.log
+            vite-build.log
+          if-no-files-found: ignore
+          retention-days: 3
