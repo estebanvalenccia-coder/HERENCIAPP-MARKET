@@ -22,6 +22,7 @@ import {
   Brain,
   Truck,
   Activity,
+  Rocket,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -43,6 +44,7 @@ import { AdminPOS } from "../components/admin/AdminPOS";
 import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
 import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
 import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
+import { AdminBusinessSuite } from "../components/admin/AdminBusinessSuite";
 
 type AdminSection =
   | "dashboard"
@@ -60,6 +62,7 @@ type AdminSection =
   | "delivery"
   | "neural"
   | "audit"
+  | "business-suite"
   | "settings";
 
 type AdminOrderAlert = {
@@ -323,6 +326,7 @@ export function AdminDashboard() {
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
     { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
+    { id: "business-suite" as AdminSection, label: "Centro de Negocio", icon: Rocket, badge: "NUEVO" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -776,6 +780,8 @@ export function AdminDashboard() {
           {currentSection === "neural" && <AdminHerenciaNeural />}
 
           {currentSection === "audit" && <AdminSystemAudit />}
+
+          {currentSection === "business-suite" && <AdminBusinessSuite />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

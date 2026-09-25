@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion, useScroll, useTransform } from "motion/react";
-import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sparkles } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sparkles, Ruler, PawPrint, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 
@@ -12,357 +12,115 @@ export function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
   const [aiDescription, setAiDescription] = useState("");
   const [loadingAI, setLoadingAI] = useState(false);
+  const [favorite, setFavorite] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState("");
+  const [dedication, setDedication] = useState("");
   const { scrollY } = useScroll();
-
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
 
   useEffect(() => {
-    // Cargar producto
     const adminProducts = backendStorage.getItem("adminProducts");
     if (adminProducts) {
-      const products = JSON.parse(adminProducts);
-      const found = products.find((p: any) => p.id === parseInt(id || ""));
-      if (found) {
-        setProduct(found);
-        generateAIDescription(found.name, found.description || "");
-      }
+      try {
+        const rows = JSON.parse(adminProducts);
+        const found = rows.find((p: any) => String(p.id) === String(id));
+        if (found) {
+          setProduct(found);
+          setSelectedVariant(Array.isArray(found.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
+          generateAIDescription(found.name, found.description || "");
+        }
+      } catch { setProduct(null); }
     }
+    try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
   }, [id]);
 
   const generateAIDescription = async (plantName: string, baseDescription: string) => {
     setLoadingAI(true);
-
     try {
       const { result } = await backendApi.generatePlantDescription({ plantName, baseDescription });
       setAiDescription(JSON.stringify(result));
-      setLoadingAI(false);
-    } catch (error) {
-      console.error("Error al generar descripción desde backend:", error);
-      generateMockDescription(plantName, baseDescription);
-    }
+    } catch {
+      const fallback = { description: `${plantName} aporta vida y frescura a cualquier espacio. ${baseDescription}`, care: { water: "Riego moderado, evitando encharcar.", light: "Luz adecuada según variedad; evita cambios bruscos.", temperature: "Mantener en una temperatura estable y sin corrientes extremas.", fertilizer: "Fertilizar en temporada de crecimiento siguiendo la dosis del fabricante." }, benefits: ["Aporta naturaleza al espacio", "Decoración viva y duradera", "Cuidados adaptables a distintos hogares"], tips: "Observa hojas y sustrato: la planta suele avisar antes de necesitar un cambio de cuidados." };
+      setAiDescription(JSON.stringify(fallback));
+    } finally { setLoadingAI(false); }
   };
 
-  const generateMockDescription = (plantName: string, baseDescription: string) => {
-    setTimeout(() => {
-      const mockAIResponse = {
-        description: `${plantName} es una planta extraordinaria que aporta vida y frescura a cualquier espacio. ${baseDescription || "Esta planta es perfecta para decorar tu hogar u oficina."}`,
-        care: {
-          water: "Riego moderado 2-3 veces por semana. Mantener el sustrato húmedo pero no encharcado.",
-          light: "Luz indirecta brillante. Evitar la exposición directa al sol durante las horas más intensas.",
-          temperature: "Temperatura ideal entre 18-24°C. Proteger de corrientes de aire frío.",
-          fertilizer: "Fertilizar cada 2-3 semanas durante la primavera y verano con fertilizante líquido diluido.",
-        },
-        benefits: [
-          "Purifica el aire eliminando toxinas comunes",
-          "Aumenta la humedad ambiental naturalmente",
-          "Reduce el estrés y mejora el estado de ánimo",
-          "Fácil de cuidar, ideal para principiantes",
-        ],
-        tips: "Limpiar las hojas con un paño húmedo una vez al mes para mantenerlas saludables y brillantes. Rotar la planta cada semana para asegurar un crecimiento uniforme."
-      };
+  const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
+  const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
+  const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
+  const stock = Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)));
 
-      setAiDescription(JSON.stringify(mockAIResponse));
-      setLoadingAI(false);
-    }, 1500);
+  const toggleFavorite = async () => {
+    let list: string[] = [];
+    try { list = JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String); } catch {}
+    const key = String(product.id);
+    const next = list.includes(key) ? list.filter((x) => x !== key) : [...list, key];
+    setFavorite(next.includes(key));
+    await backendStorage.setItem("wishlist", JSON.stringify(next));
+    toast.success(next.includes(key) ? "Añadido a favoritos" : "Eliminado de favoritos");
   };
 
   const addToCart = () => {
-    if (!product) return;
-
+    if (!product || stock <= 0) return toast.error("Producto agotado");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const existingItem = cart.find((item: any) => item.id === product.id);
-
-    if (existingItem) {
-      existingItem.quantity += quantity;
-    } else {
-      cart.push({ ...product, quantity });
-    }
-
-    backendStorage.setItem("cart", JSON.stringify(cart));
+    const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}`;
+    const existingItem = cart.find((item: any) => item.lineKey === lineKey);
+    if (Number(existingItem?.quantity || 0) + quantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
+    if (existingItem) existingItem.quantity += quantity;
+    else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined, personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
+    void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
-    toast.success(`${quantity} ${quantity === 1 ? "producto añadido" : "productos añadidos"} al carrito`);
+    toast.success("Producto añadido al carrito");
   };
 
-  if (!product) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-muted-foreground">Cargando producto...</p>
-        </div>
-      </div>
-    );
-  }
+  if (!product) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Producto no encontrado o cargando…</p></div>;
+  let aiData: any = null;
+  try { aiData = aiDescription ? JSON.parse(aiDescription) : null; } catch {}
 
-  const aiData = aiDescription ? JSON.parse(aiDescription) : null;
+  const details = [
+    product.size && { icon: Ruler, label: "Tamaño", value: product.size },
+    product.difficulty && { icon: Leaf, label: "Dificultad", value: product.difficulty },
+    (product.toxicity || product.petSafe !== undefined) && { icon: PawPrint, label: "Mascotas", value: product.petSafe ? "Apta para mascotas" : product.toxicity || "Consultar" },
+    product.environment && { icon: PackageCheck, label: "Ubicación", value: product.environment },
+  ].filter(Boolean) as any[];
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header con efecto fade */}
-      <motion.div
-        style={{ opacity, scale }}
-        className="sticky top-0 z-40 bg-card/80 backdrop-blur-lg border-b border-border"
-      >
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-4">
-          <button
-            onClick={() => navigate("/productos")}
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Volver a productos
-          </button>
-        </div>
-      </motion.div>
-
-      {/* Producto Hero Section */}
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
-          {/* Imagen */}
-          <motion.div
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="relative"
-          >
-            <div className="sticky top-24">
-              <div className="aspect-square rounded-3xl overflow-hidden bg-muted shadow-2xl">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {product.onSale && (
-                <div className="absolute top-6 right-6 px-4 py-2 bg-primary text-primary-foreground rounded-full font-bold text-lg shadow-lg">
-                  ¡OFERTA!
-                </div>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Opciones de Compra */}
-          <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-6"
-          >
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-3">
-                {product.name}
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                {product.description}
-              </p>
-            </div>
-
-            {/* Precio */}
-            <div className="flex items-baseline gap-4">
-              {product.onSale && product.salePrice ? (
-                <>
-                  <span className="text-5xl font-bold text-primary">
-                    €{(product.salePrice || 0).toFixed(2)}
-                  </span>
-                  <span className="text-2xl text-muted-foreground line-through">
-                    €{(product.price || 0).toFixed(2)}
-                  </span>
-                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-semibold">
-                    Ahorra €{((product.price || 0) - (product.salePrice || 0)).toFixed(2)}
-                  </span>
-                </>
-              ) : (
-                <span className="text-5xl font-bold text-primary">
-                  €{(product.price || 0).toFixed(2)}
-                </span>
-              )}
-            </div>
-
-            {/* Categoría */}
-            <div className="flex items-center gap-2">
-              <span className="px-4 py-2 bg-muted rounded-xl text-foreground font-medium capitalize">
-                {product.category?.replace("-", " ")}
-              </span>
-              {product.featured && (
-                <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Destacado
-                </span>
-              )}
-            </div>
-
-            {/* Selector de Cantidad */}
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-foreground">
-                Cantidad
-              </label>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-12 h-12 rounded-xl bg-muted hover:bg-accent transition-colors flex items-center justify-center text-xl font-bold"
-                >
-                  −
-                </button>
-                <span className="text-2xl font-bold w-16 text-center">{quantity}</span>
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-12 h-12 rounded-xl bg-muted hover:bg-accent transition-colors flex items-center justify-center text-xl font-bold"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            {/* Botones de Acción */}
-            <div className="flex gap-4">
-              <button
-                onClick={addToCart}
-                className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-semibold text-lg shadow-lg"
-              >
-                <ShoppingCart className="w-6 h-6" />
-                Añadir al Carrito
-              </button>
-              <button className="w-16 h-16 flex items-center justify-center bg-muted hover:bg-accent rounded-xl transition-colors">
-                <Heart className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Stock Info */}
-            <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-              <p className="text-sm text-foreground flex items-center gap-2">
-                <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                Producto disponible - Envío en 24-48 horas
-              </p>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Descripción generada por IA */}
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="space-y-8"
-        >
-          {/* Título de sección */}
-          <div className="text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              Todo sobre tu planta
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Información detallada y consejos de cuidado generados por IA
-            </p>
-          </div>
-
-          {loadingAI ? (
-            <div className="text-center py-20">
-              <div className="inline-flex items-center gap-3 px-6 py-3 bg-primary/10 rounded-full">
-                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span className="text-primary font-medium">Generando información con IA...</span>
-              </div>
-            </div>
-          ) : aiData ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Descripción General */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.1 }}
-                className="bg-card border border-border rounded-2xl p-8"
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-primary/10 rounded-xl">
-                    <Leaf className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-foreground">Descripción</h3>
-                </div>
-                <p className="text-foreground leading-relaxed mb-6">
-                  {aiData.description}
-                </p>
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-foreground mb-3">Beneficios:</h4>
-                  {aiData.benefits.map((benefit: string, index: number) => (
-                    <div key={index} className="flex items-start gap-3">
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2" />
-                      <p className="text-muted-foreground">{benefit}</p>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Cuidados */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.2 }}
-                className="space-y-4"
-              >
-                {/* Agua */}
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Droplets className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <h4 className="font-bold text-foreground">Riego</h4>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{aiData.care.water}</p>
-                </div>
-
-                {/* Luz */}
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-yellow-100 rounded-lg">
-                      <Sun className="w-5 h-5 text-yellow-600" />
-                    </div>
-                    <h4 className="font-bold text-foreground">Iluminación</h4>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{aiData.care.light}</p>
-                </div>
-
-                {/* Temperatura */}
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-orange-100 rounded-lg">
-                      <ThermometerSun className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <h4 className="font-bold text-foreground">Temperatura</h4>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{aiData.care.temperature}</p>
-                </div>
-
-                {/* Fertilizante */}
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <Leaf className="w-5 h-5 text-green-600" />
-                    </div>
-                    <h4 className="font-bold text-foreground">Fertilización</h4>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{aiData.care.fertilizer}</p>
-                </div>
-              </motion.div>
-
-              {/* Consejos Adicionales */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.3 }}
-                className="lg:col-span-2 bg-gradient-to-br from-primary/5 to-secondary/5 border border-border rounded-2xl p-8"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-3 bg-primary/10 rounded-xl">
-                    <Sparkles className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-foreground">Consejos del Experto</h3>
-                </div>
-                <p className="text-foreground leading-relaxed">
-                  {aiData.tips}
-                </p>
-              </motion.div>
-            </div>
-          ) : null}
+  return <div className="min-h-screen bg-background">
+    <motion.div style={{ opacity, scale }} className="sticky top-0 z-40 bg-card/80 backdrop-blur-lg border-b border-border"><div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-4"><button onClick={() => navigate("/productos")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground"><ArrowLeft className="w-5 h-5" />Volver a productos</button></div></motion.div>
+    <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-14">
+        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="relative"><div className="sticky top-24"><div className="aspect-square rounded-3xl overflow-hidden bg-muted shadow-2xl"><img src={product.image} alt={product.name} className="w-full h-full object-cover" /></div>{product.onSale && <div className="absolute top-6 right-6 px-4 py-2 bg-primary text-primary-foreground rounded-full font-bold shadow-lg">¡OFERTA!</div>}</div></motion.div>
+        <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+          <div><h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1><p className="text-muted-foreground text-lg">{product.description}</p></div>
+          <div className="text-5xl font-bold text-primary">€{effectivePrice.toFixed(2)}</div>
+          <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium capitalize">{product.category?.replace("-", " ")}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
+          {details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
+          {variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => setSelectedVariant(name)} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
+          {(product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
+          <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(Math.min(stock || 1, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
+          <div className="flex gap-3"><button disabled={stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{stock<=0 ? "Agotado" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado"}</div>
         </motion.div>
       </div>
+
+      <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-8">
+        <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados y recomendaciones para conservarla en las mejores condiciones.</p></div>
+        {loadingAI ? <div className="text-center py-16"><span className="text-primary font-medium">Generando información con HerencIA…</span></div> : aiData && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-card border border-border rounded-2xl p-7"><div className="flex items-center gap-3 mb-5"><Leaf className="w-6 h-6 text-primary" /><h3 className="text-2xl font-bold">Descripción</h3></div><p className="leading-relaxed">{aiData.description}</p>{Array.isArray(aiData.benefits) && <div className="mt-5 space-y-2">{aiData.benefits.map((b:string)=><p key={b} className="text-sm text-muted-foreground">• {b}</p>)}</div>}</div>
+          <div className="grid gap-3">
+            <Care icon={Droplets} title="Riego" text={product.water || aiData.care?.water} />
+            <Care icon={Sun} title="Iluminación" text={product.light || aiData.care?.light} />
+            <Care icon={ThermometerSun} title="Temperatura" text={product.temperature || aiData.care?.temperature} />
+            <Care icon={Leaf} title="Fertilización" text={aiData.care?.fertilizer} />
+          </div>
+          {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
+        </div>}
+      </motion.div>
     </div>
-  );
+  </div>;
+}
+
+function Care({ icon: Icon, title, text }: { icon: any; title: string; text?: string }) {
+  if (!text) return null;
+  return <div className="bg-card border border-border rounded-2xl p-5"><div className="flex items-center gap-3 mb-2"><Icon className="w-5 h-5 text-primary" /><h4 className="font-bold">{title}</h4></div><p className="text-sm text-muted-foreground">{text}</p></div>;
 }
