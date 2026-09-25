@@ -17,6 +17,17 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     category: "flores",
     featured: false,
     onSale: false,
+    environment: "interior",
+    light: "indirecta",
+    size: "",
+    difficulty: "Fácil",
+    petSafe: false,
+    toxicity: "",
+    water: "",
+    temperature: "",
+    occasion: "",
+    allowDedication: true,
+    variantsText: "",
   });
   const [imagePreview, setImagePreview] = useState("");
 
@@ -73,6 +84,29 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       featured: formData.featured,
       onSale: formData.onSale,
       active: true,
+      environment: formData.environment,
+      light: formData.light,
+      size: formData.size.trim(),
+      difficulty: formData.difficulty,
+      petSafe: formData.petSafe,
+      toxicity: formData.toxicity.trim(),
+      water: formData.water.trim(),
+      temperature: formData.temperature.trim(),
+      occasion: formData.occasion.trim(),
+      allowDedication: formData.allowDedication,
+      variants: formData.variantsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [name, price, stock] = line.split("|").map((part) => part.trim());
+          return {
+            name,
+            price: price ? Math.max(0, Number(price)) : undefined,
+            stock: stock ? Math.max(0, Math.floor(Number(stock))) : undefined,
+          };
+        })
+        .filter((variant) => variant.name),
     };
 
     // Guardar
@@ -96,6 +130,17 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       category: "flores",
       featured: false,
       onSale: false,
+      environment: "interior",
+      light: "indirecta",
+      size: "",
+      difficulty: "Fácil",
+      petSafe: false,
+      toxicity: "",
+      water: "",
+      temperature: "",
+      occasion: "",
+      allowDedication: true,
+      variantsText: "",
     });
     setImagePreview("");
 
@@ -260,6 +305,54 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-muted/20 p-5 space-y-4">
+            <div>
+              <h3 className="text-lg font-bold">Ficha avanzada y cuidados</h3>
+              <p className="text-sm text-muted-foreground">Estos campos alimentan los filtros y la ficha de producto.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <label className="text-sm font-medium">Ubicación
+                <select value={formData.environment} onChange={(e)=>setFormData({...formData,environment:e.target.value})} className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl">
+                  <option value="interior">Interior</option><option value="exterior">Exterior</option><option value="interior exterior">Interior / exterior</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">Luz
+                <select value={formData.light} onChange={(e)=>setFormData({...formData,light:e.target.value})} className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl">
+                  <option value="baja">Poca luz</option><option value="indirecta">Luz indirecta</option><option value="sol">Sol</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">Tamaño
+                <input value={formData.size} onChange={(e)=>setFormData({...formData,size:e.target.value})} placeholder="Ej: 40-60 cm" className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl"/>
+              </label>
+              <label className="text-sm font-medium">Dificultad
+                <select value={formData.difficulty} onChange={(e)=>setFormData({...formData,difficulty:e.target.value})} className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl">
+                  <option>Fácil</option><option>Media</option><option>Avanzada</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="text-sm font-medium">Riego
+                <input value={formData.water} onChange={(e)=>setFormData({...formData,water:e.target.value})} placeholder="Ej: 1 vez por semana" className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl"/>
+              </label>
+              <label className="text-sm font-medium">Temperatura
+                <input value={formData.temperature} onChange={(e)=>setFormData({...formData,temperature:e.target.value})} placeholder="Ej: 18-24 °C" className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl"/>
+              </label>
+              <label className="text-sm font-medium">Ocasión / etiquetas
+                <input value={formData.occasion} onChange={(e)=>setFormData({...formData,occasion:e.target.value})} placeholder="Cumpleaños, boda, regalo…" className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl"/>
+              </label>
+              <label className="text-sm font-medium">Toxicidad / mascotas
+                <input value={formData.toxicity} onChange={(e)=>setFormData({...formData,toxicity:e.target.value})} placeholder="Ej: No tóxica / tóxica para gatos" className="mt-2 w-full px-3 py-3 bg-background border border-border rounded-xl"/>
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={()=>setFormData({...formData,petSafe:!formData.petSafe})} className={`rounded-xl border px-4 py-2 text-sm font-semibold ${formData.petSafe?"border-primary bg-primary/10 text-primary":"border-border"}`}>🐾 Apta para mascotas</button>
+              <button type="button" onClick={()=>setFormData({...formData,allowDedication:!formData.allowDedication})} className={`rounded-xl border px-4 py-2 text-sm font-semibold ${formData.allowDedication?"border-primary bg-primary/10 text-primary":"border-border"}`}>💌 Permitir dedicatoria</button>
+            </div>
+            <label className="block text-sm font-medium">Variantes
+              <textarea value={formData.variantsText} onChange={(e)=>setFormData({...formData,variantsText:e.target.value})} rows={4} placeholder={"Una por línea: nombre | precio | stock\nPequeña | 19.90 | 5\nGrande | 29.90 | 3"} className="mt-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
+            </label>
           </div>
 
           {/* Toggles */}

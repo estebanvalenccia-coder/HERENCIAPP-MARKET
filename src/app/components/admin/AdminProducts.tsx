@@ -19,6 +19,17 @@ interface Product {
   sku?: string;
   stock?: number;
   iva?: number;
+  environment?: string;
+  light?: string;
+  size?: string;
+  difficulty?: string;
+  petSafe?: boolean;
+  toxicity?: string;
+  water?: string;
+  temperature?: string;
+  occasion?: string;
+  allowDedication?: boolean;
+  variants?: Array<{ name: string; price?: number; stock?: number }>;
 }
 
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -91,6 +102,17 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     sku: "",
     stock: 0,
     iva: 21,
+    environment: "interior",
+    light: "indirecta",
+    size: "",
+    difficulty: "Fácil",
+    petSafe: false,
+    toxicity: "",
+    water: "",
+    temperature: "",
+    occasion: "",
+    allowDedication: true,
+    variantsText: "",
   });
 
   useEffect(() => {
@@ -161,13 +183,24 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       sku: product.sku || "",
       stock: Math.max(0, Number(product.stock || 0)),
       iva: Number(product.iva || 21),
+      environment: product.environment || "interior",
+      light: product.light || "indirecta",
+      size: product.size || "",
+      difficulty: product.difficulty || "Fácil",
+      petSafe: Boolean(product.petSafe),
+      toxicity: product.toxicity || "",
+      water: product.water || "",
+      temperature: product.temperature || "",
+      occasion: product.occasion || "",
+      allowDedication: product.allowDedication !== false,
+      variantsText: (product.variants || []).map((v) => `${v.name} | ${v.price ?? ""} | ${v.stock ?? ""}`).join("\n"),
     });
   };
 
   const cancelEdit = () => {
     setEditingProduct(null);
     setAiPrompt("");
-    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21 });
+    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21, environment: "interior", light: "indirecta", size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "", occasion: "", allowDedication: true, variantsText: "" });
   };
 
   const generateAiImage = async () => {
@@ -203,6 +236,20 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
             stock: Math.max(0, Math.floor(Number(editForm.stock || 0))),
             iva: Math.max(0, Number(editForm.iva || 21)),
             salePrice: p.onSale ? editForm.price * 0.8 : p.salePrice,
+            environment: editForm.environment,
+            light: editForm.light,
+            size: editForm.size.trim(),
+            difficulty: editForm.difficulty,
+            petSafe: editForm.petSafe,
+            toxicity: editForm.toxicity.trim(),
+            water: editForm.water.trim(),
+            temperature: editForm.temperature.trim(),
+            occasion: editForm.occasion.trim(),
+            allowDedication: editForm.allowDedication,
+            variants: editForm.variantsText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+              const [name, price, stock] = line.split("|").map((part) => part.trim());
+              return { name, price: price ? Math.max(0, Number(price)) : undefined, stock: stock ? Math.max(0, Math.floor(Number(stock))) : undefined };
+            }).filter((variant) => variant.name),
           }
         : p
     );
@@ -514,6 +561,24 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                     className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-4">
+                <h4 className="font-bold">Ficha avanzada</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <select value={editForm.environment} onChange={(e)=>setEditForm({...editForm,environment:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option value="interior">Interior</option><option value="exterior">Exterior</option><option value="interior exterior">Interior / exterior</option></select>
+                  <select value={editForm.light} onChange={(e)=>setEditForm({...editForm,light:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option value="baja">Poca luz</option><option value="indirecta">Luz indirecta</option><option value="sol">Sol</option></select>
+                  <input value={editForm.size} onChange={(e)=>setEditForm({...editForm,size:e.target.value})} placeholder="Tamaño" className="px-3 py-3 bg-background border border-border rounded-xl"/>
+                  <select value={editForm.difficulty} onChange={(e)=>setEditForm({...editForm,difficulty:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option>Fácil</option><option>Media</option><option>Avanzada</option></select>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input value={editForm.water} onChange={(e)=>setEditForm({...editForm,water:e.target.value})} placeholder="Riego" className="px-3 py-3 bg-background border border-border rounded-xl"/>
+                  <input value={editForm.temperature} onChange={(e)=>setEditForm({...editForm,temperature:e.target.value})} placeholder="Temperatura" className="px-3 py-3 bg-background border border-border rounded-xl"/>
+                  <input value={editForm.occasion} onChange={(e)=>setEditForm({...editForm,occasion:e.target.value})} placeholder="Ocasión / etiquetas" className="px-3 py-3 bg-background border border-border rounded-xl"/>
+                  <input value={editForm.toxicity} onChange={(e)=>setEditForm({...editForm,toxicity:e.target.value})} placeholder="Toxicidad" className="px-3 py-3 bg-background border border-border rounded-xl"/>
+                </div>
+                <div className="flex gap-2"><button type="button" onClick={()=>setEditForm({...editForm,petSafe:!editForm.petSafe})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.petSafe?"border-primary bg-primary/10 text-primary":"border-border"}`}>🐾 Mascotas</button><button type="button" onClick={()=>setEditForm({...editForm,allowDedication:!editForm.allowDedication})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.allowDedication?"border-primary bg-primary/10 text-primary":"border-border"}`}>💌 Dedicatoria</button></div>
+                <textarea value={editForm.variantsText} onChange={(e)=>setEditForm({...editForm,variantsText:e.target.value})} rows={4} placeholder={"Variantes: nombre | precio | stock"} className="w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
               </div>
 
               {editingProduct.onSale && (
