@@ -9,6 +9,8 @@ export function AdminSystemAudit(){
   try{const p=await backendApi.posSelfTest();out.push(...(p.tests||[]).map((t:any)=>({name:"TPV · "+t.name,ok:!!t.ok,detail:t.detail})));out.push({name:"Stripe / tarjeta",ok:!!p.cardReady,detail:p.cardReady?"Configuración disponible":"Falta configuración o validación"});out.push({name:"Datos fiscales",ok:!!p.fiscalReady,detail:p.fiscalReady?"Datos del emisor configurados":"Completa los datos fiscales del emisor"});}catch(e:any){out.push({name:"TPV",ok:false,detail:e?.message||"No se pudo ejecutar el autotest"});}
   try{const n=await backendApi.neuralSelfTest();out.push({name:"HERENCIA Neural",ok:n?.ok!==false,detail:n?.ok===false?(n?.error||"Autotest con incidencias"):"Core Neural responde"});}catch(e:any){out.push({name:"HERENCIA Neural",ok:false,detail:e?.message||"Sin respuesta"});}
   try{const o=await backendApi.listOrders();out.push({name:"Pedidos / Supabase",ok:Array.isArray(o.orders),detail:Array.isArray(o.orders)?o.orders.length+" pedidos accesibles":"Respuesta inválida"});}catch(e:any){out.push({name:"Pedidos / Supabase",ok:false,detail:e?.message||"No accesible"});}
+  out.push({name:"PWA / Service Worker",ok:"serviceWorker" in navigator,detail:"serviceWorker" in navigator?"Navegador compatible con instalación offline":"Navegador sin Service Worker"});
+  out.push({name:"Notificaciones navegador",ok:typeof Notification!=="undefined",detail:typeof Notification!=="undefined"?`Soportadas · permiso: ${Notification.permission}`:"No compatibles"});
   setChecks(out);setRanAt(new Date().toLocaleString("es-ES"));setRunning(false);
  };
  const ok=checks.filter(c=>c.ok).length;
