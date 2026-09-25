@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { MapPin, Phone, MessageCircle, Clock } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
 import {
   defaultSiteContent,
   normalizePhoneForHref,
   normalizeWhatsAppPhone,
   parseSiteContent,
-  SiteContent,
+  type SiteContent,
 } from "../lib/siteContent";
+import { getMarketExperience } from "../lib/marketExperience";
 
 export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
@@ -24,138 +26,128 @@ export function Contact() {
     };
   }, []);
 
-  const contact = site.contactPage;
-  const footer = site.footer;
+  const market = getMarketExperience(site);
+  const whatsapp = normalizeWhatsAppPhone(site.footer.whatsappPhone);
+  const phone = normalizePhoneForHref(site.footer.callPhone);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const text = [
+      "Hola, contacto desde la web de Herencia.",
+      name.trim() ? `Nombre: ${name.trim()}` : "",
+      message.trim() ? `Mensaje: ${message.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="bg-muted/30 border-b border-border">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">{contact.title}</h1>
-          <p className="text-muted-foreground max-w-2xl">{contact.subtitle}</p>
-        </div>
-      </div>
+    <div className="bg-[#fbfaf6] text-[#173126]">
+      <section className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[.9fr_1.1fr] lg:px-10 lg:py-16">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-[#718076]">
+            CONTACTO
+          </p>
+          <h1 className="mt-4 text-5xl font-medium sm:text-6xl">
+            {site.contactPage.title}
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-8 text-[#66736b]">
+            {site.contactPage.subtitle} · {market.locationLabel}.
+          </p>
 
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-6">
-            <motion.a
-              href={`https://wa.me/${normalizeWhatsAppPhone(footer.whatsappPhone)}`}
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <a
+              href={`https://wa.me/${whatsapp}`}
               target="_blank"
               rel="noopener noreferrer"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="block bg-gradient-to-r from-green-500 to-green-600 text-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all"
+              className="rounded-3xl border border-[#dfdbd1] bg-white p-5 transition hover:-translate-y-1 hover:shadow-md"
             >
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-white/20 rounded-xl"><MessageCircle className="w-8 h-8" /></div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-1">{contact.whatsappTitle}</h3>
-                  <p className="text-white/90 text-lg">{footer.whatsappLabel.replace(/^WhatsApp:\s*/i, "")}</p>
-                  <p className="text-white/70 text-sm mt-1">{contact.whatsappSubtitle}</p>
-                </div>
-              </div>
-            </motion.a>
-
-            <motion.a
-              href={`tel:${normalizePhoneForHref(footer.callPhone)}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="block bg-gradient-to-r from-primary to-secondary text-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all"
+              <MessageCircle className="h-6 w-6 text-[#315b42]" />
+              <p className="mt-4 font-black">WhatsApp</p>
+              <p className="mt-1 text-sm text-[#6c786f]">{site.footer.whatsappLabel}</p>
+            </a>
+            <a
+              href={`tel:${phone}`}
+              className="rounded-3xl border border-[#dfdbd1] bg-white p-5 transition hover:-translate-y-1 hover:shadow-md"
             >
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-white/20 rounded-xl"><Phone className="w-8 h-8" /></div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-1">{contact.callTitle}</h3>
-                  <p className="text-white/90 text-lg">{footer.callPhone}</p>
-                  <p className="text-white/70 text-sm mt-1">{contact.callSubtitle}</p>
-                </div>
-              </div>
-            </motion.a>
-
-            <motion.a
-              href={footer.mapsUrl}
+              <Phone className="h-6 w-6 text-[#315b42]" />
+              <p className="mt-4 font-black">Teléfono</p>
+              <p className="mt-1 text-sm text-[#6c786f]">{site.footer.callLabel}</p>
+            </a>
+            <a
+              href={site.footer.instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="block bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all"
+              className="rounded-3xl border border-[#dfdbd1] bg-white p-5 transition hover:-translate-y-1 hover:shadow-md"
             >
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-white/20 rounded-xl"><MapPin className="w-8 h-8" /></div>
-                <div>
-                  <h3 className="text-2xl font-bold mb-1">{contact.locationTitle}</h3>
-                  <p className="text-white/90 text-lg">{footer.mapsLabel}</p>
-                  <p className="text-white/70 text-sm mt-1">{contact.locationSubtitle}</p>
-                </div>
-              </div>
-            </motion.a>
-          </div>
-
-          <div className="space-y-6">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-card border border-border rounded-2xl p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-3 bg-primary/10 rounded-xl"><Clock className="w-6 h-6 text-primary" /></div>
-                <h3 className="text-2xl font-bold text-foreground">{contact.hoursTitle}</h3>
-              </div>
-              <div className="space-y-3">
-                {contact.hours.map((row, index) => (
-                  <div key={index} className="flex justify-between gap-4 text-foreground">
-                    <span className="font-medium">{row.label}</span>
-                    <span className="text-muted-foreground text-right">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="bg-card border border-border rounded-2xl p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-3 bg-primary/10 rounded-xl"><MapPin className="w-6 h-6 text-primary" /></div>
-                <h3 className="text-2xl font-bold text-foreground">{contact.addressTitle}</h3>
-              </div>
-              <p className="text-foreground leading-relaxed mb-4 whitespace-pre-line">{contact.addressText}</p>
-              <a href={footer.mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-primary hover:underline">
-                <MapPin className="w-4 h-4" />{contact.mapButtonLabel}
-              </a>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-gradient-to-br from-primary/5 to-secondary/5 border border-border rounded-2xl p-8">
-              <h3 className="text-xl font-bold text-foreground mb-4">{contact.helpTitle}</h3>
-              <p className="text-muted-foreground mb-4">{contact.helpIntro}</p>
-              <ul className="space-y-2 text-foreground">
-                {contact.helpItems.map((item, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <span className="text-primary mt-1">•</span><span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
+              <Instagram className="h-6 w-6 text-[#315b42]" />
+              <p className="mt-4 font-black">Instagram</p>
+              <p className="mt-1 text-sm text-[#6c786f]">{site.footer.instagramLabel}</p>
+            </a>
+            <div className="rounded-3xl border border-[#dfdbd1] bg-white p-5">
+              <MapPin className="h-6 w-6 text-[#315b42]" />
+              <p className="mt-4 font-black">Ubicación</p>
+              <p className="mt-1 text-sm text-[#6c786f]">{market.locationLabel}</p>
+            </div>
           </div>
         </div>
 
-        {contact.mapEmbedUrl && (
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mt-12 rounded-2xl overflow-hidden shadow-lg">
-            <iframe
-              src={contact.mapEmbedUrl}
-              width="100%"
-              height="450"
-              style={{ border: 0 }}
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              title={`Ubicación de ${site.brand.name}`}
-            />
-          </motion.div>
-        )}
-      </div>
+        <div className="rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm sm:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">
+            ESCRÍBENOS
+          </p>
+          <h2 className="mt-2 text-3xl font-medium">{site.contactPage.helpTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#6c786f]">
+{site.contactPage.helpIntro}
+          </p>
+
+          <form onSubmit={submit} className="mt-7 space-y-5">
+            <label className="block">
+              <span className="mb-2 block text-sm font-black">Nombre</span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Tu nombre"
+                className="w-full rounded-2xl border border-[#dfdbd1] bg-[#fbfaf6] px-4 py-3 outline-none focus:border-[#315b42]"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-black">Mensaje</span>
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Cuéntanos qué producto, servicio o proyecto buscas..."
+                rows={7}
+                required
+                className="w-full resize-none rounded-2xl border border-[#dfdbd1] bg-[#fbfaf6] px-4 py-3 outline-none focus:border-[#315b42]"
+              />
+            </label>
+
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 text-sm font-black text-white"
+            >
+              <Send className="h-4 w-4" /> Continuar por WhatsApp
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
+        <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
+          <h2 className="text-2xl font-medium">Horario de atención</h2>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {site.contactPage.hours.map((row) => (
+              <div key={row.label} className="rounded-2xl border border-[#dfdbd1] bg-white p-4">
+                <p className="text-sm font-black">{row.label}</p>
+                <p className="mt-1 text-sm text-[#6c786f]">{row.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

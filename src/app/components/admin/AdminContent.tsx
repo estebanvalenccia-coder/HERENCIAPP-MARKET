@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
+import { AdminMarketExperience } from "./AdminMarketExperience";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -235,6 +236,8 @@ export function AdminContent() {
           <button type="button" onClick={() => void saveAll()} disabled={saving} className="flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50"><Save className="h-4 w-4" /> {saving ? "Guardando..." : "Guardar cambios"}</button>
         </div>
       </div>
+
+      <AdminMarketExperience site={site} onChange={setSite} />
 
       <section className="rounded-2xl border border-border bg-card p-6">
         <h3 className="mb-5 text-xl font-black">Marca y logo</h3>

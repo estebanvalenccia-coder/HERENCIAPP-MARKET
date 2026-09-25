@@ -4,6 +4,7 @@ import { motion, useScroll, useTransform } from "motion/react";
 import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sparkles, Ruler, PawPrint, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { products as fallbackProducts } from "../data/products";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -27,17 +28,25 @@ export function ProductDetail() {
 
   useEffect(() => {
     const adminProducts = backendStorage.getItem("adminProducts");
-    if (adminProducts) {
-      try {
-        const rows = JSON.parse(adminProducts);
-        setAllProducts(Array.isArray(rows) ? rows : []);
-        const found = rows.find((p: any) => String(p.id) === String(id));
-        if (found) {
-          setProduct(found);
-          setSelectedVariant(Array.isArray(found.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
-          generateAIDescription(found.name, found.description || "");
-        }
-      } catch { setProduct(null); }
+    try {
+      const parsed = adminProducts ? JSON.parse(adminProducts) : [];
+      const rows = Array.isArray(parsed) && parsed.length
+        ? parsed.filter((item: any) => item.active !== false)
+        : fallbackProducts;
+      setAllProducts(rows);
+      const found = rows.find((p: any) => String(p.id) === String(id));
+      if (found) {
+        setProduct(found);
+        setSelectedVariant(Array.isArray(found.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
+        generateAIDescription(found.name, found.description || "");
+      } else {
+        setProduct(null);
+      }
+    } catch {
+      const found = fallbackProducts.find((p: any) => String(p.id) === String(id));
+      setAllProducts(fallbackProducts);
+      setProduct(found || null);
+      if (found) generateAIDescription(found.name, found.description || "");
     }
     try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
     backendApi.customerWishlist().then((r)=>setFavorite((r.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
@@ -101,7 +110,7 @@ export function ProductDetail() {
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
-  const stock = Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)));
+  const stock = Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 999)));
 
   const toggleFavorite = async () => {
     let list: string[] = [];

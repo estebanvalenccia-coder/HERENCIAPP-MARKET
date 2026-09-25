@@ -2,29 +2,29 @@
 
 :root {
   --font-size: 16px;
-  --background: #fdfcfa;
+  --background: #fbfaf6;
   --foreground: #1f2b1f;
-  --card: #ffffff;
+  --card: #fffdf9;
   --card-foreground: #1f2b1f;
-  --popover: #ffffff;
+  --popover: #fffdf9;
   --popover-foreground: #1f2b1f;
-  --primary: #2d5f3f;
+  --primary: #315b42;
   --primary-foreground: #fdfcfa;
   --secondary: #7fa88f;
   --secondary-foreground: #1f2b1f;
-  --muted: #e8f2ec;
-  --muted-foreground: #5a6f5f;
-  --accent: #c4dfd0;
+  --muted: #f1eee7;
+  --muted-foreground: #66736b;
+  --accent: #e7ede4;
   --accent-foreground: #1f2b1f;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(125, 168, 143, 0.2);
+  --border: rgba(49, 91, 66, 0.16);
   --input: transparent;
-  --input-background: #f5faf7;
+  --input-background: #fffdf9;
   --switch-background: #b8d4c4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #7fa88f;
+  --ring: #315b42;
   --chart-1: #2d5f3f;
   --chart-2: #7fa88f;
   --chart-3: #c4dfd0;
@@ -33,7 +33,7 @@
   --radius: 0.75rem;
   --app-font-family: "DM Sans", "Segoe UI", sans-serif;
   --app-heading-font: "Playfair Display", Georgia, serif;
-  --sidebar: #f5faf7;
+  --sidebar: #f4f1e8;
   --sidebar-foreground: #1f2b1f;
   --sidebar-primary: #2d5f3f;
   --sidebar-primary-foreground: #fdfcfa;

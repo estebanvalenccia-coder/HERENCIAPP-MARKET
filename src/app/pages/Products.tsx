@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { products, categories } from "../data/products";
 import { toast } from "sonner";
 import { useLocation, Link } from "react-router";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent } from "../lib/siteContent";
 
 const normalize = (value: unknown) =>
@@ -36,7 +36,9 @@ export function Products() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const categoria = params.get("categoria");
+    const buscar = params.get("buscar");
     if (categoria) setSelectedCategory(categoria);
+    if (buscar !== null) setSearchQuery(buscar);
   }, [location.search]);
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function Products() {
 
   const filteredProducts = useMemo(() => {
     const rows = displayProducts.filter((product) => {
-      const stock = Math.max(0, Number(product.stock || 0));
+      const stock = Math.max(0, Number(product.stock ?? 999));
       const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
       const searchText = [product.name, product.description, product.category, product.tags, product.occasion, product.light, product.environment, product.size].filter(Boolean).join(" ");
       const matchesCategory = selectedCategory === "todos" || String(product.category || "") === selectedCategory;
@@ -110,7 +112,7 @@ export function Products() {
     const product = displayProducts.find((item) => String(item.id) === String(productId));
     if (!product) return toast.error("Producto no encontrado");
     if (!product.price || Number(product.price) <= 0) return toast.error("Este producto no tiene un precio válido");
-    const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+    const stock = Math.max(0, Math.floor(Number(product.stock ?? 999)));
     if (stock <= 0) return toast.error(site.productsPage.outOfStockText);
     const existingItem = cart.find((item: any) => String(item.id) === String(productId));
     const nextQuantity = Number(existingItem?.quantity || 0) + 1;
@@ -125,11 +127,15 @@ export function Products() {
 
   return (
     <div className="min-h-screen">
-      <div className="bg-muted/30 border-b border-border">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12"><h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">{site.productsPage.title}</h1><p className="text-muted-foreground max-w-2xl">{site.productsPage.subtitle}</p></div>
+      <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
+          <h1 className="mb-3 text-4xl font-medium text-[#173126] md:text-5xl">{site.productsPage.title}</h1>
+          <p className="max-w-2xl leading-7 text-[#66736b]">{site.productsPage.subtitle}</p>
+        </div>
       </div>
 
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">
@@ -138,7 +144,7 @@ export function Products() {
               {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2"><X className="w-4 h-4 text-muted-foreground" /></button>}
               {suggestions.length > 0 && searchQuery && <div className="absolute z-30 mt-2 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden">{suggestions.map((p) => <Link key={p.id} to={`/producto/${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted"><img src={p.image} className="h-10 w-10 rounded-lg object-cover" alt="" /><div><p className="font-semibold">{p.name}</p><p className="text-xs text-muted-foreground">€{Number(p.salePrice || p.price || 0).toFixed(2)}</p></div></Link>)}</div>}
             </div>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-xl border border-border bg-background px-4 py-3">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-2xl border border-[#ded9cd] bg-[#fffdf9] px-4 py-3">
               <option value="relevance">Relevancia</option><option value="featured">Destacados</option><option value="newest">Novedades</option><option value="price-asc">Precio: menor a mayor</option><option value="price-desc">Precio: mayor a menor</option><option value="stock">Disponibilidad</option>
             </select>
             <button onClick={() => setShowFilters(!showFilters)} className="flex items-center justify-center gap-2 px-5 py-3 bg-background border border-border rounded-xl hover:bg-accent"><SlidersHorizontal className="w-5 h-5" />Filtros</button>
@@ -147,9 +153,9 @@ export function Products() {
           <div className="flex flex-wrap gap-2">{categories.map((category) => <button key={category.id} onClick={() => setSelectedCategory(category.id)} className={`px-4 py-2 rounded-lg transition-all ${selectedCategory === category.id ? "bg-primary text-primary-foreground" : "bg-background border border-border text-foreground hover:bg-accent"}`}>{category.name}</button>)}</div>
 
           {showFilters && <div className="grid gap-4 rounded-2xl border border-border bg-card p-5 md:grid-cols-2 lg:grid-cols-5">
-            <label className="text-sm font-medium">Disponibilidad<select value={availability} onChange={(e) => setAvailability(e.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background p-2"><option value="all">Todos</option><option value="available">En stock</option><option value="out">Agotados</option></select></label>
-            <label className="text-sm font-medium">Ubicación<select value={environment} onChange={(e) => setEnvironment(e.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background p-2"><option value="all">Todas</option><option value="interior">Interior</option><option value="exterior">Exterior</option></select></label>
-            <label className="text-sm font-medium">Luz<select value={light} onChange={(e) => setLight(e.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background p-2"><option value="all">Cualquiera</option><option value="baja">Poca luz</option><option value="indirecta">Indirecta</option><option value="sol">Sol</option></select></label>
+            <label className="text-sm font-medium">Disponibilidad<select value={availability} onChange={(e) => setAvailability(e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fffdf9] p-2"><option value="all">Todos</option><option value="available">En stock</option><option value="out">Agotados</option></select></label>
+            <label className="text-sm font-medium">Ubicación<select value={environment} onChange={(e) => setEnvironment(e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fffdf9] p-2"><option value="all">Todas</option><option value="interior">Interior</option><option value="exterior">Exterior</option></select></label>
+            <label className="text-sm font-medium">Luz<select value={light} onChange={(e) => setLight(e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fffdf9] p-2"><option value="all">Cualquiera</option><option value="baja">Poca luz</option><option value="indirecta">Indirecta</option><option value="sol">Sol</option></select></label>
             <label className="text-sm font-medium">Precio máximo: €{maxPrice}<input type="range" min="5" max="500" step="5" value={maxPrice} onChange={(e) => setMaxPrice(Number(e.target.value))} className="mt-3 w-full" /></label>
             <div className="flex flex-col justify-between gap-2"><button type="button" onClick={() => setPetSafe(!petSafe)} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${petSafe ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>🐾 Aptas para mascotas</button><button onClick={resetFilters} className="text-sm text-muted-foreground hover:text-foreground">Limpiar filtros</button></div>
           </div>}
@@ -160,9 +166,9 @@ export function Products() {
         {filteredProducts.length === 0 ? <div className="text-center py-20"><Filter className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="text-muted-foreground text-lg">{site.productsPage.emptyText}</p><button onClick={resetFilters} className="mt-4 text-primary font-semibold">Quitar filtros</button></div> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product, index) => {
-              const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+              const stock = Math.max(0, Math.floor(Number(product.stock ?? 999)));
               const favorite = favorites.includes(String(product.id));
-              return <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, .3) }} className="group bg-card border border-border rounded-2xl overflow-hidden hover:shadow-lg transition-all">
+              return <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.03, .3) }} className="group bg-card border border-border rounded-3xl overflow-hidden hover:shadow-lg transition-all">
                 <Link to={`/producto/${product.id}`} className="relative h-64 overflow-hidden bg-muted block">
                   <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   {product.featured && <div className="absolute top-3 right-3 px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">{site.productsPage.featuredLabel}</div>}

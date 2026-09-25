@@ -152,12 +152,16 @@ export const products: Product[] = [
 
 export const categories = [
   { id: "todos", name: "Todos" },
-  { id: "flores", name: "Flores" },
   { id: "plantas-interior", name: "Plantas de Interior" },
   { id: "plantas-exterior", name: "Plantas de Exterior" },
-  { id: "orquideas", name: "Orquídeas" },
+  { id: "flores", name: "Flores" },
+  { id: "semillas", name: "Semillas" },
+  { id: "accesorios", name: "Artículos de jardinería" },
+  { id: "sustratos", name: "Tierra y sustratos" },
   { id: "macetas", name: "Macetas" },
-  { id: "sustratos", name: "Sustratos" },
   { id: "fertilizantes", name: "Fertilizantes" },
-  { id: "accesorios", name: "Accesorios" },
+  { id: "orquideas", name: "Orquídeas" },
+  { id: "decoracion", name: "Decoración" },
+  { id: "dulce", name: "Dulce" },
+  { id: "moda", name: "Moda" },
 ];

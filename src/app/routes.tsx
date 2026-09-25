@@ -20,6 +20,8 @@ import { NotFound } from "./pages/NotFound";
 import { PlantPassport } from "./pages/PlantPassport";
 import { FAQ } from "./pages/FAQ";
 import { CampaignPage } from "./pages/CampaignPage";
+import { Sweet, Fashion } from "./pages/MarketCollections";
+import { About } from "./pages/About";
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +36,9 @@ export const router = createBrowserRouter([
       { path: "faq", Component: FAQ },
       { path: "campana/:slug", Component: CampaignPage },
       { path: "servicios", Component: Services },
+      { path: "dulce", Component: Sweet },
+      { path: "moda", Component: Fashion },
+      { path: "nosotros", Component: About },
       { path: "contacto", Component: Contact },
       { path: "herencia", Component: HerencIA },
       { path: "carrito", Component: Cart },

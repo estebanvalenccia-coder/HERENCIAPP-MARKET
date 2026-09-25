@@ -118,7 +118,7 @@ export function Checkout() {
   const validateForm = () => {
     if (!cartItems.length) {
       toast.error("Tu carrito está vacío");
-      navigate("/cart");
+      navigate("/carrito");
       return false;
     }
 
@@ -202,21 +202,29 @@ export function Checkout() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <div className="bg-card border border-border rounded-2xl p-6">
-        <h1 className="text-3xl font-bold mb-6">Datos de entrega</h1>
+    <div className="bg-[#fbfaf6] text-[#173126]">
+      <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
+        <div className="mx-auto max-w-5xl px-4 py-10">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
+          <h1 className="mt-2 text-4xl font-medium">Finaliza tu compra</h1>
+          <p className="mt-2 text-sm text-[#66736b]">Datos de entrega, horario y pago en un solo paso.</p>
+        </div>
+      </div>
+      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 px-4 py-10 lg:grid-cols-2">
+      <div className="rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm">
+        <h2 className="mb-6 text-2xl font-black">Datos de entrega</h2>
 
         <div className="space-y-4">
-          <input className="w-full border rounded-xl p-3" placeholder="Nombre completo" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
-          <input className="w-full border rounded-xl p-3" placeholder="Correo electrónico" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
-          <input className="w-full border rounded-xl p-3" placeholder="Teléfono" value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} />
+          <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Nombre completo" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
+          <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Correo electrónico" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
+          <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Teléfono" value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} />
 
           {deliveryMethod === "envio" && (
             <>
-              <input className="w-full border rounded-xl p-3" placeholder="Dirección" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
-              <input className="w-full border rounded-xl p-3" placeholder="Ciudad" value={form.city} onChange={(e) => handleChange("city", e.target.value)} />
-              <input className="w-full border rounded-xl p-3" placeholder="Código postal" value={form.postalCode} onChange={(e) => handleChange("postalCode", e.target.value)} />
-              <input className="w-full border rounded-xl p-3" placeholder="Provincia" value={form.province} onChange={(e) => handleChange("province", e.target.value)} />
+              <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Dirección" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
+              <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Ciudad" value={form.city} onChange={(e) => handleChange("city", e.target.value)} />
+              <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Código postal" value={form.postalCode} onChange={(e) => handleChange("postalCode", e.target.value)} />
+              <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Provincia" value={form.province} onChange={(e) => handleChange("province", e.target.value)} />
 
               <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
                 {shippingLoading ? (
@@ -239,16 +247,16 @@ export function Checkout() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="text-sm font-medium">Fecha deseada<input type="date" min={new Date().toISOString().slice(0,10)} value={form.requestedDate} onChange={(e)=>handleChange("requestedDate",e.target.value)} className="mt-2 w-full border rounded-xl p-3" /></label>
-            <label className="text-sm font-medium">Franja horaria<select value={form.requestedTimeSlot} onChange={(e)=>handleChange("requestedTimeSlot",e.target.value)} className="mt-2 w-full border rounded-xl p-3"><option value="">Sin preferencia</option><option value="09:00-12:00">09:00–12:00</option><option value="12:00-15:00">12:00–15:00</option><option value="15:00-18:00">15:00–18:00</option><option value="18:00-21:00">18:00–21:00</option></select></label>
+            <label className="text-sm font-medium">Fecha deseada<input type="date" min={new Date().toISOString().slice(0,10)} value={form.requestedDate} onChange={(e)=>handleChange("requestedDate",e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" /></label>
+            <label className="text-sm font-medium">Franja horaria<select value={form.requestedTimeSlot} onChange={(e)=>handleChange("requestedTimeSlot",e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]"><option value="">Sin preferencia</option><option value="09:00-12:00">09:00–12:00</option><option value="12:00-15:00">12:00–15:00</option><option value="15:00-18:00">15:00–18:00</option><option value="18:00-21:00">18:00–21:00</option></select></label>
           </div>
-          <textarea className="w-full border rounded-xl p-3 min-h-[90px]" placeholder="Instrucciones de entrega: no llamar, dejar con portero, sorpresa…" value={form.deliveryInstructions} onChange={(e) => handleChange("deliveryInstructions", e.target.value)} />
-          <textarea className="w-full border rounded-xl p-3 min-h-[120px]" placeholder="Notas para el pedido" value={form.notes} onChange={(e) => handleChange("notes", e.target.value)} />
+          <textarea className="min-h-[90px] w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Instrucciones de entrega: no llamar, dejar con portero, sorpresa…" value={form.deliveryInstructions} onChange={(e) => handleChange("deliveryInstructions", e.target.value)} />
+          <textarea className="min-h-[120px] w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Notas para el pedido" value={form.notes} onChange={(e) => handleChange("notes", e.target.value)} />
         </div>
       </div>
 
       <div className="space-y-6">
-        <div className="bg-card border border-border rounded-2xl p-6 h-fit sticky top-24">
+        <div className="sticky top-28 h-fit rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-bold mb-6">Resumen del pedido</h2>
 
           <div className="space-y-3 mb-6">
@@ -279,7 +287,7 @@ export function Checkout() {
           </div>
 
           {!showStripe && (
-            <button onClick={handleSubmit} disabled={loading || shippingLoading || !cartItems.length} className="w-full mt-6 bg-primary text-primary-foreground py-3 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={handleSubmit} disabled={loading || shippingLoading || !cartItems.length} className="mt-6 w-full rounded-full bg-[#315b42] py-3.5 font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
               {loading ? "Procesando..." : shippingLoading ? "Calculando envío..." : isStripePayment ? "Continuar al pago seguro" : "Confirmar pedido"}
             </button>
           )}
@@ -316,6 +324,7 @@ export function Checkout() {
             }}
           />
         )}
+      </div>
       </div>
     </div>
   );
