@@ -29,6 +29,7 @@ import {
   Trash2,
   Workflow,
   DatabaseBackup,
+  ShoppingCart,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -57,6 +58,7 @@ import { AdminStockControl } from "../components/admin/AdminStockControl";
 import { AdminWasteControl } from "../components/admin/AdminWasteControl";
 import { AdminAutomationCenter } from "../components/admin/AdminAutomationCenter";
 import { AdminBackupCenter } from "../components/admin/AdminBackupCenter";
+import { AdminAbandonedCarts } from "../components/admin/AdminAbandonedCarts";
 
 type AdminSection =
   | "dashboard"
@@ -81,6 +83,7 @@ type AdminSection =
   | "waste"
   | "automations"
   | "backups"
+  | "abandoned-carts"
   | "settings";
 
 type AdminOrderAlert = {
@@ -352,6 +355,7 @@ export function AdminDashboard() {
     { id: "waste" as AdminSection, label: "Mermas", icon: Trash2 },
     { id: "automations" as AdminSection, label: "Automatizaciones", icon: Workflow, badge: "AUTO" },
     { id: "backups" as AdminSection, label: "Copias de seguridad", icon: DatabaseBackup },
+    { id: "abandoned-carts" as AdminSection, label: "Carritos abandonados", icon: ShoppingCart, badge: "CRM" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -859,6 +863,8 @@ export function AdminDashboard() {
           {currentSection === "automations" && <AdminAutomationCenter />}
 
           {currentSection === "backups" && <AdminBackupCenter />}
+
+          {currentSection === "abandoned-carts" && <AdminAbandonedCarts />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

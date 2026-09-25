@@ -797,6 +797,10 @@ export const backendApi = {
     });
   },
 
+  async listAbandonedCarts(minMinutes = 30) {
+    return request<{ carts: any[]; minMinutes: number }>(`/api/admin/abandoned-carts?minMinutes=${encodeURIComponent(String(minMinutes))}`);
+  },
+
   async createOrder(payload: any) {
     return request<{ order: any }>("/api/orders", {
       method: "POST",

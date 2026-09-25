@@ -1909,6 +1909,62 @@ app.post("/api/admin/backup/restore", requireAdmin, async (req, res) => {
   }
 });
 
+
+app.get("/api/admin/abandoned-carts", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const minMinutes = Math.max(5, Number(req.query?.minMinutes || 30));
+    const { data, error } = await supabase
+      .from("app_storage")
+      .select("key,value,updated_at")
+      .like("key", "visitor:%");
+    if (error) throw error;
+
+    const visitors = new Map();
+    for (const row of data || []) {
+      const match = String(row.key || "").match(/^visitor:([^:]+):(cart|user)$/);
+      if (!match) continue;
+      const [, visitorId, kind] = match;
+      const current = visitors.get(visitorId) || { visitorId, cart: [], user: null, updatedAt: row.updated_at || null };
+      try {
+        const parsed = JSON.parse(row.value || (kind === "cart" ? "[]" : "null"));
+        if (kind === "cart") current.cart = Array.isArray(parsed) ? parsed : [];
+        if (kind === "user") current.user = parsed;
+      } catch {}
+      if (!current.updatedAt || new Date(row.updated_at || 0) > new Date(current.updatedAt || 0)) current.updatedAt = row.updated_at;
+      visitors.set(visitorId, current);
+    }
+
+    const now = Date.now();
+    const carts = [...visitors.values()]
+      .map((entry) => {
+        const updatedAt = entry.updatedAt || new Date(0).toISOString();
+        const ageMinutes = Math.max(0, Math.floor((now - new Date(updatedAt).getTime()) / 60000));
+        const total = (entry.cart || []).reduce((sum, item) => sum + Number(item?.price || 0) * Number(item?.quantity || 1), 0);
+        const itemCount = (entry.cart || []).reduce((sum, item) => sum + Number(item?.quantity || 1), 0);
+        return {
+          visitorId: entry.visitorId,
+          updatedAt,
+          ageMinutes,
+          total: Number(total.toFixed(2)),
+          itemCount,
+          items: entry.cart,
+          customer: entry.user ? {
+            name: String(entry.user?.name || ""),
+            email: String(entry.user?.email || ""),
+            phone: String(entry.user?.phone || ""),
+          } : null,
+        };
+      })
+      .filter((entry) => entry.itemCount > 0 && entry.ageMinutes >= minMinutes)
+      .sort((a, b) => b.total - a.total);
+
+    res.json({ carts, minMinutes });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar los carritos abandonados" });
+  }
+});
+
 app.get("/api/orders", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
 
