@@ -2477,14 +2477,30 @@ app.get("/api/pos/sales", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
     const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 50)));
+    const query = String(req.query?.q || "").trim().toLowerCase();
+    const fetchLimit = query ? 500 : limit;
     const { data, error } = await supabase
       .from("orders")
       .select("*")
       .in("delivery_method", ["mostrador"])
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .limit(fetchLimit);
     if (error) throw error;
-    res.json({ sales: (data || []).map(posOrderResponse) });
+
+    const filtered = query
+      ? (data || []).filter((order) => {
+          const haystack = [
+            order.id,
+            order.customer_name,
+            order.customer_email,
+            order.metadata?.invoiceNumber,
+            order.payment_method,
+          ].map((value) => String(value || "").toLowerCase()).join(" ");
+          return haystack.includes(query);
+        }).slice(0, limit)
+      : (data || []);
+
+    res.json({ sales: filtered.map(posOrderResponse) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
