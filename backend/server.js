@@ -138,6 +138,7 @@ const publicKeys = new Set([
   "heroBanner",
   "ctaBanner",
   "siteContent",
+  "businessSuiteSettings",
 ]);
 
 const privateVisitorKeys = new Set(["cart", "user"]);
@@ -167,6 +168,7 @@ const protectedKeys = new Set([
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
+  "businessSuiteSettings",
   "__backendStorage_test__",
 ]);
 
@@ -187,6 +189,9 @@ const adminOnlyStorageKeys = [
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
+  "businessSuiteSettings",
+  "customerAccounts",
+  "customerReferrals",
 ];
 
 function parseCookies(req) {
@@ -1129,6 +1134,248 @@ app.get("/api/admin/order-events", requireAdmin, (req, res) => {
     clearInterval(client.heartbeat);
     adminOrderEventClients.delete(client);
   });
+});
+
+
+const CUSTOMER_ACCOUNTS_KEY = "customerAccounts";
+const CUSTOMER_REFERRALS_KEY = "customerReferrals";
+
+function normalizeCustomerEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function customerReferralCode(email) {
+  return crypto.createHmac("sha256", sessionSecret).update(`ref:${normalizeCustomerEmail(email)}`).digest("hex").slice(0, 10).toUpperCase();
+}
+
+function hashCustomerPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const normalized = String(password || "");
+  const hash = crypto.scryptSync(normalized, salt, 64).toString("hex");
+  return { salt, hash };
+}
+
+function safeCustomer(account) {
+  if (!account) return null;
+  const { passwordHash, passwordSalt, ...safe } = account;
+  return safe;
+}
+
+function createCustomerToken(account) {
+  const payload = Buffer.from(JSON.stringify({
+    role: "customer",
+    customerId: account.id,
+    email: account.email,
+    iat: Date.now(),
+  })).toString("base64url");
+  return `${payload}.${sign(payload)}`;
+}
+
+function getCustomerSession(req) {
+  const token = parseCookies(req).customer_session;
+  if (!token || !token.includes(".")) return null;
+  const [payload, signature] = token.split(".");
+  if (signature !== sign(payload)) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const maxAgeMs = 1000 * 60 * 60 * 24 * 30;
+    if (decoded.role !== "customer" || Date.now() - decoded.iat >= maxAgeMs) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+function requireCustomer(req, res, next) {
+  const session = getCustomerSession(req);
+  if (!session) return res.status(401).json({ error: "Inicia sesión para continuar" });
+  req.customerSession = session;
+  next();
+}
+
+async function loadCustomerAccounts() {
+  return parseStoredJson(await readStorageValue(CUSTOMER_ACCOUNTS_KEY), []);
+}
+
+async function saveCustomerAccounts(accounts) {
+  await upsertStorageValue(CUSTOMER_ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+app.post("/api/customer/register", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const email = normalizeCustomerEmail(req.body?.email);
+    const password = String(req.body?.password || "");
+    const name = cleanText(req.body?.name, 120);
+    const phone = cleanText(req.body?.phone, 60);
+    const address = cleanText(req.body?.address, 300);
+
+    if (!isValidEmail(email) || password.length < 8 || !name) {
+      return res.status(400).json({ error: "Nombre, email válido y contraseña de al menos 8 caracteres son obligatorios" });
+    }
+
+    const accounts = await loadCustomerAccounts();
+    if (accounts.some((item) => normalizeCustomerEmail(item.email) === email)) {
+      return res.status(409).json({ error: "Ya existe una cuenta con este correo" });
+    }
+
+    const { salt, hash } = hashCustomerPassword(password);
+    const account = {
+      id: crypto.randomUUID(),
+      email,
+      name,
+      phone,
+      address,
+      referralCode: customerReferralCode(email),
+      passwordSalt: salt,
+      passwordHash: hash,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    accounts.push(account);
+    await saveCustomerAccounts(accounts);
+    res.setHeader("Set-Cookie", `customer_session=${encodeURIComponent(createCustomerToken(account))}; ${cookieOptions(60 * 60 * 24 * 30)}`);
+    res.json({ authenticated: true, user: safeCustomer(account) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo crear la cuenta" });
+  }
+});
+
+app.post("/api/customer/login", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const email = normalizeCustomerEmail(req.body?.email);
+    const password = String(req.body?.password || "");
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => normalizeCustomerEmail(item.email) === email);
+    if (!account?.passwordSalt || !account?.passwordHash) {
+      return res.status(401).json({ error: "Email o contraseña incorrectos" });
+    }
+    const candidate = hashCustomerPassword(password, account.passwordSalt).hash;
+    const a = Buffer.from(candidate, "hex");
+    const b = Buffer.from(account.passwordHash, "hex");
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: "Email o contraseña incorrectos" });
+    }
+    res.setHeader("Set-Cookie", `customer_session=${encodeURIComponent(createCustomerToken(account))}; ${cookieOptions(60 * 60 * 24 * 30)}`);
+    res.json({ authenticated: true, user: safeCustomer(account) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo iniciar sesión" });
+  }
+});
+
+app.get("/api/customer/session", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const session = getCustomerSession(req);
+    if (!session) return res.json({ authenticated: false, user: null });
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === session.customerId && normalizeCustomerEmail(item.email) === normalizeCustomerEmail(session.email));
+    if (!account) return res.json({ authenticated: false, user: null });
+    res.json({ authenticated: true, user: safeCustomer(account) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo comprobar la sesión" });
+  }
+});
+
+app.post("/api/customer/logout", (_req, res) => {
+  res.setHeader("Set-Cookie", `customer_session=; ${cookieOptions(0)}`);
+  res.json({ ok: true });
+});
+
+app.post("/api/customer/referral/claim", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const code = cleanText(req.body?.code, 40).toUpperCase();
+    if (!code) return res.status(400).json({ error: "Código de referido obligatorio" });
+
+    const accounts = await loadCustomerAccounts();
+    const me = accounts.find((item) => item.id === req.customerSession.customerId);
+    const referrer = accounts.find((item) => String(item.referralCode || "").toUpperCase() === code);
+    if (!me || !referrer) return res.status(404).json({ error: "Código de referido no válido" });
+    if (me.id === referrer.id) return res.status(400).json({ error: "No puedes usar tu propio código" });
+
+    const referrals = parseStoredJson(await readStorageValue(CUSTOMER_REFERRALS_KEY), []);
+    const existing = referrals.find((item) => item.referredCustomerId === me.id);
+    if (existing) return res.json({ ok: true, referral: existing, duplicate: true });
+
+    const referral = {
+      id: crypto.randomUUID(),
+      referrerCustomerId: referrer.id,
+      referrerEmail: referrer.email,
+      referredCustomerId: me.id,
+      referredEmail: me.email,
+      code,
+      createdAt: new Date().toISOString(),
+    };
+    referrals.unshift(referral);
+    await upsertStorageValue(CUSTOMER_REFERRALS_KEY, JSON.stringify(referrals.slice(0, 10000)));
+    res.json({ ok: true, referral });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo registrar el referido" });
+  }
+});
+
+app.get("/api/customer/account", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === req.customerSession.customerId);
+    if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+    const email = normalizeCustomerEmail(account.email);
+    const { data: rows, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("customer_email", email)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const paidStatuses = new Set(["paid", "confirmed", "preparing", "ready", "delivered", "completed"]);
+    const allOrders = (rows || []).map(normalizeOrder);
+    const paidOrders = allOrders.filter((order) => paidStatuses.has(order.status));
+    const totalSpent = paidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+
+    const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+    const pointsPerEuro = Math.max(0, Number(suite.pointsPerEuro ?? 1));
+    const basePoints = Math.floor(totalSpent * pointsPerEuro);
+
+    const referrals = parseStoredJson(await readStorageValue(CUSTOMER_REFERRALS_KEY), []);
+    const mine = referrals.filter((item) => item.referrerCustomerId === account.id);
+    const referredEmails = [...new Set(mine.map((item) => normalizeCustomerEmail(item.referredEmail)).filter(Boolean))];
+    let qualifiedReferrals = 0;
+    if (referredEmails.length) {
+      const { data: referredOrders, error: referredError } = await supabase
+        .from("orders")
+        .select("customer_email,status")
+        .in("customer_email", referredEmails)
+        .in("status", [...paidStatuses]);
+      if (referredError) throw referredError;
+      qualifiedReferrals = new Set((referredOrders || []).map((item) => normalizeCustomerEmail(item.customer_email))).size;
+    }
+
+    const referralReward = Math.max(0, Number(suite.referralReward ?? 5));
+    const referralCredit = Number((qualifiedReferrals * referralReward).toFixed(2));
+    const level = totalSpent >= 300 ? "Jardín" : totalSpent >= 100 ? "Brote" : "Semilla";
+    const nextLevelAt = level === "Semilla" ? 100 : level === "Brote" ? 300 : null;
+
+    res.json({
+      user: safeCustomer(account),
+      orders: allOrders,
+      loyalty: {
+        points: basePoints,
+        pointsPerEuro,
+        totalSpent: Number(totalSpent.toFixed(2)),
+        level,
+        nextLevelAt,
+        referralCredit,
+        referrals: mine.length,
+        qualifiedReferrals,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar la cuenta" });
+  }
 });
 
 app.get("/api/storage", async (req, res) => {

@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -31,6 +31,12 @@ export function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    backendApi.customerSession().then(async (session) => {
+      if (session.authenticated && session.user) {
+        await backendStorage.setItem("user", JSON.stringify({ ...session.user, isLoggedIn: true }));
+        navigate("/perfil");
+      }
+    }).catch(() => {});
     const savedUser = readSavedUser();
     if (savedUser?.email) {
       setFormData((prev) => ({
@@ -59,28 +65,18 @@ export function Login() {
 
     try {
       setLoading(true);
-      const savedUser = readSavedUser();
-      const sameCustomer = savedUser?.email && normalizeEmail(savedUser.email) === email;
-      const user = {
-        ...(sameCustomer ? savedUser : {}),
-        id: sameCustomer ? savedUser.id : crypto.randomUUID(),
-        email,
-        name: isLogin ? savedUser?.name || email.split("@")[0] : formData.name.trim(),
-        phone: formData.phone.trim() || savedUser?.phone || "",
-        address: formData.address.trim() || savedUser?.address || "",
-        isLoggedIn: true,
-        updatedAt: new Date().toISOString(),
-        orderHistory: sameCustomer && Array.isArray(savedUser?.orderHistory) ? savedUser.orderHistory : [],
-        notifications: sameCustomer && Array.isArray(savedUser?.notifications) ? savedUser.notifications : [],
-      };
+      const response = isLogin
+        ? await backendApi.customerLogin({ email, password: formData.password })
+        : await backendApi.customerRegister({
+            name: formData.name.trim(),
+            email,
+            password: formData.password,
+            phone: formData.phone.trim(),
+            address: formData.address.trim(),
+          });
 
-      const result = await backendStorage.setItem("user", JSON.stringify(user));
-      if (!result.ok) {
-        toast.warning("Sesión guardada en este navegador. El backend no respondió ahora mismo.");
-      } else {
-        toast.success(isLogin ? "¡Bienvenido de vuelta!" : "¡Cuenta creada exitosamente!");
-      }
-
+      await backendStorage.setItem("user", JSON.stringify({ ...response.user, isLoggedIn: true }));
+      toast.success(isLogin ? "¡Bienvenido de vuelta!" : "¡Cuenta creada exitosamente!");
       navigate("/perfil");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo iniciar sesión");

@@ -1,241 +1,125 @@
-import { useState, useEffect } from "react";
-import { User, Mail, Phone, MapPin, Package, Settings, LogOut, Bell } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { User, Mail, Phone, MapPin, Package, LogOut, Bell, Gift, Sprout, Copy, Users } from "lucide-react";
 import { motion } from "motion/react";
-import { useNavigate, Link } from "react-router";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 
 export function Profile() {
   const [user, setUser] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
+  const [loyalty, setLoyalty] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [referralInput, setReferralInput] = useState("");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const storedUser = backendStorage.getItem("user");
-    if (!storedUser) {
+  const load = async () => {
+    setLoading(true);
+    try {
+      const account = await backendApi.customerAccount();
+      setUser(account.user);
+      setOrders(account.orders || []);
+      setLoyalty(account.loyalty || null);
+      await backendStorage.setItem("user", JSON.stringify({ ...account.user, isLoggedIn: true }));
+    } catch {
+      await backendStorage.removeItem("user");
       navigate("/login");
-    } else {
-      setUser(JSON.parse(storedUser));
-      // Mock orders
-      setOrders([
-        {
-          id: "ORD-001",
-          date: "2026-04-08",
-          total: 127.50,
-          status: "Entregado",
-          items: 3,
-        },
-        {
-          id: "ORD-002",
-          date: "2026-04-05",
-          total: 85.00,
-          status: "En camino",
-          items: 2,
-        },
-        {
-          id: "ORD-003",
-          date: "2026-03-28",
-          total: 220.00,
-          status: "Entregado",
-          items: 5,
-        },
-      ]);
+    } finally {
+      setLoading(false);
     }
-  }, [navigate]);
+  };
 
-  const handleLogout = () => {
-    backendStorage.removeItem("user");
+  useEffect(() => { void load(); }, []);
+
+  const activeOrders = useMemo(() => orders.filter((o) => !["delivered", "completed", "cancelled"].includes(o.status)), [orders]);
+
+  const handleLogout = async () => {
+    await backendApi.customerLogout().catch(() => null);
+    await backendStorage.removeItem("user");
     toast.success("Sesión cerrada");
     navigate("/login");
   };
 
-  if (!user) {
-    return null;
-  }
+  const claimReferral = async () => {
+    if (!referralInput.trim()) return toast.error("Escribe un código");
+    try {
+      const result = await backendApi.customerClaimReferral(referralInput.trim());
+      toast.success(result.duplicate ? "Este referido ya estaba registrado" : "Código de referido aplicado");
+      setReferralInput("");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo aplicar el código");
+    }
+  };
+
+  const copyReferral = async () => {
+    const code = user?.referralCode || "";
+    if (!code) return;
+    await navigator.clipboard?.writeText(code);
+    toast.success("Código de referido copiado");
+  };
+
+  if (loading) return <div className="min-h-[70vh] flex items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" /></div>;
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="bg-gradient-to-r from-primary/10 to-secondary/10 border-b border-border">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col sm:flex-row items-start sm:items-center gap-6"
-          >
-            <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center">
-              <User className="w-10 h-10 text-primary-foreground" />
-            </div>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold text-foreground mb-2">
-                {user.name || "Usuario"}
-              </h1>
-              <p className="text-muted-foreground">{user.email}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar sesión
-            </button>
-          </motion.div>
+        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-10">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+            <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center"><User className="w-10 h-10 text-primary-foreground" /></div>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-3xl font-bold">{user.name || "Cliente"}</h1>{loyalty?.level && <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-bold text-primary">{loyalty.level}</span>}</div><p className="text-muted-foreground">{user.email}</p></div>
+            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-destructive hover:bg-destructive/10 rounded-xl"><LogOut className="w-4 h-4" />Cerrar sesión</button>
+          </div>
         </div>
       </div>
 
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
-              <div>
-                <h2 className="font-semibold text-foreground mb-4">Información Personal</h2>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-foreground">{user.email}</span>
-                  </div>
-                  {user.phone && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-foreground">{user.phone}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 text-sm">
-                    <MapPin className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">No registrada</span>
-                  </div>
-                </div>
-              </div>
+      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8 space-y-8">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card icon={Package} label="Pedidos" value={String(orders.length)} detail={`${activeOrders.length} activos`} />
+          <Card icon={Sprout} label="Puntos" value={String(loyalty?.points || 0)} detail={`${loyalty?.pointsPerEuro || 1} punto(s) por €`} />
+          <Card icon={Gift} label="Crédito referidos" value={`€${Number(loyalty?.referralCredit || 0).toFixed(2)}`} detail={`${loyalty?.qualifiedReferrals || 0} referidos válidos`} />
+          <Card icon={Users} label="Nivel" value={loyalty?.level || "Semilla"} detail={loyalty?.nextLevelAt ? `Siguiente a €${loyalty.nextLevelAt}` : "Nivel superior"} />
+        </div>
 
-              <div className="border-t border-border pt-6">
-                <h3 className="font-semibold text-foreground mb-3">Configuración</h3>
-                <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent rounded-xl transition-colors">
-                    <Settings className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-foreground">Editar perfil</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent rounded-xl transition-colors">
-                    <Bell className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-foreground">Notificaciones</span>
-                  </button>
-                </div>
-              </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <h2 className="font-bold text-lg mb-4">Tus datos</h2>
+            <div className="space-y-3 text-sm">
+              <p className="flex gap-2"><Mail className="w-4 h-4 text-muted-foreground" />{user.email}</p>
+              {user.phone && <p className="flex gap-2"><Phone className="w-4 h-4 text-muted-foreground" />{user.phone}</p>}
+              <p className="flex gap-2"><MapPin className="w-4 h-4 text-muted-foreground" />{user.address || "Sin dirección guardada"}</p>
             </div>
           </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="bg-card border border-border rounded-2xl p-6"
-              >
-                <Package className="w-8 h-8 text-primary mb-3" />
-                <div className="text-3xl font-bold text-foreground mb-1">{orders.length}</div>
-                <div className="text-sm text-muted-foreground">Pedidos totales</div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-card border border-border rounded-2xl p-6"
-              >
-                <Package className="w-8 h-8 text-secondary mb-3" />
-                <div className="text-3xl font-bold text-foreground mb-1">
-                  {orders.filter(o => o.status === "En camino").length}
-                </div>
-                <div className="text-sm text-muted-foreground">En camino</div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-card border border-border rounded-2xl p-6"
-              >
-                <Bell className="w-8 h-8 text-primary mb-3" />
-                <div className="text-3xl font-bold text-foreground mb-1">2</div>
-                <div className="text-sm text-muted-foreground">Notificaciones</div>
-              </motion.div>
-            </div>
-
-            {/* Orders */}
-            <div className="bg-card border border-border rounded-2xl p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6">Historial de Pedidos</h2>
-              <div className="space-y-4">
-                {orders.map((order, index) => (
-                  <motion.div
-                    key={order.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-muted/30 rounded-xl"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-semibold text-foreground">{order.id}</span>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            order.status === "Entregado"
-                              ? "bg-primary/10 text-primary"
-                              : "bg-secondary/10 text-secondary"
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>{order.date}</span>
-                        <span>{order.items} productos</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-lg font-bold text-foreground">
-                        ${(order.total || 0).toFixed(2)}
-                      </span>
-                      <button className="px-4 py-2 bg-background border border-border rounded-lg hover:bg-accent transition-colors">
-                        Ver detalles
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            {/* Notifications */}
-            <div className="bg-card border border-border rounded-2xl p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6">Notificaciones Recientes</h2>
-              <div className="space-y-3">
-                <div className="flex gap-3 p-4 bg-primary/5 border border-primary/20 rounded-xl">
-                  <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-foreground mb-1">Nueva oferta disponible</p>
-                    <p className="text-sm text-muted-foreground">
-                      20% de descuento en todas las orquídeas este fin de semana
-                    </p>
-                    <span className="text-xs text-muted-foreground">Hace 2 horas</span>
-                  </div>
-                </div>
-                <div className="flex gap-3 p-4 bg-muted/30 rounded-xl">
-                  <Package className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-foreground mb-1">Pedido en camino</p>
-                    <p className="text-sm text-muted-foreground">
-                      Tu pedido ORD-002 llegará mañana
-                    </p>
-                    <span className="text-xs text-muted-foreground">Hace 1 día</span>
-                  </div>
-                </div>
-              </div>
+          <div className="rounded-2xl border border-border bg-card p-6 lg:col-span-2">
+            <h2 className="font-bold text-lg">Invita a alguien a Herencia</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Tu recompensa se contabiliza cuando la persona referida realiza una compra válida.</p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-1 items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3"><span className="font-mono text-lg font-bold tracking-wider">{user.referralCode}</span><button onClick={() => void copyReferral()} className="p-2 hover:bg-accent rounded-lg"><Copy className="w-4 h-4" /></button></div>
+              <div className="flex flex-1 gap-2"><input value={referralInput} onChange={(e)=>setReferralInput(e.target.value.toUpperCase())} placeholder="¿Tienes un código?" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void claimReferral()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Aplicar</button></div>
             </div>
           </div>
+        </div>
+
+        <div className="bg-card border border-border rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6">Historial real de pedidos</h2>
+          {orders.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no tienes pedidos asociados a esta cuenta.</p> : <div className="space-y-3">
+            {orders.map((order, index) => <motion.div key={order.id} initial={{ opacity:0,y:10 }} animate={{ opacity:1,y:0 }} transition={{delay:Math.min(index*.03,.2)}} className="flex flex-col gap-3 rounded-xl bg-muted/30 p-4 sm:flex-row sm:items-center">
+              <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-semibold">Pedido #{String(order.id).slice(0,8)}</span><span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">{order.status}</span></div><p className="mt-1 text-sm text-muted-foreground">{new Date(order.date).toLocaleString("es-ES")} · {(order.items || []).reduce((n:number,i:any)=>n+Number(i.quantity||1),0)} productos</p>{order.metadata?.requestedDate && <p className="mt-1 text-xs text-muted-foreground">Entrega solicitada: {order.metadata.requestedDate}{order.metadata?.requestedTimeSlot ? ` · ${order.metadata.requestedTimeSlot}` : ""}</p>}</div>
+              <div className="text-xl font-bold">€{Number(order.total || 0).toFixed(2)}</div>
+            </motion.div>)}
+          </div>}
+        </div>
+
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 text-sm">
+          <div className="flex gap-3"><Bell className="w-5 h-5 text-primary flex-shrink-0" /><div><p className="font-semibold">Programa Herencia</p><p className="text-muted-foreground">Semilla hasta 99 €, Brote desde 100 € y Jardín desde 300 € de compras válidas.</p></div></div>
         </div>
       </div>
     </div>
   );
+}
+
+function Card({ icon: Icon, label, value, detail }: { icon:any; label:string; value:string; detail:string }) {
+  return <div className="rounded-2xl border border-border bg-card p-5"><Icon className="h-7 w-7 text-primary" /><p className="mt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-3xl font-black">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }

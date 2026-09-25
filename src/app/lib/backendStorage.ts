@@ -78,6 +78,7 @@ const remotelySyncedKeys = new Set([
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
+  "businessSuiteSettings",
   "__backendStorage_test__",
   "cart",
   "user",
@@ -731,6 +732,39 @@ export const backendApi = {
     return request<{ ok: boolean; order: any; emailResults?: any }>("/api/stripe/confirm-order", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+
+  async customerRegister(payload: { name: string; email: string; password: string; phone?: string; address?: string }) {
+    return request<{ authenticated: boolean; user: any }>("/api/customer/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async customerLogin(payload: { email: string; password: string }) {
+    return request<{ authenticated: boolean; user: any }>("/api/customer/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async customerSession() {
+    return request<{ authenticated: boolean; user: any | null }>("/api/customer/session");
+  },
+
+  async customerLogout() {
+    return request<{ ok: boolean }>("/api/customer/logout", { method: "POST", body: "{}" });
+  },
+
+  async customerAccount() {
+    return request<{ user: any; orders: any[]; loyalty: any }>("/api/customer/account");
+  },
+
+  async customerClaimReferral(code: string) {
+    return request<{ ok: boolean; referral: any; duplicate?: boolean }>("/api/customer/referral/claim", {
+      method: "POST",
+      body: JSON.stringify({ code }),
     });
   },
 
