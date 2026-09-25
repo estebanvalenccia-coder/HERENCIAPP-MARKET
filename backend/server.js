@@ -1984,6 +1984,60 @@ app.put("/api/pos/operations", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pos/held-sales", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ error: "No hay artículos para aparcar" });
+
+    const heldSale = {
+      id: String(req.body?.id || crypto.randomUUID()),
+      createdAt: req.body?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      customer: normalizePosCustomer(req.body?.customer || {}),
+      items,
+      paymentMethod: String(req.body?.paymentMethod || "Efectivo"),
+      documentType: req.body?.documentType === "invoice" ? "invoice" : "ticket",
+      notes: String(req.body?.notes || ""),
+      globalDiscount: Math.max(0, Math.min(100, Number(req.body?.globalDiscount || 0))),
+      mixed: req.body?.mixed && typeof req.body.mixed === "object" ? req.body.mixed : null,
+      registerId: normalizeRegisterId(req.body?.registerId),
+      staff: {
+        id: String(req.body?.staff?.id || "owner"),
+        name: String(req.body?.staff?.name || "Propietario / administrador"),
+        role: String(req.body?.staff?.role || "admin"),
+      },
+    };
+
+    operations.heldSales = [
+      heldSale,
+      ...(Array.isArray(operations.heldSales) ? operations.heldSales : []).filter((item) => String(item?.id) !== heldSale.id),
+    ].slice(0, 100);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ heldSale, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/pos/held-sales/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const id = String(req.params?.id || "").trim();
+    const exists = (operations.heldSales || []).some((item) => String(item?.id) === id);
+    if (!exists) return res.status(404).json({ error: "Venta aparcada no encontrada" });
+    operations.heldSales = (operations.heldSales || []).filter((item) => String(item?.id) !== id);
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ ok: true, operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
