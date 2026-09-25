@@ -34,6 +34,9 @@ export function Checkout() {
     postalCode: "",
     province: "Barcelona",
     notes: "",
+    requestedDate: "",
+    requestedTimeSlot: "",
+    deliveryInstructions: "",
   });
 
   useEffect(() => {
@@ -166,6 +169,9 @@ export function Checkout() {
           phone: form.phone,
           notes: form.notes,
           shippingDistance: shippingInfo,
+          requestedDate: form.requestedDate || null,
+          requestedTimeSlot: form.requestedTimeSlot || null,
+          deliveryInstructions: form.deliveryInstructions || null,
           shippingAddress: {
             address: form.address,
             city: form.city,
@@ -223,6 +229,11 @@ export function Checkout() {
             </>
           )}
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="text-sm font-medium">Fecha deseada<input type="date" min={new Date().toISOString().slice(0,10)} value={form.requestedDate} onChange={(e)=>handleChange("requestedDate",e.target.value)} className="mt-2 w-full border rounded-xl p-3" /></label>
+            <label className="text-sm font-medium">Franja horaria<select value={form.requestedTimeSlot} onChange={(e)=>handleChange("requestedTimeSlot",e.target.value)} className="mt-2 w-full border rounded-xl p-3"><option value="">Sin preferencia</option><option value="09:00-12:00">09:00–12:00</option><option value="12:00-15:00">12:00–15:00</option><option value="15:00-18:00">15:00–18:00</option><option value="18:00-21:00">18:00–21:00</option></select></label>
+          </div>
+          <textarea className="w-full border rounded-xl p-3 min-h-[90px]" placeholder="Instrucciones de entrega: no llamar, dejar con portero, sorpresa…" value={form.deliveryInstructions} onChange={(e) => handleChange("deliveryInstructions", e.target.value)} />
           <textarea className="w-full border rounded-xl p-3 min-h-[120px]" placeholder="Notas para el pedido" value={form.notes} onChange={(e) => handleChange("notes", e.target.value)} />
         </div>
       </div>
@@ -279,6 +290,9 @@ export function Checkout() {
               phone: form.phone,
               notes: form.notes,
               shippingDistance: shippingInfo,
+              requestedDate: form.requestedDate || null,
+              requestedTimeSlot: form.requestedTimeSlot || null,
+              deliveryInstructions: form.deliveryInstructions || null,
               shippingAddress: {
                 address: form.address,
                 city: form.city,

@@ -15,6 +15,9 @@ export function ProductDetail() {
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
   const [dedication, setDedication] = useState("");
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewForm, setReviewForm] = useState({ name: "", email: "", rating: 5, comment: "" });
   const { scrollY } = useScroll();
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
@@ -33,6 +36,7 @@ export function ProductDetail() {
       } catch { setProduct(null); }
     }
     try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
+    if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
   }, [id]);
 
   const generateAIDescription = async (plantName: string, baseDescription: string) => {
@@ -59,6 +63,34 @@ export function ProductDetail() {
     setFavorite(next.includes(key));
     await backendStorage.setItem("wishlist", JSON.stringify(next));
     toast.success(next.includes(key) ? "Añadido a favoritos" : "Eliminado de favoritos");
+  };
+
+  const joinWaitlist = async () => {
+    if (!waitlistEmail.trim()) return toast.error("Escribe tu email");
+    try {
+      await backendApi.joinProductWaitlist({ productId: String(product.id), productName: product.name, email: waitlistEmail.trim() });
+      toast.success("Te avisaremos cuando vuelva a estar disponible");
+      setWaitlistEmail("");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el aviso");
+    }
+  };
+
+  const submitReview = async () => {
+    try {
+      await backendApi.submitProductReview({
+        productId: String(product.id),
+        productName: product.name,
+        name: reviewForm.name,
+        email: reviewForm.email,
+        rating: reviewForm.rating,
+        comment: reviewForm.comment,
+      });
+      toast.success("Reseña enviada. Se publicará después de revisarla.");
+      setReviewForm({ name: "", email: "", rating: 5, comment: "" });
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo enviar la reseña");
+    }
   };
 
   const addToCart = () => {
@@ -100,6 +132,7 @@ export function ProductDetail() {
           <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(Math.min(stock || 1, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           <div className="flex gap-3"><button disabled={stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{stock<=0 ? "Agotado" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado"}</div>
+          {stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
         </motion.div>
       </div>
 
@@ -116,6 +149,26 @@ export function ProductDetail() {
           {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
         </div>}
       </motion.div>
+
+      <section className="mt-14 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-2xl font-bold">Reseñas de clientes</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Las compras verificadas aparecen identificadas.</p>
+          <div className="mt-5 space-y-4">
+            {reviews.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no hay reseñas publicadas.</p> : reviews.map((review:any) => <div key={review.id} className="rounded-xl border border-border p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold">{review.name}</p><span className="text-amber-500">{"★".repeat(Number(review.rating || 0))}{"☆".repeat(5-Number(review.rating || 0))}</span></div>{review.verifiedPurchase && <p className="mt-1 text-xs font-semibold text-primary">Compra verificada</p>}<p className="mt-2 text-sm text-muted-foreground">{review.comment}</p></div>)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-2xl font-bold">Escribe una reseña</h2>
+          <div className="mt-4 space-y-3">
+            <input value={reviewForm.name} onChange={(e)=>setReviewForm({...reviewForm,name:e.target.value})} placeholder="Nombre" className="w-full rounded-xl border border-border bg-background p-3" />
+            <input type="email" value={reviewForm.email} onChange={(e)=>setReviewForm({...reviewForm,email:e.target.value})} placeholder="Email usado en tu compra" className="w-full rounded-xl border border-border bg-background p-3" />
+            <select value={reviewForm.rating} onChange={(e)=>setReviewForm({...reviewForm,rating:Number(e.target.value)})} className="w-full rounded-xl border border-border bg-background p-3"><option value={5}>5 estrellas</option><option value={4}>4 estrellas</option><option value={3}>3 estrellas</option><option value={2}>2 estrellas</option><option value={1}>1 estrella</option></select>
+            <textarea value={reviewForm.comment} onChange={(e)=>setReviewForm({...reviewForm,comment:e.target.value})} placeholder="Cuéntanos tu experiencia…" className="min-h-28 w-full rounded-xl border border-border bg-background p-3" />
+            <button onClick={() => void submitReview()} className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Enviar reseña</button>
+          </div>
+        </div>
+      </section>
     </div>
   </div>;
 }

@@ -748,6 +748,46 @@ export const backendApi = {
     });
   },
 
+  async joinProductWaitlist(payload: { productId: string; productName?: string; email: string }) {
+    return request<{ ok: boolean; entry: any; duplicate?: boolean }>("/api/experience/waitlist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async listProductReviews(productId: string) {
+    return request<{ reviews: any[] }>(`/api/experience/reviews/${encodeURIComponent(productId)}`);
+  },
+
+  async submitProductReview(payload: { productId: string; productName?: string; name: string; email: string; rating: number; comment: string }) {
+    return request<{ ok: boolean; review: any }>("/api/experience/reviews", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async adminExperienceWaitlist() {
+    return request<{ entries: any[] }>("/api/admin/experience/waitlist");
+  },
+
+  async adminUpdateWaitlist(id: string, status: "waiting" | "contacted" | "notified") {
+    return request<{ entry: any }>(`/api/admin/experience/waitlist/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  async adminExperienceReviews() {
+    return request<{ reviews: any[] }>("/api/admin/experience/reviews");
+  },
+
+  async adminModerateReview(id: string, status: "pending" | "approved" | "rejected") {
+    return request<{ review: any }>(`/api/admin/experience/reviews/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  },
+
   async listOrders() {
     return request<{ orders: any[] }>("/api/orders");
   },

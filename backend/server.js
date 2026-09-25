@@ -1282,6 +1282,164 @@ app.get("/api/settings/public", async (_req, res) => {
   res.json({ settings });
 });
 
+
+const EXPERIENCE_WAITLIST_KEY = "experienceWaitlist";
+const EXPERIENCE_REVIEWS_KEY = "experienceReviews";
+
+function cleanText(value, max = 500) {
+  return String(value || "").trim().slice(0, max);
+}
+
+async function readExperienceList(key) {
+  return parseStoredJson(await readStorageValue(key), []);
+}
+
+async function writeExperienceList(key, value) {
+  await upsertStorageValue(key, JSON.stringify(value));
+}
+
+app.post("/api/experience/waitlist", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const productId = cleanText(req.body?.productId, 120);
+    const productName = cleanText(req.body?.productName, 180);
+    const email = cleanText(req.body?.email, 220).toLowerCase();
+    if (!productId || !isValidEmail(email)) {
+      return res.status(400).json({ error: "Producto y email válido son obligatorios" });
+    }
+    const rows = await readExperienceList(EXPERIENCE_WAITLIST_KEY);
+    const existing = rows.find((row) => row.productId === productId && row.email === email && row.status !== "notified");
+    if (existing) return res.json({ ok: true, entry: existing, duplicate: true });
+    const entry = {
+      id: crypto.randomUUID(),
+      productId,
+      productName,
+      email,
+      status: "waiting",
+      createdAt: new Date().toISOString(),
+    };
+    rows.unshift(entry);
+    await writeExperienceList(EXPERIENCE_WAITLIST_KEY, rows.slice(0, 5000));
+    res.json({ ok: true, entry });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo guardar la lista de espera" });
+  }
+});
+
+app.get("/api/admin/experience/waitlist", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    res.json({ entries: await readExperienceList(EXPERIENCE_WAITLIST_KEY) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar la lista de espera" });
+  }
+});
+
+app.patch("/api/admin/experience/waitlist/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const rows = await readExperienceList(EXPERIENCE_WAITLIST_KEY);
+    const index = rows.findIndex((row) => row.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Entrada no encontrada" });
+    rows[index] = {
+      ...rows[index],
+      status: ["waiting", "contacted", "notified"].includes(req.body?.status) ? req.body.status : rows[index].status,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeExperienceList(EXPERIENCE_WAITLIST_KEY, rows);
+    res.json({ entry: rows[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar la entrada" });
+  }
+});
+
+app.get("/api/experience/reviews/:productId", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const productId = cleanText(req.params.productId, 120);
+    const rows = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
+    const reviews = rows
+      .filter((row) => row.productId === productId && row.status === "approved")
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ reviews });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar las reseñas" });
+  }
+});
+
+app.post("/api/experience/reviews", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const productId = cleanText(req.body?.productId, 120);
+    const productName = cleanText(req.body?.productName, 180);
+    const name = cleanText(req.body?.name, 120);
+    const email = cleanText(req.body?.email, 220).toLowerCase();
+    const comment = cleanText(req.body?.comment, 1500);
+    const rating = Math.max(1, Math.min(5, Math.round(Number(req.body?.rating || 0))));
+    if (!productId || !name || !isValidEmail(email) || !comment || !rating) {
+      return res.status(400).json({ error: "Completa nombre, email, valoración y comentario" });
+    }
+
+    const { data: purchasedRows, error: purchasedError } = await supabase
+      .from("orders")
+      .select("id,items,status,customer_email")
+      .eq("customer_email", email)
+      .in("status", ["paid", "confirmed", "preparing", "ready", "delivered", "completed"]);
+
+    if (purchasedError) throw purchasedError;
+
+    const verifiedPurchase = (purchasedRows || []).some((order) =>
+      (Array.isArray(order.items) ? order.items : []).some((item) => String(item?.id) === productId)
+    );
+
+    const rows = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
+    const duplicate = rows.find((row) => row.productId === productId && row.email === email && row.comment === comment);
+    if (duplicate) return res.json({ ok: true, review: duplicate, duplicate: true });
+
+    const review = {
+      id: crypto.randomUUID(),
+      productId,
+      productName,
+      name,
+      email,
+      rating,
+      comment,
+      verifiedPurchase,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    rows.unshift(review);
+    await writeExperienceList(EXPERIENCE_REVIEWS_KEY, rows.slice(0, 5000));
+    res.json({ ok: true, review });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo guardar la reseña" });
+  }
+});
+
+app.get("/api/admin/experience/reviews", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    res.json({ reviews: await readExperienceList(EXPERIENCE_REVIEWS_KEY) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar las reseñas" });
+  }
+});
+
+app.patch("/api/admin/experience/reviews/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const rows = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
+    const index = rows.findIndex((row) => row.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Reseña no encontrada" });
+    const status = ["pending", "approved", "rejected"].includes(req.body?.status) ? req.body.status : rows[index].status;
+    rows[index] = { ...rows[index], status, moderatedAt: new Date().toISOString() };
+    await writeExperienceList(EXPERIENCE_REVIEWS_KEY, rows);
+    res.json({ review: rows[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo moderar la reseña" });
+  }
+});
+
 app.get("/api/orders", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
 

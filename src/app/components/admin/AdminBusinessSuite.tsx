@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Calendar, Gift, Globe, Save, Shield, Store, Users, Zap } from "lucide-react";
 import { toast } from "sonner";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 
 type SuiteSettings = {
   loyaltyEnabled: boolean;
@@ -53,6 +53,8 @@ const modules = [
 export function AdminBusinessSuite() {
   const [settings, setSettings] = useState<SuiteSettings>(defaults);
   const [filter, setFilter] = useState("");
+  const [waitlist, setWaitlist] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
 
   useEffect(() => {
     try {
@@ -61,6 +63,9 @@ export function AdminBusinessSuite() {
     } catch {
       setSettings(defaults);
     }
+    Promise.all([backendApi.adminExperienceWaitlist(), backendApi.adminExperienceReviews()])
+      .then(([w, r]) => { setWaitlist(w.entries || []); setReviews(r.reviews || []); })
+      .catch(() => {});
   }, []);
 
   const visibleModules = useMemo(() => {
@@ -125,6 +130,23 @@ export function AdminBusinessSuite() {
           <NumberField label="Puntos por €" value={settings.pointsPerEuro} onChange={(v) => setSettings({ ...settings, pointsPerEuro: v })} />
           <NumberField label="Premio referido €" value={settings.referralReward} onChange={(v) => setSettings({ ...settings, referralReward: v })} />
           <NumberField label="Radio máximo km" value={settings.maxDeliveryKm} onChange={(v) => setSettings({ ...settings, maxDeliveryKm: v })} />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-xl font-bold">Lista de espera</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{waitlist.filter((x)=>x.status==="waiting").length} personas esperando stock.</p>
+          <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+            {waitlist.slice(0,30).map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"><div className="min-w-0"><p className="truncate font-semibold">{entry.productName || entry.productId}</p><p className="truncate text-xs text-muted-foreground">{entry.email}</p></div><select value={entry.status} onChange={async(e)=>{const status=e.target.value as "waiting"|"contacted"|"notified"; await backendApi.adminUpdateWaitlist(entry.id,status); setWaitlist((rows)=>rows.map((x)=>x.id===entry.id?{...x,status}:x));}} className="rounded-lg border border-border bg-background px-2 py-1 text-xs"><option value="waiting">Esperando</option><option value="contacted">Contactado</option><option value="notified">Avisado</option></select></div>)}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-xl font-bold">Moderación de reseñas</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{reviews.filter((x)=>x.status==="pending").length} pendientes de revisión.</p>
+          <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+            {reviews.slice(0,30).map((review) => <div key={review.id} className="rounded-xl border border-border p-3"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{review.productName || review.productId} · {review.rating}/5</p><p className="text-xs text-muted-foreground">{review.name}{review.verifiedPurchase ? " · Compra verificada" : ""}</p></div><select value={review.status} onChange={async(e)=>{const status=e.target.value as "pending"|"approved"|"rejected"; await backendApi.adminModerateReview(review.id,status); setReviews((rows)=>rows.map((x)=>x.id===review.id?{...x,status}:x));}} className="rounded-lg border border-border bg-background px-2 py-1 text-xs"><option value="pending">Pendiente</option><option value="approved">Aprobar</option><option value="rejected">Rechazar</option></select></div><p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{review.comment}</p></div>)}
+          </div>
         </div>
       </section>
 

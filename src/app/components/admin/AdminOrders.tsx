@@ -221,6 +221,8 @@ export function AdminOrders() {
                         {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>€{Number((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span></div>)}
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
                         <p><strong>Dirección completa:</strong> {getAddress(order)}</p>
+                        {order.metadata?.requestedDate && <p><strong>Fecha solicitada:</strong> {order.metadata.requestedDate}{order.metadata?.requestedTimeSlot ? ` · ${order.metadata.requestedTimeSlot}` : ""}</p>}
+                        {order.metadata?.deliveryInstructions && <p><strong>Instrucciones de entrega:</strong> {order.metadata.deliveryInstructions}</p>}
                       </div>
                     )}
                   </div>
