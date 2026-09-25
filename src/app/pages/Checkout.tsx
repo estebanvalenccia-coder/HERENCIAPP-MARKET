@@ -19,6 +19,7 @@ export function Checkout() {
   const [shippingCost, setShippingCost] = useState(5);
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
+  const [businessSuite, setBusinessSuite] = useState<any>({});
   const [shippingInfo, setShippingInfo] = useState<{
     distanceText?: string;
     durationText?: string;
@@ -40,6 +41,7 @@ export function Checkout() {
   });
 
   useEffect(() => {
+    try { setBusinessSuite(JSON.parse(backendStorage.getItem("businessSuiteSettings") || "{}")); } catch { setBusinessSuite({}); }
     const savedShipping = backendStorage.getItem("shippingSettings");
 
     if (savedShipping) {
@@ -81,7 +83,14 @@ export function Checkout() {
           province: form.province || "Barcelona",
         });
 
-        setShippingCost(Number(result.price || 0));
+        const calculatedDistance = Number(result.distanceKm || 0);
+        const maxDeliveryKm = Math.max(0, Number(businessSuite.maxDeliveryKm || 0));
+        if (maxDeliveryKm > 0 && calculatedDistance > maxDeliveryKm) {
+          throw new Error(`Esta dirección está fuera de nuestro radio de reparto de ${maxDeliveryKm} km`);
+        }
+        const cartSubtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+        const freeShippingFrom = Math.max(0, Number(businessSuite.freeShippingFrom || 0));
+        setShippingCost(freeShippingFrom > 0 && cartSubtotal >= freeShippingFrom ? 0 : Number(result.price || 0));
         setShippingInfo({
           distanceText: result.distanceText,
           durationText: result.durationText,
@@ -98,7 +107,7 @@ export function Checkout() {
     }, 700);
 
     return () => window.clearTimeout(timeoutId);
-  }, [deliveryMethod, form.address, form.city, form.postalCode, form.province]);
+  }, [deliveryMethod, form.address, form.city, form.postalCode, form.province, businessSuite.freeShippingFrom, businessSuite.maxDeliveryKm]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
   const shipping = deliveryMethod === "recoger" || deliveryMethod === "recogida" ? 0 : shippingCost;

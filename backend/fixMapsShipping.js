@@ -17,7 +17,7 @@ function normalizeAddress({ address = "", city = "", postalCode = "", province =
     .join(", ");
 }
 
-function calculateShippingPrice(distanceKm) {
+export function calculateShippingPrice(distanceKm) {
   const km = Number(distanceKm || 0);
   if (!Number.isFinite(km) || km < 0) return BASE_SHIPPING_EUR;
 
@@ -25,7 +25,7 @@ function calculateShippingPrice(distanceKm) {
   return Number((BASE_SHIPPING_EUR + extraBlocks * STEP_PRICE_EUR).toFixed(2));
 }
 
-async function calculateDistanceWithGoogleMaps(destination) {
+export async function calculateDistanceWithGoogleMaps(destination) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
@@ -73,33 +73,36 @@ async function calculateDistanceWithGoogleMaps(destination) {
   };
 }
 
+export async function calculateShippingQuote(address = {}) {
+  const destination = normalizeAddress(address);
+  if (!destination || destination.length < 8) {
+    const error = new Error("Introduce una dirección válida para calcular el envío");
+    error.statusCode = 400;
+    throw error;
+  }
+  const result = await calculateDistanceWithGoogleMaps(destination);
+  const distanceKm = result.distanceMeters / 1000;
+  return {
+    ok: true,
+    price: calculateShippingPrice(distanceKm),
+    currency: "EUR",
+    distanceKm: Number(distanceKm.toFixed(2)),
+    distanceText: result.distanceText,
+    durationText: result.durationText,
+    origin: result.origin,
+    destination: result.destination,
+    pricing: {
+      basePrice: BASE_SHIPPING_EUR,
+      stepKm: STEP_KM,
+      stepPrice: STEP_PRICE_EUR,
+    },
+  };
+}
+
 async function shippingHandler(req, res) {
   try {
-    const destination = normalizeAddress(req.body || {});
-
-    if (!destination || destination.length < 8) {
-      return res.status(400).json({ error: "Introduce una dirección válida para calcular el envío" });
-    }
-
-    const result = await calculateDistanceWithGoogleMaps(destination);
-    const distanceKm = result.distanceMeters / 1000;
-    const price = calculateShippingPrice(distanceKm);
-
-    res.json({
-      ok: true,
-      price,
-      currency: "EUR",
-      distanceKm: Number(distanceKm.toFixed(2)),
-      distanceText: result.distanceText,
-      durationText: result.durationText,
-      origin: result.origin,
-      destination: result.destination,
-      pricing: {
-        basePrice: BASE_SHIPPING_EUR,
-        stepKm: STEP_KM,
-        stepPrice: STEP_PRICE_EUR,
-      },
-    });
+    const quote = await calculateShippingQuote(req.body || {});
+    res.json(quote);
   } catch (error) {
     console.error("Error calculando envío con Google Maps:", error);
     res.status(error.statusCode || 500).json({

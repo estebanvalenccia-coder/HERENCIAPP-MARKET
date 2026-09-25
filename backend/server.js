@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { calculateShippingQuote } from "./fixMapsShipping.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -4601,105 +4602,178 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
   if (!requireSupabase(res)) return;
+  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
-  if (!stripe) {
-    return res
-      .status(503)
-      .json({ error: "Stripe no está configurado en el backend" });
-  }
+  try {
+    const {
+      currency = "eur",
+      items = [],
+      customerEmail,
+      customerName,
+      deliveryMethod = "envio",
+      paymentMethod = "tarjeta",
+      metadata = {},
+    } = req.body || {};
 
-  const {
-    amount,
-    currency = "eur",
-    items = [],
-    customerEmail,
-    customerName,
-    deliveryMethod = "envio",
-    shipping = 0,
-    subtotal = 0,
-    paymentMethod = "tarjeta",
-    metadata = {},
-  } = req.body;
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: "El carrito está vacío" });
+    }
+    if (customerEmail && !isValidEmail(customerEmail)) {
+      return res.status(400).json({ error: "Email inválido" });
+    }
 
-  const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
-  const totalCents = Math.round(Number(amount) * 100);
+    const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
+    const catalog = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
+    const authoritativeItems = [];
+    const requestedByProduct = new Map();
 
-  if (!Number.isFinite(totalCents) || totalCents < 50) {
-    return res.status(400).json({ error: "Importe inválido para Stripe" });
-  }
+    for (const raw of items) {
+      const id = String(raw?.id ?? "").trim();
+      const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
+      if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
 
-  if (customerEmail && !isValidEmail(customerEmail)) {
-    return res.status(400).json({ error: "Email inválido" });
-  }
+      const product = byId.get(id);
+      if (!product || product.active === false || product.deletedAt) {
+        return res.status(409).json({ error: `Producto no disponible: ${raw?.name || id}` });
+      }
 
-  const orderId = crypto.randomUUID();
+      const selectedVariantName = String(raw?.selectedVariant || "").trim();
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const variant = selectedVariantName
+        ? variants.find((item) => String(item?.name || item) === selectedVariantName)
+        : null;
 
-  const { error: orderError } = await supabase.from("orders").insert({
-    id: orderId,
-    customer_email: customerEmail || null,
-    customer_name: customerName || null,
-    payment_method: selectedPaymentMethod,
-    delivery_method: deliveryMethod,
-    status: "payment_pending",
-    subtotal,
-    shipping,
-    total: Number(amount),
-    items,
-    metadata: {
+      if (selectedVariantName && !variant) {
+        return res.status(409).json({ error: `Variante no disponible para ${product.name}` });
+      }
+
+      const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
+      const stockKey = `${id}::${selectedVariantName || "base"}`;
+      const requested = Number(requestedByProduct.get(stockKey) || 0) + quantity;
+      requestedByProduct.set(stockKey, requested);
+      if (requested > stock) {
+        return res.status(409).json({ error: `Stock insuficiente para ${product.name}${selectedVariantName ? ` (${selectedVariantName})` : ""}. Disponible: ${stock}` });
+      }
+
+      const basePrice = product.onSale === true && Number(product.salePrice || 0) > 0
+        ? Number(product.salePrice)
+        : Number(product.price || 0);
+      const price = Number(variant?.price ?? basePrice);
+      if (!Number.isFinite(price) || price <= 0) {
+        return res.status(409).json({ error: `Precio inválido para ${product.name}` });
+      }
+
+      authoritativeItems.push({
+        id,
+        name: String(product.name || "Producto"),
+        sku: String(product.sku || ""),
+        category: String(product.category || ""),
+        price: Number(price.toFixed(2)),
+        iva: Math.max(0, Number(product.iva || 21)),
+        quantity,
+        selectedVariant: selectedVariantName || undefined,
+        personalization: raw?.personalization && typeof raw.personalization === "object"
+          ? { dedication: String(raw.personalization.dedication || "").slice(0, 280) }
+          : undefined,
+        image: product.image || undefined,
+      });
+    }
+
+    const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
+    const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+    const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
+
+    let authoritativeShipping = 0;
+    let shippingQuote = null;
+    if (!isPickup) {
+      const shippingAddress = metadata?.shippingAddress || {};
+      shippingQuote = await calculateShippingQuote(shippingAddress);
+      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+        return res.status(400).json({
+          error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
+          distanceKm: shippingQuote.distanceKm,
+        });
+      }
+      authoritativeShipping = Number(shippingQuote.price || 0);
+      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+      if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
+        authoritativeShipping = 0;
+      }
+    }
+
+    const authoritativeTotal = Number((authoritativeSubtotal + authoritativeShipping).toFixed(2));
+    const totalCents = Math.round(authoritativeTotal * 100);
+    if (!Number.isFinite(totalCents) || totalCents < 50) {
+      return res.status(400).json({ error: "Importe inválido para Stripe" });
+    }
+
+    const orderId = crypto.randomUUID();
+    const secureMetadata = {
       ...metadata,
       source: "frontend_checkout",
       requestedPaymentMethod: selectedPaymentMethod,
-    },
-  });
-
-  if (orderError) {
-    return res.status(500).json({ error: orderError.message });
-  }
-
-  try {
-    const paymentIntentParams = {
-      amount: totalCents,
-      currency,
-      receipt_email: customerEmail || undefined,
-      metadata: {
-        orderId,
-        requestedPaymentMethod: selectedPaymentMethod,
-      },
+      pricingValidatedAt: new Date().toISOString(),
+      pricingSource: "backend_catalog_and_maps",
+      shippingDistance: shippingQuote
+        ? {
+            distanceKm: shippingQuote.distanceKm,
+            distanceText: shippingQuote.distanceText,
+            durationText: shippingQuote.durationText,
+            destination: shippingQuote.destination,
+          }
+        : null,
     };
 
-    paymentIntentParams.payment_method_types =
-      selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"];
-
-    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
-
-    await supabase
-      .from("orders")
-      .update({ stripe_payment_intent_id: paymentIntent.id })
-      .eq("id", orderId);
-
-    res.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
-      orderId,
+    const { error: orderError } = await supabase.from("orders").insert({
+      id: orderId,
+      customer_email: customerEmail || null,
+      customer_name: customerName || null,
+      payment_method: selectedPaymentMethod,
+      delivery_method: deliveryMethod,
+      status: "payment_pending",
+      subtotal: authoritativeSubtotal,
+      shipping: authoritativeShipping,
+      total: authoritativeTotal,
+      items: authoritativeItems,
+      metadata: secureMetadata,
     });
-  } catch (error) {
-    await supabase
-      .from("orders")
-      .update({
-        status: "payment_error",
-        metadata: {
-          ...metadata,
-          source: "frontend_checkout",
-          requestedPaymentMethod: selectedPaymentMethod,
-          stripeError: error.message,
+    if (orderError) return res.status(500).json({ error: orderError.message });
+
+    try {
+      const paymentIntentParams = {
+        amount: totalCents,
+        currency,
+        receipt_email: customerEmail || undefined,
+        metadata: { orderId, requestedPaymentMethod: selectedPaymentMethod },
+        payment_method_types: selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"],
+      };
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+      await supabase.from("orders").update({ stripe_payment_intent_id: paymentIntent.id }).eq("id", orderId);
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        orderId,
+        totals: {
+          subtotal: authoritativeSubtotal,
+          shipping: authoritativeShipping,
+          total: authoritativeTotal,
         },
-      })
-      .eq("id", orderId);
-
-    res.status(error.statusCode || 500).json({
-      error: error.message || "Error al crear el pago en Stripe",
-      code: error.code || "stripe_error",
-    });
+        shippingQuote,
+      });
+    } catch (error) {
+      await supabase.from("orders").update({
+        status: "payment_error",
+        metadata: { ...secureMetadata, stripeError: error.message },
+      }).eq("id", orderId);
+      res.status(error.statusCode || 500).json({
+        error: error.message || "Error al crear el pago en Stripe",
+        code: error.code || "stripe_error",
+      });
+    }
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo validar el pago" });
   }
 });
 
