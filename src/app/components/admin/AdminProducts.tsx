@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon, Sparkles } from "lucide-react";
+import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon, Sparkles, Printer } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
@@ -167,6 +167,16 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     });
     saveProducts(updated);
     toast.success(updated.find(p => p.id === id)?.onSale ? "Oferta activada" : "Oferta desactivada");
+  };
+
+  const printLabel = (product: Product) => {
+    const productUrl = `${window.location.origin}/producto/${product.id}`;
+    const careUrl = `${window.location.origin}/cuidados/${product.id}`;
+    const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(careUrl)}`;
+    const popup = window.open("", "_blank", "width=520,height=700");
+    if (!popup) return toast.error("El navegador bloqueó la ventana de impresión");
+    popup.document.write(`<!doctype html><html><head><title>Etiqueta ${product.name}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#24352b}.label{border:2px solid #426047;border-radius:22px;padding:24px;max-width:390px;margin:auto;text-align:center}.brand{font-weight:900;letter-spacing:2px;color:#426047}.name{font-size:25px;font-weight:800;margin:14px 0}.price{font-size:28px;font-weight:900}.meta{font-size:13px;color:#66756c;margin:6px}.qr{width:170px;height:170px;margin:16px auto 6px}@media print{button{display:none}body{padding:0}.label{border:1px solid #999}}</style></head><body><div class="label"><div class="brand">HERENCIA</div><div class="name">${product.name}</div><div class="price">€${Number(product.salePrice||product.price||0).toFixed(2)}</div><div class="meta">SKU: ${product.sku||product.id}</div><img class="qr" src="${qr}" alt="QR"/><div class="meta">Escanea para cuidados y pasaporte</div><div class="meta">${productUrl}</div></div><p style="text-align:center"><button onclick="window.print()">Imprimir etiqueta</button></p></body></html>`);
+    popup.document.close();
   };
 
   const deleteProduct = (id: number) => {

@@ -78,7 +78,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       description: formData.description.trim(),
       price: parseFloat(formData.price),
       salePrice: formData.onSale ? parseFloat(formData.salePrice) : undefined,
-      sku: formData.sku.trim() || `SKU-${Date.now()}`,
+      sku: formData.sku.trim() || `HER-${formData.category.slice(0,4).toUpperCase()}-${String(Date.now()).slice(-6)}`,
       stock: Math.max(0, Math.floor(parseFloat(formData.stock) || 0)),
       iva: Math.max(0, parseFloat(formData.iva) || 21),
       category: formData.category,
