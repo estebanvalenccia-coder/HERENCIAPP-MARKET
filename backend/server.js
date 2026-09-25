@@ -2926,6 +2926,9 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
       if (!cashSession || cashSession.status !== "open") {
         return res.status(409).json({ error: "Abre la caja original antes de hacer una devolución parcial en efectivo" });
       }
+      if (Number(cashSession.expectedCash || 0) + 0.001 < cashRefundAmount) {
+        return res.status(409).json({ error: "No hay suficiente efectivo esperado en la caja para esta devolución" });
+      }
     }
 
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
@@ -3035,9 +3038,6 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
         ],
         updatedAt: refundedAt,
       };
-      if (nextCashSession.expectedCash < 0) {
-        return res.status(409).json({ error: "No hay suficiente efectivo esperado en la caja para esta devolución" });
-      }
       await writePosCashSession(nextCashSession, registerId);
       cashSession = nextCashSession;
     }
