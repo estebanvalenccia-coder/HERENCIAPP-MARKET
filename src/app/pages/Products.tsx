@@ -50,6 +50,11 @@ export function Products() {
       }
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       try { setFavorites(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String)); } catch { setFavorites([]); }
+      backendApi.customerWishlist().then((r) => {
+        const ids=(r.wishlist||[]).map(String);
+        setFavorites(ids);
+        void backendStorage.setItem("wishlist", JSON.stringify(ids));
+      }).catch(()=>{});
     };
     load();
     window.addEventListener("storage", load);
@@ -96,6 +101,7 @@ export function Products() {
     const next = favorites.includes(id) ? favorites.filter((item) => item !== id) : [...favorites, id];
     setFavorites(next);
     await backendStorage.setItem("wishlist", JSON.stringify(next));
+    backendApi.customerSaveWishlist(next).catch(()=>null);
     toast.success(next.includes(id) ? "Añadido a favoritos" : "Eliminado de favoritos");
   };
 

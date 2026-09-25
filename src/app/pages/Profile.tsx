@@ -13,16 +13,20 @@ export function Profile() {
   const [referralInput, setReferralInput] = useState("");
   const [reminders, setReminders] = useState<any[]>([]);
   const [reminderForm, setReminderForm] = useState({ title: "", date: "", leadDays: 7 });
+  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [catalog, setCatalog] = useState<any[]>([]);
   const navigate = useNavigate();
 
   const load = async () => {
     setLoading(true);
     try {
-      const account = await backendApi.customerAccount();
+      const [account, wishlistResult] = await Promise.all([backendApi.customerAccount(), backendApi.customerWishlist()]);
       setUser(account.user);
       setOrders(account.orders || []);
       setLoyalty(account.loyalty || null);
       setReminders(account.reminders || []);
+      setWishlist((wishlistResult.wishlist || []).map(String));
+      try { setCatalog(JSON.parse(backendStorage.getItem("adminProducts") || "[]")); } catch { setCatalog([]); }
       await backendStorage.setItem("user", JSON.stringify({ ...account.user, isLoggedIn: true }));
     } catch {
       await backendStorage.removeItem("user");
@@ -178,6 +182,16 @@ export function Profile() {
             </motion.div>)}
           </div>}
         </div>
+
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-xl font-bold">Tus favoritos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Se guardan en tu cuenta para que puedas recuperarlos en otros dispositivos.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {catalog.filter((p:any)=>wishlist.includes(String(p.id))&&!p.deletedAt&&p.active!==false).length===0
+              ? <p className="text-sm text-muted-foreground sm:col-span-2">Todavía no has guardado favoritos.</p>
+              : catalog.filter((p:any)=>wishlist.includes(String(p.id))&&!p.deletedAt&&p.active!==false).map((p:any)=><button key={p.id} onClick={()=>navigate(`/producto/${p.id}`)} className="overflow-hidden rounded-xl border border-border bg-background text-left"><img src={p.image} alt={p.name} className="h-32 w-full object-cover"/><div className="p-3"><p className="font-semibold line-clamp-1">{p.name}</p><p className="text-sm font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></button>)}
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-border bg-card p-6">
           <div className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary"/><h2 className="text-xl font-bold">Privacidad y tus datos</h2></div>

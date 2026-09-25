@@ -1305,6 +1305,36 @@ app.post("/api/customer/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+
+app.get("/api/customer/wishlist", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === req.customerSession.customerId);
+    if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
+    res.json({ wishlist: Array.isArray(account.wishlist) ? account.wishlist.map(String) : [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar favoritos" });
+  }
+});
+
+app.put("/api/customer/wishlist", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const ids = Array.isArray(req.body?.wishlist)
+      ? [...new Set(req.body.wishlist.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 500)
+      : [];
+    const accounts = await loadCustomerAccounts();
+    const index = accounts.findIndex((item) => item.id === req.customerSession.customerId);
+    if (index < 0) return res.status(404).json({ error: "Cuenta no encontrada" });
+    accounts[index] = { ...accounts[index], wishlist: ids, updatedAt: new Date().toISOString() };
+    await saveCustomerAccounts(accounts);
+    res.json({ wishlist: ids });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron guardar favoritos" });
+  }
+});
+
 app.post("/api/customer/referral/claim", requireCustomer, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {

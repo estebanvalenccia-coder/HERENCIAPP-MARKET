@@ -40,6 +40,7 @@ export function ProductDetail() {
       } catch { setProduct(null); }
     }
     try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
+    backendApi.customerWishlist().then((r)=>setFavorite((r.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
     if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
     if (id) backendApi.listProductQuestions(String(id)).then((r) => setQuestions(r.questions || [])).catch(() => setQuestions([]));
   }, [id]);
@@ -109,6 +110,7 @@ export function ProductDetail() {
     const next = list.includes(key) ? list.filter((x) => x !== key) : [...list, key];
     setFavorite(next.includes(key));
     await backendStorage.setItem("wishlist", JSON.stringify(next));
+    backendApi.customerSaveWishlist(next).catch(()=>null);
     toast.success(next.includes(key) ? "Añadido a favoritos" : "Eliminado de favoritos");
   };
 

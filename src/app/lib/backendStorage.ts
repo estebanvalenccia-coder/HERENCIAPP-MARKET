@@ -785,6 +785,17 @@ export const backendApi = {
     });
   },
 
+  async customerWishlist() {
+    return request<{ wishlist: string[] }>("/api/customer/wishlist");
+  },
+
+  async customerSaveWishlist(wishlist: string[]) {
+    return request<{ wishlist: string[] }>("/api/customer/wishlist", {
+      method: "PUT",
+      body: JSON.stringify({ wishlist }),
+    });
+  },
+
   async customerClaimReferral(code: string) {
     return request<{ ok: boolean; referral: any; duplicate?: boolean }>("/api/customer/referral/claim", {
       method: "POST",
