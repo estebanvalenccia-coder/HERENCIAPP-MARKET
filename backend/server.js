@@ -140,6 +140,7 @@ const publicKeys = new Set([
   "ctaBanner",
   "siteContent",
   "businessSuiteSettings",
+  "marketingContent",
 ]);
 
 const privateVisitorKeys = new Set(["cart", "user"]);
@@ -170,6 +171,7 @@ const protectedKeys = new Set([
   "herencia_finance_expenses",
   "herencia_finance_closures",
   "businessSuiteSettings",
+  "marketingContent",
   "__backendStorage_test__",
 ]);
 
@@ -1733,6 +1735,8 @@ app.get("/api/settings/public", async (_req, res) => {
     "heroBanner",
     "ctaBanner",
     "siteContent",
+    "businessSuiteSettings",
+    "marketingContent",
   ];
 
   const { data, error } = await supabase

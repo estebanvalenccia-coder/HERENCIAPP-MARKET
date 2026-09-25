@@ -18,6 +18,8 @@ import { Cookies } from "./pages/Cookies";
 import { Terms } from "./pages/Terms";
 import { NotFound } from "./pages/NotFound";
 import { PlantPassport } from "./pages/PlantPassport";
+import { FAQ } from "./pages/FAQ";
+import { CampaignPage } from "./pages/CampaignPage";
 
 export const router = createBrowserRouter([
   {
@@ -29,6 +31,8 @@ export const router = createBrowserRouter([
       { path: "crear-ramo", Component: BouquetBuilder },
       { path: "producto/:id", Component: ProductDetail },
       { path: "cuidados/:id", Component: PlantPassport },
+      { path: "faq", Component: FAQ },
+      { path: "campana/:slug", Component: CampaignPage },
       { path: "servicios", Component: Services },
       { path: "contacto", Component: Contact },
       { path: "herencia", Component: HerencIA },

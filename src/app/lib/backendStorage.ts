@@ -79,6 +79,7 @@ const remotelySyncedKeys = new Set([
   "herencia_finance_expenses",
   "herencia_finance_closures",
   "businessSuiteSettings",
+  "marketingContent",
   "__backendStorage_test__",
   "cart",
   "user",

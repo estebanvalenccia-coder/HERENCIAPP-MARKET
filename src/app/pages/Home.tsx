@@ -29,12 +29,14 @@ export function Home() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [legacyHero, setLegacyHero] = useState("");
   const [legacyCta, setLegacyCta] = useState("");
+  const [marketing, setMarketing] = useState<any>({});
 
   useEffect(() => {
     const loadContent = () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       setLegacyHero(readBannerUrl("heroBanner"));
       setLegacyCta(readBannerUrl("ctaBanner"));
+      try { setMarketing(JSON.parse(backendStorage.getItem("marketingContent") || "{}")); } catch { setMarketing({}); }
     };
 
     loadContent();
@@ -46,7 +48,33 @@ export function Home() {
     };
   }, []);
 
-  const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
+  const blocks = useMemo(() => {
+    const base = ensureBuilderBlocks(site);
+    if (!marketing?.abTest?.enabled) return base;
+    let bucket = "A";
+    try {
+      const existing = localStorage.getItem("herencia_ab_bucket");
+      if (existing === "A" || existing === "B") bucket = existing;
+      else {
+        const allocationB = Math.max(0, Math.min(100, Number(marketing.abTest.allocationB || 50)));
+        bucket = Math.random() * 100 < allocationB ? "B" : "A";
+        localStorage.setItem("herencia_ab_bucket", bucket);
+      }
+    } catch {}
+    const variant = bucket === "B" ? marketing.abTest.variantB : marketing.abTest.variantA;
+    return base.map((block) => block.type !== "hero" ? block : ({
+      ...block,
+      data: {
+        ...block.data,
+        eyebrow: variant?.eyebrow || block.data?.eyebrow,
+        description: variant?.description || block.data?.description,
+        primaryButton: {
+          ...(block.data?.primaryButton || {}),
+          label: variant?.primaryLabel || block.data?.primaryButton?.label,
+        },
+      },
+    }));
+  }, [site, marketing]);
 
   return (
     <div className="builder-page-container">
