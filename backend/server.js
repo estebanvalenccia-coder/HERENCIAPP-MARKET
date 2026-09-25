@@ -115,6 +115,11 @@ const sessionSecret =
   "change-me-in-production";
 const usingDefaultAdminCredentials =
   !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
+const adminAuthConfigured = Boolean(
+  adminUsername &&
+  adminPassword &&
+  sessionSecret
+);
 
 if (usingDefaultAdminCredentials) {
   console.warn(
