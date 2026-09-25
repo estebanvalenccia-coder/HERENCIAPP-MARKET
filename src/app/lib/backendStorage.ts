@@ -547,6 +547,27 @@ export const backendApi = {
     });
   },
 
+  async createInventoryLocation(name: string) {
+    return request<{ location: any; operations: any }>("/api/admin/inventory/locations", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async setInventoryLocationStock(payload: { productId: string; locationId: string; stock: number }) {
+    return request<{ stock: number; operations: any }>("/api/admin/inventory/location-stock", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async transferInventory(payload: { productId: string; from: string; to: string; quantity: number }) {
+    return request<{ transfer: any; operations: any }>("/api/admin/inventory/transfers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async getPosOperations() {
     return request<{ operations: any }>("/api/pos/operations");
   },

@@ -3147,6 +3147,76 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
   }
 });
 
+
+app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const name = cleanText(req.body?.name, 120);
+    if (!name) return res.status(400).json({ error: "La ubicación necesita un nombre" });
+    const id = String(req.body?.id || name).trim().toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || crypto.randomUUID();
+    if ((current.inventoryLocations || []).some((item) => item.id === id)) return res.status(409).json({ error: "Ya existe esa ubicación" });
+    const location = { id, name, active: true, createdAt: new Date().toISOString() };
+    current.inventoryLocations = [...(current.inventoryLocations || []), location];
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ location, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo crear la ubicación" });
+  }
+});
+
+app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const productId = String(req.body?.productId || "").trim();
+    const locationId = String(req.body?.locationId || "").trim();
+    const stock = Math.max(0, Math.floor(Number(req.body?.stock || 0)));
+    if (!productId || !locationId) return res.status(400).json({ error: "Producto y ubicación obligatorios" });
+    if (!(current.inventoryLocations || []).some((item) => item.id === locationId && item.active !== false)) return res.status(404).json({ error: "Ubicación no encontrada" });
+    current.inventoryLocationStock = {
+      ...(current.inventoryLocationStock || {}),
+      [productId]: {
+        ...((current.inventoryLocationStock || {})[productId] || {}),
+        [locationId]: stock,
+      },
+    };
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ stock, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar el stock por ubicación" });
+  }
+});
+
+app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const productId = String(req.body?.productId || "").trim();
+    const from = String(req.body?.from || "").trim();
+    const to = String(req.body?.to || "").trim();
+    const quantity = Math.max(1, Math.floor(Number(req.body?.quantity || 0)));
+    if (!productId || !from || !to || from === to) return res.status(400).json({ error: "Transferencia inválida" });
+    const locations = current.inventoryLocations || [];
+    if (!locations.some((item) => item.id === from) || !locations.some((item) => item.id === to)) return res.status(404).json({ error: "Ubicación no encontrada" });
+    const productStock = { ...((current.inventoryLocationStock || {})[productId] || {}) };
+    const available = Math.max(0, Math.floor(Number(productStock[from] || 0)));
+    if (available < quantity) return res.status(409).json({ error: `Stock insuficiente en origen. Disponible: ${available}` });
+    productStock[from] = available - quantity;
+    productStock[to] = Math.max(0, Math.floor(Number(productStock[to] || 0))) + quantity;
+    current.inventoryLocationStock = { ...(current.inventoryLocationStock || {}), [productId]: productStock };
+    const transfer = { id: crypto.randomUUID(), productId, from, to, quantity, createdAt: new Date().toISOString() };
+    current.inventoryTransfers = [transfer, ...(current.inventoryTransfers || [])].slice(0, 2000);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ transfer, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo transferir stock" });
+  }
+});
+
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
   try {
