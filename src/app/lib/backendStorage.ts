@@ -661,8 +661,10 @@ export const backendApi = {
     return request<{ report: any }>(`/api/pos/reports/summary${suffix}`);
   },
 
-  async listPosSales(limit = 50) {
-    return request<{ sales: any[] }>(`/api/pos/sales?limit=${encodeURIComponent(String(limit))}`);
+  async listPosSales(limit = 50, query = "") {
+    const search = new URLSearchParams({ limit: String(limit) });
+    if (query.trim()) search.set("q", query.trim());
+    return request<{ sales: any[] }>(`/api/pos/sales?${search.toString()}`);
   },
 
   async refundPosSale(payload: { orderId: string; reason?: string; staff?: { id: string; name: string; role: string } }) {
