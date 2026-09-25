@@ -23,6 +23,10 @@ import {
   Truck,
   Activity,
   Rocket,
+  Users,
+  Building2,
+  Boxes,
+  Trash2,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -45,6 +49,10 @@ import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
 import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
 import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
 import { AdminBusinessSuite } from "../components/admin/AdminBusinessSuite";
+import { AdminCRMClients } from "../components/admin/AdminCRMClients";
+import { AdminSuppliersPanel } from "../components/admin/AdminSuppliersPanel";
+import { AdminStockControl } from "../components/admin/AdminStockControl";
+import { AdminWasteControl } from "../components/admin/AdminWasteControl";
 
 type AdminSection =
   | "dashboard"
@@ -63,6 +71,10 @@ type AdminSection =
   | "neural"
   | "audit"
   | "business-suite"
+  | "crm"
+  | "suppliers"
+  | "stock"
+  | "waste"
   | "settings";
 
 type AdminOrderAlert = {
@@ -327,6 +339,10 @@ export function AdminDashboard() {
     { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "business-suite" as AdminSection, label: "Centro de Negocio", icon: Rocket, badge: "NUEVO" },
+    { id: "crm" as AdminSection, label: "Clientes / CRM", icon: Users, badge: "REAL" },
+    { id: "suppliers" as AdminSection, label: "Proveedores", icon: Building2 },
+    { id: "stock" as AdminSection, label: "Stock", icon: Boxes },
+    { id: "waste" as AdminSection, label: "Mermas", icon: Trash2 },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -782,6 +798,14 @@ export function AdminDashboard() {
           {currentSection === "audit" && <AdminSystemAudit />}
 
           {currentSection === "business-suite" && <AdminBusinessSuite />}
+
+          {currentSection === "crm" && <AdminCRMClients />}
+
+          {currentSection === "suppliers" && <AdminSuppliersPanel />}
+
+          {currentSection === "stock" && <AdminStockControl />}
+
+          {currentSection === "waste" && <AdminWasteControl />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

@@ -1,103 +1,23 @@
-import { Building2, FileText, PackagePlus, TrendingUp, Truck } from 'lucide-react'
-
-const suppliers = [
-  {
-    id:'PRV-001',
-    name:'Flores Barcelona Premium',
-    category:'Flor cortada',
-    lastOrder:'Hoy',
-    total:'1.240€',
-  },
-  {
-    id:'PRV-002',
-    name:'Green Plants Europe',
-    category:'Plantas',
-    lastOrder:'Ayer',
-    total:'840€',
-  },
-]
+import { useEffect, useMemo, useState } from "react";
+import { Building2, PackagePlus, Save, Truck } from "lucide-react";
+import { toast } from "sonner";
+import { backendApi } from "../../lib/backendStorage";
 
 export function AdminSuppliersPanel(){
-  return (
-    <div className='space-y-6'>
-      <section className='rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl'>
-        <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
-          <div>
-            <div className='mb-2 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700'>Compras y proveedores</div>
-            <h1 className='text-4xl font-black tracking-tight text-zinc-950'>Proveedores Herencia</h1>
-            <p className='mt-2 text-zinc-500'>Control de compras, entradas stock y costes empresariales.</p>
-          </div>
+  const [operations,setOperations]=useState<any>({suppliers:[],purchases:[]});
+  const [form,setForm]=useState({name:"",email:"",phone:"",category:""});
 
-          <button className='rounded-[1.5rem] bg-gradient-to-r from-emerald-500 to-green-600 px-6 py-4 text-lg font-black text-white shadow-xl'>
-            + Nuevo proveedor
-          </button>
-        </div>
-      </section>
+  const load=async()=>{ try{const r=await backendApi.getPosOperations();setOperations(r.operations||{});}catch(e:any){toast.error(e?.message||"No se pudieron cargar proveedores");}};
+  useEffect(()=>{void load();},[]);
 
-      <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
-        <Card title='Proveedores' value='12' icon={<Building2 className='h-6 w-6 text-emerald-700' />} />
-        <Card title='Compras mes' value='4.820€' icon={<Truck className='h-6 w-6 text-emerald-700' />} />
-        <Card title='Entradas stock' value='248' icon={<PackagePlus className='h-6 w-6 text-emerald-700' />} />
-        <Card title='Coste promedio' value='18%' icon={<TrendingUp className='h-6 w-6 text-emerald-700' />} />
-      </div>
+  const add=async()=>{ if(!form.name.trim()) return toast.error("Escribe el nombre del proveedor"); try{const r=await backendApi.savePosSupplier(form);setOperations(r.operations||operations);setForm({name:"",email:"",phone:"",category:""});toast.success("Proveedor guardado");}catch(e:any){toast.error(e?.message||"No se pudo guardar");}};
 
-      <section className='rounded-[2rem] border border-emerald-100 bg-white/90 p-6 shadow-xl backdrop-blur-xl'>
-        <div className='mb-6 flex items-center justify-between'>
-          <div>
-            <h2 className='text-3xl font-black text-zinc-900'>Últimas compras</h2>
-            <p className='text-sm font-semibold text-zinc-500'>Conectado con stock y finanzas</p>
-          </div>
-
-          <FileText className='h-6 w-6 text-emerald-700' />
-        </div>
-
-        <div className='space-y-4'>
-          {suppliers.map((supplier)=>(
-            <div key={supplier.id} className='rounded-[1.8rem] border border-emerald-100 bg-emerald-50/30 p-5'>
-              <div className='flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between'>
-                <div className='flex items-center gap-4'>
-                  <div className='grid h-16 w-16 place-items-center rounded-[1.6rem] bg-white text-3xl'>🌿</div>
-
-                  <div>
-                    <div className='mb-2 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-emerald-700'>
-                      {supplier.id}
-                    </div>
-
-                    <h3 className='text-2xl font-black text-zinc-950'>{supplier.name}</h3>
-                    <p className='mt-1 font-semibold text-zinc-500'>{supplier.category}</p>
-                  </div>
-                </div>
-
-                <div className='flex gap-4'>
-                  <Metric label='Último pedido' value={supplier.lastOrder} />
-                  <Metric label='Total' value={supplier.total} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
+  const spent=useMemo(()=>(operations.purchases||[]).reduce((s:number,p:any)=>s+Number(p.total||0),0),[operations]);
+  return <div className="space-y-6">
+    <section className="rounded-3xl border border-border bg-card p-6"><p className="text-sm font-bold uppercase tracking-wider text-primary">Compras y proveedores</p><h1 className="mt-2 text-3xl font-black">Proveedores Herencia</h1><p className="mt-2 text-muted-foreground">Datos reales compartidos con el TPV y las compras.</p></section>
+    <div className="grid gap-4 md:grid-cols-3"><Card icon={Building2} label="Proveedores" value={String((operations.suppliers||[]).length)}/><Card icon={Truck} label="Compras registradas" value={String((operations.purchases||[]).length)}/><Card icon={PackagePlus} label="Compras acumuladas" value={new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(spent)}/></div>
+    <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold">Nuevo proveedor</h2><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{(["name","email","phone","category"] as const).map((key)=><input key={key} value={form[key]} onChange={(e)=>setForm({...form,[key]:e.target.value})} placeholder={{name:"Nombre",email:"Email",phone:"Teléfono",category:"Categoría"}[key]} className="rounded-xl border border-border bg-background p-3"/>)}</div><button onClick={()=>void add()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground"><Save className="h-4 w-4"/>Guardar proveedor</button></section>
+    <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold mb-4">Proveedores registrados</h2><div className="space-y-2">{(operations.suppliers||[]).length===0?<p className="text-sm text-muted-foreground">Aún no hay proveedores.</p>:(operations.suppliers||[]).map((s:any)=><div key={s.id||s.name} className="flex flex-col gap-1 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{s.name}</p><p className="text-xs text-muted-foreground">{s.category||"Sin categoría"} · {s.email||"Sin email"} · {s.phone||"Sin teléfono"}</p></div></div>)}</div></section>
+  </div>;
 }
-
-function Card({title,value,icon}:{title:string,value:string,icon:any}){
-  return (
-    <div className='rounded-[1.8rem] border border-emerald-100 bg-white/90 p-5 shadow-xl'>
-      <div className='mb-4 grid h-14 w-14 place-items-center rounded-3xl bg-emerald-50'>
-        {icon}
-      </div>
-      <p className='text-sm font-bold text-zinc-500'>{title}</p>
-      <h3 className='mt-2 text-4xl font-black text-zinc-950'>{value}</h3>
-    </div>
-  )
-}
-
-function Metric({label,value}:{label:string,value:string}){
-  return (
-    <div className='rounded-2xl bg-white px-5 py-4 text-center shadow-sm'>
-      <p className='text-sm font-bold text-zinc-500'>{label}</p>
-      <h3 className='mt-1 text-xl font-black text-emerald-700'>{value}</h3>
-    </div>
-  )
-}
+function Card({icon:Icon,label,value}:{icon:any;label:string;value:string}){return <div className="rounded-2xl border border-border bg-card p-5"><Icon className="h-6 w-6 text-primary"/><p className="mt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-black">{value}</p></div>}
