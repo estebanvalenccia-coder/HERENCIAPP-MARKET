@@ -35,7 +35,7 @@ export function Services() {
     <div className="bg-[#fbfaf6] text-[#173126]">
       <section className="relative min-h-[440px] overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1598902108854-10e335adac99?auto=format&fit=crop&w=2000&q=88"
+          src={market.home.services[1]?.imageUrl || market.home.services[0]?.imageUrl}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -46,11 +46,10 @@ export function Services() {
               SERVICIOS HERENCIA
             </p>
             <h1 className="mt-4 text-5xl font-medium leading-[1.02] sm:text-6xl">
-              Espacios que se sienten mejor
+              {site.servicesPage.title}
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-white/86">
-              Asesoría, jardín, decoración, limpieza y diseño floral por encargo. Soluciones pensadas
-              para tu hogar, tu negocio o un momento especial en {market.locationLabel}.
+              {site.servicesPage.subtitle} · {market.locationLabel}.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <a
