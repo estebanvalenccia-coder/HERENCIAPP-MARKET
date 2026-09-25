@@ -1,4 +1,7 @@
-import { Home, Layers3, MapPin, Shirt, Sparkles, Store, WandSparkles } from "lucide-react";
+import { useState } from "react";
+import { Home, Layers3, MapPin, Shirt, Sparkles, Store, Upload, WandSparkles } from "lucide-react";
+import { toast } from "sonner";
+import { backendApi } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
   getMarketExperience,
@@ -40,6 +43,34 @@ function Field({
   );
 }
 
+async function compressImage(file: File, maxWidth = 1800) {
+  if (!file.type.startsWith("image/")) throw new Error("El archivo debe ser una imagen");
+  if (file.size > 8 * 1024 * 1024) throw new Error("La imagen supera 8 MB");
+
+  const source = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    reader.readAsDataURL(file);
+  });
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("No se pudo procesar la imagen"));
+    img.src = source;
+  });
+
+  const scale = Math.min(1, maxWidth / Math.max(1, image.width));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("El navegador no puede procesar imágenes");
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
 function ImageField({
   label,
   value,
@@ -49,9 +80,52 @@ function ImageField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [working, setWorking] = useState(false);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setWorking(true);
+    try {
+      const dataUrl = await compressImage(file);
+      try {
+        const result = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
+        onChange(result.media?.url || dataUrl);
+      } catch {
+        onChange(dataUrl);
+      }
+      toast.success("Imagen preparada. Pulsa Guardar y publicar.");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cargar la imagen");
+    } finally {
+      setWorking(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
-      <Field label={label} value={value} onChange={onChange} />
+      <Field label={label} value={value.startsWith("data:image/") ? "" : value} onChange={onChange} />
+      <div className="flex flex-wrap gap-2">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white">
+          <Upload className="h-4 w-4" />
+          {working ? "Subiendo..." : "Subir imagen"}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={working}
+            className="hidden"
+            onChange={(event) => void upload(event.target.files?.[0])}
+          />
+        </label>
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="rounded-xl border border-border px-3 py-2 text-xs font-black"
+          >
+            Quitar
+          </button>
+        ) : null}
+      </div>
       {value ? (
         <img
           src={value}
