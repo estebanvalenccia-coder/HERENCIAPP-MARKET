@@ -1939,10 +1939,33 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
     const operations = { ...defaults, ...(saved || {}) };
+    if (!Array.isArray(operations.registers) || !operations.registers.length) {
+      operations.registers = defaults.registers;
+    }
     res.json({ operations: sanitizePosOperations(operations) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/registers", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "La caja necesita un nombre" });
+    const requestedId = normalizeRegisterId(req.body?.id || name);
+    if ((operations.registers || []).some((item) => String(item?.id) === requestedId)) {
+      return res.status(409).json({ error: "Ya existe una caja con ese identificador" });
+    }
+    const register = { id: requestedId, name, active: true, createdAt: new Date().toISOString() };
+    operations.registers = [...(operations.registers || []), register];
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+    res.json({ register, operations: sanitizePosOperations(operations) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2609,7 +2632,8 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
     }
 
     if (cashRefundAmount > 0) {
-      const session = await readPosCashSession();
+      const registerId = normalizeRegisterId(order.metadata?.registerId);
+      const session = await readPosCashSession(registerId);
       if (session?.status === "open") {
         const amount = cashRefundAmount;
         const next = {
@@ -2629,7 +2653,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
             },
           ],
         };
-        await writePosCashSession(next);
+        await writePosCashSession(next, registerId);
       }
     }
 
@@ -2790,6 +2814,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
   let cashSessionWasWritten = false;
   let originalPosOperations = null;
   let posOperationsWasWritten = false;
+  let activeRegisterId = "caja-01";
 
   try {
     const bootstrap = await loadPosBootstrap();
@@ -2799,6 +2824,8 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     const documentType = req.body?.documentType === "invoice" ? "invoice" : "ticket";
     const paymentMethod = normalizePaymentMethod(req.body?.paymentMethod);
     const existingOrderId = String(req.body?.existingOrderId || "").trim();
+    activeRegisterId = normalizeRegisterId(req.body?.registerId);
+    const registerId = activeRegisterId;
     const staff = {
       id: String(req.body?.staff?.id || "owner").trim(),
       name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
@@ -2899,7 +2926,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       }
 
       if (mixedCashAmount > 0) {
-        const cashSession = await readPosCashSession();
+        const cashSession = await readPosCashSession(registerId);
         if (!cashSession || cashSession.status !== "open") {
           return res.status(409).json({ error: "La caja está cerrada. Ábrela para usar efectivo en un pago mixto." });
         }
@@ -2938,7 +2965,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
     }
 
     if (paymentMethod === "cash") {
-      const cashSession = await readPosCashSession();
+      const cashSession = await readPosCashSession(registerId);
       if (!cashSession || cashSession.status !== "open") {
         return res.status(409).json({ error: "La caja está cerrada. Ábrela antes de cobrar en efectivo." });
       }
@@ -2968,6 +2995,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       loyaltyPointsEarned,
       mixedCardPaymentIntentId: paymentMethod === "mixed" ? String(req.body?.paymentIntentId || "") : undefined,
       staff,
+      registerId,
       fiscalSnapshot: fiscalSettings,
       tax: totals.tax,
       paymentBreakdown: paymentMethod === "mixed" ? mixedPayments : undefined,
@@ -3026,10 +3054,10 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let cashSession = null;
     if (paymentMethod === "cash") {
-      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id);
+      cashSession = await registerCashSaleInSession(totals.total, savedOrder.id, registerId);
       cashSessionWasWritten = true;
     } else if (paymentMethod === "mixed" && mixedCashAmount > 0) {
-      cashSession = await registerCashSaleInSession(mixedCashAmount, savedOrder.id);
+      cashSession = await registerCashSaleInSession(mixedCashAmount, savedOrder.id, registerId);
       cashSessionWasWritten = true;
     }
 
@@ -3083,7 +3111,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
   } catch (error) {
     if (cashSessionWasWritten && originalCashSession) {
       try {
-        await writePosCashSession(originalCashSession);
+        await writePosCashSession(originalCashSession, activeRegisterId);
       } catch (rollbackError) {
         console.error("No se pudo revertir la caja tras fallo TPV:", rollbackError.message);
       }
