@@ -330,6 +330,99 @@ export function AdminMarketExperience({
               ))}
             </div>
           </div>
+
+          <div className="mt-6">
+            <p className="mb-3 font-black">Beneficios visibles en Inicio</p>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {market.home.trust.map((item, index) => (
+                <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <Field
+                    label="Título"
+                    value={item.title}
+                    onChange={(title) => {
+                      const trust = market.home.trust.map((current, i) =>
+                        i === index ? { ...current, title } : current
+                      );
+                      patchHome({ trust });
+                    }}
+                  />
+                  <Field
+                    label="Descripción"
+                    value={item.description}
+                    onChange={(description) => {
+                      const trust = market.home.trust.map((current, i) =>
+                        i === index ? { ...current, description } : current
+                      );
+                      patchHome({ trust });
+                    }}
+                    multiline
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <div className="mb-5">
+            <h4 className="font-black">Página de Servicios y Contacto</h4>
+            <p className="text-sm text-muted-foreground">
+              Estos campos están conectados a las nuevas ventanas del frontend.
+            </p>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="space-y-4 rounded-xl border border-border bg-[#fbfaf6] p-4">
+              <p className="font-black">Servicios</p>
+              <Field
+                label="Título de página"
+                value={site.servicesPage.title}
+                onChange={(title) =>
+                  onChange({ ...site, servicesPage: { ...site.servicesPage, title } })
+                }
+              />
+              <Field
+                label="Subtítulo"
+                value={site.servicesPage.subtitle}
+                onChange={(subtitle) =>
+                  onChange({ ...site, servicesPage: { ...site.servicesPage, subtitle } })
+                }
+                multiline
+              />
+            </div>
+            <div className="space-y-4 rounded-xl border border-border bg-[#fbfaf6] p-4">
+              <p className="font-black">Contacto</p>
+              <Field
+                label="Título de página"
+                value={site.contactPage.title}
+                onChange={(title) =>
+                  onChange({ ...site, contactPage: { ...site.contactPage, title } })
+                }
+              />
+              <Field
+                label="Subtítulo"
+                value={site.contactPage.subtitle}
+                onChange={(subtitle) =>
+                  onChange({ ...site, contactPage: { ...site.contactPage, subtitle } })
+                }
+                multiline
+              />
+              <Field
+                label="Título del formulario"
+                value={site.contactPage.helpTitle}
+                onChange={(helpTitle) =>
+                  onChange({ ...site, contactPage: { ...site.contactPage, helpTitle } })
+                }
+              />
+              <Field
+                label="Texto del formulario"
+                value={site.contactPage.helpIntro}
+                onChange={(helpIntro) =>
+                  onChange({ ...site, contactPage: { ...site.contactPage, helpIntro } })
+                }
+                multiline
+              />
+            </div>
+          </div>
         </div>
 
         {(["dulce", "moda"] as const).map((kind) => {
@@ -443,6 +536,33 @@ export function AdminMarketExperience({
               <Field label="Descripción" value={market.about.description} onChange={(description) => setMarket({ ...market, about: { ...market.about, description } })} multiline />
             </div>
             <ImageField label="Imagen · URL" value={market.about.imageUrl} onChange={(imageUrl) => setMarket({ ...market, about: { ...market.about, imageUrl } })} />
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {market.about.values.map((value, index) => (
+              <div key={index} className="space-y-3 rounded-xl border border-border bg-[#fbfaf6] p-4">
+                <Field
+                  label="Valor / título"
+                  value={value.title}
+                  onChange={(title) => {
+                    const values = market.about.values.map((current, i) =>
+                      i === index ? { ...current, title } : current
+                    );
+                    setMarket({ ...market, about: { ...market.about, values } });
+                  }}
+                />
+                <Field
+                  label="Descripción"
+                  value={value.description}
+                  onChange={(description) => {
+                    const values = market.about.values.map((current, i) =>
+                      i === index ? { ...current, description } : current
+                    );
+                    setMarket({ ...market, about: { ...market.about, values } });
+                  }}
+                  multiline
+                />
+              </div>
+            ))}
           </div>
         </div>
       </div>
