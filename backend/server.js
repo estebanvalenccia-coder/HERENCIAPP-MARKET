@@ -1141,6 +1141,7 @@ app.get("/api/admin/order-events", requireAdmin, (req, res) => {
 
 const CUSTOMER_ACCOUNTS_KEY = "customerAccounts";
 const CUSTOMER_REFERRALS_KEY = "customerReferrals";
+const CUSTOMER_REMINDERS_KEY = "customerReminders";
 
 function normalizeCustomerEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -1318,6 +1319,92 @@ app.post("/api/customer/referral/claim", requireCustomer, async (req, res) => {
   }
 });
 
+
+app.post("/api/customer/reminders", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const title = cleanText(req.body?.title, 120);
+    const date = String(req.body?.date || "").trim();
+    const leadDays = Math.max(0, Math.min(60, Number(req.body?.leadDays ?? 7)));
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "Nombre y fecha válida son obligatorios" });
+    }
+    const rows = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
+    const reminder = {
+      id: crypto.randomUUID(),
+      customerId: req.customerSession.customerId,
+      email: normalizeCustomerEmail(req.customerSession.email),
+      title,
+      date,
+      monthDay: date.slice(5),
+      leadDays,
+      active: true,
+      createdAt: new Date().toISOString(),
+      lastNotifiedYear: null,
+    };
+    rows.unshift(reminder);
+    await upsertStorageValue(CUSTOMER_REMINDERS_KEY, JSON.stringify(rows.slice(0, 10000)));
+    res.json({ reminder });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo guardar el recordatorio" });
+  }
+});
+
+app.delete("/api/customer/reminders/:id", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const rows = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
+    const exists = rows.some((item) => item.id === req.params.id && item.customerId === req.customerSession.customerId);
+    if (!exists) return res.status(404).json({ error: "Recordatorio no encontrado" });
+    const next = rows.filter((item) => !(item.id === req.params.id && item.customerId === req.customerSession.customerId));
+    await upsertStorageValue(CUSTOMER_REMINDERS_KEY, JSON.stringify(next));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar el recordatorio" });
+  }
+});
+
+async function processCustomerReminders() {
+  if (!supabase || !process.env.RESEND_API_KEY) return { skipped: true };
+  const rows = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
+  if (!rows.length) return { sent: 0 };
+
+  const now = new Date();
+  let changed = false;
+  let sent = 0;
+
+  for (const reminder of rows) {
+    if (reminder?.active === false || !isValidEmail(reminder?.email) || !/^\d{2}-\d{2}$/.test(String(reminder?.monthDay || ""))) continue;
+    const [month, day] = String(reminder.monthDay).split("-").map(Number);
+    let target = new Date(now.getFullYear(), month - 1, day, 12, 0, 0);
+    if (target.getTime() < now.getTime() - 24 * 60 * 60 * 1000) {
+      target = new Date(now.getFullYear() + 1, month - 1, day, 12, 0, 0);
+    }
+    const daysAway = Math.ceil((target.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    const targetYear = target.getFullYear();
+    if (daysAway !== Number(reminder.leadDays ?? 7) || reminder.lastNotifiedYear === targetYear) continue;
+
+    try {
+      await sendResendEmail({
+        to: reminder.email,
+        subject: `Herencia te recuerda: ${reminder.title}`,
+        html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><div style="font-size:38px">🌿</div><h1 style="margin:10px 0 0">Un detalle para recordar</h1></td></tr><tr><td style="padding:28px"><h2 style="margin:0 0 12px">${escapeHtml(reminder.title)}</h2><p style="line-height:1.6;color:#607066">Faltan ${daysAway} días para esta fecha que guardaste en Herencia. Si quieres preparar un regalo, una planta o unas flores, aún estás a tiempo.</p><p style="font-size:13px;color:#8a978f">Fecha: ${String(day).padStart(2,"0")}/${String(month).padStart(2,"0")}/${targetYear}</p></td></tr></table></td></tr></table></body></html>`,
+      });
+      reminder.lastNotifiedYear = targetYear;
+      reminder.lastNotifiedAt = new Date().toISOString();
+      changed = true;
+      sent += 1;
+    } catch (error) {
+      reminder.lastError = error?.message || String(error);
+      reminder.lastAttemptAt = new Date().toISOString();
+      changed = true;
+    }
+  }
+
+  if (changed) await upsertStorageValue(CUSTOMER_REMINDERS_KEY, JSON.stringify(rows));
+  return { sent };
+}
+
 app.get("/api/customer/account", requireCustomer, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
@@ -1356,6 +1443,9 @@ app.get("/api/customer/account", requireCustomer, async (req, res) => {
       qualifiedReferrals = new Set((referredOrders || []).map((item) => normalizeCustomerEmail(item.customer_email))).size;
     }
 
+    const remindersAll = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
+    const reminders = remindersAll.filter((item) => item.customerId === account.id && item.active !== false);
+
     const referralReward = Math.max(0, Number(suite.referralReward ?? 5));
     const referralCredit = Number((qualifiedReferrals * referralReward).toFixed(2));
     const level = totalSpent >= 300 ? "Jardín" : totalSpent >= 100 ? "Brote" : "Semilla";
@@ -1364,6 +1454,7 @@ app.get("/api/customer/account", requireCustomer, async (req, res) => {
     res.json({
       user: safeCustomer(account),
       orders: allOrders,
+      reminders,
       loyalty: {
         points: basePoints,
         pointsPerEuro,
@@ -5586,4 +5677,10 @@ app.use("/api/neural", requireAdmin, async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
+  const runBackgroundChecks = async () => {
+    try { await evaluateDelayedOrders(); } catch (error) { console.warn("Background delayed orders:", error?.message || error); }
+    try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
+  };
+  setTimeout(() => void runBackgroundChecks(), 15000);
+  setInterval(() => void runBackgroundChecks(), 15 * 60 * 1000);
 });

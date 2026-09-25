@@ -758,7 +758,20 @@ export const backendApi = {
   },
 
   async customerAccount() {
-    return request<{ user: any; orders: any[]; loyalty: any }>("/api/customer/account");
+    return request<{ user: any; orders: any[]; loyalty: any; reminders: any[] }>("/api/customer/account");
+  },
+
+  async customerCreateReminder(payload: { title: string; date: string; leadDays?: number }) {
+    return request<{ reminder: any }>("/api/customer/reminders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async customerDeleteReminder(id: string) {
+    return request<{ ok: boolean }>(`/api/customer/reminders/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async customerClaimReferral(code: string) {

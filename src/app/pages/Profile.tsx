@@ -11,6 +11,8 @@ export function Profile() {
   const [loyalty, setLoyalty] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [referralInput, setReferralInput] = useState("");
+  const [reminders, setReminders] = useState<any[]>([]);
+  const [reminderForm, setReminderForm] = useState({ title: "", date: "", leadDays: 7 });
   const navigate = useNavigate();
 
   const load = async () => {
@@ -20,6 +22,7 @@ export function Profile() {
       setUser(account.user);
       setOrders(account.orders || []);
       setLoyalty(account.loyalty || null);
+      setReminders(account.reminders || []);
       await backendStorage.setItem("user", JSON.stringify({ ...account.user, isLoggedIn: true }));
     } catch {
       await backendStorage.removeItem("user");
@@ -49,6 +52,28 @@ export function Profile() {
       await load();
     } catch (error: any) {
       toast.error(error?.message || "No se pudo aplicar el código");
+    }
+  };
+
+  const addReminder = async () => {
+    if (!reminderForm.title.trim() || !reminderForm.date) return toast.error("Completa nombre y fecha");
+    try {
+      await backendApi.customerCreateReminder(reminderForm);
+      setReminderForm({ title: "", date: "", leadDays: 7 });
+      toast.success("Recordatorio guardado");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el recordatorio");
+    }
+  };
+
+  const removeReminder = async (id: string) => {
+    try {
+      await backendApi.customerDeleteReminder(id);
+      setReminders((rows) => rows.filter((item) => item.id !== id));
+      toast.success("Recordatorio eliminado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar");
     }
   };
 
@@ -101,6 +126,18 @@ export function Profile() {
             </div>
           </div>
         </div>
+
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-xl font-bold">Fechas importantes</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Herencia puede avisarte por email antes de cumpleaños, aniversarios u otras fechas.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_140px_auto]">
+            <input value={reminderForm.title} onChange={(e)=>setReminderForm({...reminderForm,title:e.target.value})} placeholder="Ej: Cumpleaños de mamá" className="rounded-xl border border-border bg-background p-3"/>
+            <input type="date" value={reminderForm.date} onChange={(e)=>setReminderForm({...reminderForm,date:e.target.value})} className="rounded-xl border border-border bg-background p-3"/>
+            <select value={reminderForm.leadDays} onChange={(e)=>setReminderForm({...reminderForm,leadDays:Number(e.target.value)})} className="rounded-xl border border-border bg-background p-3"><option value={1}>1 día antes</option><option value={3}>3 días antes</option><option value={7}>7 días antes</option><option value={14}>14 días antes</option></select>
+            <button onClick={()=>void addReminder()} className="rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">Guardar</button>
+          </div>
+          <div className="mt-4 space-y-2">{reminders.length===0?<p className="text-sm text-muted-foreground">No tienes fechas guardadas.</p>:reminders.map((r:any)=><div key={r.id} className="flex items-center justify-between gap-3 rounded-xl bg-muted/30 p-3"><div><p className="font-semibold">{r.title}</p><p className="text-xs text-muted-foreground">{r.date} · aviso {r.leadDays} día(s) antes</p></div><button onClick={()=>void removeReminder(r.id)} className="text-sm text-destructive">Eliminar</button></div>)}</div>
+        </section>
 
         <div className="bg-card border border-border rounded-2xl p-6">
           <h2 className="text-xl font-bold mb-6">Historial real de pedidos</h2>
