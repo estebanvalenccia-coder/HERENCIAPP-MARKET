@@ -555,6 +555,19 @@ export const backendApi = {
     });
   },
 
+  async saveHeldPosSale(payload: any) {
+    return request<{ heldSale: any; operations: any }>("/api/pos/held-sales", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteHeldPosSale(id: string) {
+    return request<{ ok: boolean; operations: any }>(`/api/pos/held-sales/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
   async createFloristOrder(payload: any) {
     return request<{ order: any; operations: any }>("/api/pos/florist-orders", {
       method: "POST",
