@@ -2583,6 +2583,9 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
     if (order?.metadata?.refundedAt || order.status === "refunded") {
       return res.status(409).json({ error: "Esta venta ya está devuelta" });
     }
+    if (Array.isArray(order?.metadata?.refunds) && order.metadata.refunds.length > 0) {
+      return res.status(409).json({ error: "Esta venta ya tiene devoluciones parciales. Devuelve únicamente las unidades restantes." });
+    }
     if (order.delivery_method !== "mostrador") {
       return res.status(400).json({ error: "La devolución TPV solo admite ventas de mostrador" });
     }
@@ -2737,6 +2740,352 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+
+  try {
+    const orderId = String(req.body?.orderId || "").trim();
+    const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const reason = String(req.body?.reason || "Devolución parcial TPV").trim();
+    const refundStaff = {
+      id: String(req.body?.staff?.id || "owner").trim(),
+      name: String(req.body?.staff?.name || "Propietario / administrador").trim(),
+      role: String(req.body?.staff?.role || "admin").trim(),
+    };
+
+    if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
+    if (!requestedItems.length) return res.status(400).json({ error: "Selecciona al menos un artículo para devolver" });
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Venta no encontrada" });
+    if (order.delivery_method !== "mostrador") return res.status(400).json({ error: "La devolución parcial solo admite ventas de mostrador" });
+    if (order?.metadata?.refundedAt || order.status === "refunded") return res.status(409).json({ error: "Esta venta ya está devuelta por completo" });
+
+    const originalItems = Array.isArray(order.items) ? order.items : [];
+    const previousRefunds = Array.isArray(order.metadata?.refunds) ? order.metadata.refunds : [];
+    const alreadyRefundedById = new Map();
+
+    for (const refund of previousRefunds) {
+      for (const item of Array.isArray(refund?.items) ? refund.items : []) {
+        const id = String(item?.id || "").trim();
+        const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
+        if (id && qty) alreadyRefundedById.set(id, (alreadyRefundedById.get(id) || 0) + qty);
+      }
+    }
+
+    const refundItems = [];
+    let refundTotal = 0;
+    let refundSubtotal = 0;
+    const stockRestoreById = new Map();
+
+    for (const requested of requestedItems) {
+      const id = String(requested?.id || "").trim();
+      const qty = Math.max(0, Math.floor(Number(requested?.quantity ?? requested?.qty ?? 0)));
+      if (!id || qty <= 0) return res.status(400).json({ error: "Artículo o cantidad de devolución inválida" });
+
+      const original = originalItems.find((item) => String(item?.id || "") === id);
+      if (!original) return res.status(400).json({ error: `El artículo ${id} no pertenece a la venta` });
+
+      const soldQty = Math.max(0, Math.floor(Number(original?.quantity ?? original?.qty ?? 0)));
+      const alreadyRefunded = Number(alreadyRefundedById.get(id) || 0);
+      const remainingQty = Math.max(0, soldQty - alreadyRefunded);
+      if (qty > remainingQty) {
+        return res.status(409).json({ error: `Solo quedan ${remainingQty} uds. por devolver de ${original.name || id}` });
+      }
+
+      const price = Math.max(0, Number(original.price || 0));
+      const iva = Math.max(0, Number(original.iva || 0));
+      const discountPercent = Math.max(0, Math.min(100, Number(original.discountPercent || 0)));
+      const lineTotal = normalizeMoney(price * qty * (1 - discountPercent / 100));
+      const lineSubtotal = normalizeMoney(lineTotal / (1 + iva / 100));
+
+      refundTotal = normalizeMoney(refundTotal + lineTotal);
+      refundSubtotal = normalizeMoney(refundSubtotal + lineSubtotal);
+      refundItems.push({
+        id,
+        name: String(original.name || "Artículo"),
+        sku: String(original.sku || ""),
+        price,
+        iva,
+        discountPercent,
+        quantity: qty,
+        qty,
+        manual: original.manual === true,
+        refundTotal: lineTotal,
+      });
+
+      if (original.manual !== true) {
+        stockRestoreById.set(id, (stockRestoreById.get(id) || 0) + qty);
+      }
+    }
+
+    if (refundTotal <= 0) return res.status(400).json({ error: "El importe de la devolución debe ser mayor que 0" });
+
+    const originalTotal = normalizeMoney(order.total);
+    const previouslyRefundedTotal = normalizeMoney(previousRefunds.reduce((sum, refund) => sum + Number(refund?.total || 0), 0));
+    const remainingRefundable = normalizeMoney(Math.max(0, originalTotal - previouslyRefundedTotal));
+    if (refundTotal > remainingRefundable + 0.01) {
+      return res.status(409).json({ error: "La devolución supera el importe pendiente de la venta" });
+    }
+
+    const orderPaymentMethod = normalizePaymentMethod(order.payment_method);
+    const originalBreakdown = orderPaymentMethod === "mixed"
+      ? (Array.isArray(order.metadata?.paymentBreakdown) ? order.metadata.paymentBreakdown : [])
+      : [{ method: orderPaymentMethod, amount: originalTotal }];
+
+    const refundedByMethod = new Map();
+    for (const refund of previousRefunds) {
+      for (const payment of Array.isArray(refund?.paymentBreakdown) ? refund.paymentBreakdown : []) {
+        const method = normalizePaymentMethod(payment?.method);
+        const amount = normalizeMoney(payment?.amount);
+        const code = String(payment?.code || "").trim().toUpperCase();
+        const key = `${method}|${code}`;
+        refundedByMethod.set(key, normalizeMoney((refundedByMethod.get(key) || 0) + amount));
+      }
+    }
+
+    const remainingPayments = originalBreakdown.map((entry) => {
+      const method = normalizePaymentMethod(entry?.method);
+      const code = String(entry?.code || "").trim().toUpperCase();
+      const key = `${method}|${code}`;
+      return {
+        method,
+        code,
+        amount: normalizeMoney(entry?.amount),
+        remaining: normalizeMoney(Math.max(0, Number(entry?.amount || 0) - Number(refundedByMethod.get(key) || 0))),
+      };
+    }).filter((entry) => entry.remaining > 0);
+
+    const remainingPaymentTotal = normalizeMoney(remainingPayments.reduce((sum, entry) => sum + entry.remaining, 0));
+    if (remainingPaymentTotal + 0.01 < refundTotal) {
+      return res.status(409).json({ error: "No queda suficiente importe en los métodos de pago originales para devolver" });
+    }
+
+    let centsLeft = Math.round(refundTotal * 100);
+    let remainingWeightCents = Math.max(1, Math.round(remainingPaymentTotal * 100));
+    const refundPaymentBreakdown = [];
+
+    remainingPayments.forEach((entry, index) => {
+      if (centsLeft <= 0) return;
+      const capacityCents = Math.round(entry.remaining * 100);
+      let allocationCents;
+      if (index === remainingPayments.length - 1) {
+        allocationCents = Math.min(centsLeft, capacityCents);
+      } else {
+        allocationCents = Math.min(
+          capacityCents,
+          Math.max(0, Math.round(centsLeft * (capacityCents / remainingWeightCents)))
+        );
+      }
+      if (allocationCents > 0) {
+        refundPaymentBreakdown.push({
+          method: entry.method,
+          amount: allocationCents / 100,
+          ...(entry.code ? { code: entry.code } : {}),
+        });
+        centsLeft -= allocationCents;
+      }
+      remainingWeightCents -= capacityCents;
+    });
+
+    if (centsLeft > 0) {
+      for (const entry of remainingPayments) {
+        if (centsLeft <= 0) break;
+        const allocated = refundPaymentBreakdown
+          .filter((payment) => payment.method === entry.method && String(payment.code || "") === entry.code)
+          .reduce((sum, payment) => sum + Math.round(Number(payment.amount || 0) * 100), 0);
+        const spare = Math.max(0, Math.round(entry.remaining * 100) - allocated);
+        const add = Math.min(spare, centsLeft);
+        if (!add) continue;
+        const existing = refundPaymentBreakdown.find((payment) => payment.method === entry.method && String(payment.code || "") === entry.code);
+        if (existing) existing.amount = normalizeMoney(Number(existing.amount || 0) + add / 100);
+        else refundPaymentBreakdown.push({ method: entry.method, amount: add / 100, ...(entry.code ? { code: entry.code } : {}) });
+        centsLeft -= add;
+      }
+    }
+
+    if (centsLeft !== 0) return res.status(500).json({ error: "No se pudo distribuir el importe de la devolución entre los pagos originales" });
+
+    const cashRefundAmount = normalizeMoney(refundPaymentBreakdown.filter((entry) => entry.method === "cash").reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+    const cardRefundAmount = normalizeMoney(refundPaymentBreakdown.filter((entry) => entry.method === "card").reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+    const giftRefunds = refundPaymentBreakdown.filter((entry) => entry.method === "gift_card");
+    const manualRefunds = refundPaymentBreakdown.filter((entry) => entry.method === "bizum" || entry.method === "transfer");
+
+    const registerId = normalizeRegisterId(order.metadata?.registerId);
+    let cashSession = null;
+    if (cashRefundAmount > 0) {
+      cashSession = await readPosCashSession(registerId);
+      if (!cashSession || cashSession.status !== "open") {
+        return res.status(409).json({ error: "Abre la caja original antes de hacer una devolución parcial en efectivo" });
+      }
+    }
+
+    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
+    const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+
+    if (giftRefunds.length) {
+      const giftByCode = new Map();
+      for (const entry of giftRefunds) {
+        const code = String(entry.code || "").trim().toUpperCase();
+        if (!code) return res.status(409).json({ error: "La venta no conserva el código de una tarjeta regalo utilizada" });
+        giftByCode.set(code, normalizeMoney((giftByCode.get(code) || 0) + Number(entry.amount || 0)));
+      }
+      for (const [code] of giftByCode.entries()) {
+        if (!(operations.giftCards || []).some((card) => String(card?.code || "").toUpperCase() === code)) {
+          return res.status(409).json({ error: `Tarjeta regalo no encontrada: ${code}` });
+        }
+      }
+    }
+
+    const refundSequence = previousRefunds.length + 1;
+    const refundNumber = `REF-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}-${refundSequence}`;
+    const refundedAt = new Date().toISOString();
+    let stripeRefundId = "";
+
+    if (cardRefundAmount > 0) {
+      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado para devolver la parte de tarjeta" });
+      const paymentIntentId = orderPaymentMethod === "card"
+        ? String(order.stripe_payment_intent_id || "")
+        : String(order.metadata?.mixedCardPaymentIntentId || "");
+      if (!paymentIntentId) return res.status(409).json({ error: "No se encontró el pago de Stripe asociado a esta venta" });
+      const stripeRefund = await stripe.refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          amount: Math.round(cardRefundAmount * 100),
+          metadata: { orderId, refundNumber, source: "TPV_PARTIAL_REFUND" },
+        },
+        { idempotencyKey: `pos-partial-refund-${orderId}-${refundSequence}` }
+      );
+      stripeRefundId = stripeRefund.id;
+    }
+
+    const bootstrap = await loadPosBootstrap();
+    const restoredProducts = bootstrap.products.map((product) => {
+      const qty = Number(stockRestoreById.get(String(product?.id || "")) || 0);
+      return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
+    });
+    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+
+    if (giftRefunds.length) {
+      const giftByCode = new Map();
+      for (const entry of giftRefunds) {
+        const code = String(entry.code || "").trim().toUpperCase();
+        giftByCode.set(code, normalizeMoney((giftByCode.get(code) || 0) + Number(entry.amount || 0)));
+      }
+      operations.giftCards = (operations.giftCards || []).map((card) => {
+        const code = String(card?.code || "").toUpperCase();
+        const amount = Number(giftByCode.get(code) || 0);
+        if (!amount) return card;
+        return {
+          ...card,
+          balance: normalizeMoney(Number(card.balance || 0) + amount),
+          active: true,
+          updatedAt: refundedAt,
+        };
+      });
+    }
+
+    const originalPoints = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
+    const previousPointsReversed = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsReversed || 0)));
+    const totalRefundedAfter = normalizeMoney(previouslyRefundedTotal + refundTotal);
+    const fullRefund = totalRefundedAfter >= originalTotal - 0.01;
+    const pointsRemaining = Math.max(0, originalPoints - previousPointsReversed);
+    const pointsToReverse = fullRefund ? pointsRemaining : Math.min(pointsRemaining, Math.floor(refundTotal));
+    const customerId = String(order.metadata?.customerId || "").trim();
+
+    if (customerId && pointsToReverse > 0) {
+      const previousPoints = Number(operations.loyalty?.[customerId]?.points || 0);
+      operations.loyalty = {
+        ...(operations.loyalty || {}),
+        [customerId]: {
+          points: Math.max(0, previousPoints - pointsToReverse),
+          updatedAt: refundedAt,
+          lastRefundOrderId: orderId,
+        },
+      };
+    }
+
+    await upsertStorageValue("posOperations", JSON.stringify(operations));
+
+    if (cashRefundAmount > 0 && cashSession) {
+      const nextCashSession = {
+        ...cashSession,
+        cashSales: normalizeMoney(Math.max(0, Number(cashSession.cashSales || 0) - cashRefundAmount)),
+        cashOut: normalizeMoney(Number(cashSession.cashOut || 0) + cashRefundAmount),
+        expectedCash: normalizeMoney(Number(cashSession.expectedCash || 0) - cashRefundAmount),
+        movements: [
+          ...(Array.isArray(cashSession.movements) ? cashSession.movements : []),
+          {
+            id: crypto.randomUUID(),
+            type: "partial_refund",
+            amount: cashRefundAmount,
+            note: `${refundNumber}: ${reason}`,
+            orderId,
+            registerId,
+            createdAt: refundedAt,
+          },
+        ],
+        updatedAt: refundedAt,
+      };
+      if (nextCashSession.expectedCash < 0) {
+        return res.status(409).json({ error: "No hay suficiente efectivo esperado en la caja para esta devolución" });
+      }
+      await writePosCashSession(nextCashSession, registerId);
+      cashSession = nextCashSession;
+    }
+
+    const refundRecord = {
+      id: crypto.randomUUID(),
+      refundNumber,
+      createdAt: refundedAt,
+      reason,
+      items: refundItems,
+      subtotal: refundSubtotal,
+      tax: normalizeMoney(refundTotal - refundSubtotal),
+      total: refundTotal,
+      paymentBreakdown: refundPaymentBreakdown,
+      stripeRefundId: stripeRefundId || null,
+      manualRefunds,
+      staff: refundStaff,
+    };
+
+    const metadata = {
+      ...(order.metadata || {}),
+      refunds: [...previousRefunds, refundRecord],
+      refundedTotal: totalRefundedAfter,
+      loyaltyPointsReversed: previousPointsReversed + pointsToReverse,
+      ...(fullRefund ? { refundedAt, refundNumber } : {}),
+      ...(manualRefunds.length ? { manualRefundPending: true } : {}),
+    };
+
+    const nextStatus = fullRefund ? "refunded" : manualRefunds.length ? "partially_refunded_pending_manual" : "partially_refunded";
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({ status: nextStatus, metadata })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+    if (updateError) throw updateError;
+
+    broadcastAdminOrderEvent(updated, fullRefund ? "order_refunded" : "order_partially_refunded");
+    res.json({
+      ok: true,
+      order: posOrderResponse(updated),
+      inventory: restoredProducts,
+      refund: refundRecord,
+      cashSession,
+      manualRefunds,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo completar la devolución parcial" });
   }
 });
 
