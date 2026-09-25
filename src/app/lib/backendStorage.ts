@@ -468,28 +468,28 @@ export const backendApi = {
     }>("/api/pos/bootstrap");
   },
 
-  async getPosCashSession() {
-    return request<{ session: any | null }>("/api/pos/cash-session");
+  async getPosCashSession(registerId = "caja-01") {
+    return request<{ session: any | null }>(`/api/pos/cash-session?registerId=${encodeURIComponent(registerId)}`);
   },
 
-  async openPosCashSession(openingAmount: number) {
+  async openPosCashSession(openingAmount: number, registerId = "caja-01") {
     return request<{ session: any }>("/api/pos/cash-session/open", {
       method: "POST",
-      body: JSON.stringify({ openingAmount }),
+      body: JSON.stringify({ openingAmount, registerId }),
     });
   },
 
-  async addPosCashMovement(payload: { type: "in" | "out"; amount: number; note?: string }) {
+  async addPosCashMovement(payload: { type: "in" | "out"; amount: number; note?: string; registerId?: string }) {
     return request<{ session: any }>("/api/pos/cash-session/movement", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
-  async closePosCashSession(countedCash: number) {
+  async closePosCashSession(countedCash: number, registerId = "caja-01") {
     return request<{ session: any }>("/api/pos/cash-session/close", {
       method: "POST",
-      body: JSON.stringify({ countedCash }),
+      body: JSON.stringify({ countedCash, registerId }),
     });
   },
 
@@ -532,6 +532,13 @@ export const backendApi = {
       orderId: string;
       totals: { subtotal: number; tax: number; total: number };
     }>("/api/pos/card-intent", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createPosRegister(payload: { name: string; id?: string }) {
+    return request<{ register: any; operations: any }>("/api/pos/registers", {
       method: "POST",
       body: JSON.stringify(payload),
     });
