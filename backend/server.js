@@ -876,6 +876,49 @@ app.post(
 
 app.use(express.json({ limit: "10mb" }));
 
+const ADMIN_AUDIT_LOG_KEY = "adminAuditLog";
+
+app.use((req, res, next) => {
+  const mutating = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
+  const shouldAudit = mutating && req.path.startsWith("/api/") && ![
+    "/api/admin/login",
+    "/api/admin/logout",
+    "/api/stripe/webhook",
+  ].includes(req.path);
+
+  if (!shouldAudit || !isAdmin(req)) return next();
+
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    void (async () => {
+      try {
+        const rows = parseStoredJson(await readStorageValue(ADMIN_AUDIT_LOG_KEY), []);
+        const ua = String(req.headers["user-agent"] || "").slice(0, 240);
+        const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+        const ip = forwarded || req.socket?.remoteAddress || "";
+        const maskedIp = ip.includes(".")
+          ? ip.split(".").map((part, index) => index >= 2 ? "x" : part).join(".")
+          : ip ? "masked" : "";
+        rows.unshift({
+          id: crypto.randomUUID(),
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          ok: res.statusCode < 400,
+          durationMs: Date.now() - startedAt,
+          userAgent: ua,
+          ip: maskedIp,
+          at: new Date().toISOString(),
+        });
+        await upsertStorageValue(ADMIN_AUDIT_LOG_KEY, JSON.stringify(rows.slice(0, 3000)));
+      } catch (error) {
+        console.warn("No se pudo registrar auditoría:", error?.message || error);
+      }
+    })();
+  });
+  next();
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
 });
@@ -2205,6 +2248,28 @@ async function evaluateDelayedOrders() {
     });
   }
 }
+
+
+app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 200)));
+    const rows = parseStoredJson(await readStorageValue(ADMIN_AUDIT_LOG_KEY), []);
+    res.json({ events: rows.slice(0, limit) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar la auditoría" });
+  }
+});
+
+app.delete("/api/admin/audit-log", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    await upsertStorageValue(ADMIN_AUDIT_LOG_KEY, JSON.stringify([]));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo limpiar la auditoría" });
+  }
+});
 
 app.get("/api/admin/automations", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;

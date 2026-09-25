@@ -811,6 +811,16 @@ export const backendApi = {
     });
   },
 
+  async adminAuditLog(limit = 200) {
+    return request<{ events: any[] }>(`/api/admin/audit-log?limit=${encodeURIComponent(String(limit))}`);
+  },
+
+  async clearAdminAuditLog() {
+    return request<{ ok: boolean }>("/api/admin/audit-log", {
+      method: "DELETE",
+    });
+  },
+
   async adminAutomations() {
     return request<{ rules: any; notifications: any[] }>("/api/admin/automations");
   },
