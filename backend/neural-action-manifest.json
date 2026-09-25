@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "name": "HERENCIA Neural Actions",
+  "description": "Governed action contract for HERENCIA Neural. Neural must plan, authorize, execute, verify and audit every mutation.",
+  "executionPolicy": {
+    "defaultMode": "ASK",
+    "requireActionIdForWrites": true,
+    "requireVerificationAfterWrite": true,
+    "auditEveryAttempt": true,
+    "neverExposeSecretsToModel": true,
+    "denyArbitrarySql": true,
+    "denyArbitraryShell": true,
+    "denyDirectProductionCodeMutation": true
+  },
+  "riskLevels": {
+    "LOW": { "defaultMode": "AUTO", "confirmation": false },
+    "MEDIUM": { "defaultMode": "ASK", "confirmation": true },
+    "HIGH": { "defaultMode": "ASK", "confirmation": true, "doubleCheck": true },
+    "CRITICAL": { "defaultMode": "BLOCK", "confirmation": true, "doubleCheck": true }
+  },
+  "actions": [
+    { "id": "business.read", "capability": "read_business_state", "risk": "LOW", "method": "GET", "target": "/api/neural-bridge/full-snapshot", "verify": "response.ok" },
+    { "id": "product.create", "capability": "create_products", "risk": "MEDIUM", "method": "POST", "target": "/api/neural-bridge/products", "verify": "read product by returned id" },
+    { "id": "product.stock", "capability": "modify_stock", "risk": "MEDIUM", "method": "PATCH", "target": "/api/neural-bridge/products/:id/stock", "verify": "re-read inventory" },
+    { "id": "product.price", "capability": "change_prices", "risk": "HIGH", "method": "PATCH", "target": "/api/neural-bridge/products/:id/price", "verify": "re-read product price" },
+    { "id": "crm.customer.create", "capability": "manage_crm", "risk": "MEDIUM", "method": "POST", "target": "/api/neural-bridge/crm/customers", "verify": "re-read customer" },
+    { "id": "web.prepare", "capability": "prepare_web_changes", "risk": "LOW", "method": "WRITE", "target": "website draft/version bridge", "verify": "renderable draft exists" },
+    { "id": "web.publish", "capability": "publish_web_changes", "risk": "HIGH", "method": "WRITE", "target": "website publish bridge", "verify": "published revision equals requested revision" },
+    { "id": "web.rollback", "capability": "rollback_web_changes", "risk": "HIGH", "method": "WRITE", "target": "website version bridge", "verify": "active revision equals rollback target" },
+    { "id": "promotion.create", "capability": "create_promotions", "risk": "MEDIUM", "method": "WRITE", "target": "marketing/business bridge", "verify": "promotion is readable after creation" },
+    { "id": "finance.expense", "capability": "record_expenses", "risk": "HIGH", "method": "WRITE", "target": "finance bridge", "verify": "ledger contains action id" },
+    { "id": "invoice.issue", "capability": "issue_invoices", "risk": "HIGH", "method": "WRITE", "target": "invoice bridge", "verify": "invoice has immutable id" },
+    { "id": "communication.email", "capability": "send_email", "risk": "HIGH", "method": "WRITE", "target": "communications bridge", "verify": "provider delivery id recorded" },
+    { "id": "communication.whatsapp", "capability": "send_whatsapp", "risk": "HIGH", "method": "WRITE", "target": "communications bridge", "verify": "provider delivery id recorded" },
+    { "id": "payment.execute", "capability": "payments", "risk": "CRITICAL", "method": "WRITE", "target": "payment provider", "verify": "provider transaction id + ledger reconciliation" },
+    { "id": "purchase.execute", "capability": "purchases", "risk": "CRITICAL", "method": "WRITE", "target": "supplier purchasing", "verify": "purchase order id + amount reconciliation" },
+    { "id": "refund.execute", "capability": "refunds", "risk": "CRITICAL", "method": "WRITE", "target": "payment provider", "verify": "refund id + order reconciliation" }
+  ],
+  "lifecycle": ["UNDERSTAND", "PLAN", "AUTHORIZE", "EXECUTE", "VERIFY", "AUDIT", "LEARN"]
+}
