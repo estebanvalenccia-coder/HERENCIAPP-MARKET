@@ -31,6 +31,8 @@ interface Product {
   allowDedication?: boolean;
   variants?: Array<{ name: string; price?: number; stock?: number }>;
   deletedAt?: string;
+  seoTitle?: string;
+  seoDescription?: string;
 }
 
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -115,6 +117,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     occasion: "",
     allowDedication: true,
     variantsText: "",
+    seoTitle: "",
+    seoDescription: "",
   });
 
   useEffect(() => {
@@ -208,13 +212,15 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       occasion: product.occasion || "",
       allowDedication: product.allowDedication !== false,
       variantsText: (product.variants || []).map((v) => `${v.name} | ${v.price ?? ""} | ${v.stock ?? ""}`).join("\n"),
+      seoTitle: product.seoTitle || product.name || "",
+      seoDescription: product.seoDescription || product.description || "",
     });
   };
 
   const cancelEdit = () => {
     setEditingProduct(null);
     setAiPrompt("");
-    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21, environment: "interior", light: "indirecta", size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "", occasion: "", allowDedication: true, variantsText: "" });
+    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21, environment: "interior", light: "indirecta", size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "", occasion: "", allowDedication: true, variantsText: "", seoTitle: "", seoDescription: "" });
   };
 
   const generateAiImage = async () => {
@@ -260,6 +266,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
             temperature: editForm.temperature.trim(),
             occasion: editForm.occasion.trim(),
             allowDedication: editForm.allowDedication,
+            seoTitle: editForm.seoTitle.trim() || editForm.name.trim(),
+            seoDescription: editForm.seoDescription.trim() || editForm.description.trim(),
             variants: editForm.variantsText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
               const [name, price, stock] = line.split("|").map((part) => part.trim());
               return { name, price: price ? Math.max(0, Number(price)) : undefined, stock: stock ? Math.max(0, Math.floor(Number(stock))) : undefined };
@@ -588,6 +596,12 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                 </div>
                 <div className="flex gap-2"><button type="button" onClick={()=>setEditForm({...editForm,petSafe:!editForm.petSafe})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.petSafe?"border-primary bg-primary/10 text-primary":"border-border"}`}>🐾 Mascotas</button><button type="button" onClick={()=>setEditForm({...editForm,allowDedication:!editForm.allowDedication})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.allowDedication?"border-primary bg-primary/10 text-primary":"border-border"}`}>💌 Dedicatoria</button></div>
                 <textarea value={editForm.variantsText} onChange={(e)=>setEditForm({...editForm,variantsText:e.target.value})} rows={4} placeholder={"Variantes: nombre | precio | stock"} className="w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+                <div><h4 className="font-bold">SEO y compartir</h4><p className="text-xs text-muted-foreground">Metadatos de la ficha pública.</p></div>
+                <input value={editForm.seoTitle} onChange={(e)=>setEditForm({...editForm,seoTitle:e.target.value.slice(0,70)})} placeholder="Título SEO" className="w-full px-4 py-3 bg-background border border-border rounded-xl"/>
+                <textarea value={editForm.seoDescription} onChange={(e)=>setEditForm({...editForm,seoDescription:e.target.value.slice(0,170)})} rows={3} placeholder="Meta descripción" className="w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
               </div>
 
               {editingProduct.onSale && (

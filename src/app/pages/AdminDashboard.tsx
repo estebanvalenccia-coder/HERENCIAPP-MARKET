@@ -113,6 +113,7 @@ export function AdminDashboard() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
+  const [globalSearch, setGlobalSearch] = useState("");
   const seenOrderEventsRef = useRef(new Set<string>());
 
   const unreadOrderAlerts = orderAlerts.filter((alert) => !alert.read).length;
@@ -364,6 +365,34 @@ export function AdminDashboard() {
       badge: "PRO",
     },
   ];
+
+  const globalSearchResults = (() => {
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return [] as Array<{ type: "section" | "product"; id: string; label: string; section?: AdminSection }>;
+    const sectionResults = [...productMenuItems, ...menuItems]
+      .filter((item) => item.label.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map((item) => ({ type: "section" as const, id: item.id, label: item.label, section: item.id }));
+    let productResults: Array<{ type: "product"; id: string; label: string }> = [];
+    try {
+      const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+      productResults = (Array.isArray(rows) ? rows : [])
+        .filter((p: any) => !p.deletedAt && [p.name, p.sku, p.category].some((value) => String(value || "").toLowerCase().includes(q)))
+        .slice(0, 5)
+        .map((p: any) => ({ type: "product" as const, id: String(p.id), label: `${p.name} · ${p.sku || p.id}` }));
+    } catch {}
+    return [...sectionResults, ...productResults].slice(0, 8);
+  })();
+
+  const openGlobalSearchResult = (result: { type: "section" | "product"; id: string; section?: AdminSection }) => {
+    if (result.type === "section" && result.section) {
+      setCurrentSection(result.section);
+    } else {
+      setCurrentSection("products");
+    }
+    setGlobalSearch("");
+    setSidebarOpen(false);
+  };
 
   const sectionLabel =
     [...productMenuItems, ...menuItems].find((item) => item.id === currentSection)
@@ -663,9 +692,21 @@ export function AdminDashboard() {
 
                   <input
                     type="text"
-                    placeholder="Buscar..."
-                    className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-64"
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    placeholder="Buscar sección, producto, SKU…"
+                    className="pl-10 pr-4 py-2 bg-muted/50 border border-border/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-72"
                   />
+                  {globalSearch && (
+                    <div className="absolute top-full left-0 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl z-50">
+                      {globalSearchResults.length ? globalSearchResults.map((result) => (
+                        <button key={`${result.type}:${result.id}`} onClick={() => openGlobalSearchResult(result)} className="w-full px-4 py-3 text-left hover:bg-muted border-b border-border/50 last:border-0">
+                          <p className="text-sm font-semibold">{result.label}</p>
+                          <p className="text-[11px] text-muted-foreground">{result.type === "section" ? "Sección" : "Producto"}</p>
+                        </button>
+                      )) : <div className="px-4 py-5 text-sm text-muted-foreground">Sin resultados</div>}
+                    </div>
+                  )}
                 </div>
 
                 <div className="relative">

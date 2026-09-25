@@ -39,6 +39,48 @@ export function ProductDetail() {
     if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
   }, [id]);
 
+  useEffect(() => {
+    if (!product) return;
+    const previousTitle = document.title;
+    document.title = `${product.seoTitle || product.name} | Herencia`;
+
+    let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    const created = !meta;
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "description";
+      meta.setAttribute("data-herencia-seo", "true");
+      document.head.appendChild(meta);
+    }
+    const previousDescription = meta.content;
+    meta.content = String(product.seoDescription || product.description || "").slice(0, 170);
+
+    let ogTitle = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null;
+    if (!ogTitle) {
+      ogTitle = document.createElement("meta");
+      ogTitle.setAttribute("property", "og:title");
+      ogTitle.setAttribute("data-herencia-seo", "true");
+      document.head.appendChild(ogTitle);
+    }
+    ogTitle.content = String(product.seoTitle || product.name);
+
+    let ogDescription = document.querySelector('meta[property="og:description"]') as HTMLMetaElement | null;
+    if (!ogDescription) {
+      ogDescription = document.createElement("meta");
+      ogDescription.setAttribute("property", "og:description");
+      ogDescription.setAttribute("data-herencia-seo", "true");
+      document.head.appendChild(ogDescription);
+    }
+    ogDescription.content = String(product.seoDescription || product.description || "").slice(0, 170);
+
+    return () => {
+      document.title = previousTitle;
+      if (created) meta?.remove();
+      else if (meta) meta.content = previousDescription;
+      document.querySelectorAll('meta[data-herencia-seo="true"][property]').forEach((node) => node.remove());
+    };
+  }, [product]);
+
   const generateAIDescription = async (plantName: string, baseDescription: string) => {
     setLoadingAI(true);
     try {

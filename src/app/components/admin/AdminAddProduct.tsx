@@ -28,6 +28,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     occasion: "",
     allowDedication: true,
     variantsText: "",
+    seoTitle: "",
+    seoDescription: "",
   });
   const [imagePreview, setImagePreview] = useState("");
 
@@ -94,6 +96,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       temperature: formData.temperature.trim(),
       occasion: formData.occasion.trim(),
       allowDedication: formData.allowDedication,
+      seoTitle: formData.seoTitle.trim() || formData.name.trim(),
+      seoDescription: formData.seoDescription.trim() || formData.description.trim(),
       variants: formData.variantsText
         .split("\n")
         .map((line) => line.trim())
@@ -141,6 +145,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       occasion: "",
       allowDedication: true,
       variantsText: "",
+      seoTitle: "",
+      seoDescription: "",
     });
     setImagePreview("");
 
@@ -352,6 +358,21 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
             </div>
             <label className="block text-sm font-medium">Variantes
               <textarea value={formData.variantsText} onChange={(e)=>setFormData({...formData,variantsText:e.target.value})} rows={4} placeholder={"Una por línea: nombre | precio | stock\nPequeña | 19.90 | 5\nGrande | 29.90 | 3"} className="mt-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
+            </label>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+            <div>
+              <h3 className="text-lg font-bold">SEO del producto</h3>
+              <p className="text-sm text-muted-foreground">Controla cómo aparece esta ficha en buscadores y al compartirla.</p>
+            </div>
+            <label className="block text-sm font-medium">Título SEO
+              <input value={formData.seoTitle} onChange={(e)=>setFormData({...formData,seoTitle:e.target.value.slice(0,70)})} placeholder={formData.name || "Título para Google"} className="mt-2 w-full px-4 py-3 bg-background border border-border rounded-xl"/>
+              <span className="mt-1 block text-xs text-muted-foreground">{formData.seoTitle.length}/70</span>
+            </label>
+            <label className="block text-sm font-medium">Meta descripción
+              <textarea value={formData.seoDescription} onChange={(e)=>setFormData({...formData,seoDescription:e.target.value.slice(0,170)})} rows={3} placeholder={formData.description || "Descripción para resultados de búsqueda"} className="mt-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
+              <span className="mt-1 block text-xs text-muted-foreground">{formData.seoDescription.length}/170</span>
             </label>
           </div>
 
