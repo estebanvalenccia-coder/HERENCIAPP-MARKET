@@ -1547,6 +1547,43 @@ async function writeExperienceList(key, value) {
   await upsertStorageValue(key, JSON.stringify(value));
 }
 
+async function notifyWaitlistForRestockedProducts(previousProducts = [], nextProducts = []) {
+  const previousById = new Map((Array.isArray(previousProducts) ? previousProducts : []).map((product) => [String(product?.id || ""), product]));
+  const restocked = (Array.isArray(nextProducts) ? nextProducts : []).filter((product) => {
+    const before = Math.max(0, Number(previousById.get(String(product?.id || ""))?.stock || 0));
+    const after = Math.max(0, Number(product?.stock || 0));
+    return before <= 0 && after > 0;
+  });
+
+  if (!restocked.length) return { sent: 0 };
+
+  const rows = await readExperienceList(EXPERIENCE_WAITLIST_KEY);
+  let sent = 0;
+  for (const product of restocked) {
+    const productId = String(product?.id || "");
+    const waiting = rows.filter((entry) => entry.productId === productId && entry.status !== "notified" && isValidEmail(entry.email));
+    for (const entry of waiting) {
+      try {
+        const productUrl = `${String(process.env.PUBLIC_SITE_URL || "https://www.herenciamarket.es").replace(/\/$/, "")}/producto/${encodeURIComponent(productId)}`;
+        await sendResendEmail({
+          to: entry.email,
+          subject: `${product.name || "Tu producto"} vuelve a estar disponible en Herencia`,
+          html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><div style="font-size:38px">🌿</div><h1 style="margin:10px 0 0;font-size:25px">¡Ha vuelto!</h1></td></tr><tr><td style="padding:28px"><h2 style="margin:0 0 12px">${escapeHtml(product.name || entry.productName || "Producto")}</h2><p style="line-height:1.6;color:#607066">Te avisamos porque pediste saber cuándo volviera a estar disponible. Ya tiene stock de nuevo.</p><p style="margin:26px 0;text-align:center"><a href="${escapeHtml(productUrl)}" style="display:inline-block;background:#426047;color:#fff;text-decoration:none;padding:13px 22px;border-radius:12px;font-weight:700">Ver producto</a></p><p style="font-size:12px;color:#8a978f">Recibes este correo porque te apuntaste a la lista de espera de Herencia.</p></td></tr></table></td></tr></table></body></html>`,
+        });
+        entry.status = "notified";
+        entry.notifiedAt = new Date().toISOString();
+        sent += 1;
+      } catch (error) {
+        entry.lastNotificationError = error?.message || String(error);
+        entry.lastNotificationAttemptAt = new Date().toISOString();
+      }
+    }
+  }
+
+  await writeExperienceList(EXPERIENCE_WAITLIST_KEY, rows);
+  return { sent };
+}
+
 app.post("/api/experience/waitlist", async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
@@ -2902,6 +2939,8 @@ app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
       return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
     });
     await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+    void notifyWaitlistForRestockedProducts(bootstrap.products, updatedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
+    void evaluateInventoryAutomations(updatedProducts).catch((error) => console.warn("Automations purchase stock check:", error?.message || error));
 
     const purchase = {
       id: crypto.randomUUID(),
@@ -3126,6 +3165,7 @@ app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
       String(item?.id) === productId ? { ...item, stock: after } : item
     );
     await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+    void notifyWaitlistForRestockedProducts(bootstrap.products, updatedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
     void evaluateInventoryAutomations(updatedProducts).catch((error) => console.warn("Automations stock check:", error?.message || error));
 
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
