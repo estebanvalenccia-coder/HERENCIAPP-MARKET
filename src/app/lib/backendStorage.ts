@@ -717,6 +717,13 @@ export const backendApi = {
     return request<{ tasks: any[] }>(`/api/neural/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`);
   },
 
+  async neuralChat(text: string, conversationId = "admin:default") {
+    return request<any>("/api/neural/chat", {
+      method: "POST",
+      body: JSON.stringify({ text, conversationId }),
+    });
+  },
+
   async neuralCommand(text: string) {
     return request<any>("/api/neural/command", {
       method: "POST",
