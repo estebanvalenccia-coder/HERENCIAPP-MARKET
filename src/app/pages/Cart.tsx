@@ -10,6 +10,9 @@ interface CartItem {
   price: number;
   image: string;
   quantity: number;
+  lineKey?: string;
+  selectedVariant?: string;
+  personalization?: { dedication?: string };
 }
 
 export function Cart() {
@@ -37,12 +40,14 @@ export function Cart() {
   const shipping = deliveryMethod === "recoger" ? 0 : shippingCost;
   const total = subtotal + shipping;
 
-  const updateQuantity = (id: number, delta: number) => {
-    saveCart(cartItems.map((item) => item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item));
+  const itemKey = (item: CartItem) => item.lineKey || String(item.id);
+
+  const updateQuantity = (key: string, delta: number) => {
+    saveCart(cartItems.map((item) => itemKey(item) === key ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item));
   };
 
-  const removeItem = (id: number) => {
-    saveCart(cartItems.filter((item) => item.id !== id));
+  const removeItem = (key: string) => {
+    saveCart(cartItems.filter((item) => itemKey(item) !== key));
     toast.success("Producto eliminado");
   };
 
@@ -68,18 +73,20 @@ export function Cart() {
       <div className="lg:col-span-2 space-y-4">
         <h1 className="text-3xl font-bold">Carrito</h1>
         {cartItems.map((item) => (
-          <div key={item.id} className="bg-card border rounded-2xl p-4 flex gap-4">
+          <div key={itemKey(item)} className="bg-card border rounded-2xl p-4 flex gap-4">
             <img src={item.image} alt={item.name} className="w-24 h-24 object-cover rounded-xl" />
             <div className="flex-1">
               <div className="flex justify-between">
                 <h3 className="font-semibold">{item.name}</h3>
-                <button onClick={() => removeItem(item.id)}><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => removeItem(itemKey(item))}><Trash2 className="w-4 h-4" /></button>
               </div>
-              <p className="text-primary font-bold">€{Number(item.price || 0).toFixed(2)}</p>
+              {item.selectedVariant && <p className="text-xs text-muted-foreground">Variante: {item.selectedVariant}</p>}
+              {item.personalization?.dedication && <p className="text-xs text-muted-foreground mt-1">Dedicatoria: “{item.personalization.dedication}”</p>}
+              <p className="text-primary font-bold mt-1">€{Number(item.price || 0).toFixed(2)}</p>
               <div className="flex items-center gap-3 mt-3">
-                <button onClick={() => updateQuantity(item.id, -1)} className="p-2 bg-muted rounded-lg"><Minus className="w-4 h-4" /></button>
+                <button onClick={() => updateQuantity(itemKey(item), -1)} className="p-2 bg-muted rounded-lg"><Minus className="w-4 h-4" /></button>
                 <span>{item.quantity}</span>
-                <button onClick={() => updateQuantity(item.id, 1)} className="p-2 bg-muted rounded-lg"><Plus className="w-4 h-4" /></button>
+                <button onClick={() => updateQuantity(itemKey(item), 1)} className="p-2 bg-muted rounded-lg"><Plus className="w-4 h-4" /></button>
                 <span className="ml-auto font-semibold">€{(Number(item.price || 0) * item.quantity).toFixed(2)}</span>
               </div>
             </div>
