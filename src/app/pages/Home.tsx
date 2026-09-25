@@ -5,7 +5,7 @@ import { backendStorage } from "../lib/backendStorage";
 import {
   defaultSiteContent,
   ensureBuilderBlocks,
-  parseSiteContent,
+  readPreviewSiteContent,
   SiteContent,
 } from "../lib/siteContent";
 import { StorefrontBlock } from "../components/site/StorefrontBlock";
@@ -32,7 +32,7 @@ export function Home() {
 
   useEffect(() => {
     const loadContent = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      setSite(readPreviewSiteContent(backendStorage.getItem("siteContent")));
       setLegacyHero(readBannerUrl("heroBanner"));
       setLegacyCta(readBannerUrl("ctaBanner"));
     };

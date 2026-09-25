@@ -6,7 +6,7 @@ import {
   defaultSiteContent,
   normalizePhoneForHref,
   normalizeWhatsAppPhone,
-  parseSiteContent,
+  readPreviewSiteContent,
   SiteContent,
 } from "../lib/siteContent";
 
@@ -14,7 +14,7 @@ export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
 
   useEffect(() => {
-    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    const load = () => setSite(readPreviewSiteContent(backendStorage.getItem("siteContent")));
     load();
     window.addEventListener("storage", load);
     window.addEventListener("backend-storage", load);

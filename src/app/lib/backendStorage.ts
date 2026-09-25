@@ -75,6 +75,7 @@ const remotelySyncedKeys = new Set([
   "siteContent",
   "siteContentDraft",
   "siteContentHistory",
+  "visualBuilderAuxDraft",
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
@@ -418,6 +419,13 @@ export const backendApi = {
 
   async adminSession() {
     return request<{ authenticated: boolean }>("/api/admin/session");
+  },
+
+  async publishSite(values: Record<string, string>) {
+    return request<{ ok: boolean }>("/api/admin/site-publish", {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
   },
 
   async listSiteMedia() {
@@ -1083,6 +1091,14 @@ export const backendApi = {
 export const backendStorage = {
   getItem(key: string): StoredValue {
     return cache.get(key) ?? readLocalStorage(key);
+  },
+
+  applyPublishedValues(values: Record<string, string>) {
+    for (const [key, value] of Object.entries(values)) {
+      cache.set(key, value);
+      writeLocalStorage(key, value);
+    }
+    emitChange();
   },
 
   async setItem(key: string, value: string): Promise<BackendStorageResult> {

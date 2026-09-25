@@ -11,9 +11,13 @@ import {
   GripVertical,
   History,
   Image as ImageIcon,
+  Home,
   LayoutTemplate,
   Monitor,
   Plus,
+  BriefcaseBusiness,
+  Package,
+  Phone,
   Redo2,
   RotateCcw,
   Save,
@@ -45,7 +49,7 @@ import { StorefrontBlock } from "../site/StorefrontBlock";
 type Device = "desktop" | "tablet" | "mobile";
 type PageMode = "home" | "products" | "services" | "contact";
 type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
-type EditorTab = "contenido" | "diseno" | "avanzado";
+type EditorTab = "contenido" | "diseno" | "fondo" | "avanzado";
 
 type StoredVersion = {
   id: string;
@@ -185,10 +189,12 @@ function LinkFields({
   label,
   value,
   onChange,
+  showIconControl = false,
 }: {
   label: string;
   value: SiteLink;
   onChange: (next: SiteLink) => void;
+  showIconControl?: boolean;
 }) {
   return (
     <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -211,6 +217,7 @@ function LinkFields({
         onChange={(href) => onChange({ ...value, href })}
         placeholder="/productos o https://..."
       />
+      {showIconControl && <label className="flex items-center justify-between text-xs font-semibold text-slate-700">Mostrar icono <input type="checkbox" checked={value?.showIcon === true} onChange={(event) => onChange({ ...value, showIcon: event.target.checked })} /></label>}
     </div>
   );
 }
@@ -426,6 +433,10 @@ function blockTypeLabel(type: BuilderBlockType) {
   const labels: Record<BuilderBlockType, string> = {
     hero: "Portada",
     features: "Ventajas",
+    services: "Servicios",
+    products: "Productos",
+    buttons: "Botones",
+    elements: "Contenido personalizado",
     categories: "Categorías",
     cta: "Banner",
     textImage: "Texto + imagen",
@@ -435,11 +446,18 @@ function blockTypeLabel(type: BuilderBlockType) {
   return labels[type];
 }
 
+function blockThumbnail(block: BuilderBlock): string {
+  const first = block.data?.items?.[0] || block.data?.images?.[0];
+  return String(block.data?.imageUrl || first?.imageUrl || first?.url || (typeof first === "string" ? first : "") || "");
+}
+
 export function AdminVisualBuilder({
   onClose,
+  onOpenTheme,
   onPublished,
 }: {
   onClose: () => void;
+  onOpenTheme?: () => void;
   onPublished?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
@@ -466,7 +484,7 @@ export function AdminVisualBuilder({
   const [publishedHerenciaSettings, setPublishedHerenciaSettings] = useState<HerenciaSettings>(
     readJsonValue<HerenciaSettings>("herenciaSettings", { enabled: false, url: "" })
   );
-  const [selected, setSelected] = useState<SelectedTarget>("header");
+  const [selected, setSelected] = useState<SelectedTarget>(() => ensureBuilderBlocks(site)[0]?.id || "header");
   const [pageMode, setPageMode] = useState<PageMode>("home");
   const [device, setDevice] = useState<Device>("desktop");
   const [tab, setTab] = useState<EditorTab>("contenido");
@@ -484,10 +502,16 @@ export function AdminVisualBuilder({
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
+  const canvasRef = useRef<HTMLElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(900);
   const hydratedRef = useRef(false);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
+  const hasUnpublishedChanges = useMemo(
+    () => JSON.stringify(site) !== JSON.stringify(publishedSite) || JSON.stringify(menuIcons) !== JSON.stringify(publishedMenuIcons) || JSON.stringify(herenciaSettings) !== JSON.stringify(publishedHerenciaSettings),
+    [site, publishedSite, menuIcons, publishedMenuIcons, herenciaSettings, publishedHerenciaSettings]
+  );
 
   useEffect(() => {
     hydratedRef.current = true;
@@ -498,19 +522,14 @@ export function AdminVisualBuilder({
     setDraftState("pendiente");
     const timer = window.setTimeout(async () => {
       setDraftState("guardando");
-      const result = await backendStorage.setItem("siteContentDraft", JSON.stringify(site));
-      setDraftState(result.ok ? "guardado" : "pendiente");
+      const results = await Promise.all([
+        backendStorage.setItem("siteContentDraft", JSON.stringify(site)),
+        backendStorage.setItem("visualBuilderAuxDraft", JSON.stringify({ menuIcons, herenciaSettings })),
+      ]);
+      setDraftState(results.every((result) => result.ok && result.synced) ? "guardado" : "pendiente");
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [site]);
-
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    void backendStorage.setItem(
-      "visualBuilderAuxDraft",
-      JSON.stringify({ menuIcons, herenciaSettings })
-    );
-  }, [menuIcons, herenciaSettings]);
+  }, [site, menuIcons, herenciaSettings]);
 
   function commit(next: SiteContent) {
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
@@ -647,7 +666,29 @@ export function AdminVisualBuilder({
     toast.success("Borrador guardado");
   }
 
+  async function leaveEditor(destination: () => void) {
+    await saveDraftNow();
+    destination();
+  }
+
   async function publish() {
+    const invalidButton = blocks.find((block) => block.type === "buttons" && Array.isArray(block.data?.buttons) && block.data.buttons.some((button: any) => {
+      if (button.visible === false) return false;
+      const destination = String(button.href || "").trim();
+      if (!String(button.label || "").trim()) return true;
+      if (!["page", "url", "product", "category", "service", "whatsapp", "email", "phone", "cart", "checkout"].includes(button.action)) return true;
+      if (["cart", "checkout"].includes(button.action)) return false;
+      if (button.action === "url") return !/^https?:\/\/[^\s]+$/i.test(destination);
+      if (button.action === "page") return !destination.startsWith("/") || destination.startsWith("//");
+      if (button.action === "email") return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination);
+      return !destination;
+    }));
+    if (invalidButton) {
+      setSelected(invalidButton.id);
+      setTab("contenido");
+      toast.error(`Revisa los botones de “${invalidButton.name}” antes de publicar`);
+      return;
+    }
     setPublishing(true);
     try {
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
@@ -664,36 +705,31 @@ export function AdminVisualBuilder({
       ].slice(0, 12);
 
       // Evita que el historial con imágenes base64 supere el límite del backend.
-      while (nextHistory.length > 1 && JSON.stringify(nextHistory).length > 5_000_000) {
+      while (nextHistory.length > 1 && JSON.stringify(nextHistory).length > 2_000_000) {
         nextHistory = nextHistory.slice(0, -1);
       }
 
       const hero = ensureBuilderBlocks(nextPublished).find((block) => block.type === "hero");
       const cta = ensureBuilderBlocks(nextPublished).find((block) => block.type === "cta");
 
-      const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentDraft", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentHistory", JSON.stringify(nextHistory)),
-        backendStorage.setItem("menuIcons", JSON.stringify(menuIcons)),
-        backendStorage.setItem("herenciaSettings", JSON.stringify(herenciaSettings)),
-        hero?.data?.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: hero.data.imageUrl }))
-          : backendStorage.removeItem("heroBanner"),
-        cta?.data?.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: cta.data.imageUrl }))
-          : backendStorage.removeItem("ctaBanner"),
-      ]);
-
-      const failed = results.find((result) => !result.ok);
-      if (failed) throw new Error(failed.error || "No se pudo publicar");
+      const values = {
+        siteContent: JSON.stringify(nextPublished),
+        siteContentDraft: JSON.stringify(nextPublished),
+        siteContentHistory: JSON.stringify(nextHistory),
+        visualBuilderAuxDraft: "{}",
+        menuIcons: JSON.stringify(menuIcons),
+        herenciaSettings: JSON.stringify(herenciaSettings),
+        heroBanner: JSON.stringify({ imageUrl: hero?.data?.imageUrl || "" }),
+        ctaBanner: JSON.stringify({ imageUrl: cta?.data?.imageUrl || "" }),
+      };
+      await backendApi.publishSite(values);
+      backendStorage.applyPublishedValues(values);
 
       setSite(nextPublished);
       setPublishedSite(nextPublished);
       setVersions(nextHistory);
       setPublishedMenuIcons(menuIcons);
       setPublishedHerenciaSettings(herenciaSettings);
-      await backendStorage.removeItem("visualBuilderAuxDraft");
       setDraftState("guardado");
       window.dispatchEvent(new Event("backend-storage"));
       toast.success("Cambios publicados en Herencia");
@@ -728,27 +764,75 @@ export function AdminVisualBuilder({
   }
 
   const previewWidth = deviceWidth(device);
+  const previewScale = Math.min(1, Math.max(0.3, (canvasWidth - 32) / previewWidth));
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const observer = new ResizeObserver(([entry]) => setCanvasWidth(entry.contentRect.width));
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  function choosePage(mode: PageMode) {
+    setPageMode(mode);
+    setSelected(mode === "home" ? (blocks[0]?.id || "header") : mode);
+    setTab("contenido");
+  }
+
+  function openRealPreview() {
+    try {
+      window.sessionStorage.setItem("herenciaBuilderPreview", JSON.stringify(syncBuilderToLegacy(site, blocks)));
+      window.sessionStorage.setItem("herenciaBuilderPreviewAux", JSON.stringify({ menuIcons, herenciaSettings }));
+      const path = pageMode === "home" ? "/" : pageMode === "products" ? "/productos" : pageMode === "services" ? "/servicios" : "/contacto";
+      window.open(`${path}?preview=builder`, "_blank");
+    } catch {
+      toast.error("No se pudo abrir la vista previa de este borrador");
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-[90] flex flex-col bg-[#eef0ec] text-slate-900">
+    <div className="fixed inset-0 z-[90] flex bg-[#eef0ec] text-slate-900">
+      <aside className="hidden w-[190px] shrink-0 flex-col bg-[#19221e] text-white xl:flex">
+        <div className="flex h-[74px] items-center gap-2.5 border-b border-white/10 px-5">
+          <img src={logo} alt="Logo de Herencia" className="h-10 w-10 object-contain brightness-0 invert" />
+          <div><p className="font-serif text-lg leading-5 tracking-wide">HERENCIA</p><p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/55">Administración</p></div>
+        </div>
+        <nav aria-label="Páginas del editor" className="flex-1 space-y-1 overflow-y-auto px-3 py-5 text-[13px]">
+          {([
+            ["home", Home, "Inicio"],
+            ["products", Package, "Productos"],
+            ["services", BriefcaseBusiness, "Servicios"],
+            ["contact", Phone, "Contacto"],
+          ] as const).map(([mode, Icon, label]) => <button key={mode} type="button" onClick={() => choosePage(mode)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${pageMode === mode ? "bg-[#315f47] text-white" : "text-white/75 hover:bg-white/10 hover:text-white"}`}><Icon className="h-4 w-4" />{label}</button>)}
+          <p className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Contenido</p>
+          <div className="rounded-lg bg-[#315f47] px-3 py-2.5 font-semibold text-white"><span className="flex items-center gap-3"><LayoutTemplate className="h-4 w-4" />Editor visual</span></div>
+          <button type="button" onClick={() => { setSelected("header"); setTab("contenido"); }} className="block w-full rounded-lg px-5 py-2 text-left text-white/65 hover:bg-white/10">Menú y logo</button>
+          <button type="button" onClick={() => { setSelected("footer"); setTab("contenido"); }} className="block w-full rounded-lg px-5 py-2 text-left text-white/65 hover:bg-white/10">Footer</button>
+          {onOpenTheme && <button type="button" onClick={() => void leaveEditor(onOpenTheme)} className="block w-full rounded-lg px-5 py-2 text-left text-white/65 hover:bg-white/10">Plantilla y colores ↗</button>}
+        </nav>
+        <button type="button" onClick={() => void leaveEditor(onClose)} className="m-3 rounded-lg border border-white/20 px-3 py-3 text-left text-xs font-semibold text-white/85 hover:bg-white/10">← Volver al panel</button>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 shadow-sm sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void leaveEditor(onClose)}
             className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold hover:bg-slate-50"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline">Panel</span>
           </button>
           <div className="hidden min-w-0 md:block">
-            <p className="truncate font-black">Constructor visual · Herencia</p>
+            <p className="truncate font-semibold text-[#213d2c]">Editor visual <span className="font-normal text-slate-400">/ {pageMode === "home" ? "Inicio" : pageMode === "products" ? "Productos" : pageMode === "services" ? "Servicios" : "Contacto"}</span></p>
             <p className="text-xs text-slate-500">
               {draftState === "guardando"
                 ? "Guardando borrador…"
-                : draftState === "guardado"
-                ? "Borrador guardado"
-                : "Cambios pendientes"}
+                : draftState !== "guardado"
+                ? "Borrador pendiente de guardar"
+                : hasUnpublishedChanges
+                ? "Borrador guardado · Sin publicar"
+                : "Todo publicado"}
             </p>
           </div>
         </div>
@@ -773,7 +857,7 @@ export function AdminVisualBuilder({
             <Redo2 className="h-4 w-4" />
           </button>
 
-          <div className="hidden rounded-xl bg-slate-100 p-1 lg:flex">
+          <div className="hidden rounded-xl border border-slate-200 bg-[#f6f8f5] p-1 lg:flex">
             {([
               ["desktop", Monitor],
               ["tablet", Tablet],
@@ -783,20 +867,20 @@ export function AdminVisualBuilder({
                 key={value}
                 type="button"
                 onClick={() => setDevice(value)}
-                className={`rounded-lg p-2 ${device === value ? "bg-white shadow-sm" : ""}`}
-                title={value}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold ${device === value ? "bg-white text-[#275d42] shadow-sm" : "text-slate-500"}`}
+                title={value === "desktop" ? "Escritorio" : value === "tablet" ? "Tablet" : "Móvil"}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4" /><span className="hidden 2xl:inline">{value === "desktop" ? "Escritorio" : value === "tablet" ? "Tablet" : "Móvil"}</span>
               </button>
             ))}
           </div>
 
           <button
             type="button"
-            onClick={() => window.open("/", "_blank")}
-            className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold xl:flex"
+            onClick={openRealPreview}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 px-2 py-2 text-sm font-bold sm:px-3"
           >
-            <ExternalLink className="h-4 w-4" /> Ver sitio
+            <ExternalLink className="h-4 w-4" /><span className="hidden xl:inline">Vista previa real</span>
           </button>
           <button
             type="button"
@@ -823,37 +907,17 @@ export function AdminVisualBuilder({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_350px]">
-        <aside className="hidden overflow-y-auto border-r border-slate-200 bg-white lg:block">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[215px_minmax(0,1fr)_320px]">
+        <aside className="hidden overflow-y-auto border-r border-slate-200 bg-[#fbfcfa] lg:block">
           <div className="border-b border-slate-200 p-3">
-            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("home");
-                  if (selected === "contact") setSelected("header");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "home" ? "bg-white shadow-sm" : ""}`}
-              >
-                Inicio
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("contact");
-                  setSelected("contact");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "contact" ? "bg-white shadow-sm" : ""}`}
-              >
-                Contacto
-              </button>
-            </div>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">Página</label>
+            <select value={pageMode} onChange={(event) => choosePage(event.target.value as PageMode)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#284732]">
+              <option value="home">Inicio</option><option value="products">Productos</option><option value="services">Servicios</option><option value="contact">Contacto</option>
+            </select>
           </div>
 
           <div className="p-3">
-            <p className="mb-2 px-1 text-xs font-black uppercase tracking-wider text-slate-400">
-              Estructura
-            </p>
+            <div className="mb-3 flex items-center justify-between px-1"><p className="text-xs font-bold text-[#253b2b]">Secciones de la página</p><button type="button" onClick={() => setAddOpen((open) => !open)} title="Añadir sección" className="rounded-md border border-slate-200 bg-white p-1.5 text-[#305b41]"><Plus className="h-4 w-4" /></button></div>
 
             <button
               type="button"
@@ -882,7 +946,7 @@ export function AdminVisualBuilder({
                       if (draggingId) reorder(draggingId, block.id);
                       setDraggingId(null);
                     }}
-                    className={`group rounded-xl border bg-white transition ${selected === block.id ? "border-emerald-600 bg-emerald-50 shadow-sm" : "border-slate-200"} ${draggingId === block.id ? "opacity-50" : ""}`}
+                    className={`group overflow-hidden rounded-lg border bg-white transition ${selected === block.id ? "border-[#2f6848] bg-[#f1f8f3] shadow-sm" : "border-slate-200 hover:border-[#a5bdab]"} ${draggingId === block.id ? "opacity-50" : ""}`}
                   >
                     <button
                       type="button"
@@ -890,18 +954,19 @@ export function AdminVisualBuilder({
                         setSelected(block.id);
                         setTab("contenido");
                       }}
-                      className="flex w-full items-center gap-2 p-3 text-left"
+                      className="flex w-full items-center gap-2 p-1.5 text-left"
                     >
-                      <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-slate-400" />
+                      <div className="h-12 w-14 shrink-0 overflow-hidden rounded border border-slate-200 bg-[#edf2eb]">{blockThumbnail(block) ? <img src={blockThumbnail(block)} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[#7c9b84]"><LayoutTemplate className="h-5 w-5" /></div>}</div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black">{block.name}</p>
-                        <p className="text-xs text-slate-500">{blockTypeLabel(block.type)}</p>
+                        <p className="truncate text-xs font-bold">{block.name}</p>
+                        <p className="truncate text-[10px] text-slate-500">{blockTypeLabel(block.type)}</p>
                       </div>
+                      <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-slate-400" />
                       <span className={block.visible ? "text-emerald-600" : "text-slate-300"}>
                         {block.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                       </span>
                     </button>
-                    <div className="flex items-center justify-end gap-1 border-t border-slate-100 px-2 py-1.5">
+                    <div className={`items-center justify-end gap-1 border-t border-slate-100 px-2 py-1 ${selected === block.id ? "flex" : "hidden group-hover:flex group-focus-within:flex"}`}>
                       <button type="button" onClick={() => moveBlock(block.id, -1)} disabled={index === 0} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => moveBlock(block.id, 1)} disabled={index === blocks.length - 1} className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => duplicateBlock(block)} className="rounded p-1 hover:bg-slate-100"><Copy className="h-3.5 w-3.5" /></button>
@@ -920,7 +985,7 @@ export function AdminVisualBuilder({
                   </button>
                   {addOpen && (
                     <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
-                      {(["textImage", "gallery", "testimonials", "cta", "categories", "features", "hero"] as BuilderBlockType[]).map((type) => (
+                      {(["elements", "textImage", "gallery", "testimonials", "cta", "categories", "services", "products", "buttons", "features", "hero"] as BuilderBlockType[]).map((type) => (
                         <button key={type} type="button" onClick={() => addBlock(type)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold hover:bg-slate-100">
                           <Plus className="h-3.5 w-3.5 text-emerald-700" />
                           {blockTypeLabel(type)}
@@ -934,15 +999,15 @@ export function AdminVisualBuilder({
               <button
                 type="button"
                 onClick={() => {
-                  setSelected("contact");
+                  setSelected(pageMode);
                   setTab("contenido");
                 }}
-                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === "contact" ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
+                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === pageMode ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
               >
                 <Clock3 className="h-4 w-4 text-emerald-700" />
                 <div>
-                  <p className="text-sm font-black">Página de contacto</p>
-                  <p className="text-xs text-slate-500">Dirección, horario y mapa</p>
+                  <p className="text-sm font-black">{pageMode === "products" ? "Página de productos" : pageMode === "services" ? "Página de servicios" : "Página de contacto"}</p>
+                  <p className="text-xs text-slate-500">{pageMode === "contact" ? "Dirección, horario y mapa" : "Textos y acciones"}</p>
                 </div>
               </button>
             )}
@@ -970,7 +1035,7 @@ export function AdminVisualBuilder({
           </div>
         </aside>
 
-        <main className="min-w-0 overflow-auto bg-[#e5e9e3] p-3 sm:p-5 max-lg:pb-[50vh]">
+        <main ref={canvasRef} className="min-w-0 overflow-auto bg-[#e9ede8] p-3 sm:p-5 max-lg:pb-[50vh]">
           <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm lg:hidden">
             <select
               value={selected}
@@ -1026,7 +1091,7 @@ export function AdminVisualBuilder({
 
           {addOpen && pageMode === "home" && (
             <div className="relative z-40 mb-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl lg:hidden">
-              {(["textImage", "gallery", "testimonials", "cta", "categories", "features", "hero"] as BuilderBlockType[]).map((type) => (
+              {(["elements", "textImage", "gallery", "testimonials", "cta", "categories", "services", "products", "buttons", "features", "hero"] as BuilderBlockType[]).map((type) => (
                 <button
                   key={type}
                   type="button"
@@ -1040,8 +1105,8 @@ export function AdminVisualBuilder({
             </div>
           )}
           <div
-            className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
-            style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
+            className="builder-page-container mx-auto origin-top overflow-hidden rounded-lg border border-[#d6ddd3] bg-white shadow-[0_16px_50px_rgba(23,46,29,0.14)] transition-all duration-300"
+            style={{ width: `${previewWidth}px`, maxWidth: "none", zoom: previewScale }}
           >
             <div
               className="flex min-h-14 items-center justify-between border-b px-4"
@@ -1058,7 +1123,7 @@ export function AdminVisualBuilder({
                   <span className="font-serif text-xl font-black text-emerald-900">{site.brand.name}</span>
                 )}
               </button>
-              <div className="hidden gap-4 text-xs md:flex">
+              <div className="builder-preview-nav hidden gap-4 text-xs md:flex">
                 <span>{site.navigation.home.label}</span>
                 <span>{site.navigation.products.label}</span>
                 <span>{site.navigation.services.label}</span>
@@ -1071,6 +1136,12 @@ export function AdminVisualBuilder({
                 <div
                   key={block.id}
                   onClick={() => setSelected(block.id)}
+                  onClickCapture={(event) => {
+                    const target = event.target as HTMLElement;
+                    if (target.closest("a")) event.preventDefault();
+                    if (target.closest("img")) setTab(["hero", "cta", "textImage"].includes(block.type) ? "fondo" : "contenido");
+                    else if (target.closest("a")) setTab("contenido");
+                  }}
                   className={`relative cursor-pointer ${selected === block.id ? "ring-4 ring-inset ring-emerald-600" : "hover:ring-2 hover:ring-inset hover:ring-emerald-400/50"}`}
                 >
                   {!block.visible && (
@@ -1078,11 +1149,18 @@ export function AdminVisualBuilder({
                       Sección oculta
                     </div>
                   )}
-                  <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
+                  <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview onEditField={(key, value) => updateBlockData(block.id, { [key]: value })} />
                 </div>
               ))
-            ) : (
+            ) : pageMode === "contact" ? (
               <ContactPreview site={site} selected={selected === "contact"} onSelect={() => setSelected("contact")} />
+            ) : (
+              <button type="button" onClick={() => setSelected(pageMode)} className={`block w-full px-8 py-20 text-left ${selected === pageMode ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Herencia · {pageMode === "products" ? "Tienda" : "Servicios"}</p>
+                <h1 className="mt-4 font-serif text-5xl font-bold text-[#223c2b]">{pageMode === "products" ? site.productsPage.title : site.servicesPage.title}</h1>
+                <p className="mt-5 max-w-xl text-lg text-slate-600">{pageMode === "products" ? site.productsPage.subtitle : site.servicesPage.subtitle}</p>
+                <div className="mt-12 grid grid-cols-2 gap-5 md:grid-cols-3">{site.categories.slice(0, 3).map((category, index) => <div key={index} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">{category.imageUrl && <img src={category.imageUrl} alt="" className="h-40 w-full object-cover" />}<p className="p-4 font-semibold">{pageMode === "products" ? category.name : [site.servicesPage.gardeningHeading, site.servicesPage.coursesHeading, site.servicesPage.advisoryHeading][index]}</p></div>)}</div>
+              </button>
             )}
 
             <button
@@ -1108,7 +1186,7 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedBlock?.name || (selected === "header" ? "Header" : selected === "footer" ? "Footer" : "Contacto")}
+                  {selectedBlock?.type === "hero" ? "Portada principal" : selectedBlock?.name || (selected === "header" ? "Header" : selected === "footer" ? "Footer" : selected === "products" ? "Productos" : selected === "services" ? "Servicios" : "Contacto")}
                 </h2>
               </div>
               {selectedBlock && (
@@ -1119,10 +1197,11 @@ export function AdminVisualBuilder({
             </div>
 
             {(selectedBlock || selected === "header" || selected === "footer") && (
-              <div className="mt-3 grid grid-cols-3 rounded-xl bg-slate-100 p-1">
+              <div className="mt-3 grid grid-cols-4 rounded-lg bg-[#f2f4f1] p-1">
                 {([
                   ["contenido", "Contenido"],
                   ["diseno", "Diseño"],
+                  ["fondo", "Fondo"],
                   ["avanzado", "Avanzado"],
                 ] as const).map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-2 py-2 text-xs font-black ${tab === value ? "bg-white shadow-sm" : "text-slate-500"}`}>
@@ -1144,7 +1223,7 @@ export function AdminVisualBuilder({
                 setHerenciaSettings={setHerenciaSettings}
               />
             )}
-            {selected === "header" && tab === "diseno" && <HeaderDesignEditor site={site} updateSite={updateSite} />}
+            {selected === "header" && (tab === "diseno" || tab === "fondo") && <HeaderDesignEditor site={site} updateSite={updateSite} />}
             {selected === "header" && tab === "avanzado" && (
               <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
                 El header usa los enlaces globales del sitio. Puedes cambiar sus destinos en Contenido y su apariencia en Diseño.
@@ -1152,7 +1231,7 @@ export function AdminVisualBuilder({
             )}
 
             {selected === "footer" && tab === "contenido" && <FooterEditor site={site} updateSite={updateSite} />}
-            {selected === "footer" && tab === "diseno" && <FooterDesignEditor site={site} updateSite={updateSite} />}
+            {selected === "footer" && (tab === "diseno" || tab === "fondo") && <FooterDesignEditor site={site} updateSite={updateSite} />}
             {selected === "footer" && tab === "avanzado" && (
               <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
                 El footer es global: los cambios se aplican a todas las páginas.
@@ -1176,6 +1255,10 @@ export function AdminVisualBuilder({
                 block={selectedBlock}
                 update={(patch) => updateDesign(selectedBlock.id, patch)}
               />
+            )}
+
+            {selectedBlock && tab === "fondo" && (
+              <BlockBackgroundEditor block={selectedBlock} updateData={(patch) => updateBlockData(selectedBlock.id, patch)} update={(patch) => updateDesign(selectedBlock.id, patch)} />
             )}
 
             {selectedBlock && tab === "avanzado" && (
@@ -1264,6 +1347,7 @@ export function AdminVisualBuilder({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1631,6 +1715,28 @@ function ContactEditor({
   );
 }
 
+const elementTypes = ["title", "subtitle", "text", "image", "card", "separator", "spacer"] as const;
+
+function ElementsEditor({ block, updateData }: { block: BuilderBlock; updateData: (patch: Record<string, any>) => void }) {
+  const elements: any[] = Array.isArray(block.data?.elements) ? block.data.elements : [];
+  const save = (next: any[]) => updateData({ elements: next });
+  const change = (index: number, patch: Record<string, any>) => save(elements.map((element, i) => i === index ? { ...element, ...patch } : element));
+  return <div className="space-y-3">
+    {elements.map((element, index) => <div key={element.id || index} className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+      <label className="block text-xs font-bold">Tipo<select value={elementTypes.includes(element.type) ? element.type : "text"} onChange={(event) => change(index, { type: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2">{elementTypes.map((type) => <option key={type} value={type}>{({ title: "Título", subtitle: "Subtítulo", text: "Texto", image: "Imagen", card: "Tarjeta", separator: "Separador", spacer: "Espacio" } as Record<string, string>)[type]}</option>)}</select></label>
+      {!["separator", "spacer", "image"].includes(element.type) && <TextField label="Contenido" value={element.text || ""} onChange={(value) => change(index, { text: value })} multiline={element.type === "text" || element.type === "card"} />}
+      {element.type === "image" && <><TextField label="URL de imagen" value={element.url || ""} onChange={(url) => change(index, { url })} placeholder="https://..." /><TextField label="Texto alternativo" value={element.alt || ""} onChange={(alt) => change(index, { alt })} /></>}
+      {!["separator", "spacer", "image"].includes(element.type) && <><RangeField label="Tamaño" value={Number(element.fontSize || 20)} min={12} max={72} suffix="px" onChange={(fontSize) => change(index, { fontSize })} /><label className="block text-xs font-bold">Alineación<select value={element.align || "left"} onChange={(event) => change(index, { align: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2"><option value="left">Izquierda</option><option value="center">Centro</option><option value="right">Derecha</option></select></label><label className="block text-xs font-bold">Color<input type="color" value={element.color || "#263a2d"} onChange={(event) => change(index, { color: event.target.value })} className="mt-1 h-9 w-full" /></label><label className="flex justify-between text-xs font-bold">Negrita<input type="checkbox" checked={element.bold === true} onChange={(event) => change(index, { bold: event.target.checked })} /></label></>}
+      {element.type === "image" && <RangeField label="Altura de imagen" value={Number(element.height || 300)} min={80} max={700} suffix="px" onChange={(height) => change(index, { height })} />}
+      {element.type === "spacer" && <RangeField label="Altura del espacio" value={Number(element.height || 32)} min={8} max={200} suffix="px" onChange={(height) => change(index, { height })} />}
+      <RangeField label="Espacio inferior" value={Number(element.marginBottom ?? 16)} min={0} max={100} suffix="px" onChange={(marginBottom) => change(index, { marginBottom })} />
+      <div className="flex flex-wrap gap-3 text-xs font-bold">{(["desktop", "tablet", "mobile"] as const).map((device) => <label key={device} className="flex gap-1">{({ desktop: "Ordenador", tablet: "Tableta", mobile: "Móvil" })[device]}<input type="checkbox" checked={element[device] !== false} onChange={(event) => change(index, { [device]: event.target.checked })} /></label>)}</div>
+      <div className="flex flex-wrap gap-2 text-xs font-bold"><button type="button" disabled={index === 0} onClick={() => { const next = [...elements]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; save(next); }} className="rounded border p-2 disabled:opacity-30">Subir</button><button type="button" disabled={index === elements.length - 1} onClick={() => { const next = [...elements]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; save(next); }} className="rounded border p-2 disabled:opacity-30">Bajar</button><button type="button" onClick={() => save([...elements, { ...element, id: makeBuilderId("element") }])} className="rounded border p-2">Duplicar</button><button type="button" onClick={() => { if (window.confirm("¿Eliminar este elemento?")) save(elements.filter((_, i) => i !== index)); }} className="rounded border border-rose-200 p-2 text-rose-700">Eliminar</button></div>
+    </div>)}
+    <div className="grid grid-cols-2 gap-2">{elementTypes.map((type) => <button key={type} type="button" onClick={() => save([...elements, { id: makeBuilderId("element"), type, text: type === "title" ? "Nuevo título" : type === "card" ? "Nueva tarjeta" : "Nuevo texto", fontSize: type === "title" ? 36 : 20, desktop: true, tablet: true, mobile: true }])} className="rounded-lg border border-dashed border-emerald-400 px-2 py-2 text-xs font-bold text-emerald-700">+ {({ title: "Título", subtitle: "Subtítulo", text: "Texto", image: "Imagen", card: "Tarjeta", separator: "Separador", spacer: "Espacio" } as Record<string, string>)[type]}</button>)}</div>
+  </div>;
+}
+
 function BlockContentEditor({
   block,
   updateData,
@@ -1640,6 +1746,7 @@ function BlockContentEditor({
   updateData: (patch: Record<string, any>) => void;
   updateBlock: (block: BuilderBlock) => void;
 }) {
+  if (block.type === "elements") return <ElementsEditor block={block} updateData={updateData} />;
   if (block.type === "hero") {
     return (
       <div className="space-y-4">
@@ -1650,9 +1757,45 @@ function BlockContentEditor({
           Mostrar logo si no hay título
           <input type="checkbox" checked={block.data?.showLogo !== false} onChange={(event) => updateData({ showLogo: event.target.checked })} />
         </label>
-        <LinkFields label="Botón principal" value={block.data?.primaryButton || { label: "", href: "/" }} onChange={(primaryButton) => updateData({ primaryButton })} />
-        <LinkFields label="Botón secundario" value={block.data?.secondaryButton || { label: "", href: "/" }} onChange={(secondaryButton) => updateData({ secondaryButton })} />
-        <ImageFields label="Fondo" value={block.data?.imageUrl || ""} onChange={(imageUrl) => updateData({ imageUrl })} />
+        <LinkFields label="Botón principal" value={block.data?.primaryButton || { label: "", href: "/" }} onChange={(primaryButton) => updateData({ primaryButton })} showIconControl />
+        <LinkFields label="Botón secundario" value={block.data?.secondaryButton || { label: "", href: "/" }} onChange={(secondaryButton) => updateData({ secondaryButton })} showIconControl />
+      </div>
+    );
+  }
+
+  if (block.type === "buttons") {
+    const buttons = Array.isArray(block.data?.buttons) ? block.data.buttons : [];
+    const change = (index: number, patch: Record<string, any>) => updateData({ buttons: buttons.map((button: any, i: number) => i === index ? { ...button, ...patch } : button) });
+    return <div className="space-y-4">
+      <TextField label="Título opcional" value={block.data?.heading || ""} onChange={(heading) => updateData({ heading })} />
+      {buttons.map((button: any, index: number) => <div key={button.id || index} className="space-y-3 rounded-xl border border-slate-200 p-3">
+        <TextField label="Nombre interno" value={button.name || ""} onChange={(name) => change(index, { name })} />
+        <TextField label="Texto visible" value={button.label || ""} onChange={(label) => change(index, { label })} />
+        <label className="block text-xs font-bold">Acción<select value={button.action || "page"} onChange={(event) => change(index, { action: event.target.value, href: "" })} className="mt-1 w-full rounded-lg border border-slate-200 p-2">
+          <option value="page">Página interna</option><option value="url">URL externa</option><option value="product">Producto</option><option value="category">Categoría</option><option value="service">Servicio</option><option value="whatsapp">WhatsApp</option><option value="email">Correo electrónico</option><option value="phone">Llamada</option><option value="cart">Carrito</option><option value="checkout">Finalizar compra</option>
+        </select></label>
+        {!(["cart", "checkout"].includes(button.action)) && <TextField label={button.action === "whatsapp" || button.action === "phone" ? "Número" : button.action === "email" ? "Correo" : button.action === "product" ? "ID de producto" : button.action === "service" ? "Destino del servicio" : "Destino"} value={button.href || ""} onChange={(href) => change(index, { href })} placeholder={button.action === "url" ? "https://..." : button.action === "page" ? "/contacto" : ""} />}
+        <div className="grid grid-cols-2 gap-2"><label className="text-xs font-bold">Fondo<input type="color" value={button.background || "#315f47"} onChange={(event) => change(index, { background: event.target.value })} className="mt-1 h-9 w-full" /></label><label className="text-xs font-bold">Texto<input type="color" value={button.color || "#ffffff"} onChange={(event) => change(index, { color: event.target.value })} className="mt-1 h-9 w-full" /></label></div>
+        <label className="block text-xs font-bold">Color al pasar el cursor<input type="color" value={button.hoverBackground || "#234c36"} onChange={(event) => change(index, { hoverBackground: event.target.value })} className="mt-1 h-9 w-full" /></label>
+        <label className="block text-xs font-bold">Tipografía<select value={button.fontFamily || "inherit"} onChange={(event) => change(index, { fontFamily: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2"><option value="inherit">Fuente del sitio</option><option value="Georgia, serif">Editorial</option><option value="Arial, sans-serif">Limpia</option><option value="Inter, system-ui, sans-serif">Moderna</option></select></label>
+        <RangeField label="Tamaño de texto" value={Number(button.fontSize || 14)} min={12} max={32} suffix="px" onChange={(fontSize) => change(index, { fontSize })} />
+        <RangeField label="Relleno horizontal" value={Number(button.paddingX || 20)} min={8} max={64} suffix="px" onChange={(paddingX) => change(index, { paddingX })} />
+        <RangeField label="Relleno vertical" value={Number(button.paddingY || 12)} min={4} max={32} suffix="px" onChange={(paddingY) => change(index, { paddingY })} />
+        <RangeField label="Redondeado" value={Number(button.radius ?? 12)} min={0} max={40} suffix="px" onChange={(radius) => change(index, { radius })} />
+        <label className="flex justify-between text-xs font-bold">Mostrar icono<input type="checkbox" checked={button.showIcon === true} onChange={(event) => change(index, { showIcon: event.target.checked })} /></label>
+        <label className="flex justify-between text-xs font-bold">Visible<input type="checkbox" checked={button.visible !== false} onChange={(event) => change(index, { visible: event.target.checked })} /></label>
+        <div className="flex flex-wrap gap-2 text-xs font-bold"><button type="button" disabled={index === 0} onClick={() => { const next = [...buttons]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; updateData({ buttons: next }); }} className="rounded border p-2 disabled:opacity-30">Subir</button><button type="button" disabled={index === buttons.length - 1} onClick={() => { const next = [...buttons]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; updateData({ buttons: next }); }} className="rounded border p-2 disabled:opacity-30">Bajar</button><button type="button" onClick={() => updateData({ buttons: [...buttons, { ...button, id: makeBuilderId("button"), name: `${button.name || "Botón"} copia` }] })} className="rounded border p-2">Duplicar</button><button type="button" onClick={() => { if (window.confirm("¿Seguro que deseas eliminar este botón?")) updateData({ buttons: buttons.filter((_: any, i: number) => i !== index) }); }} className="rounded border border-rose-200 p-2 text-rose-700">Eliminar</button></div>
+      </div>)}
+      <button type="button" onClick={() => updateData({ buttons: [...buttons, { id: makeBuilderId("button"), name: "Nuevo botón", label: "Nuevo botón", action: "page", href: "/contacto", visible: true, background: "#315f47", color: "#ffffff" }] })} className="w-full rounded-xl border border-dashed border-emerald-400 py-3 text-sm font-bold text-emerald-700">+ Añadir botón</button>
+    </div>;
+  }
+
+  if (block.type === "services" || block.type === "products") {
+    return (
+      <div className="space-y-4">
+        <TextField label="Título" value={block.data?.heading || ""} onChange={(heading) => updateData({ heading })} />
+        <TextField label="Descripción" value={block.data?.description || ""} onChange={(description) => updateData({ description })} multiline />
+        <LinkFields label="Botón" value={block.data?.button || { label: "Ver más", href: block.type === "services" ? "/servicios" : "/productos" }} onChange={(button) => updateData({ button })} showIconControl />
       </div>
     );
   }
@@ -1708,8 +1851,7 @@ function BlockContentEditor({
       <div className="space-y-4">
         <TextField label="Título" value={block.data?.title || ""} onChange={(title) => updateData({ title })} />
         <TextField label="Subtítulo" value={block.data?.subtitle || ""} onChange={(subtitle) => updateData({ subtitle })} multiline />
-        <LinkFields label="Botón" value={block.data?.button || { label: "", href: "/" }} onChange={(button) => updateData({ button })} />
-        <ImageFields label="Fondo" value={block.data?.imageUrl || ""} onChange={(imageUrl) => updateData({ imageUrl })} />
+        <LinkFields label="Botón" value={block.data?.button || { label: "", href: "/" }} onChange={(button) => updateData({ button })} showIconControl />
       </div>
     );
   }
@@ -1722,6 +1864,8 @@ function BlockContentEditor({
         <TextField label="Texto" value={block.data?.text || ""} onChange={(text) => updateData({ text })} multiline />
         <LinkFields label="Botón" value={block.data?.button || { label: "", href: "/" }} onChange={(button) => updateData({ button })} />
         <ImageFields label="Imagen" value={block.data?.imageUrl || ""} onChange={(imageUrl) => updateData({ imageUrl })} />
+        <TextField label="Texto alternativo de la imagen" value={block.data?.imageAlt || ""} onChange={(imageAlt) => updateData({ imageAlt })} />
+        <label className="block text-xs font-bold text-slate-700"><span className="mb-1.5 block">Encaje de la imagen</span><select value={block.data?.imageFit || "cover"} onChange={(event) => updateData({ imageFit: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5"><option value="cover">Cubrir</option><option value="contain">Mostrar completa</option><option value="fill">Estirar</option></select></label>
         <label className="block text-xs font-bold text-slate-700">
           <span className="mb-1.5 block">Posición de imagen</span>
           <select value={block.data?.imageSide || "right"} onChange={(event) => updateData({ imageSide: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5">
@@ -1767,6 +1911,22 @@ function BlockContentEditor({
       <button type="button" onClick={() => updateData({ items: [...items, { name: "Cliente", text: "Nuevo testimonio", rating: 5 }] })} className="w-full rounded-xl border border-dashed border-emerald-400 py-2 text-sm font-black text-emerald-700">+ Añadir testimonio</button>
     </div>
   );
+}
+
+function BlockBackgroundEditor({ block, updateData, update }: { block: BuilderBlock; updateData: (patch: Record<string, any>) => void; update: (patch: Partial<BuilderBlockDesign>) => void }) {
+  const design = block.design;
+  const hasImage = ["hero", "cta", "textImage"].includes(block.type);
+  return <div className="space-y-4">
+    <p className="text-xs leading-5 text-slate-500">Ajusta el fondo y comprueba el resultado en la vista central antes de publicar.</p>
+    {hasImage && <ImageFields label="Imagen de fondo" value={block.data?.imageUrl || ""} onChange={(imageUrl) => updateData({ imageUrl })} />}
+    <label className="block text-xs font-bold text-slate-700">Color de fondo<input type="color" value={design.backgroundColor} onChange={(event) => update({ backgroundColor: event.target.value })} className="mt-1 h-10 w-full rounded-lg border border-slate-200" /></label>
+    {(["hero", "cta", "textImage"].includes(block.type)) && <>
+      <label className="block text-xs font-bold text-slate-700">Posición de imagen<select value={design.imagePosition} onChange={(event) => update({ imagePosition: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5"><option value="center">Centro</option><option value="left center">Izquierda</option><option value="right center">Derecha</option><option value="center top">Arriba</option><option value="center bottom">Abajo</option></select></label>
+      {block.type !== "textImage" && <RangeField label="Altura de la sección" value={design.minHeight || (block.type === "hero" ? 650 : 0)} min={block.type === "hero" ? 360 : 0} max={900} step={10} suffix="px" onChange={(minHeight) => update({ minHeight })} />}
+      <RangeField label="Zoom de imagen" value={design.imageZoom || 100} min={100} max={180} suffix="%" onChange={(imageZoom) => update({ imageZoom })} />
+      {block.type !== "textImage" && <RangeField label="Oscurecer fondo" value={design.overlay} min={0} max={85} suffix="%" onChange={(overlay) => update({ overlay })} />}
+    </>}
+  </div>;
 }
 
 function DesignEditor({
@@ -1820,25 +1980,12 @@ function DesignEditor({
       <RangeField label="Tamaño del título" value={design.headingScale} min={70} max={180} suffix="%" onChange={(headingScale) => update({ headingScale })} />
       <RangeField label="Separación" value={design.gap} min={0} max={64} suffix="px" onChange={(gap) => update({ gap })} />
       <RangeField label="Redondeado" value={design.radius} min={0} max={48} suffix="px" onChange={(radius) => update({ radius })} />
-      {["features", "categories", "gallery", "testimonials"].includes(block.type) && (
-        <RangeField label="Columnas" value={design.columns} min={1} max={6} onChange={(columns) => update({ columns })} />
-      )}
-      {["hero", "cta"].includes(block.type) && (
-        <>
-          <RangeField label="Oscurecer imagen" value={design.overlay} min={0} max={85} suffix="%" onChange={(overlay) => update({ overlay })} />
-          <RangeField label="Zoom de imagen" value={design.imageZoom || 100} min={100} max={180} suffix="%" onChange={(imageZoom) => update({ imageZoom })} />
-          <RangeField label="Altura de sección" value={design.minHeight || (block.type === "hero" ? 650 : 0)} min={block.type === "hero" ? 360 : 0} max={900} step={10} suffix="px" onChange={(minHeight) => update({ minHeight })} />
-          <label className="block text-xs font-bold text-slate-700">
-            <span className="mb-1.5 block">Posición de la imagen</span>
-            <select value={design.imagePosition} onChange={(event) => update({ imagePosition: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5">
-              <option value="center">Centro</option>
-              <option value="left center">Izquierda</option>
-              <option value="right center">Derecha</option>
-              <option value="center top">Arriba</option>
-              <option value="center bottom">Abajo</option>
-            </select>
-          </label>
-        </>
+      {["features", "categories", "gallery", "testimonials", "services", "products"].includes(block.type) && (
+        <div className="space-y-3">
+          <RangeField label="Columnas · escritorio" value={design.columns} min={1} max={6} onChange={(columns) => update({ columns })} />
+          <RangeField label="Columnas · tablet" value={design.columnsTablet ?? 2} min={1} max={4} onChange={(columnsTablet) => update({ columnsTablet })} />
+          <RangeField label="Columnas · móvil" value={design.columnsMobile ?? 1} min={1} max={2} onChange={(columnsMobile) => update({ columnsMobile })} />
+        </div>
       )}
     </div>
   );
