@@ -814,6 +814,39 @@ export const backendApi = {
     return request<any>("/api/neural/learning/consolidate", { method: "POST", body: "{}" });
   },
 
+  async neuralMentorStatus() {
+    return request<any>("/api/neural/mentor/status");
+  },
+
+  async neuralMentorCandidates(limit = 30) {
+    return request<{ candidates: any[] }>(`/api/neural/mentor/candidates?limit=${encodeURIComponent(String(limit))}`);
+  },
+
+  async neuralMentorTeach(topic: string, force = false) {
+    return request<any>("/api/neural/mentor/teach", {
+      method: "POST",
+      body: JSON.stringify({ topic, force }),
+    });
+  },
+
+  async neuralMentorCycle() {
+    return request<any>("/api/neural/mentor/cycle", { method: "POST", body: "{}" });
+  },
+
+  async neuralMentorApprove(id: string) {
+    return request<any>(`/api/neural/mentor/candidates/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
+  async neuralMentorReject(id: string, reason = "No aprobado") {
+    return request<any>(`/api/neural/mentor/candidates/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ rejectedBy: "admin", reason }),
+    });
+  },
+
   async neuralProactiveStatus() {
     return request<any>("/api/neural/proactive/status");
   },
