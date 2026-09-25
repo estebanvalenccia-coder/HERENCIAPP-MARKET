@@ -680,6 +680,18 @@ export const backendApi = {
     return request<{ sales: any[] }>(`/api/pos/sales?${search.toString()}`);
   },
 
+  async refundPartialPosSale(payload: {
+    orderId: string;
+    items: Array<{ id: string; quantity: number }>;
+    reason?: string;
+    staff?: { id: string; name: string; role: string };
+  }) {
+    return request<{ ok: boolean; order: any; inventory: any[]; refund: any; cashSession?: any; manualRefunds?: any[] }>("/api/pos/refund-partial", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async refundPosSale(payload: { orderId: string; reason?: string; staff?: { id: string; name: string; role: string } }) {
     return request<{ ok: boolean; order: any; inventory: any[]; refundNumber: string }>("/api/pos/refund", {
       method: "POST",
