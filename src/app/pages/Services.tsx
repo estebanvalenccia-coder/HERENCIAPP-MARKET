@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
-import { Calendar, Clock, MapPin, Users, Scissors, BookOpen, Check, MessageCircle, Phone } from "lucide-react";
-import { motion } from "motion/react";
-import { useLocation } from "react-router";
+import { Link } from "react-router";
+import { ArrowRight, MessageCircle, Phone, Sparkles } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
-import { defaultSiteContent, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
+import {
+  defaultSiteContent,
+  normalizePhoneForHref,
+  normalizeWhatsAppPhone,
+  parseSiteContent,
+  type SiteContent,
+} from "../lib/siteContent";
+import { getMarketExperience } from "../lib/marketExperience";
+
+const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral"];
 
 export function Services() {
-  const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
 
   useEffect(() => {
@@ -20,97 +27,136 @@ export function Services() {
     };
   }, []);
 
-  useEffect(() => {
-    const tipo = new URLSearchParams(location.search).get("tipo");
-    if (!tipo) return;
-    const element = document.getElementById(tipo);
-    if (element) window.setTimeout(() => element.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
-  }, [location.search]);
-
-  const content = site.servicesPage;
-  const serviceIcons = [Scissors, Calendar, Scissors];
-  const advisoryIcons = [BookOpen, MapPin, Check];
-
-  function openWhatsApp(message: string) {
-    const phone = normalizeWhatsAppPhone(site.footer.whatsappPhone || site.floatingWhatsapp.phone);
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
-  }
-
-  function callStore() {
-    window.location.href = `tel:${normalizePhoneForHref(site.footer.callPhone)}`;
-  }
+  const market = getMarketExperience(site);
+  const whatsapp = normalizeWhatsAppPhone(site.footer.whatsappPhone);
+  const phone = normalizePhoneForHref(site.footer.callPhone);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="bg-muted/30 border-b border-border">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">{content.title}</h1>
-          <p className="text-muted-foreground max-w-2xl">{content.subtitle}</p>
+    <div className="bg-[#fbfaf6] text-[#173126]">
+      <section className="relative min-h-[440px] overflow-hidden">
+        <img
+          src="https://images.unsplash.com/photo-1598902108854-10e335adac99?auto=format&fit=crop&w=2000&q=88"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/92 via-[#173d2a]/70 to-[#173d2a]/15" />
+        <div className="relative mx-auto flex min-h-[440px] max-w-7xl items-center px-5 py-14 sm:px-8 lg:px-10">
+          <div className="max-w-2xl text-white">
+            <p className="text-xs font-black uppercase tracking-[0.25em] text-white/70">
+              SERVICIOS HERENCIA
+            </p>
+            <h1 className="mt-4 text-5xl font-medium leading-[1.02] sm:text-6xl">
+              Espacios que se sienten mejor
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-white/86">
+              Asesoría, jardín, decoración, limpieza y diseño floral por encargo. Soluciones pensadas
+              para tu hogar, tu negocio o un momento especial en {market.locationLabel}.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <a
+                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola, quiero solicitar información sobre un servicio de Herencia.")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
+              >
+                <MessageCircle className="h-4 w-4" /> Solicitar información
+              </a>
+              <a
+                href={`tel:${phone}`}
+                className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur"
+              >
+                <Phone className="h-4 w-4" /> Llamar
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-12">
-        <section id="jardineria" className="mb-16 scroll-mt-20">
-          <div className="mb-8"><h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{content.gardeningHeading}</h2><p className="text-muted-foreground">{content.gardeningDescription}</p></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {content.gardeningServices.map((service, index) => {
-              const Icon = serviceIcons[index % serviceIcons.length];
-              return <motion.div key={service.id || index} initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}} transition={{delay:index*0.1}} className="bg-card border border-border rounded-2xl p-6 hover:shadow-lg transition-all">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 text-primary rounded-xl mb-4"><Icon className="w-6 h-6"/></div>
-                <h3 className="text-xl font-bold text-foreground mb-2">{service.title}</h3>
-                <p className="text-muted-foreground mb-4">{service.description}</p>
-                <div className="space-y-2 mb-6"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="w-4 h-4"/>{service.duration}</div><div className="text-lg font-bold text-primary">{service.price}</div></div>
-                <button onClick={() => openWhatsApp(`Hola, quiero información sobre el servicio: ${service.title}.`)} className="w-full py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">{service.buttonLabel}</button>
-              </motion.div>;
-            })}
-          </div>
-        </section>
+      <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+        <div className="text-center">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">
+            A tu medida
+          </p>
+          <h2 className="mt-2 text-3xl font-medium sm:text-4xl">Nuestros servicios</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#6c786f]">
+            Cada servicio puede solicitarse directamente y adaptarse al espacio, presupuesto y objetivo.
+          </p>
+        </div>
 
-        <section id="cursos" className="scroll-mt-20">
-          <div className="mb-8"><h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{content.coursesHeading}</h2><p className="text-muted-foreground">{content.coursesDescription}</p></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {content.courses.map((course,index) => <motion.div key={course.id || index} initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}} transition={{delay:index*0.1}} className="bg-card border border-border rounded-2xl overflow-hidden hover:shadow-lg transition-all">
-              <div className="h-48 overflow-hidden bg-muted">{course.image && <img src={course.image} alt={course.title} className="w-full h-full object-cover"/>}</div>
-              <div className="p-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full mb-3"><BookOpen className="w-3 h-3"/>Curso</div>
-                <h3 className="text-xl font-bold text-foreground mb-2">{course.title}</h3><p className="text-muted-foreground mb-4">{course.description}</p>
-                <div className="space-y-2 mb-6"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Calendar className="w-4 h-4"/>{course.date}</div><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="w-4 h-4"/>{course.duration}</div><div className="flex items-center gap-2 text-sm text-muted-foreground"><Users className="w-4 h-4"/>{course.capacity}</div></div>
-                <div className="text-2xl font-bold text-primary mb-4">{course.price}</div>
-                <button onClick={() => openWhatsApp(`Hola, quiero información sobre el curso: ${course.title}.`)} className="w-full py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">{course.buttonLabel}</button>
+        <div className="mt-9 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {market.home.services.map((service, index) => (
+            <article
+              id={ids[index] || `servicio-${index + 1}`}
+              key={service.title}
+              className="scroll-mt-32 overflow-hidden rounded-[2rem] border border-[#e0dcd2] bg-white shadow-sm"
+            >
+              <div className="h-56 overflow-hidden">
+                <img
+                  src={service.imageUrl}
+                  alt={service.title}
+                  className="h-full w-full object-cover transition duration-500 hover:scale-105"
+                />
               </div>
-            </motion.div>)}
-          </div>
-        </section>
+              <div className="p-6">
+                <h3 className="text-2xl font-black leading-tight">{service.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-[#66736b]">{service.subtitle}</p>
+                <a
+                  href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`Hola, quiero información sobre ${service.title}.`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#315b42] px-5 py-3 text-sm font-black text-white"
+                >
+                  Consultar servicio <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            </article>
+          ))}
 
-        <section id="entrega" className="mt-16 scroll-mt-20">
-          <div className="mb-8"><h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{content.deliveryHeading}</h2><p className="text-muted-foreground">{content.deliveryDescription}</p></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {content.deliveryOptions.map((option,index) => {
-              const Icon = index === 0 ? MapPin : Calendar;
-              return <div key={index} className="bg-card border border-border rounded-2xl p-6"><div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 text-primary rounded-xl mb-4"><Icon className="w-6 h-6"/></div><h3 className="text-xl font-bold text-foreground mb-2">{option.title}</h3><p className="text-muted-foreground mb-4">{option.description}</p><p className="text-lg font-bold text-primary">{option.price}</p></div>;
-            })}
-          </div>
-        </section>
+          <article className="flex min-h-[360px] flex-col justify-between rounded-[2rem] bg-[#173d2a] p-7 text-white">
+            <div>
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-white/10">
+                <Sparkles className="h-5 w-5 text-[#e7d7a8]" />
+              </span>
+              <h3 className="mt-5 text-3xl font-medium">¿Tienes otra idea?</h3>
+              <p className="mt-3 text-sm leading-7 text-white/75">
+                Cuéntanos qué quieres conseguir. Podemos preparar una propuesta personalizada y orientarte
+                hacia el servicio o producto adecuado.
+              </p>
+            </div>
+            <Link
+              to="/contacto"
+              className="mt-7 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
+            >
+              Cuéntanos tu proyecto <ArrowRight className="h-4 w-4" />
+            </Link>
+          </article>
+        </div>
+      </section>
 
-        <section id="asesoria" className="mt-16 scroll-mt-20">
-          <div className="mb-8"><h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">{content.advisoryHeading}</h2><p className="text-muted-foreground">{content.advisoryDescription}</p></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {content.advisoryOptions.map((option,index) => {
-              const Icon = advisoryIcons[index % advisoryIcons.length];
-              return <div key={index} className="bg-card border border-border rounded-2xl p-6"><div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 text-primary rounded-xl mb-4"><Icon className="w-6 h-6"/></div><h3 className="text-xl font-bold text-foreground mb-2">{option.title}</h3><p className="text-muted-foreground mb-4">{option.description}</p><p className="text-lg font-bold text-primary mb-4">{option.price}</p><button onClick={() => openWhatsApp(`Hola, quiero información sobre: ${option.title}.`)} className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">{option.buttonLabel}</button></div>;
-            })}
+      <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
+        <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
+          <div className="grid gap-5 md:grid-cols-3">
+            <div>
+              <p className="font-black">1. Cuéntanos qué necesitas</p>
+              <p className="mt-2 text-sm leading-6 text-[#6c786f]">
+                Espacio, fecha, idea, fotografías y presupuesto aproximado si lo tienes.
+              </p>
+            </div>
+            <div>
+              <p className="font-black">2. Preparamos la propuesta</p>
+              <p className="mt-2 text-sm leading-6 text-[#6c786f]">
+                Definimos la solución, materiales, alcance y precio antes de empezar.
+              </p>
+            </div>
+            <div>
+              <p className="font-black">3. Lo hacemos realidad</p>
+              <p className="mt-2 text-sm leading-6 text-[#6c786f]">
+                Coordinamos el servicio y mantenemos una comunicación clara durante el proceso.
+              </p>
+            </div>
           </div>
-        </section>
-
-        <motion.section initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}} className="mt-16 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-3xl p-8 md:p-12 text-center border border-border">
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-4">{content.ctaTitle}</h2>
-          <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">{content.ctaDescription}</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => openWhatsApp("Hola, necesito información sobre un servicio personalizado.")} className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors"><MessageCircle className="w-5 h-5"/>{content.whatsappButtonLabel}</button>
-            <button onClick={callStore} className="inline-flex items-center justify-center gap-2 px-8 py-4 border border-border bg-background text-foreground rounded-xl hover:bg-accent transition-colors"><Phone className="w-5 h-5"/>{content.callButtonLabel}</button>
-          </div>
-        </motion.section>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
