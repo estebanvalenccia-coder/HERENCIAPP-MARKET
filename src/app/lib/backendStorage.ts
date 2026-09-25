@@ -568,6 +568,20 @@ export const backendApi = {
     });
   },
 
+  async createInventoryLot(payload: { productId: string; lotCode: string; quantity: number; expiresAt?: string; receivedAt?: string; locationId?: string }) {
+    return request<{ lot: any; operations: any }>("/api/admin/inventory/lots", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateInventoryLot(id: string, payload: { remaining?: number; expiresAt?: string | null; locationId?: string }) {
+    return request<{ lot: any; operations: any }>(`/api/admin/inventory/lots/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async getPosOperations() {
     return request<{ operations: any }>("/api/pos/operations");
   },

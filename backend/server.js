@@ -3217,6 +3217,60 @@ app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
   }
 });
 
+
+app.post("/api/admin/inventory/lots", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { inventoryLots: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const productId = String(req.body?.productId || "").trim();
+    const lotCode = cleanText(req.body?.lotCode, 80);
+    const quantity = Math.max(0, Math.floor(Number(req.body?.quantity || 0)));
+    const expiresAt = String(req.body?.expiresAt || "").trim() || null;
+    const receivedAt = String(req.body?.receivedAt || new Date().toISOString().slice(0,10));
+    const locationId = String(req.body?.locationId || "tienda").trim();
+    if (!productId || !lotCode || quantity <= 0) return res.status(400).json({ error: "Producto, lote y cantidad son obligatorios" });
+    if ((current.inventoryLots || []).some((item) => item.productId === productId && item.lotCode === lotCode)) {
+      return res.status(409).json({ error: "Ese lote ya existe para el producto" });
+    }
+    const lot = {
+      id: crypto.randomUUID(),
+      productId,
+      lotCode,
+      quantity,
+      remaining: quantity,
+      locationId,
+      receivedAt,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    };
+    current.inventoryLots = [lot, ...(current.inventoryLots || [])].slice(0, 5000);
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ lot, operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo registrar el lote" });
+  }
+});
+
+app.patch("/api/admin/inventory/lots/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const defaults = { inventoryLots: [] };
+    const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const index = (current.inventoryLots || []).findIndex((item) => item.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Lote no encontrado" });
+    const previous = current.inventoryLots[index];
+    const remaining = req.body?.remaining == null ? previous.remaining : Math.max(0, Math.floor(Number(req.body.remaining || 0)));
+    const expiresAt = req.body?.expiresAt == null ? previous.expiresAt : (String(req.body.expiresAt || "").trim() || null);
+    const locationId = req.body?.locationId == null ? previous.locationId : String(req.body.locationId || "").trim();
+    current.inventoryLots[index] = { ...previous, remaining, expiresAt, locationId, updatedAt: new Date().toISOString() };
+    await upsertStorageValue("posOperations", JSON.stringify(current));
+    res.json({ lot: current.inventoryLots[index], operations: sanitizePosOperations(current) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar el lote" });
+  }
+});
+
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
   try {

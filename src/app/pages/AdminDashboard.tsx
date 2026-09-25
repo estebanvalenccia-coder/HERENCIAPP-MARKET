@@ -34,6 +34,7 @@ import {
   ClipboardCheck,
   History,
   Warehouse,
+  ScanLine,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -67,6 +68,7 @@ import { AdminMarketingHub } from "../components/admin/AdminMarketingHub";
 import { AdminOperationsBoard } from "../components/admin/AdminOperationsBoard";
 import { AdminActivityLog } from "../components/admin/AdminActivityLog";
 import { AdminInventoryLocations } from "../components/admin/AdminInventoryLocations";
+import { AdminInventoryLots } from "../components/admin/AdminInventoryLots";
 
 type AdminSection =
   | "dashboard"
@@ -96,6 +98,7 @@ type AdminSection =
   | "operations-board"
   | "activity-log"
   | "inventory-locations"
+  | "inventory-lots"
   | "settings";
 
 type AdminOrderAlert = {
@@ -372,6 +375,7 @@ export function AdminDashboard() {
     { id: "operations-board" as AdminSection, label: "Operaciones / Tareas", icon: ClipboardCheck, badge: "EQUIPO" },
     { id: "activity-log" as AdminSection, label: "Registro de actividad", icon: History, badge: "AUDIT" },
     { id: "inventory-locations" as AdminSection, label: "Ubicaciones / Transferencias", icon: Warehouse, badge: "STOCK" },
+    { id: "inventory-lots" as AdminSection, label: "Lotes / Caducidad / Escáner", icon: ScanLine, badge: "PRO" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -889,6 +893,8 @@ export function AdminDashboard() {
           {currentSection === "activity-log" && <AdminActivityLog />}
 
           {currentSection === "inventory-locations" && <AdminInventoryLocations />}
+
+          {currentSection === "inventory-lots" && <AdminInventoryLots />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>
