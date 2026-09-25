@@ -235,6 +235,10 @@ export function AdminPOS() {
         setRecentSales(Array.isArray(history.sales) ? history.sales : []);
         const loadedOperations = ops.operations || { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
         setOperations(loadedOperations);
+        if (Array.isArray(loadedOperations.heldSales)) {
+          setHeldSales(loadedOperations.heldSales);
+          try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(loadedOperations.heldSales)); } catch {}
+        }
         setReport(reportResult.report || null);
 
         const availableRegisters = Array.isArray(loadedOperations.registers) && loadedOperations.registers.length
@@ -343,37 +347,77 @@ export function AdminPOS() {
     return true;
   }
 
-  function parkSale() {
+  async function parkSale() {
     if (!cart.length) return toast.error("No hay una venta para aparcar");
     const sale = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      cart,
+      items: cart,
       customer,
-      payment,
+      paymentMethod: payment,
       documentType,
       notes,
       globalDiscount,
+      mixed,
+      registerId,
+      staff: currentStaff ? { id: currentStaff.id, name: currentStaff.name, role: currentStaff.role } : { id: "owner", name: "Propietario / administrador", role: "admin" },
     };
-    const next = [sale, ...heldSales].slice(0, 20);
-    setHeldSales(next);
-    localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next));
-    clearSale();
-    toast.success("Venta aparcada");
+
+    try {
+      const result = await backendApi.saveHeldPosSale(sale);
+      const next = Array.isArray(result.operations?.heldSales) ? result.operations.heldSales : [result.heldSale, ...heldSales];
+      setHeldSales(next);
+      setOperations(result.operations || operations);
+      try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+      clearSale();
+      toast.success("Venta aparcada y sincronizada");
+    } catch (error: any) {
+      const localSale = { ...sale, cart: cart };
+      const next = [localSale, ...heldSales].slice(0, 100);
+      setHeldSales(next);
+      try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+      clearSale();
+      toast.warning(error?.message ? `Venta aparcada solo en este dispositivo: ${error.message}` : "Venta aparcada solo en este dispositivo");
+    }
   }
 
-  function restoreHeldSale(id: string) {
+  async function restoreHeldSale(id: string) {
     const sale = heldSales.find((item) => item.id === id);
     if (!sale) return;
-    setCart(Array.isArray(sale.cart) ? sale.cart : []);
+    const storedLines = Array.isArray(sale.items) ? sale.items : Array.isArray(sale.cart) ? sale.cart : [];
+    const restored: CartLine[] = storedLines.flatMap((line: any) => {
+      if (line?.manual === true) {
+        return [{ ...line, qty: Math.max(1, Number(line.qty ?? line.quantity ?? 1)), stock: 999999, manual: true }];
+      }
+      const currentProduct = products.find((product) => product.id === String(line?.id || ""));
+      if (!currentProduct || currentProduct.stock <= 0) return [];
+      const requestedQty = Math.max(1, Number(line?.qty ?? line?.quantity ?? 1));
+      return [{ ...currentProduct, qty: Math.min(currentProduct.stock, requestedQty), discountPercent: Number(line?.discountPercent || 0) }];
+    });
+
+    if (!restored.length) return toast.error("Los artículos de esta venta ya no están disponibles");
+    if (restored.length < storedLines.length) toast.warning("Algunos artículos aparcados ya no tienen stock y se omitieron");
+
+    setCart(restored);
     setCustomer(sale.customer || WALK_IN);
-    setPayment(sale.payment || "Efectivo");
+    setPayment((sale.paymentMethod || sale.payment || "Efectivo") as PosPaymentMethod);
     setDocumentType(sale.documentType || "ticket");
     setNotes(sale.notes || "");
     setGlobalDiscount(Number(sale.globalDiscount || 0));
+    if (sale.mixed) setMixed(sale.mixed);
+    if (sale.registerId && sale.registerId !== registerId) await changeRegister(String(sale.registerId));
+
     const next = heldSales.filter((item) => item.id !== id);
     setHeldSales(next);
-    localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next));
+    try { localStorage.setItem("herencia_pos_held_sales", JSON.stringify(next)); } catch {}
+
+    try {
+      const result = await backendApi.deleteHeldPosSale(id);
+      setOperations(result.operations || operations);
+      if (Array.isArray(result.operations?.heldSales)) setHeldSales(result.operations.heldSales);
+    } catch {
+      // Si era un aparcado local, no existe en backend; la recuperación sigue siendo válida.
+    }
     toast.success("Venta recuperada");
   }
 
@@ -1535,12 +1579,12 @@ export function AdminPOS() {
 
           <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
             <div className="mb-3 grid grid-cols-2 gap-2">
-              <button onClick={parkSale} disabled={!cart.length} className="rounded-xl border border-amber-300 bg-amber-50 py-2 text-sm font-black text-amber-800 disabled:opacity-40">
+              <button onClick={() => void parkSale()} disabled={!cart.length} className="rounded-xl border border-amber-300 bg-amber-50 py-2 text-sm font-black text-amber-800 disabled:opacity-40">
                 Aparcar venta
               </button>
               <select
                 value=""
-                onChange={(e) => e.target.value && restoreHeldSale(e.target.value)}
+                onChange={(e) => e.target.value && void restoreHeldSale(e.target.value)}
                 className="rounded-xl border border-zinc-200 px-2 py-2 text-sm font-bold"
               >
                 <option value="">Recuperar ({heldSales.length})</option>
