@@ -20,6 +20,8 @@ import {
   Layers3,
   CreditCard,
   Brain,
+  Truck,
+  Activity,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -55,7 +57,9 @@ type AdminSection =
   | "calculator"
   | "flower-costs"
   | "content"
+  | "delivery"
   | "neural"
+  | "audit"
   | "settings";
 
 type AdminOrderAlert = {
