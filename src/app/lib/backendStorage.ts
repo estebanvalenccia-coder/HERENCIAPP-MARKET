@@ -872,6 +872,14 @@ export const backendApi = {
     return request<any>("/api/neural/learning/patterns");
   },
 
+  async neuralConversationLearning() {
+    return request<any>("/api/neural/learning/conversations");
+  },
+
+  async neuralConsolidateConversations() {
+    return request<any>("/api/neural/learning/conversations/consolidate", { method: "POST", body: "{}" });
+  },
+
   async neuralResources() {
     return request<any>("/api/neural/governance/resources");
   },
