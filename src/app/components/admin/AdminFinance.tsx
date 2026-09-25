@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CreditCard, DollarSign, Leaf, Plus, Receipt, RefreshCw, Sparkles, Trash2, TrendingUp, Wallet, X } from "lucide-react";
+import { CalendarDays, CreditCard, DollarSign, Download, Leaf, Plus, Receipt, RefreshCw, Sparkles, Target, Trash2, TrendingUp, Wallet, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { backendApi } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { createCashClosure, createExpense, createSale, deleteExpense, deleteSale, getExpensesByDate, getMonthExpenses, getMonthSales, getSalesByDate } from "../../lib/finance/financeApi";
 import type { DailyExpense, DailySale, PaymentMethod } from "../../lib/finance/financeTypes";
 import { buildDailyIncomeChart, buildPaymentChart, calculateTotals, currentTime, money, todayISO } from "../../lib/finance/financeHelpers";
@@ -43,13 +43,21 @@ export function AdminFinance() {
   const [saleForm, setSaleForm] = useState(defaultSale(selectedDate));
   const [expenseForm, setExpenseForm] = useState(defaultExpense(selectedDate));
   const [realCash, setRealCash] = useState(0);
+  const [monthlyGoal, setMonthlyGoal] = useState(0);
+  const [previousMonthTotal, setPreviousMonthTotal] = useState(0);
 
   const totals = useMemo(() => calculateTotals(sales, expenses), [sales, expenses]);
   const monthTotals = useMemo(() => calculateTotals(monthSales, monthExpenses), [monthSales, monthExpenses]);
   const incomeChart = useMemo(() => buildDailyIncomeChart(monthSales), [monthSales]);
   const paymentChart = useMemo(() => buildPaymentChart(sales), [sales]);
 
-  useEffect(() => { loadFinanceData(); }, [selectedDate]);
+  useEffect(() => {
+    try {
+      const goals = JSON.parse(backendStorage.getItem("financeGoals") || "{}");
+      setMonthlyGoal(Math.max(0, Number(goals.monthlySales || 0)));
+    } catch {}
+    loadFinanceData();
+  }, [selectedDate]);
 
   async function getOrderSales() {
     try {
@@ -70,7 +78,18 @@ export function AdminFinance() {
       const year = d.getFullYear();
       const month = d.getMonth() + 1;
       const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
-      const [manualDay, dayExpenses, manualMonth, expensesMonth, orderSales] = await Promise.all([getSalesByDate(selectedDate), getExpensesByDate(selectedDate), getMonthSales(year, month), getMonthExpenses(year, month), getOrderSales()]);
+      const previousDate = new Date(year, month - 2, 1);
+      const previousYear = previousDate.getFullYear();
+      const previousMonth = previousDate.getMonth() + 1;
+      const previousPrefix = `${previousYear}-${String(previousMonth).padStart(2, "0")}`;
+      const [manualDay, dayExpenses, manualMonth, expensesMonth, previousManualMonth, orderSales] = await Promise.all([
+        getSalesByDate(selectedDate),
+        getExpensesByDate(selectedDate),
+        getMonthSales(year, month),
+        getMonthExpenses(year, month),
+        getMonthSales(previousYear, previousMonth),
+        getOrderSales(),
+      ]);
       const orderDay = orderSales.filter((s) => s.sale_date === selectedDate);
       const orderMonth = orderSales.filter((s) => s.sale_date?.startsWith(monthPrefix));
       const finalDay = [...orderDay, ...manualDay];
@@ -78,6 +97,8 @@ export function AdminFinance() {
       setExpenses(dayExpenses);
       setMonthSales([...orderMonth, ...manualMonth]);
       setMonthExpenses(expensesMonth);
+      const previousOrderMonth = orderSales.filter((s) => s.sale_date?.startsWith(previousPrefix));
+      setPreviousMonthTotal(calculateTotals([...previousOrderMonth, ...previousManualMonth], []).salesTotal);
       setRealCash(calculateTotals(finalDay, dayExpenses).expectedCash);
     } catch (error) {
       console.error(error);
@@ -91,12 +112,45 @@ export function AdminFinance() {
   async function removeSale(id?: string) { if (!id || id.startsWith("order-")) return; await deleteSale(id); loadFinanceData(); }
   async function removeExpense(id?: string) { if (!id) return; await deleteExpense(id); loadFinanceData(); }
 
+  async function saveMonthlyGoal(value: number) {
+    const next = Math.max(0, Number(value || 0));
+    setMonthlyGoal(next);
+    const result = await backendStorage.setItem("financeGoals", JSON.stringify({ monthlySales: next }));
+    if (!result.ok) toast.error(result.error || "No se pudo guardar el objetivo");
+    else toast.success("Objetivo mensual guardado");
+  }
+
+  function exportCsv() {
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const rows: string[][] = [
+      ["tipo","fecha","hora","cliente/proveedor","concepto","pago","importe","coste","beneficio"],
+      ...monthSales.map((sale) => ["venta",sale.sale_date,sale.time,sale.client,sale.product,sale.payment_method,String(sale.amount),String(sale.cost),String(Number(sale.amount)-Number(sale.cost))]),
+      ...monthExpenses.map((expense) => ["gasto",expense.expense_date,"",expense.provider,expense.concept,expense.payment_method,String(-Number(expense.amount)),"",""]),
+    ];
+    const csv = "\uFEFF" + rows.map((row) => row.map(escape).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `herencia-finanzas-${selectedDate.slice(0,7)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Informe CSV descargado");
+  }
+
+  const monthChangePercent = previousMonthTotal > 0
+    ? ((monthTotals.salesTotal - previousMonthTotal) / previousMonthTotal) * 100
+    : null;
+  const goalProgress = monthlyGoal > 0 ? Math.min(100, (monthTotals.salesTotal / monthlyGoal) * 100) : 0;
+
   return <div className="relative -m-4 min-h-screen overflow-hidden rounded-[2rem] bg-gradient-to-br from-rose-50 via-white to-emerald-50 p-4 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8">
     <div className="pointer-events-none absolute -left-16 top-28 text-9xl opacity-10">🌸</div><div className="pointer-events-none absolute right-5 top-28 text-8xl opacity-10">🌿</div>
     <div className="relative space-y-7">
       <section className="rounded-[2rem] border border-rose-100 bg-white/90 p-7 shadow-[0_24px_70px_rgba(16,185,129,0.14)] backdrop-blur-xl">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between"><div><div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"><Sparkles className="h-4 w-4" /> Modo CEO financiero · datos reales</div><h1 className="text-4xl font-black tracking-tight text-zinc-900 md:text-5xl">Finanzas & Contabilidad</h1><p className="mt-3 text-zinc-500">Control diario, pedidos reales, caja, gastos y beneficios de Herencia Market.</p><p className="mt-2 text-sm font-bold text-emerald-700">{ordersSynced} pedidos reales sincronizados desde Pedidos.</p></div>
-        <div className="flex flex-col gap-3 sm:flex-row"><label className="flex items-center gap-3 rounded-2xl border border-rose-100 bg-white px-4 py-3 font-bold text-zinc-700 shadow-sm"><CalendarDays className="h-5 w-5 text-rose-400" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent outline-none" /></label><button onClick={() => setSaleOpen(true)} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-4 font-black text-white shadow-lg shadow-emerald-200">+ Añadir venta</button><button onClick={() => setExpenseOpen(true)} className="rounded-2xl bg-gradient-to-r from-rose-400 to-pink-500 px-6 py-4 font-black text-white shadow-lg shadow-rose-200">+ Añadir gasto</button><button onClick={loadFinanceData} className="rounded-2xl border border-emerald-100 bg-white px-4 py-4 text-emerald-700"><RefreshCw className="h-5 w-5" /></button></div></div>
+        <div className="flex flex-col gap-3 sm:flex-row"><label className="flex items-center gap-3 rounded-2xl border border-rose-100 bg-white px-4 py-3 font-bold text-zinc-700 shadow-sm"><CalendarDays className="h-5 w-5 text-rose-400" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent outline-none" /></label><button onClick={() => setSaleOpen(true)} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-4 font-black text-white shadow-lg shadow-emerald-200">+ Añadir venta</button><button onClick={() => setExpenseOpen(true)} className="rounded-2xl bg-gradient-to-r from-rose-400 to-pink-500 px-6 py-4 font-black text-white shadow-lg shadow-rose-200">+ Añadir gasto</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-100 bg-white px-4 py-4 font-bold text-emerald-700"><Download className="h-5 w-5" />CSV</button><button onClick={loadFinanceData} className="rounded-2xl border border-emerald-100 bg-white px-4 py-4 text-emerald-700"><RefreshCw className="h-5 w-5" /></button></div></div>
       </section>
 
       {loading ? <Panel title="Cargando" subtitle="Leyendo pedidos y finanzas reales"><p className="py-8 text-center text-zinc-400">Cargando finanzas...</p></Panel> : <>
