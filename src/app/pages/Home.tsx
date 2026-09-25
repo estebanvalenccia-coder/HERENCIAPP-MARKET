@@ -18,6 +18,20 @@ import { getMarketExperience } from "../lib/marketExperience";
 const DEFAULT_HERO =
   "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88";
 
+const IMAGE_FALLBACKS = {
+  hero: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86",
+  dulce: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=1600&q=86",
+  moda: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1600&q=86",
+  category: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=900&q=82",
+};
+
+function imageFallback(event: any, fallback: string) {
+  const img = event.currentTarget as HTMLImageElement;
+  if (img.dataset.fallbackApplied === "1") return;
+  img.dataset.fallbackApplied = "1";
+  img.src = fallback;
+}
+
 function money(value: unknown) {
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
@@ -87,6 +101,7 @@ export function Home() {
         <img
           src={market.home.heroImageUrl || site.hero.imageUrl || DEFAULT_HERO}
           alt=""
+          onError={(event) => imageFallback(event, IMAGE_FALLBACKS.hero)}
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#173d2a]/62 to-transparent" />
@@ -126,7 +141,7 @@ export function Home() {
             {market.home.categories.map((item) => (
               <Link key={item.title} to={item.href} className="group text-center">
                 <div className="mx-auto h-20 w-20 overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2eee6] shadow-sm transition group-hover:-translate-y-1 group-hover:shadow-md">
-                  <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                  <img src={item.imageUrl} alt="" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />
                 </div>
                 <p className="mt-2 text-xs font-black leading-tight text-[#1f3b2d] sm:text-sm">
                   {item.title}
@@ -163,6 +178,7 @@ export function Home() {
                 <img
                   src={item.imageUrl}
                   alt={item.title}
+                  onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
                   className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                 />
               </div>
@@ -205,6 +221,7 @@ export function Home() {
                   <img
                     src={service.imageUrl}
                     alt=""
+                    onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
                     className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                   />
                 </div>
@@ -281,6 +298,7 @@ export function Home() {
             <img
               src={promo.imageUrl}
               alt=""
+              onError={(event) => imageFallback(event, index === 0 ? IMAGE_FALLBACKS.dulce : IMAGE_FALLBACKS.moda)}
               className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
             />
             <div
