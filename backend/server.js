@@ -4847,7 +4847,7 @@ app.use("/api/neural", requireAdmin, async (req, res) => {
       method,
       headers: { "Content-Type": "application/json", "X-Neural-Admin-Token": adminToken },
       body: ["GET", "HEAD"].includes(method) ? undefined : JSON.stringify(req.body || {}),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(Number(process.env.NEURAL_PROXY_TIMEOUT_MS || 45000)),
     });
     const text = await upstream.text();
     res.status(upstream.status);
