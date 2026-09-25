@@ -36,7 +36,9 @@ export function Products() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const categoria = params.get("categoria");
+    const buscar = params.get("buscar");
     if (categoria) setSelectedCategory(categoria);
+    if (buscar !== null) setSearchQuery(buscar);
   }, [location.search]);
 
   useEffect(() => {
