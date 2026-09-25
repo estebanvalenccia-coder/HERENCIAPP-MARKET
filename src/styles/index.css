@@ -1,3 +1,87 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+
+/* HERENCIA MARKET — premium storefront skin.
+   Scoped to the public Layout so the administration UI is not restyled. */
+.herencia-marketfront {
+  --hm-forest: #173d2a;
+  --hm-green: #315b42;
+  --hm-green-deep: #102b20;
+  --hm-cream: #fbfaf6;
+  --hm-paper: #fffdf9;
+  --hm-sand: #f4f1e8;
+  --hm-line: #e5e1d8;
+  --hm-muted: #6c786f;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(49,91,66,.045), transparent 26rem),
+    var(--hm-cream);
+  color: #173126;
+  letter-spacing: -.008em;
+}
+
+.herencia-marketfront h1,
+.herencia-marketfront h2,
+.herencia-marketfront h3,
+.herencia-marketfront h4 {
+  font-family: var(--app-heading-font);
+  letter-spacing: -.025em;
+}
+
+.herencia-marketfront main {
+  background: linear-gradient(180deg, #fffdf9 0%, #fbfaf6 22rem, #fbfaf6 100%);
+}
+
+.herencia-marketfront header {
+  box-shadow: 0 1px 0 rgba(23,61,42,.04);
+}
+
+.herencia-marketfront header nav a {
+  letter-spacing: .005em;
+}
+
+.herencia-marketfront input,
+.herencia-marketfront select,
+.herencia-marketfront textarea {
+  background-color: rgba(255,253,249,.96);
+  border-color: #ded9cd;
+}
+
+.herencia-marketfront button,
+.herencia-marketfront a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.herencia-marketfront img {
+  image-rendering: auto;
+}
+
+.herencia-marketfront main article,
+.herencia-marketfront main [class*="rounded-2xl"],
+.herencia-marketfront main [class*="rounded-3xl"] {
+  transition-property: transform, box-shadow, border-color, background-color;
+  transition-duration: 240ms;
+  transition-timing-function: ease;
+}
+
+.herencia-marketfront main article:hover {
+  border-color: rgba(49,91,66,.24);
+  box-shadow: 0 16px 38px rgba(34,55,42,.09);
+}
+
+.herencia-marketfront footer {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255,255,255,.06), transparent 24rem),
+    #173d2a;
+}
+
+@media (max-width: 640px) {
+  .herencia-marketfront main {
+    overflow-x: hidden;
+  }
+
+  .herencia-marketfront h1 {
+    letter-spacing: -.035em;
+  }
+}
