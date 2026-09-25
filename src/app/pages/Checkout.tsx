@@ -118,7 +118,7 @@ export function Checkout() {
   const validateForm = () => {
     if (!cartItems.length) {
       toast.error("Tu carrito está vacío");
-      navigate("/cart");
+      navigate("/carrito");
       return false;
     }
 
