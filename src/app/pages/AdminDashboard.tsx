@@ -38,7 +38,9 @@ import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
 import { AdminFinance } from "../components/admin/AdminFinance";
 import { AdminPOS } from "../components/admin/AdminPOS";
-import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";\nimport { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";\nimport { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
+import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
+import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
+import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
 
 type AdminSection =
   | "dashboard"
@@ -314,7 +316,9 @@ export function AdminDashboard() {
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
-    { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },\n    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },\n    { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
+    { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
+    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
+    { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -763,7 +767,11 @@ export function AdminDashboard() {
 
           {currentSection === "content" && <AdminContent />}
 
-          {currentSection === "delivery" && <AdminDeliveryPanel />}\n\n          {currentSection === "neural" && <AdminHerenciaNeural />}\n\n          {currentSection === "audit" && <AdminSystemAudit />}
+          {currentSection === "delivery" && <AdminDeliveryPanel />}
+
+          {currentSection === "neural" && <AdminHerenciaNeural />}
+
+          {currentSection === "audit" && <AdminSystemAudit />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>

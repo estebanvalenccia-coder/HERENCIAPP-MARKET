@@ -6,7 +6,7 @@ import { StorefrontBlock } from "../site/StorefrontBlock";
 import { ensureBuilderBlocks, type SiteContent } from "../../lib/siteContent";
 
 type Mode="AUTO"|"ASK"|"BLOCK";
-type Message={role:"user"|"neural";text:string};
+type Message={role:"user"|"neural";text:string;activity?:string[];kind?:string};
 const labels:Record<string,string>={read_business_state:"Leer estado del negocio",internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",prepare_web_changes:"Preparar borradores web",modify_stock:"Modificar stock",change_prices:"Cambiar precios",publish_web_changes:"Publicar cambios web",rollback_web_changes:"Restaurar versiones web",create_products:"Crear productos",edit_products:"Editar productos",delete_products:"Eliminar productos",record_expenses:"Registrar gastos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails",contact_suppliers:"Contactar proveedores",manage_crm:"Gestionar CRM",manage_suppliers:"Gestionar proveedores",create_promotions:"Crear promociones",issue_invoices:"Emitir facturas",purchases:"Realizar compras",refunds:"Hacer devoluciones",payments:"Realizar pagos"};
 
 export function AdminHerenciaNeural(){
@@ -22,7 +22,7 @@ export function AdminHerenciaNeural(){
  const [message,setMessage]=useState("");
  const [goal,setGoal]=useState("");
  const [memoryQuery,setMemoryQuery]=useState("");
- const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"HERENCIA Neural Command Center. Esta conversación envía órdenes al Neural Core independiente."}]);
+ const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"Estoy activa y conectada a Herencia. Puedes hablar conmigo normalmente, preguntarme por el negocio o darme una orden concreta.",kind:"conversation"}]);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState<string|null>(null);
  const [brief,setBrief]=useState<any>(null);
@@ -35,6 +35,7 @@ export function AdminHerenciaNeural(){
  const [resources,setResources]=useState<any>(null);
  const [proactive,setProactive]=useState<any>(null);
  const [scheduler,setScheduler]=useState<any>(null);
+ const [chatStage,setChatStage]=useState<string|null>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -68,7 +69,7 @@ export function AdminHerenciaNeural(){
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
  const cycle=async(key:string)=>{const order:Mode[]=["AUTO","ASK","BLOCK"],current=(permissions[key]||"BLOCK") as Mode,next=order[(order.indexOf(current)+1)%3];try{await backendApi.neuralSetPermission(key,next);toast.success(`${labels[key]||key}: ${next}`);await refresh()}catch(e:any){toast.error(e.message)}};
- const send=async()=>{const q=message.trim();if(!q)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");try{const r=await backendApi.neuralCommand(q);setMessages(m=>[...m,{role:"neural",text:r.message||`Orden registrada: ${r.kind||"task"}`}]);await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}};
+ const send=async()=>{const q=message.trim();if(!q||chatStage)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");setChatStage("Entendiendo tu mensaje…");try{const r=await backendApi.neuralChat(q,"admin:command-center");setMessages(m=>[...m,{role:"neural",text:r.message||"He procesado tu mensaje.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setChatStage(null)}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -99,8 +100,8 @@ export function AdminHerenciaNeural(){
 
   {tab==="command"&&<div className="grid xl:grid-cols-3 gap-5">
    <Panel title="Hablar con HERENCIA Neural" icon={Sparkles} className="xl:col-span-2">
-    <div className="h-72 overflow-y-auto space-y-3 pr-2">{messages.map((m,i)=><div key={i} className={`max-w-[88%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}>{m.text}</div>)}</div>
-    <div className="flex gap-2 mt-4"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&void send()} className="flex-1 border bg-background rounded-xl px-4" placeholder="Ej. revisa el stock y dime qué necesita atención"/><button onClick={()=>void send()} className="p-3 rounded-xl bg-primary text-primary-foreground"><Send/></button></div>
+    <div className="h-72 overflow-y-auto space-y-3 pr-2">{messages.map((m,i)=><div key={i} className={`max-w-[88%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
+    {chatStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{chatStage}</div>}<div className="flex gap-2 mt-4"><input value={message} disabled={Boolean(chatStage)} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&void send()} className="flex-1 border bg-background rounded-xl px-4 disabled:opacity-60" placeholder="Habla con Neural o pide: revisa el stock y dime qué necesita atención"/><button disabled={Boolean(chatStage)} onClick={()=>void send()} className="p-3 rounded-xl bg-primary text-primary-foreground disabled:opacity-50"><Send/></button></div>
    </Panel>
    <Panel title="Estado vivo" icon={Activity}>
     <Metric icon={ShoppingBag} label="Pedidos observados" value={String(status?.twinRevision!=null?(status?.self?"Digital Twin r"+status.twinRevision:status.twinRevision):"—")}/>
