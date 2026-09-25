@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { User, Mail, Phone, MapPin, Package, LogOut, Bell, Gift, Sprout, Copy, Users } from "lucide-react";
+import { User, Mail, Phone, MapPin, Package, LogOut, Bell, Gift, Sprout, Copy, Users, Download, Shield, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -84,6 +84,36 @@ export function Profile() {
     toast.success("Código de referido copiado");
   };
 
+  const exportPrivacyData = async () => {
+    try {
+      const data = await backendApi.customerPrivacyExport();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `herencia-mis-datos-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Tus datos se han exportado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron exportar tus datos");
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!confirm("¿Eliminar tu cuenta de Herencia? Esta acción no se puede deshacer. Los registros fiscales/ventas que legalmente deban conservarse pueden mantenerse.")) return;
+    try {
+      const result = await backendApi.customerPrivacyDeleteAccount();
+      await backendStorage.removeItem("user");
+      toast.success(result.retained || "Cuenta eliminada");
+      navigate("/");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar la cuenta");
+    }
+  };
+
   if (loading) return <div className="min-h-[70vh] flex items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" /></div>;
   if (!user) return null;
 
@@ -148,6 +178,15 @@ export function Profile() {
             </motion.div>)}
           </div>}
         </div>
+
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <div className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary"/><h2 className="text-xl font-bold">Privacidad y tus datos</h2></div>
+          <p className="mt-2 text-sm text-muted-foreground">Puedes descargar una copia de la información asociada a tu cuenta o cerrar tu cuenta. Los documentos de venta/facturación sujetos a conservación legal pueden mantenerse.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={()=>void exportPrivacyData()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold"><Download className="h-4 w-4"/>Exportar mis datos</button>
+            <button onClick={()=>void deleteAccount()} className="inline-flex items-center gap-2 rounded-xl bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive"><Trash2 className="h-4 w-4"/>Eliminar mi cuenta</button>
+          </div>
+        </section>
 
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 text-sm">
           <div className="flex gap-3"><Bell className="w-5 h-5 text-primary flex-shrink-0" /><div><p className="font-semibold">Programa Herencia</p><p className="text-muted-foreground">Semilla hasta 99 €, Brote desde 100 € y Jardín desde 300 € de compras válidas.</p></div></div>

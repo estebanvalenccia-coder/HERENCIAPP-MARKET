@@ -1422,6 +1422,125 @@ async function processCustomerReminders() {
   return { sent };
 }
 
+
+app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === req.customerSession.customerId);
+    if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
+    const email = normalizeCustomerEmail(account.email);
+
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("customer_email", email)
+      .order("created_at", { ascending: false });
+    if (ordersError) throw ordersError;
+
+    const reminders = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), [])
+      .filter((item) => item.customerId === account.id);
+    const referrals = parseStoredJson(await readStorageValue(CUSTOMER_REFERRALS_KEY), [])
+      .filter((item) => item.referrerCustomerId === account.id || item.referredCustomerId === account.id);
+    const reviews = (await readExperienceList(EXPERIENCE_REVIEWS_KEY))
+      .filter((item) => normalizeCustomerEmail(item.email) === email);
+    const waitlist = (await readExperienceList(EXPERIENCE_WAITLIST_KEY))
+      .filter((item) => normalizeCustomerEmail(item.email) === email);
+
+    res.json({
+      exportedAt: new Date().toISOString(),
+      account: safeCustomer(account),
+      orders: (orders || []).map(normalizeOrder),
+      reminders,
+      referrals,
+      reviews,
+      waitlist,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron exportar tus datos" });
+  }
+});
+
+app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === req.customerSession.customerId);
+    if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+    const email = normalizeCustomerEmail(account.email);
+    const customerId = account.id;
+    const deletedAt = new Date().toISOString();
+
+    await saveCustomerAccounts(accounts.filter((item) => item.id !== customerId));
+
+    const reminders = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), [])
+      .filter((item) => item.customerId !== customerId);
+    await upsertStorageValue(CUSTOMER_REMINDERS_KEY, JSON.stringify(reminders));
+
+    const referrals = parseStoredJson(await readStorageValue(CUSTOMER_REFERRALS_KEY), [])
+      .filter((item) => item.referrerCustomerId !== customerId && item.referredCustomerId !== customerId);
+    await upsertStorageValue(CUSTOMER_REFERRALS_KEY, JSON.stringify(referrals));
+
+    const reviews = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
+    const anonymizedReviews = reviews.map((item) =>
+      normalizeCustomerEmail(item.email) === email
+        ? { ...item, name: "Cliente", email: "", anonymizedAt: deletedAt }
+        : item
+    );
+    await writeExperienceList(EXPERIENCE_REVIEWS_KEY, anonymizedReviews);
+
+    const waitlist = await readExperienceList(EXPERIENCE_WAITLIST_KEY);
+    const cleanedWaitlist = waitlist.filter((item) => normalizeCustomerEmail(item.email) !== email);
+    await writeExperienceList(EXPERIENCE_WAITLIST_KEY, cleanedWaitlist);
+
+    const { data: orderRows, error: ordersError } = await supabase
+      .from("orders")
+      .select("id,metadata")
+      .eq("customer_email", email);
+    if (ordersError) throw ordersError;
+
+    for (const order of orderRows || []) {
+      const metadata = order.metadata || {};
+      const hasFiscalIdentity = Boolean(
+        metadata.customerNif ||
+        metadata.customerAddress ||
+        metadata.fiscalSnapshot?.customerNif ||
+        metadata.fiscalSnapshot?.customerAddress ||
+        metadata.invoiceNumber
+      );
+      const nextMetadata = {
+        ...metadata,
+        phone: "",
+        customerPhone: "",
+        shippingAddress: null,
+        privacyAccountDeletedAt: deletedAt,
+        privacyTransactionalRetention: hasFiscalIdentity ? "fiscal_record_retained" : "order_record_retained",
+      };
+      const patch = {
+        metadata: nextMetadata,
+        ...(hasFiscalIdentity
+          ? {}
+          : { customer_email: null, customer_name: "Cliente eliminado" }),
+      };
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update(patch)
+        .eq("id", order.id);
+      if (updateError) throw updateError;
+    }
+
+    res.setHeader("Set-Cookie", `customer_session=; ${cookieOptions(0)}`);
+    res.json({
+      ok: true,
+      deletedAt,
+      retained: "Los registros de venta/facturación que deban conservarse no se eliminan, pero se retiran datos de entrega y cuenta cuando no son necesarios.",
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar la cuenta" });
+  }
+});
+
 app.get("/api/customer/account", requireCustomer, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {

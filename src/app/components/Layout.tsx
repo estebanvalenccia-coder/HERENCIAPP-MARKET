@@ -24,6 +24,8 @@ export function Layout() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [herenciaEnabled, setHerenciaEnabled] = useState(false);
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [cookieConsent, setCookieConsent] = useState<string>(() => { try { return localStorage.getItem("herencia_cookie_consent") || ""; } catch { return ""; } });
   const [menuIcons, setMenuIcons] = useState({
     home: "Home",
     products: "Leaf",
@@ -60,6 +62,7 @@ export function Layout() {
       }
 
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      try { const suite = JSON.parse(backendStorage.getItem("businessSuiteSettings") || "{}"); setMaintenanceMode(Boolean(suite.maintenanceMode)); } catch { setMaintenanceMode(false); }
     };
 
     loadSettings();
@@ -80,6 +83,21 @@ export function Layout() {
   const HerenciaIcon = iconMap[menuIcons.herencia] || Bot;
   const headerDesign = site.builder?.headerStyle || defaultSiteContent.builder.headerStyle;
   const footerDesign = site.builder?.footerStyle || defaultSiteContent.builder.footerStyle;
+
+  if (maintenanceMode) {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <div className="min-h-screen grid place-items-center bg-background px-6">
+          <div className="max-w-xl text-center">
+            <img src={site.brand.logoUrl || logo} alt={site.brand.logoAlt || site.brand.name} className="mx-auto h-24 w-auto" />
+            <h1 className="mt-8 text-4xl font-black text-foreground">Herencia está preparando algo bonito</h1>
+            <p className="mt-4 text-lg text-muted-foreground">La tienda está temporalmente en mantenimiento. Volveremos a estar disponibles en cuanto terminemos.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -238,6 +256,20 @@ export function Layout() {
     </div>
     <ChatboxWidget />
     <WhatsAppButton />
+    {!cookieConsent && (
+      <div className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-border bg-card p-4 shadow-2xl">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="font-semibold text-foreground">Privacidad y cookies</p>
+            <p className="mt-1 text-sm text-muted-foreground">Herencia usa almacenamiento esencial para carrito, sesión y funcionamiento de la tienda. Puedes aceptar o mantener solo lo esencial.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>{localStorage.setItem("herencia_cookie_consent","essential");setCookieConsent("essential");}} className="rounded-xl border border-border px-4 py-2 text-sm font-semibold">Solo esenciales</button>
+            <button onClick={()=>{localStorage.setItem("herencia_cookie_consent","accepted");setCookieConsent("accepted");}} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Aceptar</button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

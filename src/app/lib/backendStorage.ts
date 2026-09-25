@@ -757,6 +757,16 @@ export const backendApi = {
     return request<{ ok: boolean }>("/api/customer/logout", { method: "POST", body: "{}" });
   },
 
+  async customerPrivacyExport() {
+    return request<any>("/api/customer/privacy/export");
+  },
+
+  async customerPrivacyDeleteAccount() {
+    return request<{ ok: boolean; deletedAt: string; retained?: string }>("/api/customer/privacy/account", {
+      method: "DELETE",
+    });
+  },
+
   async customerAccount() {
     return request<{ user: any; orders: any[]; loyalty: any; reminders: any[] }>("/api/customer/account");
   },
