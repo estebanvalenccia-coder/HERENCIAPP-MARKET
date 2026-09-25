@@ -38,7 +38,9 @@ import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
 import { AdminFinance } from "../components/admin/AdminFinance";
 import { AdminPOS } from "../components/admin/AdminPOS";
-import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";\nimport { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";\nimport { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
+import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
+import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
+import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
 
 type AdminSection =
   | "dashboard"
