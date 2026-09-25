@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import { ChatboxWidget } from "./ChatboxWidget";
 import { WhatsAppButton } from "./WhatsAppButton";
+import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 
 // Mapeo de iconos
@@ -103,6 +104,7 @@ export function Layout() {
     <>
       <Toaster position="top-right" richColors />
       <div className="min-h-screen bg-background">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Saltar al contenido principal</a>
       {/* Header */}
       <header
         className={`${headerDesign.sticky ? "sticky top-0" : "relative"} z-50 transition-all duration-300 ${
@@ -164,7 +166,7 @@ export function Layout() {
       </header>
 
       {/* Main Content */}
-      <main className="min-h-[calc(100vh-4rem)]">
+      <main id="main-content" tabIndex={-1} className="min-h-[calc(100vh-4rem)]">
         <Outlet />
       </main>
 
@@ -256,6 +258,7 @@ export function Layout() {
     </div>
     <ChatboxWidget />
     <WhatsAppButton />
+    <AccessibilityPanel />
     {!cookieConsent && (
       <div className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-border bg-card p-4 shadow-2xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
