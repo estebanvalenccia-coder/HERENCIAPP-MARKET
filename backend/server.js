@@ -1541,17 +1541,30 @@ function sanitizePosOperations(operations = {}) {
   };
 }
 
-async function readPosCashSession() {
-  return parseStoredJson(await readStorageValue("posCashSession"), null);
+function normalizeRegisterId(value) {
+  const normalized = String(value || "caja-01").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return normalized || "caja-01";
 }
 
-async function writePosCashSession(session) {
-  await upsertStorageValue("posCashSession", JSON.stringify(session));
-  return session;
+function posCashSessionKey(registerId = "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  return id === "caja-01" ? "posCashSession" : `posCashSession:${id}`;
 }
 
-async function registerCashSaleInSession(amount, orderId) {
-  const session = await readPosCashSession();
+async function readPosCashSession(registerId = "caja-01") {
+  return parseStoredJson(await readStorageValue(posCashSessionKey(registerId)), null);
+}
+
+async function writePosCashSession(session, registerId = session?.registerId || "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  const next = { ...(session || {}), registerId: id };
+  await upsertStorageValue(posCashSessionKey(id), JSON.stringify(next));
+  return next;
+}
+
+async function registerCashSaleInSession(amount, orderId, registerId = "caja-01") {
+  const id = normalizeRegisterId(registerId);
+  const session = await readPosCashSession(id);
   if (!session || session.status !== "open") {
     throw new Error("La caja está cerrada. Ábrela antes de cobrar en efectivo.");
   }
@@ -1559,6 +1572,7 @@ async function registerCashSaleInSession(amount, orderId) {
   const saleAmount = normalizeMoney(amount);
   const next = {
     ...session,
+    registerId: id,
     cashSales: normalizeMoney(Number(session.cashSales || 0) + saleAmount),
     expectedCash: normalizeMoney(Number(session.expectedCash || 0) + saleAmount),
     movements: [
@@ -1568,6 +1582,7 @@ async function registerCashSaleInSession(amount, orderId) {
         type: "sale",
         amount: saleAmount,
         orderId,
+        registerId: id,
         note: "Venta en efectivo",
         at: new Date().toISOString(),
       },
@@ -1575,7 +1590,7 @@ async function registerCashSaleInSession(amount, orderId) {
     updatedAt: new Date().toISOString(),
   };
 
-  await writePosCashSession(next);
+  await writePosCashSession(next, id);
   return next;
 }
 
@@ -1590,10 +1605,11 @@ app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
   }
 });
 
-app.get("/api/pos/cash-session", requireAdmin, async (_req, res) => {
+app.get("/api/pos/cash-session", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    res.json({ session: await readPosCashSession() });
+    const registerId = normalizeRegisterId(req.query?.registerId);
+    res.json({ session: await readPosCashSession(registerId) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1602,7 +1618,8 @@ app.get("/api/pos/cash-session", requireAdmin, async (_req, res) => {
 app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const current = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const current = await readPosCashSession(registerId);
     if (current?.status === "open") {
       return res.status(409).json({ error: "Ya hay una caja abierta" });
     }
@@ -1615,6 +1632,7 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
     const now = new Date().toISOString();
     const session = {
       id: crypto.randomUUID(),
+      registerId,
       status: "open",
       openedAt: now,
       closedAt: null,
@@ -1646,7 +1664,8 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
 app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const session = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const session = await readPosCashSession(registerId);
     if (!session || session.status !== "open") {
       return res.status(409).json({ error: "La caja está cerrada" });
     }
@@ -1694,7 +1713,8 @@ app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
 app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const session = await readPosCashSession();
+    const registerId = normalizeRegisterId(req.body?.registerId);
+    const session = await readPosCashSession(registerId);
     if (!session || session.status !== "open") {
       return res.status(409).json({ error: "No hay una caja abierta" });
     }
