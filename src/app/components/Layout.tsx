@@ -8,7 +8,7 @@ import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, isExternalHref, normalizePhoneForHref, normalizeWhatsAppPhone, parseSiteContent, SiteContent } from "../lib/siteContent";
 import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
-import { ChatboxWidget } from "./ChatboxWidget";
+import { SalesChatWidget } from "./SalesChatWidget";
 import { WhatsAppButton } from "./WhatsAppButton";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
@@ -256,7 +256,7 @@ export function Layout() {
         </div>
       </footer>
     </div>
-    <ChatboxWidget />
+    <SalesChatWidget />
     <WhatsAppButton />
     <AccessibilityPanel />
     {!cookieConsent && (
