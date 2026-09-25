@@ -190,6 +190,8 @@ const adminOnlyStorageKeys = [
   "herencia_finance_expenses",
   "herencia_finance_closures",
   "businessSuiteSettings",
+  "automationRules",
+  "adminAutomationNotifications",
   "customerAccounts",
   "customerReferrals",
 ];
@@ -1687,6 +1689,153 @@ app.patch("/api/admin/experience/reviews/:id", requireAdmin, async (req, res) =>
   }
 });
 
+
+const AUTOMATION_RULES_KEY = "automationRules";
+const AUTOMATION_NOTIFICATIONS_KEY = "adminAutomationNotifications";
+
+const defaultAutomationRules = {
+  lowStock: { enabled: true, threshold: 3 },
+  outOfStock: { enabled: true },
+  delayedOrder: { enabled: true, minutes: 90 },
+};
+
+async function loadAutomationRules() {
+  return { ...defaultAutomationRules, ...(parseStoredJson(await readStorageValue(AUTOMATION_RULES_KEY), {}) || {}) };
+}
+
+async function loadAutomationNotifications() {
+  return parseStoredJson(await readStorageValue(AUTOMATION_NOTIFICATIONS_KEY), []);
+}
+
+async function addAutomationNotification(payload) {
+  const rows = await loadAutomationNotifications();
+  const dedupeKey = String(payload.dedupeKey || "");
+  const existing = dedupeKey && rows.find((row) => row.dedupeKey === dedupeKey && !row.resolved);
+  if (existing) return existing;
+  const item = {
+    id: crypto.randomUUID(),
+    type: String(payload.type || "info"),
+    title: String(payload.title || "Aviso"),
+    message: String(payload.message || ""),
+    entityType: String(payload.entityType || ""),
+    entityId: String(payload.entityId || ""),
+    dedupeKey,
+    read: false,
+    resolved: false,
+    createdAt: new Date().toISOString(),
+  };
+  const next = [item, ...rows].slice(0, 1000);
+  await upsertStorageValue(AUTOMATION_NOTIFICATIONS_KEY, JSON.stringify(next));
+  return item;
+}
+
+async function evaluateInventoryAutomations(products = []) {
+  const rules = await loadAutomationRules();
+  const threshold = Math.max(0, Number(rules.lowStock?.threshold ?? 3));
+  for (const product of Array.isArray(products) ? products : []) {
+    if (product?.active === false) continue;
+    const stock = Math.max(0, Number(product?.stock || 0));
+    const id = String(product?.id || "");
+    const name = String(product?.name || "Producto");
+    if (rules.outOfStock?.enabled && stock <= 0) {
+      await addAutomationNotification({
+        type: "out_of_stock",
+        title: "Producto agotado",
+        message: `${name} se ha quedado sin stock.`,
+        entityType: "product",
+        entityId: id,
+        dedupeKey: `out:${id}`,
+      });
+    } else if (rules.lowStock?.enabled && stock <= threshold) {
+      await addAutomationNotification({
+        type: "low_stock",
+        title: "Stock bajo",
+        message: `${name} tiene ${stock} unidades. Umbral: ${threshold}.`,
+        entityType: "product",
+        entityId: id,
+        dedupeKey: `low:${id}:${stock}`,
+      });
+    }
+  }
+}
+
+async function evaluateDelayedOrders() {
+  const rules = await loadAutomationRules();
+  if (!rules.delayedOrder?.enabled || !supabase) return;
+  const minutes = Math.max(15, Number(rules.delayedOrder?.minutes ?? 90));
+  const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id,customer_name,status,created_at")
+    .lt("created_at", cutoff)
+    .in("status", ["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed"]);
+  if (error) throw error;
+  for (const order of data || []) {
+    await addAutomationNotification({
+      type: "delayed_order",
+      title: "Pedido requiere atención",
+      message: `Pedido #${String(order.id).slice(0,8)} de ${order.customer_name || "Cliente"} lleva más de ${minutes} min sin avanzar.`,
+      entityType: "order",
+      entityId: String(order.id),
+      dedupeKey: `delay:${order.id}:${order.status}`,
+    });
+  }
+}
+
+app.get("/api/admin/automations", requireAdmin, async (_req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    await evaluateDelayedOrders();
+    const [rules, notifications] = await Promise.all([loadAutomationRules(), loadAutomationNotifications()]);
+    res.json({ rules, notifications });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar automatizaciones" });
+  }
+});
+
+app.put("/api/admin/automations/rules", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const current = await loadAutomationRules();
+    const next = {
+      lowStock: {
+        enabled: req.body?.lowStock?.enabled ?? current.lowStock.enabled,
+        threshold: Math.max(0, Number(req.body?.lowStock?.threshold ?? current.lowStock.threshold)),
+      },
+      outOfStock: { enabled: req.body?.outOfStock?.enabled ?? current.outOfStock.enabled },
+      delayedOrder: {
+        enabled: req.body?.delayedOrder?.enabled ?? current.delayedOrder.enabled,
+        minutes: Math.max(15, Number(req.body?.delayedOrder?.minutes ?? current.delayedOrder.minutes)),
+      },
+    };
+    await upsertStorageValue(AUTOMATION_RULES_KEY, JSON.stringify(next));
+    const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+    await evaluateInventoryAutomations(products);
+    res.json({ rules: next });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron guardar las reglas" });
+  }
+});
+
+app.patch("/api/admin/automations/notifications/:id", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const rows = await loadAutomationNotifications();
+    const index = rows.findIndex((row) => row.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Aviso no encontrado" });
+    rows[index] = {
+      ...rows[index],
+      read: req.body?.read ?? rows[index].read,
+      resolved: req.body?.resolved ?? rows[index].resolved,
+      updatedAt: new Date().toISOString(),
+    };
+    await upsertStorageValue(AUTOMATION_NOTIFICATIONS_KEY, JSON.stringify(rows));
+    res.json({ notification: rows[index] });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar el aviso" });
+  }
+});
+
 app.get("/api/orders", requireAdmin, async (_req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -1742,6 +1891,7 @@ app.post("/api/orders", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   broadcastAdminOrderEvent(data, "order_created");
+  void evaluateDelayedOrders().catch((error) => console.warn("Automations order check:", error?.message || error));
   void emitNeuralBusinessEvent("order.created", normalizeOrder(data));
 
   try {
@@ -2847,6 +2997,7 @@ app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
       String(item?.id) === productId ? { ...item, stock: after } : item
     );
     await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
+    void evaluateInventoryAutomations(updatedProducts).catch((error) => console.warn("Automations stock check:", error?.message || error));
 
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };

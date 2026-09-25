@@ -768,6 +768,24 @@ export const backendApi = {
     });
   },
 
+  async adminAutomations() {
+    return request<{ rules: any; notifications: any[] }>("/api/admin/automations");
+  },
+
+  async saveAutomationRules(rules: any) {
+    return request<{ rules: any }>("/api/admin/automations/rules", {
+      method: "PUT",
+      body: JSON.stringify(rules),
+    });
+  },
+
+  async updateAutomationNotification(id: string, payload: { read?: boolean; resolved?: boolean }) {
+    return request<{ notification: any }>(`/api/admin/automations/notifications/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async createOrder(payload: any) {
     return request<{ order: any }>("/api/orders", {
       method: "POST",

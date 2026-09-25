@@ -27,6 +27,7 @@ import {
   Building2,
   Boxes,
   Trash2,
+  Workflow,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -53,6 +54,7 @@ import { AdminCRMClients } from "../components/admin/AdminCRMClients";
 import { AdminSuppliersPanel } from "../components/admin/AdminSuppliersPanel";
 import { AdminStockControl } from "../components/admin/AdminStockControl";
 import { AdminWasteControl } from "../components/admin/AdminWasteControl";
+import { AdminAutomationCenter } from "../components/admin/AdminAutomationCenter";
 
 type AdminSection =
   | "dashboard"
@@ -75,6 +77,7 @@ type AdminSection =
   | "suppliers"
   | "stock"
   | "waste"
+  | "automations"
   | "settings";
 
 type AdminOrderAlert = {
@@ -343,6 +346,7 @@ export function AdminDashboard() {
     { id: "suppliers" as AdminSection, label: "Proveedores", icon: Building2 },
     { id: "stock" as AdminSection, label: "Stock", icon: Boxes },
     { id: "waste" as AdminSection, label: "Mermas", icon: Trash2 },
+    { id: "automations" as AdminSection, label: "Automatizaciones", icon: Workflow, badge: "AUTO" },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -806,6 +810,8 @@ export function AdminDashboard() {
           {currentSection === "stock" && <AdminStockControl />}
 
           {currentSection === "waste" && <AdminWasteControl />}
+
+          {currentSection === "automations" && <AdminAutomationCenter />}
 
           {currentSection === "settings" && <AdminSettings />}
         </main>
