@@ -362,6 +362,11 @@ function normalizeOrder(order) {
 function renderOrderEmail(order, recipientType = "customer") {
   const normalized = normalizeOrder(order);
   const isAdminEmail = recipientType === "admin";
+  const fiscal = normalized.metadata?.fiscalSnapshot || {};
+  const taxAmount = Math.max(0, Number(normalized.metadata?.tax || 0));
+  const documentNumber = normalized.metadata?.invoiceNumber || normalized.id;
+  const customerNif = String(normalized.metadata?.customerNif || "");
+  const customerAddress = String(normalized.metadata?.customerAddress || "");
   const itemsHtml = normalized.items.length
     ? normalized.items
         .map((item) => {
@@ -426,8 +431,8 @@ function renderOrderEmail(order, recipientType = "customer") {
                 <h1 style="margin:0;font-size:28px;line-height:1.15;">${
                   isAdminEmail ? "Nuevo pedido en Herencia Market" : "¡Gracias por tu compra!"
                 }</h1>
-                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Pedido #${escapeHtml(
-                  normalized.id
+                <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Documento #${escapeHtml(
+                  documentNumber
                 )}</p>
               </td>
             </tr>
@@ -450,6 +455,8 @@ function renderOrderEmail(order, recipientType = "customer") {
                     <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Email</td>
                     <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(normalized.customerEmail || "No indicado")}</td>
                   </tr>
+                  ${customerNif ? `<tr><td style="padding:6px 0;color:#8b6b61;font-size:13px;">NIF/CIF cliente</td><td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(customerNif)}</td></tr>` : ""}
+                  ${customerAddress ? `<tr><td style="padding:6px 0;color:#8b6b61;font-size:13px;">Dirección fiscal</td><td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(customerAddress)}</td></tr>` : ""}
                   <tr>
                     <td style="padding:6px 0;color:#8b6b61;font-size:13px;">Entrega</td>
                     <td align="right" style="padding:6px 0;font-weight:700;">${escapeHtml(deliveryLabel)}</td>
@@ -467,9 +474,10 @@ function renderOrderEmail(order, recipientType = "customer") {
 
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#2b1712;color:#fff;border-radius:20px;padding:18px;">
                   <tr>
-                    <td style="padding:5px 0;color:#f8d8cc;">Subtotal</td>
+                    <td style="padding:5px 0;color:#f8d8cc;">${taxAmount > 0 ? "Base imponible" : "Subtotal"}</td>
                     <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.subtotal)}</td>
                   </tr>
+                  ${taxAmount > 0 ? `<tr><td style="padding:5px 0;color:#f8d8cc;">IVA</td><td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(taxAmount)}</td></tr>` : ""}
                   <tr>
                     <td style="padding:5px 0;color:#f8d8cc;">Envío</td>
                     <td align="right" style="padding:5px 0;font-weight:700;">${formatCurrency(normalized.shipping)}</td>
@@ -480,11 +488,19 @@ function renderOrderEmail(order, recipientType = "customer") {
                   </tr>
                 </table>
 
+                ${fiscal.businessName || fiscal.nif || fiscal.address ? `
+                  <div style="margin-top:22px;background:#fffaf7;border:1px solid #f1e7df;border-radius:18px;padding:16px;color:#4d3128;font-size:13px;line-height:1.6;">
+                    <strong style="display:block;color:#2b1712;margin-bottom:4px;">Datos fiscales del emisor</strong>
+                    ${fiscal.businessName ? `${escapeHtml(fiscal.businessName)}<br/>` : ""}
+                    ${fiscal.nif ? `NIF/CIF: ${escapeHtml(fiscal.nif)}<br/>` : ""}
+                    ${fiscal.address ? `${escapeHtml(fiscal.address)}<br/>` : ""}
+                    ${fiscal.email ? `${escapeHtml(fiscal.email)}` : ""}
+                  </div>` : ""}
                 <p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#8b6b61;text-align:center;">
                   ${
                     isAdminEmail
                       ? "Revisa el panel de administración para gestionar este pedido."
-                      : "Prepararemos tu pedido con mucho cariño. Si tienes cualquier duda, responde a este correo."
+                      : "Gracias por tu compra. Conserva este correo como justificante de la operación. Si tienes cualquier duda, responde a este correo."
                   }
                 </p>
               </td>
