@@ -50,11 +50,10 @@ export function Contact() {
             CONTACTO
           </p>
           <h1 className="mt-4 text-5xl font-medium sm:text-6xl">
-            Hablemos de tu idea
+            {site.contactPage.title}
           </h1>
           <p className="mt-5 max-w-xl text-base leading-8 text-[#66736b]">
-            Productos, regalos, plantas, jardín, decoración o un servicio personalizado.
-            Cuéntanos qué necesitas y te orientamos desde {market.locationLabel}.
+            {site.contactPage.subtitle} · {market.locationLabel}.
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -98,9 +97,9 @@ export function Contact() {
           <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">
             ESCRÍBENOS
           </p>
-          <h2 className="mt-2 text-3xl font-medium">¿En qué podemos ayudarte?</h2>
+          <h2 className="mt-2 text-3xl font-medium">{site.contactPage.helpTitle}</h2>
           <p className="mt-2 text-sm leading-6 text-[#6c786f]">
-            El formulario prepara tu mensaje y lo abre en WhatsApp para que puedas enviarlo directamente.
+{site.contactPage.helpIntro}
           </p>
 
           <form onSubmit={submit} className="mt-7 space-y-5">
