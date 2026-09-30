@@ -5,6 +5,7 @@ import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sp
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { products as fallbackProducts } from "../data/products";
+import { loadCommerceCatalog, loadCommerceProduct } from "../lib/commerceCatalog";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -27,31 +28,28 @@ export function ProductDetail() {
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
 
   useEffect(() => {
-    const adminProducts = backendStorage.getItem("adminProducts");
-    try {
-      const parsed = adminProducts ? JSON.parse(adminProducts) : [];
-      const rows = Array.isArray(parsed) && parsed.length
-        ? parsed.filter((item: any) => item.active !== false)
-        : fallbackProducts;
-      setAllProducts(rows);
-      const found = rows.find((p: any) => String(p.id) === String(id));
-      if (found) {
-        setProduct(found);
-        setSelectedVariant(Array.isArray(found.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
-        generateAIDescription(found.name, found.description || "");
-      } else {
-        setProduct(null);
+    let active = true;
+    const load = async () => {
+      const [found, rows] = await Promise.all([
+        id ? loadCommerceProduct(String(id)) : Promise.resolve(null),
+        loadCommerceCatalog(),
+      ]);
+      if (!active) return;
+      const catalog = rows.length ? rows : fallbackProducts;
+      setAllProducts(catalog);
+      const productFound = found || catalog.find((p:any)=>String(p.id)===String(id)) || null;
+      setProduct(productFound);
+      if (productFound) {
+        setSelectedVariant(Array.isArray(productFound.variants) && productFound.variants.length ? String(productFound.variants[0]?.name || productFound.variants[0]) : "");
+        generateAIDescription(productFound.name, productFound.description || "");
       }
-    } catch {
-      const found = fallbackProducts.find((p: any) => String(p.id) === String(id));
-      setAllProducts(fallbackProducts);
-      setProduct(found || null);
-      if (found) generateAIDescription(found.name, found.description || "");
-    }
-    try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
-    backendApi.customerWishlist().then((r)=>setFavorite((r.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
-    if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
-    if (id) backendApi.listProductQuestions(String(id)).then((r) => setQuestions(r.questions || [])).catch(() => setQuestions([]));
+      try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
+      backendApi.customerWishlist().then((r)=>active&&setFavorite((r.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
+      if (id) backendApi.listProductReviews(String(id)).then((r) => active&&setReviews(r.reviews || [])).catch(() => active&&setReviews([]));
+      if (id) backendApi.listProductQuestions(String(id)).then((r) => active&&setQuestions(r.questions || [])).catch(() => active&&setQuestions([]));
+    };
+    void load();
+    return () => { active = false; };
   }, [id]);
 
   useEffect(() => {
