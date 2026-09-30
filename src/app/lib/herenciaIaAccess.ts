@@ -21,13 +21,17 @@ export function getHerenciaIaAccessMessage({
   totalPaid?: number;
   remainingMessages?: number;
 }) {
-  if (email && !isHerenciaIaVip(totalPaid)) {
-    return "Herenc(IA) está reservado para clientes con más de 50 € en compras pagadas.";
-  }
-
   if (remainingMessages <= 0) {
-    return "Has consumido tus mensajes de Herenc(IA). Para seguir usando la IA, vuelve mañana o realiza una nueva compra.";
+    return "Has consumido tus mensajes de Herenc(IA) de hoy. Vuelve mañana para seguir usando el asistente.";
   }
 
-  return "Herenc(IA) disponible.";
+  if (!email) {
+    return "Acceso de visitante disponible.";
+  }
+
+  if (isHerenciaIaVip(totalPaid)) {
+    return "Acceso VIP disponible. Gracias por ser uno de nuestros mejores clientes.";
+  }
+
+  return "Acceso de cliente disponible.";
 }
