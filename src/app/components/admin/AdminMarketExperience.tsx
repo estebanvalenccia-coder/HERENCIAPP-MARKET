@@ -138,7 +138,7 @@ function ImageField({
 }
 
 type CommerceProduct = {
-  id: number;
+  id: string | number;
   name: string;
   description?: string;
   category: string;
@@ -156,7 +156,7 @@ type CommerceProduct = {
   status?: "draft" | "published" | "hidden" | "soldout";
   tags?: string[];
   variants?: Array<{ name: string; price?: number; stock?: number; sku?: string; image?: string }>;
-  relatedProductIds?: number[];
+  relatedProductIds?: Array<string | number>;
   personalization?: boolean;
   deletedAt?: string;
   compareAtPrice?: number;
@@ -202,16 +202,22 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   const [products, setProducts] = useState<CommerceProduct[]>([]);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<CommerceProduct | null>(null);
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<Array<string | number>>([]);
   const [sort, setSort] = useState("name");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showTrash, setShowTrash] = useState(false);
 
-  const load = () => {
-    try { setProducts(JSON.parse(backendStorage.getItem("adminProducts") || "[]")); }
-    catch { setProducts([]); }
+  const load = async () => {
+    try {
+      await backendApi.bootstrapCommerceCatalog().catch(() => null);
+      const result = await backendApi.listCommerceProducts({ includeArchived: true });
+      setProducts(Array.isArray(result.products) ? result.products : []);
+    } catch {
+      try { setProducts(JSON.parse(backendStorage.getItem("adminProducts") || "[]")); }
+      catch { setProducts([]); }
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, []);
 
   const aliases = CATEGORY_ALIASES[category] || [category];
   const visible = useMemo(() => products
@@ -221,9 +227,34 @@ function ProductManager({ title, category, onClose }: { title: string; category:
     .sort((a,b) => sort==="price" ? Number(a.price)-Number(b.price) : sort==="stock" ? Number(a.stock||0)-Number(b.stock||0) : a.name.localeCompare(b.name)), [products, query, category, sort, statusFilter, showTrash]);
 
   const persist = async (next: CommerceProduct[]) => {
+    const previous = new Map(products.map((p) => [String(p.id), p]));
+    const nextMap = new Map(next.map((p) => [String(p.id), p]));
     setProducts(next);
-    const result = await backendStorage.setItem("adminProducts", JSON.stringify(next));
-    if (!result.ok) toast.error(result.error || "No se pudo sincronizar el catálogo");
+
+    try {
+      for (const product of next) {
+        const exists = previous.has(String(product.id));
+        const status = product.deletedAt ? "archived" : product.status === "published" ? "active" : "draft";
+        const payload = {
+          ...product,
+          status,
+          active: status === "active",
+          collections: [category],
+          taxRate: product.iva ?? 21,
+          compareAtPrice: product.compareAtPrice || (product.onSale && product.salePrice ? product.price : null),
+          images: product.images?.length ? product.images : product.image ? [product.image] : [],
+        };
+        if (exists) await backendApi.updateCommerceProduct(product.id, payload);
+        else await backendApi.createCommerceProduct(payload);
+      }
+      for (const [id] of previous) {
+        if (!nextMap.has(id)) await backendApi.deleteCommerceProduct(id, true);
+      }
+      await backendStorage.refresh().catch(() => null);
+    } catch (error: any) {
+      const fallback = await backendStorage.setItem("adminProducts", JSON.stringify(next));
+      if (!fallback.ok) toast.error(error?.message || fallback.error || "No se pudo sincronizar el catálogo");
+    }
   };
 
   const blank = (): CommerceProduct => ({
@@ -258,12 +289,12 @@ function ProductManager({ title, category, onClose }: { title: string; category:
     const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); a.download=`herencia-${category}.csv`; a.click(); URL.revokeObjectURL(a.href);
   };
 
-  const remove = async (id: number) => {
+  const remove = async (id: string | number) => {
     if (!confirm("¿Mover este producto a la papelera?")) return;
     await persist(products.map((p:any) => p.id === id ? { ...p, active:false, deletedAt:new Date().toISOString() } : p));
   };
 
-  const restore = async (id: number) => {
+  const restore = async (id: string | number) => {
     await persist(products.map((p:any) => p.id === id ? { ...p, deletedAt: undefined, status:"draft", active:false } : p));
     toast.success("Producto recuperado como borrador");
   };
