@@ -8,7 +8,7 @@
     "build": "npm run test:pos && vite build",
     "test:pos": "node --test backend/posEngine.test.js",
     "dev": "vite",
-    "dev:backend": "node --import ./backend/customerAccessRoutes.js --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixSalesAI.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
+    "dev:backend": "node --import ./backend/commerceCore.js --import ./backend/customerAccessRoutes.js --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixSalesAI.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
     "dev:full": "concurrently \"vite\" \"npm run dev:backend\"",
     "start": "node --import ./backend/customerAccessRoutes.js --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixSalesAI.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
     "start:backend": "npm run start"
