@@ -169,6 +169,10 @@ type CommerceProduct = {
   scheduledAt?: string;
   minOrder?: number;
   maxOrder?: number;
+  care?: string;
+  material?: string;
+  flavor?: string;
+  serviceDuration?: string;
 };
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
@@ -224,7 +228,7 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   const blank = (): CommerceProduct => ({
     id: Date.now(), name: "", description: "", category, price: 0, cost: 0, iva: 21, sku: "", stock: 0,
     image: "", images: [], active: false, featured: false, onSale: false, status: "draft", tags: [], variants: [],
-    relatedProductIds: [], personalization: false, compareAtPrice: 0, weight: 0, barcode: "", vendor: "", collection: "", seoTitle: "", seoDescription: "", scheduledAt: "", minOrder: 1, maxOrder: 99,
+    relatedProductIds: [], personalization: false, care: "", material: "", flavor: "", serviceDuration: "", compareAtPrice: 0, weight: 0, barcode: "", vendor: "", collection: "", seoTitle: "", seoDescription: "", scheduledAt: "", minOrder: 1, maxOrder: 99,
   });
 
   const save = async () => {
@@ -297,7 +301,12 @@ function ProductManager({ title, category, onClose }: { title: string; category:
         <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Peso (g)</span><input type="number" value={editing.weight||0} onChange={e=>setEditing({...editing,weight:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
         <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Precio anterior €</span><input type="number" step=".01" value={editing.compareAtPrice||0} onChange={e=>setEditing({...editing,compareAtPrice:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
         <Field label="Publicar el (ISO/fecha)" value={editing.scheduledAt||""} onChange={scheduledAt=>setEditing({...editing,scheduledAt})}/>
-        <div className="md:col-span-2"><Field label="Descripción" value={editing.description||""} onChange={description=>setEditing({...editing,description})} multiline/></div>
+        <div className="md:col-span-2"><Field label="Descripción" value={editing.description||""} onChange={description=>setEditing({...editing,description})} multiline/></div><div className="md:col-span-2 rounded-2xl border border-border bg-[#f7f7f3] p-4"><p className="mb-3 font-black">Datos específicos de ${title}</p><div className="grid gap-3 md:grid-cols-2">
+          {category==="plantas"||category==="semillas"||category==="jardineria"||category==="sustratos"?<Field label="Cuidados / instrucciones" value={editing.care||""} onChange={care=>setEditing({...editing,care})} multiline/>:null}
+          {category==="moda"||category==="decoracion"?<Field label="Material / composición" value={editing.material||""} onChange={material=>setEditing({...editing,material})}/>:null}
+          {category==="dulce"?<Field label="Sabor / alérgenos / conservación" value={editing.flavor||""} onChange={flavor=>setEditing({...editing,flavor})} multiline/>:null}
+          {category==="servicios"?<Field label="Duración / condiciones del servicio" value={editing.serviceDuration||""} onChange={serviceDuration=>setEditing({...editing,serviceDuration})} multiline/>:null}
+        </div></div>
         <div className="md:col-span-2"><ImageField label="Imagen principal" value={editing.image||""} onChange={image=>setEditing({...editing,image})}/></div>
         <div className="md:col-span-2 rounded-2xl border border-border bg-muted/20 p-4"><p className="mb-3 font-black">SEO y venta</p><div className="grid gap-3 md:grid-cols-2"><Field label="Título SEO" value={editing.seoTitle||""} onChange={seoTitle=>setEditing({...editing,seoTitle})}/><Field label="Meta descripción" value={editing.seoDescription||""} onChange={seoDescription=>setEditing({...editing,seoDescription})}/><label className="text-sm font-bold">Compra mínima<input type="number" min="1" value={editing.minOrder||1} onChange={e=>setEditing({...editing,minOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label><label className="text-sm font-bold">Compra máxima<input type="number" min="1" value={editing.maxOrder||99} onChange={e=>setEditing({...editing,maxOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label></div></div>
         <div className="md:col-span-2"><Field label="Etiquetas (separadas por coma)" value={(editing.tags||[]).join(", ")} onChange={v=>setEditing({...editing,tags:v.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
