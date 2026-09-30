@@ -14,6 +14,7 @@ import { products as fallbackProducts } from "../data/products";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { loadCommerceCatalog } from "../lib/commerceCatalog";
 
 const DEFAULT_HERO =
   "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88";
@@ -44,26 +45,20 @@ export function Home() {
   const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
 
   useEffect(() => {
-    const load = () => {
+    let active = true;
+    const load = async () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
-      try {
-        const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-        setCatalog(
-          Array.isArray(saved) && saved.length
-            ? saved.filter((item: any) => item.active !== false)
-            : fallbackProducts
-        );
-      } catch {
-        setCatalog(fallbackProducts);
-      }
+      const rows = await loadCommerceCatalog();
+      if (active) setCatalog(rows.length ? rows : fallbackProducts);
     };
-
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
+    void load();
+    const reload = () => { void load(); };
+    window.addEventListener("storage", reload);
+    window.addEventListener("backend-storage", reload);
     return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener("backend-storage", load);
+      active = false;
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("backend-storage", reload);
     };
   }, []);
 
