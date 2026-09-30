@@ -262,11 +262,82 @@ async function getCollectionIds(db) {
   return data || [];
 }
 
+function defaultCollectionObjects() {
+  return DEFAULT_COLLECTIONS.map(([id, slug, name], index) => ({
+    id, slug, name, description: "", image_url: null, status: "active", sort_order: (index + 1) * 10,
+  }));
+}
+function schemaMissing(error) {
+  const text = String(error?.message || error || "").toLowerCase();
+  return text.includes("commerce_products") || text.includes("commerce_collections") ||
+    text.includes("relation") && text.includes("does not exist") || text.includes("pgrst205");
+}
+function decorateLegacyProduct(product) {
+  const collections = Array.isArray(product?.collections) && product.collections.length
+    ? product.collections.map(String)
+    : inferCollections(product);
+  return {
+    ...product,
+    id: String(product?.id ?? Date.now()),
+    active: product?.deletedAt ? false : product?.active !== false,
+    collections,
+    type: product?.type || (collections.includes("dulce") ? "food" : collections.includes("moda") ? "fashion" : "plant"),
+  };
+}
+async function legacyCatalog(db, { includeArchived = false, collection = "" } = {}) {
+  const rows = (await readLegacy(db)).map(decorateLegacyProduct);
+  return rows.filter((p) => (includeArchived || (p.active !== false && !p.deletedAt)) && (!collection || p.collections.includes(collection)));
+}
+async function legacyCreate(db, body) {
+  const rows = await readLegacy(db);
+  const id = String(body.id || Date.now());
+  const collections = Array.isArray(body.collections) && body.collections.length ? body.collections.map(String) : inferCollections(body);
+  const product = decorateLegacyProduct({
+    ...body, id, collections,
+    image: body.image || body.images?.[0] || "",
+    price: Math.max(0, number(body.price)),
+    stock: integer(body.stock),
+    iva: Math.max(0, number(body.taxRate ?? body.iva, 21)),
+    active: body.status !== "draft" && body.status !== "archived" && body.active !== false,
+    deletedAt: body.status === "archived" ? new Date().toISOString() : undefined,
+    variants: Array.isArray(body.variants) ? body.variants : [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  await upsertLegacyStorage(db, [...rows.filter((p) => String(p.id) !== id), product]);
+  return product;
+}
+async function legacyUpdate(db, id, patch) {
+  const rows = await readLegacy(db);
+  const index = rows.findIndex((p) => String(p.id) === String(id));
+  if (index < 0) throw Object.assign(new Error("Producto no encontrado"), { statusCode: 404 });
+  const current = rows[index];
+  const collections = Array.isArray(patch.collections) ? patch.collections.map(String) :
+    (Array.isArray(current.collections) && current.collections.length ? current.collections : inferCollections({ ...current, ...patch }));
+  const status = patch.status || (patch.deletedAt ? "archived" : patch.active === false ? "draft" : current.active === false ? "draft" : "active");
+  const next = decorateLegacyProduct({
+    ...current, ...patch, id: String(id), collections,
+    image: patch.image ?? patch.images?.[0] ?? current.image ?? "",
+    price: patch.price == null ? current.price : Math.max(0, number(patch.price)),
+    stock: patch.stock == null ? current.stock : integer(patch.stock),
+    iva: patch.taxRate == null && patch.iva == null ? current.iva : Math.max(0, number(patch.taxRate ?? patch.iva, 21)),
+    active: status === "active",
+    deletedAt: status === "archived" ? (current.deletedAt || new Date().toISOString()) : undefined,
+    updatedAt: new Date().toISOString(),
+  });
+  rows[index] = next;
+  await upsertLegacyStorage(db, rows);
+  return next;
+}
+
 function installRoutes(app) {
   app.get("/api/commerce/collections", async (_req, res) => {
     const db = dbClient(); if (!db) return res.status(503).json({ error: "Supabase no está configurado" });
-    try { await bootstrapLegacy(db); res.json({ collections: await getCollectionIds(db) }); }
-    catch (error) { res.status(500).json({ error: error.message || "No se pudieron cargar las colecciones" }); }
+    try { await bootstrapLegacy(db); res.json({ collections: await getCollectionIds(db), source: "commerce_core" }); }
+    catch (error) {
+      if (schemaMissing(error)) return res.json({ collections: defaultCollectionObjects(), source: "legacy_fallback" });
+      res.status(500).json({ error: error.message || "No se pudieron cargar las colecciones" });
+    }
   });
 
   app.get("/api/commerce/products", async (req, res) => {
@@ -280,7 +351,13 @@ function installRoutes(app) {
       if (collection) products = products.filter((p) => Array.isArray(p.collections) && p.collections.includes(collection));
       if (status === "draft") products = products.filter((p) => p.active === false && !p.deletedAt);
       res.json({ products });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo cargar el catálogo" }); }
+    } catch (error) {
+      if (schemaMissing(error)) {
+        const products = await legacyCatalog(db, { includeArchived: isAdmin(req) && req.query.includeArchived === "1", collection: String(req.query.collection || "") });
+        return res.json({ products, source: "legacy_fallback" });
+      }
+      res.status(500).json({ error: error.message || "No se pudo cargar el catálogo" });
+    }
   });
 
   app.get("/api/commerce/products/:id", async (req, res) => {
@@ -291,13 +368,24 @@ function installRoutes(app) {
       const product = products.find((p) => String(p.id) === String(req.params.id));
       if (!product || (!isAdmin(req) && (product.active === false || product.deletedAt))) return res.status(404).json({ error: "Producto no encontrado" });
       res.json({ product });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo cargar el producto" }); }
+    } catch (error) {
+      if (schemaMissing(error)) {
+        const rows = await legacyCatalog(db, { includeArchived: isAdmin(req) });
+        const product = rows.find((p) => String(p.id) === String(req.params.id));
+        if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+        return res.json({ product, source: "legacy_fallback" });
+      }
+      res.status(500).json({ error: error.message || "No se pudo cargar el producto" });
+    }
   });
 
   app.post("/api/admin/commerce/bootstrap", requireAdmin, async (_req, res) => {
     const db = dbClient(); if (!db) return res.status(503).json({ error: "Supabase no está configurado" });
-    try { const result = await bootstrapLegacy(db); res.json({ ok: true, ...result, products: await hydrateProducts(db,{includeArchived:true}) }); }
-    catch (error) { res.status(500).json({ error: error.message || "No se pudo migrar el catálogo" }); }
+    try { const result = await bootstrapLegacy(db); res.json({ ok: true, ...result, products: await hydrateProducts(db,{includeArchived:true}), source: "commerce_core" }); }
+    catch (error) {
+      if (schemaMissing(error)) return res.json({ ok: true, imported: 0, products: await legacyCatalog(db,{includeArchived:true}), source: "legacy_fallback", migrationRequired: true });
+      res.status(500).json({ error: error.message || "No se pudo migrar el catálogo" });
+    }
   });
 
   app.post("/api/admin/commerce/products", requireAdmin, async (req, res) => {
@@ -315,7 +403,10 @@ function installRoutes(app) {
       const products = await syncLegacy(db);
       const product = products.find((p) => String(p.id) === row.id);
       res.status(201).json({ product });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo crear el producto" }); }
+    } catch (error) {
+      if (schemaMissing(error)) return res.status(201).json({ product: await legacyCreate(db, req.body || {}), source: "legacy_fallback", migrationRequired: true });
+      res.status(500).json({ error: error.message || "No se pudo crear el producto" });
+    }
   });
 
   app.patch("/api/admin/commerce/products/:id", requireAdmin, async (req, res) => {
@@ -332,7 +423,13 @@ function installRoutes(app) {
       await replaceRelations(db, id, req.body || {});
       const products = await syncLegacy(db);
       res.json({ product: products.find((p) => String(p.id) === id) });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo actualizar el producto" }); }
+    } catch (error) {
+      if (schemaMissing(error)) {
+        try { return res.json({ product: await legacyUpdate(db, req.params.id, req.body || {}), source: "legacy_fallback", migrationRequired: true }); }
+        catch (fallbackError) { return res.status(fallbackError.statusCode || 500).json({ error: fallbackError.message || "No se pudo actualizar el producto" }); }
+      }
+      res.status(500).json({ error: error.message || "No se pudo actualizar el producto" });
+    }
   });
 
   app.delete("/api/admin/commerce/products/:id", requireAdmin, async (req, res) => {
@@ -347,7 +444,17 @@ function installRoutes(app) {
       }
       await syncLegacy(db);
       res.json({ ok: true });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo eliminar el producto" }); }
+    } catch (error) {
+      if (schemaMissing(error)) {
+        const rows = await readLegacy(db);
+        const id = String(req.params.id);
+        const permanent = req.query.permanent === "1";
+        const next = permanent ? rows.filter((p) => String(p.id) !== id) : rows.map((p) => String(p.id) === id ? { ...p, active: false, deletedAt: new Date().toISOString() } : p);
+        await upsertLegacyStorage(db, next);
+        return res.json({ ok: true, source: "legacy_fallback", migrationRequired: true });
+      }
+      res.status(500).json({ error: error.message || "No se pudo eliminar el producto" });
+    }
   });
 
   app.post("/api/admin/commerce/collections", requireAdmin, async (req,res) => {
@@ -357,7 +464,10 @@ function installRoutes(app) {
       const id=String(req.body?.id||slugify(name)); const row={id,slug:slugify(req.body?.slug||name),name,description:String(req.body?.description||""),image_url:req.body?.imageUrl||null,status:req.body?.status||"active",sort_order:integer(req.body?.sortOrder)};
       const {error}=await db.from("commerce_collections").upsert(row,{onConflict:"id"}); if(error) throw error;
       res.json({collections:await getCollectionIds(db)});
-    } catch(error){res.status(500).json({error:error.message||"No se pudo guardar la colección"});}
+    } catch(error){
+      if(schemaMissing(error)) return res.json({collections:defaultCollectionObjects(),source:"legacy_fallback",migrationRequired:true});
+      res.status(500).json({error:error.message||"No se pudo guardar la colección"});
+    }
   });
 
   app.get("/api/admin/commerce/health", requireAdmin, async (_req,res) => {
@@ -369,7 +479,13 @@ function installRoutes(app) {
         db.from("commerce_collections").select("*",{count:"exact",head:true}),
       ]);
       res.json({ok:true,products:products||0,collections:collections||0,source:"commerce_core"});
-    } catch(error){res.status(500).json({ok:false,error:error.message});}
+    } catch(error){
+      if(schemaMissing(error)) {
+        const products=await legacyCatalog(db,{includeArchived:true});
+        return res.json({ok:true,products:products.length,collections:DEFAULT_COLLECTIONS.length,source:"legacy_fallback",migrationRequired:true});
+      }
+      res.status(500).json({ok:false,error:error.message});
+    }
   });
 }
 
