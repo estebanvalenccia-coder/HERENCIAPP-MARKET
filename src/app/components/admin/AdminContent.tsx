@@ -152,7 +152,24 @@ export function AdminContent() {
   async function saveAll() {
     setSaving(true);
     try {
-      const publishableSite = syncLegacyToBuilder(site);
+      // La portada visible de Home usa marketExperience.home.heroImageUrl.
+      // Mantener ambos modelos sincronizados evita que el editor legacy y el
+      // editor de HERENCIA MARKET se sobrescriban entre sí al publicar.
+      const market = (site as any).marketExperience;
+      const heroImageUrl = String(market?.home?.heroImageUrl || site.hero.imageUrl || "");
+      const synchronizedSite = {
+        ...(site as any),
+        hero: { ...site.hero, imageUrl: heroImageUrl },
+        ...(market
+          ? {
+              marketExperience: {
+                ...market,
+                home: { ...market.home, heroImageUrl },
+              },
+            }
+          : {}),
+      } as SiteContent;
+      const publishableSite = syncLegacyToBuilder(synchronizedSite);
       const results = await Promise.all([
         backendStorage.setItem("siteContent", JSON.stringify(publishableSite)),
         backendStorage.setItem("siteContentDraft", JSON.stringify(publishableSite)),
