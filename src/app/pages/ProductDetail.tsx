@@ -112,6 +112,26 @@ export function ProductDetail() {
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
   const stock = Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 999)));
 
+  useEffect(() => {
+    if (!product) return;
+    const id = "herencia-product-jsonld";
+    document.getElementById(id)?.remove();
+    const script = document.createElement("script");
+    script.id = id;
+    script.type = "application/ld+json";
+    script.text = JSON.stringify({
+      "@context":"https://schema.org","@type":"Product",
+      name: product.name,
+      description: product.seoDescription || product.description || "",
+      image: [product.image, ...(product.images || [])].filter(Boolean),
+      sku: selected?.sku || product.sku || undefined,
+      brand: product.vendor ? {"@type":"Brand",name:product.vendor} : undefined,
+      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:stock>0?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
+    });
+    document.head.appendChild(script);
+    return () => document.getElementById(id)?.remove();
+  }, [product, selectedVariant, effectivePrice, stock]);
+
   const toggleFavorite = async () => {
     let list: string[] = [];
     try { list = JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String); } catch {}

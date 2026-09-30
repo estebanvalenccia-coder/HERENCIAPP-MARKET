@@ -2482,11 +2482,51 @@ app.get("/api/orders", requireAdmin, async (_req, res) => {
   res.json({ orders });
 });
 
+async function validateCommerceOrderPayload(order = {}) {
+  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
+  let subtotal = 0;
+  const normalizedItems = [];
+
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    const product = byId.get(String(item?.id ?? ""));
+    if (!product || product.deletedAt || product.active === false) throw new Error("Uno de los productos ya no está disponible");
+    const variantName = String(item?.selectedVariant || "");
+    const variant = variantName ? (product.variants || []).find(v => String(v?.name || v) === variantName) : null;
+    if (variantName && !variant) throw new Error(`Variante no disponible: ${product.name}`);
+    const qty = Math.max(1, Math.floor(Number(item?.quantity || 1)));
+    const available = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
+    if (available < qty) throw new Error(`Stock insuficiente para ${product.name}`);
+    const unitPrice = normalizeMoney(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price));
+    subtotal += unitPrice * qty;
+    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty});
+  }
+
+  subtotal = normalizeMoney(subtotal);
+  let discount = 0;
+  const couponCode = String(order?.metadata?.coupon || "").trim().toUpperCase();
+  if (couponCode) {
+    const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
+    const rule = (Array.isArray(rules) ? rules : []).find(r => String(r.code||"").trim().toUpperCase()===couponCode && r.active!==false && (!r.expiresAt || new Date(r.expiresAt)>=new Date()));
+    if (!rule) throw new Error("El cupón ya no es válido");
+    discount = rule.type === "fixed" ? Number(rule.value||0) : subtotal * Number(rule.value||0) / 100;
+    discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
+  }
+  const shipping = normalizeMoney(order.shipping || 0);
+  return {items:normalizedItems,subtotal,shipping,discount,total:normalizeMoney(subtotal-discount+shipping)};
+}
+
 app.post("/api/orders", async (req, res) => {
   if (!requireSupabase(res)) return;
 
-  const order = req.body;
+  let order = req.body;
   const id = order.id || crypto.randomUUID();
+  try {
+    const verified = await validateCommerceOrderPayload(order);
+    order = {...order,...verified,metadata:{...(order.metadata||{}),discount:verified.discount,pricingVerifiedAt:new Date().toISOString()}};
+  } catch (validationError) {
+    return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
+  }
 
   const { data, error } = await supabase
     .from("orders")
