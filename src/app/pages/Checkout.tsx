@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 
+const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
+const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
 export function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,6 +24,9 @@ export function Checkout() {
   const [shippingCost, setShippingCost] = useState(5);
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
+  const [deliveryAvailability, setDeliveryAvailability] = useState<any>(null);
+  const [deliveryAvailabilityLoading, setDeliveryAvailabilityLoading] = useState(false);
+  const [deliveryAvailabilityError, setDeliveryAvailabilityError] = useState("");
   const [businessSuite, setBusinessSuite] = useState<any>({});
   const [shippingInfo, setShippingInfo] = useState<{
     distanceText?: string;
@@ -111,6 +117,39 @@ export function Checkout() {
     return () => window.clearTimeout(timeoutId);
   }, [deliveryMethod, form.address, form.city, form.postalCode, form.province, businessSuite.freeShippingFrom, businessSuite.maxDeliveryKm]);
 
+  useEffect(() => {
+    if (!form.requestedDate || deliveryMethod !== "envio" || businessSuite.scheduledOrdersEnabled === false) {
+      setDeliveryAvailability(null);
+      setDeliveryAvailabilityError("");
+      return;
+    }
+
+    let active = true;
+    setDeliveryAvailabilityLoading(true);
+    setDeliveryAvailabilityError("");
+
+    backendApi.deliveryAvailability(form.requestedDate)
+      .then((result) => {
+        if (!active) return;
+        setDeliveryAvailability(result);
+        const selected = result.slots?.find((slot: any) => slot.slot === form.requestedTimeSlot);
+        if (form.requestedTimeSlot && selected && !selected.available) {
+          setForm((current) => ({ ...current, requestedTimeSlot: "" }));
+          toast.info("Esa franja acaba de llenarse. Elige otra.");
+        }
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        setDeliveryAvailability(null);
+        setDeliveryAvailabilityError(error?.message || "No hay reparto disponible para ese día.");
+      })
+      .finally(() => {
+        if (active) setDeliveryAvailabilityLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [form.requestedDate, deliveryMethod, businessSuite.scheduledOrdersEnabled]);
+
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
   const shipping = deliveryMethod === "recoger" || deliveryMethod === "recogida" ? 0 : shippingCost;
   const total = Math.max(0, subtotal - discount + shipping);
@@ -141,6 +180,16 @@ export function Checkout() {
 
     if (deliveryMethod === "envio" && shippingError) {
       toast.error("Revisa la dirección de envío antes de continuar");
+      return false;
+    }
+
+    if (deliveryMethod === "envio" && form.requestedDate && deliveryAvailabilityError) {
+      toast.error(deliveryAvailabilityError);
+      return false;
+    }
+
+    if (deliveryMethod === "envio" && deliveryAvailabilityLoading) {
+      toast.error("Espera un momento, estamos comprobando la capacidad de reparto");
       return false;
     }
 
@@ -251,10 +300,28 @@ export function Checkout() {
             </>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="text-sm font-medium">Fecha deseada<input type="date" min={new Date().toISOString().slice(0,10)} value={form.requestedDate} onChange={(e)=>handleChange("requestedDate",e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" /></label>
-            <label className="text-sm font-medium">Franja horaria<select value={form.requestedTimeSlot} onChange={(e)=>handleChange("requestedTimeSlot",e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]"><option value="">Sin preferencia</option><option value="09:00-12:00">09:00–12:00</option><option value="12:00-15:00">12:00–15:00</option><option value="15:00-18:00">15:00–18:00</option><option value="18:00-21:00">18:00–21:00</option></select></label>
-          </div>
+          {businessSuite.scheduledOrdersEnabled !== false && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-sm font-medium">Fecha deseada
+                  <input type="date" min={todayInMadrid()} value={form.requestedDate} onChange={(e)=>handleChange("requestedDate",e.target.value)} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" />
+                </label>
+                <label className="text-sm font-medium">Franja horaria
+                  <select value={form.requestedTimeSlot} onChange={(e)=>handleChange("requestedTimeSlot",e.target.value)} disabled={deliveryAvailabilityLoading} className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42] disabled:opacity-60">
+                    <option value="">{deliveryAvailabilityLoading ? "Comprobando disponibilidad…" : "Sin preferencia"}</option>
+                    {DELIVERY_SLOTS.map((slot) => {
+                      const availability = deliveryAvailability?.slots?.find((entry: any) => entry.slot === slot);
+                      const disabled = availability ? !availability.available : false;
+                      const label = slot.replace("-", "–") + (availability ? disabled ? " · completo" : ` · quedan ${availability.remaining}` : "");
+                      return <option key={slot} value={slot} disabled={disabled}>{label}</option>;
+                    })}
+                  </select>
+                </label>
+              </div>
+              {deliveryAvailabilityError && <p className="text-sm text-destructive">{deliveryAvailabilityError}</p>}
+              {deliveryAvailability?.capacity && <p className="text-xs text-muted-foreground">Capacidad máxima por franja: {deliveryAvailability.capacity} pedidos.</p>}
+            </div>
+          )}
           <textarea className="min-h-[90px] w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Instrucciones de entrega: no llamar, dejar con portero, sorpresa…" value={form.deliveryInstructions} onChange={(e) => handleChange("deliveryInstructions", e.target.value)} />
           <textarea className="min-h-[120px] w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Notas para el pedido" value={form.notes} onChange={(e) => handleChange("notes", e.target.value)} />
         </div>
