@@ -162,7 +162,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         void backendApi.updateCommerceProduct(product.id, {
           ...product,
           status: product.deletedAt ? "archived" : product.active === false ? "draft" : "active",
-          compareAtPrice: product.onSale && product.salePrice ? product.price : product.originalPrice,
+          compareAtPrice: product.onSale && product.salePrice ? product.price : (product as any).originalPrice,
           collections: Array.isArray((product as any).collections) && (product as any).collections.length
             ? (product as any).collections
             : undefined,
