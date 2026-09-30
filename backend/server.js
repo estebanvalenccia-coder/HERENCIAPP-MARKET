@@ -808,6 +808,76 @@ async function upsertStorageValue(key, value) {
   if (error) throw error;
 }
 
+function commerceReservationUnavailable(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("reserve_commerce_stock") ||
+    message.includes("consume_commerce_stock_reservation") ||
+    message.includes("release_commerce_stock_reservation") ||
+    message.includes("commerce_stock_reservations") ||
+    message.includes("schema cache") ||
+    message.includes("pgrst202") ||
+    (message.includes("function") && message.includes("does not exist"))
+  );
+}
+
+async function reserveCommerceStock(cartToken, items) {
+  const payload = (Array.isArray(items) ? items : []).map((item) => ({
+    productId: String(item?.id || ""),
+    variantName: String(item?.selectedVariant || ""),
+    quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
+  }));
+
+  const { data, error } = await supabase.rpc("reserve_commerce_stock", {
+    p_cart_token: String(cartToken),
+    p_items: payload,
+    p_ttl_minutes: 15,
+  });
+
+  if (error) {
+    if (commerceReservationUnavailable(error)) {
+      return { active: false, mode: "legacy_validation_only", reason: "commerce_reservation_rpc_unavailable" };
+    }
+    const message = String(error.message || error);
+    const conflict = new Error(
+      message.includes("stock_insufficient")
+        ? "El stock cambió mientras estabas pagando. Revisa el carrito e inténtalo de nuevo."
+        : message
+    );
+    conflict.statusCode = message.includes("stock_insufficient") || message.includes("product_unavailable") || message.includes("variant_unavailable") ? 409 : 500;
+    throw conflict;
+  }
+
+  return {
+    active: true,
+    mode: "atomic_commerce_reservation",
+    expiresAt: data?.expiresAt || data?.expires_at || null,
+    reservedItems: Number(data?.reservedItems || data?.reserved_items || payload.length),
+  };
+}
+
+async function consumeCommerceStockReservation(cartToken) {
+  const { data, error } = await supabase.rpc("consume_commerce_stock_reservation", {
+    p_cart_token: String(cartToken),
+  });
+  if (error) {
+    if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
+    throw error;
+  }
+  return data || { ok: true };
+}
+
+async function releaseCommerceStockReservation(cartToken) {
+  const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
+    p_cart_token: String(cartToken),
+  });
+  if (error) {
+    if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
+    throw error;
+  }
+  return data || { ok: true };
+}
+
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -848,6 +918,7 @@ app.post(
         } else {
           let inventoryOrder = updatedOrder;
           try {
+            await consumeCommerceStockReservation(updatedOrder.id);
             const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
             inventoryOrder = inventoryResult.order || updatedOrder;
           } catch (inventoryError) {
@@ -871,6 +942,24 @@ app.post(
             console.error("Error enviando emails de confirmación:", emailError.message);
           }
         }
+      }
+    }
+
+    if (["payment_intent.payment_failed", "payment_intent.canceled"].includes(event.type)) {
+      const paymentIntent = event.data.object;
+      const orderId = paymentIntent.metadata?.orderId;
+      if (orderId && supabase) {
+        await releaseCommerceStockReservation(orderId).catch((error) =>
+          console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
+        );
+        await supabase
+          .from("orders")
+          .update({
+            status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
+            stripe_payment_intent_id: paymentIntent.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", orderId);
       }
     }
 
@@ -5323,12 +5412,14 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const orderId = crypto.randomUUID();
+    const stockReservation = await reserveCommerceStock(orderId, authoritativeItems);
     const secureMetadata = {
       ...metadata,
       source: "frontend_checkout",
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
       pricingSource: "backend_catalog_and_maps",
+      inventoryReservation: stockReservation,
       shippingDistance: shippingQuote
         ? {
             distanceKm: shippingQuote.distanceKm,
@@ -5352,7 +5443,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       items: authoritativeItems,
       metadata: secureMetadata,
     });
-    if (orderError) return res.status(500).json({ error: orderError.message });
+    if (orderError) {
+      if (stockReservation.active) {
+        await releaseCommerceStockReservation(orderId).catch(() => null);
+      }
+      return res.status(500).json({ error: orderError.message });
+    }
 
     try {
       const paymentIntentParams = {
@@ -5376,6 +5472,9 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         shippingQuote,
       });
     } catch (error) {
+      if (stockReservation.active) {
+        await releaseCommerceStockReservation(orderId).catch(() => null);
+      }
       await supabase.from("orders").update({
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
@@ -5654,6 +5753,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   }
 
   if (!isPaid && !isProcessing) {
+    await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
       error: `Stripe devolviÃ³ estado: ${paymentIntent.status}`,
       paymentIntentStatus: paymentIntent.status,
@@ -5666,6 +5766,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (isPaid) {
     let inventoryOrder = updatedOrder;
     try {
+      await consumeCommerceStockReservation(updatedOrder.id);
       const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
       inventoryOrder = inventoryResult.order || updatedOrder;
     } catch (inventoryError) {
