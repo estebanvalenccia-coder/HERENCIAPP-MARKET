@@ -3,7 +3,7 @@ import { ArrowLeft, Upload, X } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { categories } from "../../data/products";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi } from "../../lib/backendStorage";
 
 export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState({
@@ -32,6 +32,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     seoDescription: "",
   });
   const [imagePreview, setImagePreview] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -44,116 +45,87 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validación detallada
-    if (!imagePreview) {
-      toast.error("Por favor sube una imagen del producto");
-      return;
+    if (!imagePreview) return toast.error("Por favor sube una imagen del producto");
+    if (!formData.name.trim()) return toast.error("Por favor ingresa el nombre del producto");
+    if (!formData.price || parseFloat(formData.price) <= 0) return toast.error("Por favor ingresa un precio válido");
+    if (formData.onSale && (!formData.salePrice || parseFloat(formData.salePrice) <= 0)) return toast.error("Por favor ingresa un precio de oferta válido");
+
+    try {
+      setSaving(true);
+      let imageUrl = imagePreview;
+      if (imagePreview.startsWith("data:image/")) {
+        const uploaded = await backendApi.uploadSiteMedia({
+          dataUrl: imagePreview,
+          filename: `${formData.name.trim().replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
+        });
+        imageUrl = uploaded.media.url;
+      }
+
+      const category = formData.category;
+      const collection =
+        /dulce|postre|tarta|pastel|reposter/i.test(category) ? "dulce" :
+        /moda|textil|ropa|delantal|camisa/i.test(category) ? "moda" :
+        /semilla/i.test(category) ? "semillas" :
+        /sustrato|tierra/i.test(category) ? "sustratos" :
+        /jardin/i.test(category) ? "jardineria" :
+        /decor/i.test(category) ? "decoracion" :
+        /servicio/i.test(category) ? "servicios" : "plantas";
+
+      await backendApi.createCommerceProduct({
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        price: parseFloat(formData.price),
+        compareAtPrice: formData.onSale && formData.salePrice
+          ? Math.max(parseFloat(formData.price), parseFloat(formData.salePrice))
+          : null,
+        sku: formData.sku.trim() || `HER-${formData.category.slice(0,4).toUpperCase()}-${String(Date.now()).slice(-6)}`,
+        stock: Math.max(0, Math.floor(parseFloat(formData.stock) || 0)),
+        taxRate: Math.max(0, parseFloat(formData.iva) || 21),
+        category,
+        type: collection === "dulce" ? "food" : collection === "moda" ? "fashion" : "plant",
+        collections: [collection],
+        image: imageUrl,
+        images: [imageUrl],
+        featured: formData.featured,
+        status: "active",
+        environment: formData.environment,
+        light: formData.light,
+        size: formData.size.trim(),
+        difficulty: formData.difficulty,
+        petSafe: formData.petSafe,
+        toxicity: formData.toxicity.trim(),
+        water: formData.water.trim(),
+        temperature: formData.temperature.trim(),
+        occasion: formData.occasion.trim(),
+        allowDedication: formData.allowDedication,
+        seoTitle: formData.seoTitle.trim() || formData.name.trim(),
+        seoDescription: formData.seoDescription.trim() || formData.description.trim(),
+        variants: formData.variantsText
+          .split("\n").map((line) => line.trim()).filter(Boolean)
+          .map((line) => {
+            const [name, price, stock, sku] = line.split("|").map((part) => part.trim());
+            return { name, price: price ? Math.max(0, Number(price)) : undefined, stock: stock ? Math.max(0, Math.floor(Number(stock))) : 0, sku: sku || undefined };
+          }).filter((variant) => variant.name),
+      });
+
+      window.dispatchEvent(new Event("backend-storage"));
+      toast.success(`✅ Producto "${formData.name.trim()}" añadido y publicado`);
+      setFormData({
+        name: "", description: "", price: "", salePrice: "", sku: "", stock: "0", iva: "21",
+        category: "flores", featured: false, onSale: false, environment: "interior", light: "indirecta",
+        size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "",
+        occasion: "", allowDedication: true, variantsText: "", seoTitle: "", seoDescription: "",
+      });
+      setImagePreview("");
+      setTimeout(() => onBack(), 300);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo crear el producto");
+    } finally {
+      setSaving(false);
     }
-
-    if (!formData.name.trim()) {
-      toast.error("Por favor ingresa el nombre del producto");
-      return;
-    }
-
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      toast.error("Por favor ingresa un precio válido");
-      return;
-    }
-
-    if (formData.onSale && (!formData.salePrice || parseFloat(formData.salePrice) <= 0)) {
-      toast.error("Por favor ingresa un precio de oferta válido");
-      return;
-    }
-
-    // Obtener productos existentes
-    const existingProducts = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-
-    // Crear nuevo producto
-    const newProduct = {
-      id: Date.now(),
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      price: parseFloat(formData.price),
-      salePrice: formData.onSale ? parseFloat(formData.salePrice) : undefined,
-      sku: formData.sku.trim() || `HER-${formData.category.slice(0,4).toUpperCase()}-${String(Date.now()).slice(-6)}`,
-      stock: Math.max(0, Math.floor(parseFloat(formData.stock) || 0)),
-      iva: Math.max(0, parseFloat(formData.iva) || 21),
-      category: formData.category,
-      image: imagePreview,
-      featured: formData.featured,
-      onSale: formData.onSale,
-      active: true,
-      environment: formData.environment,
-      light: formData.light,
-      size: formData.size.trim(),
-      difficulty: formData.difficulty,
-      petSafe: formData.petSafe,
-      toxicity: formData.toxicity.trim(),
-      water: formData.water.trim(),
-      temperature: formData.temperature.trim(),
-      occasion: formData.occasion.trim(),
-      allowDedication: formData.allowDedication,
-      seoTitle: formData.seoTitle.trim() || formData.name.trim(),
-      seoDescription: formData.seoDescription.trim() || formData.description.trim(),
-      variants: formData.variantsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [name, price, stock] = line.split("|").map((part) => part.trim());
-          return {
-            name,
-            price: price ? Math.max(0, Number(price)) : undefined,
-            stock: stock ? Math.max(0, Math.floor(Number(stock))) : undefined,
-          };
-        })
-        .filter((variant) => variant.name),
-    };
-
-    // Guardar
-    const updatedProducts = [...existingProducts, newProduct];
-    backendStorage.setItem("adminProducts", JSON.stringify(updatedProducts));
-
-    // Disparar evento para actualizar otros componentes
-    window.dispatchEvent(new Event('storage'));
-
-    toast.success(`✅ Producto "${newProduct.name}" añadido correctamente`);
-
-    // Limpiar formulario
-    setFormData({
-      name: "",
-      description: "",
-      price: "",
-      salePrice: "",
-      sku: "",
-      stock: "0",
-      iva: "21",
-      category: "flores",
-      featured: false,
-      onSale: false,
-      environment: "interior",
-      light: "indirecta",
-      size: "",
-      difficulty: "Fácil",
-      petSafe: false,
-      toxicity: "",
-      water: "",
-      temperature: "",
-      occasion: "",
-      allowDedication: true,
-      variantsText: "",
-      seoTitle: "",
-      seoDescription: "",
-    });
-    setImagePreview("");
-
-    // Volver a la lista de productos
-    setTimeout(() => {
-      onBack();
-    }, 500);
   };
 
   return (
@@ -447,6 +419,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           <div className="flex gap-3 pt-4">
             <button
               type="submit"
+              disabled={saving}
               className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium"
             >
               Guardar Producto
