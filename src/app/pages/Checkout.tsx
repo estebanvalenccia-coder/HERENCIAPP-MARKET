@@ -175,6 +175,7 @@ export function Checkout() {
         total,
         items: cartItems,
         metadata: {
+          source: "frontend_checkout",
           phone: form.phone,
           notes: form.notes,
           shippingDistance: shippingInfo,
@@ -303,6 +304,7 @@ export function Checkout() {
             subtotal={subtotal}
             shipping={shipping}
             metadata={{
+              source: "frontend_checkout",
               requestedPaymentMethod: paymentMethod,
               phone: form.phone,
               notes: form.notes,
