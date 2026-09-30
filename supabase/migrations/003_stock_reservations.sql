@@ -176,10 +176,61 @@ begin
 end;
 $$;
 
+create or replace function public.restock_commerce_stock(p_items jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  item jsonb;
+  p_id text;
+  v_name text;
+  qty integer;
+  variant_id_value uuid;
+  restored_count integer := 0;
+begin
+  if jsonb_typeof(p_items) <> 'array' then
+    raise exception 'restock_items_required';
+  end if;
+
+  for item in select * from jsonb_array_elements(p_items)
+  loop
+    p_id := trim(coalesce(item->>'productId', item->>'id', ''));
+    v_name := trim(coalesce(item->>'variantName', item->>'selectedVariant', ''));
+    qty := greatest(0, floor(coalesce((item->>'quantity')::numeric, (item->>'qty')::numeric, 0))::integer);
+    if p_id = '' or qty <= 0 then continue; end if;
+
+    if v_name <> '' then
+      select id into variant_id_value
+      from public.commerce_product_variants
+      where product_id = p_id and name = v_name
+      for update;
+
+      if variant_id_value is not null then
+        update public.commerce_product_variants
+        set stock = stock + qty, updated_at = now()
+        where id = variant_id_value;
+        restored_count := restored_count + 1;
+      end if;
+    else
+      update public.commerce_products
+      set stock = stock + qty, updated_at = now()
+      where id = p_id;
+      if found then restored_count := restored_count + 1; end if;
+    end if;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'restored', restored_count);
+end;
+$;
+
 revoke all on function public.reserve_commerce_stock(text, jsonb, integer) from public, anon, authenticated;
 revoke all on function public.consume_commerce_stock_reservation(text) from public, anon, authenticated;
 revoke all on function public.release_commerce_stock_reservation(text) from public, anon, authenticated;
+revoke all on function public.restock_commerce_stock(jsonb) from public, anon, authenticated;
 
 grant execute on function public.reserve_commerce_stock(text, jsonb, integer) to service_role;
 grant execute on function public.consume_commerce_stock_reservation(text) to service_role;
 grant execute on function public.release_commerce_stock_reservation(text) to service_role;
+grant execute on function public.restock_commerce_stock(jsonb) to service_role;

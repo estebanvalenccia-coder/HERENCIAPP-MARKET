@@ -678,33 +678,56 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
   }
 
   const from = process.env.EMAIL_FROM || "Herencia Market <onboarding@resend.dev>";
+  const payload = {
+    from,
+    to,
+    subject,
+    html,
+    reply_to: replyTo && isValidEmail(replyTo) ? replyTo : undefined,
+  };
+  const idempotencyKey = crypto.createHash("sha256").update(`${to}|${subject}|${html}`).digest("hex");
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      subject,
-      html,
-      reply_to: replyTo && isValidEmail(replyTo) ? replyTo : undefined,
-    }),
-  });
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
+      });
 
-  const resultText = await response.text();
+      const resultText = await response.text();
 
-  if (!response.ok) {
-    throw new Error(`Resend error ${response.status}: ${resultText}`);
+      if (response.ok) {
+        try {
+          return { ...JSON.parse(resultText), attempts: attempt };
+        } catch {
+          return { ok: true, attempts: attempt };
+        }
+      }
+
+      lastError = new Error(`Resend error ${response.status}: ${resultText}`);
+      const retryable = response.status === 429 || response.status >= 500;
+      if (!retryable) {
+        lastError.nonRetryable = true;
+        throw lastError;
+      }
+      if (attempt === 3) throw lastError;
+    } catch (error) {
+      lastError = error;
+      if (error?.nonRetryable) throw error;
+      if (attempt === 3) break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 350 : 900));
   }
 
-  try {
-    return JSON.parse(resultText);
-  } catch {
-    return { ok: true };
-  }
+  throw lastError || new Error("No se pudo enviar el email después de varios intentos");
 }
 
 async function sendOrderConfirmationEmails(order, reason = "order_created") {
@@ -834,6 +857,7 @@ function commerceReservationUnavailable(error) {
     message.includes("reserve_commerce_stock") ||
     message.includes("consume_commerce_stock_reservation") ||
     message.includes("release_commerce_stock_reservation") ||
+    message.includes("restock_commerce_stock") ||
     message.includes("commerce_stock_reservations") ||
     message.includes("schema cache") ||
     message.includes("pgrst202") ||
@@ -890,6 +914,25 @@ async function consumeCommerceStockReservation(cartToken) {
 async function releaseCommerceStockReservation(cartToken) {
   const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
+  });
+  if (error) {
+    if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
+    throw error;
+  }
+  return data || { ok: true };
+}
+
+async function restockCommerceCoreStock(items) {
+  const payload = (Array.isArray(items) ? items : []).map((item) => ({
+    productId: String(item?.id || ""),
+    variantName: String(item?.selectedVariant || ""),
+    quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
+  })).filter((item) => item.productId && item.quantity > 0);
+
+  if (!payload.length) return { skipped: true, reason: "no_items" };
+
+  const { data, error } = await supabase.rpc("restock_commerce_stock", {
+    p_items: payload,
   });
   if (error) {
     if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
@@ -2803,20 +2846,27 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   if (
     status === "cancelled" &&
     previousOrder.status !== "cancelled" &&
-    isOnlineOrder &&
-    nextMetadata.inventoryCommittedAt &&
-    !nextMetadata.inventoryRestockedAt
+    isOnlineOrder
   ) {
     try {
-      await restockOnlineOrderInventory(previousOrder);
-      nextMetadata = {
-        ...nextMetadata,
-        inventoryRestockedAt: new Date().toISOString(),
-        inventoryRestockReason: "online_order_cancelled",
-      };
+      if (nextMetadata.inventoryCommittedAt && !nextMetadata.inventoryRestockedAt) {
+        await restockCommerceCoreStock(previousOrder.items || []);
+        await restockOnlineOrderInventory(previousOrder);
+        nextMetadata = {
+          ...nextMetadata,
+          inventoryRestockedAt: new Date().toISOString(),
+          inventoryRestockReason: "online_order_cancelled",
+        };
+      } else if (!nextMetadata.inventoryCommittedAt) {
+        await releaseCommerceStockReservation(previousOrder.id);
+        nextMetadata = {
+          ...nextMetadata,
+          inventoryReservationReleasedAt: new Date().toISOString(),
+        };
+      }
     } catch (stockError) {
       return res.status(500).json({
-        error: `No se pudo devolver el stock online al cancelar: ${stockError.message}`,
+        error: `No se pudo liberar/devolver el stock online al cancelar: ${stockError.message}`,
       });
     }
   }
@@ -2876,6 +2926,105 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   void emitNeuralBusinessEvent("order.status_changed", { ...normalizeOrder(data), previousStatus: previousOrder.status, nextStatus: status });
   res.json({ order: data, statusEmailResult });
+});
+
+app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado" });
+
+  try {
+    const orderId = String(req.params.id || "").trim();
+    const reason = String(req.body?.reason || "Reembolso solicitado desde Administración").trim().slice(0, 500);
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    if (String(order?.metadata?.source || "") !== "frontend_checkout") {
+      return res.status(400).json({ error: "Este reembolso está reservado para pedidos de la tienda online" });
+    }
+    if (order.status === "refunded" || order?.metadata?.refundedAt) {
+      return res.json({ ok: true, order, idempotent: true });
+    }
+
+    const paymentIntentId = String(order.stripe_payment_intent_id || "").trim();
+    if (!paymentIntentId) {
+      return res.status(409).json({ error: "Este pedido no tiene un pago Stripe reembolsable asociado" });
+    }
+
+    const refundableStatuses = new Set(["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"]);
+    if (!refundableStatuses.has(String(order.status || ""))) {
+      return res.status(409).json({ error: `El pedido está en estado ${order.status} y no se puede reembolsar automáticamente` });
+    }
+
+    const stripeRefund = await stripe.refunds.create(
+      {
+        payment_intent: paymentIntentId,
+        reason: "requested_by_customer",
+        metadata: { orderId, source: "HERENCIA_ONLINE_REFUND" },
+      },
+      { idempotencyKey: `online-refund-${orderId}` }
+    );
+
+    let metadata = order.metadata || {};
+    if (metadata.inventoryCommittedAt && !metadata.inventoryRestockedAt) {
+      await restockCommerceCoreStock(order.items || []);
+      await restockOnlineOrderInventory(order);
+      metadata = {
+        ...metadata,
+        inventoryRestockedAt: new Date().toISOString(),
+        inventoryRestockReason: "online_order_refunded",
+      };
+    }
+
+    const refundedAt = new Date().toISOString();
+    metadata = {
+      ...metadata,
+      refundedAt,
+      refundReason: reason,
+      stripeRefundId: stripeRefund.id,
+      stripeRefundStatus: stripeRefund.status,
+      refundedBy: "admin",
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from("orders")
+      .update({
+        status: "refunded",
+        metadata,
+        updated_at: refundedAt,
+      })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+
+    if (updateError) throw updateError;
+
+    broadcastAdminOrderEvent(updated, "order_refunded");
+    void emitNeuralBusinessEvent("order.refunded", normalizeOrder(updated));
+
+    let statusEmailResult = null;
+    try {
+      statusEmailResult = await sendOrderStatusUpdateEmail(updated, "admin_online_refund");
+    } catch (emailError) {
+      console.error("Reembolso completado, pero falló el email al cliente:", emailError?.message || emailError);
+      statusEmailResult = { error: emailError?.message || String(emailError) };
+    }
+
+    res.json({
+      ok: true,
+      order: updated,
+      stripeRefundId: stripeRefund.id,
+      stripeRefundStatus: stripeRefund.status,
+      statusEmailResult,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo reembolsar el pedido" });
+  }
 });
 
 
