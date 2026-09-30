@@ -2614,6 +2614,31 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
+  // Pedidos online no-Stripe (transferencia / confirmación manual) comprometen
+  // inventario al ser confirmados por el administrador. Stripe lo hace al
+  // confirmar el PaymentIntent, por lo que commitOnlineOrderInventory sigue
+  // siendo idempotente y evita descuentos dobles.
+  const shouldCommitOnlineInventory =
+    isOnlineOrder &&
+    !nextMetadata.inventoryCommittedAt &&
+    ["confirmed", "paid", "preparing", "processing", "ready", "delivered"].includes(status);
+
+  if (shouldCommitOnlineInventory) {
+    try {
+      const inventoryResult = await commitOnlineOrderInventory({
+        ...previousOrder,
+        status,
+        metadata: nextMetadata,
+      });
+      nextMetadata = inventoryResult.order?.metadata || nextMetadata;
+    } catch (stockError) {
+      return res.status(409).json({
+        error: `No se puede confirmar el pedido: ${stockError.message}`,
+        code: "inventory_conflict",
+      });
+    }
+  }
+
   const shouldNotifyCustomer = ["confirmed", "preparing", "processing", "ready", "delivered"].includes(status);
   let statusEmailResult = null;
 
