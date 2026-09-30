@@ -391,6 +391,58 @@ export const backendApi = {
     return request<{ ok: boolean; service?: string }>("/api/health");
   },
 
+  async listCommerceCollections() {
+    return request<{ collections: any[] }>("/api/commerce/collections");
+  },
+
+  async listCommerceProducts(params?: { collection?: string; includeArchived?: boolean; status?: string }) {
+    const search = new URLSearchParams();
+    if (params?.collection) search.set("collection", params.collection);
+    if (params?.includeArchived) search.set("includeArchived", "1");
+    if (params?.status) search.set("status", params.status);
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<{ products: any[] }>(`/api/commerce/products${suffix}`);
+  },
+
+  async getCommerceProduct(id: string | number) {
+    return request<{ product: any }>(`/api/commerce/products/${encodeURIComponent(String(id))}`);
+  },
+
+  async bootstrapCommerceCatalog() {
+    return request<{ ok: boolean; imported: number; products: any[] }>("/api/admin/commerce/bootstrap", { method: "POST" });
+  },
+
+  async commerceHealth() {
+    return request<{ ok: boolean; products: number; collections: number; source: string }>("/api/admin/commerce/health");
+  },
+
+  async createCommerceProduct(payload: any) {
+    return request<{ product: any }>("/api/admin/commerce/products", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateCommerceProduct(id: string | number, payload: any) {
+    return request<{ product: any }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteCommerceProduct(id: string | number, permanent = false) {
+    return request<{ ok: boolean }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}?permanent=${permanent ? "1" : "0"}`, {
+      method: "DELETE",
+    });
+  },
+
+  async saveCommerceCollection(payload: any) {
+    return request<{ collections: any[] }>("/api/admin/commerce/collections", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async preload() {
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")
