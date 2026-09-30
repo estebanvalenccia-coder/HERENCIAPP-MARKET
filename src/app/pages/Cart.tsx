@@ -21,6 +21,8 @@ export function Cart() {
   const [deliveryMethod, setDeliveryMethod] = useState("envio");
   const [paymentMethod, setPaymentMethod] = useState("tarjeta");
   const [shippingCost, setShippingCost] = useState(5);
+  const [coupon, setCoupon] = useState("");
+  const [discount, setDiscount] = useState(0);
 
   const loadCart = () => {
     try {
@@ -58,7 +60,7 @@ export function Cart() {
     0
   );
   const shipping = deliveryMethod === "recoger" ? 0 : shippingCost;
-  const total = subtotal + shipping;
+  const total = Math.max(0, subtotal - discount + shipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
@@ -76,9 +78,17 @@ export function Cart() {
     toast.success("Producto eliminado");
   };
 
+  const applyCoupon = () => {
+    const codes:any[] = (()=>{try{return JSON.parse(backendStorage.getItem("discountCodes")||"[]")}catch{return []}})();
+    const rule=codes.find((x:any)=>String(x.code||"").toUpperCase()===coupon.trim().toUpperCase() && x.active!==false && (!x.expiresAt || new Date(x.expiresAt)>=new Date()));
+    if(!rule) return toast.error("Cupón no válido o caducado");
+    const amount=rule.type==="fixed"?Number(rule.value||0):subtotal*Number(rule.value||0)/100;
+    setDiscount(Math.min(subtotal,Math.max(0,amount))); toast.success("Cupón aplicado");
+  };
+
   const goCheckout = () => {
     if (!cartItems.length) return toast.error("Tu carrito está vacío");
-    navigate("/checkout", { state: { deliveryMethod, paymentMethod, shippingCost } });
+    navigate("/checkout", { state: { deliveryMethod, paymentMethod, shippingCost, discount, coupon: discount>0?coupon:"" } });
   };
 
   if (!cartItems.length) {
@@ -210,11 +220,13 @@ export function Cart() {
             <option value="efectivo">Efectivo</option>
           </select>
 
+          <div className="mt-5"><label className="text-sm font-black">Cupón</label><div className="mt-2 flex gap-2"><input value={coupon} onChange={e=>setCoupon(e.target.value)} placeholder="Código promocional" className="min-w-0 flex-1 rounded-xl border border-[#ded9cd] px-3 py-2"/><button onClick={applyCoupon} className="rounded-xl bg-[#eef2eb] px-3 py-2 text-sm font-black text-[#315b42]">Aplicar</button></div></div>
           <div className="mt-6 space-y-3 border-t border-[#e3ded4] pt-5 text-sm">
             <div className="flex justify-between gap-4">
               <span className="text-[#6c786f]">Subtotal</span>
               <span className="font-black">€{subtotal.toFixed(2)}</span>
             </div>
+            {discount>0?<div className="flex justify-between gap-4 text-emerald-700"><span>Descuento</span><span className="font-black">−€{discount.toFixed(2)}</span></div>:null}
             <div className="flex justify-between gap-4">
               <span className="text-[#6c786f]">Envío desde</span>
               <span className="font-black">{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
