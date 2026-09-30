@@ -10,6 +10,8 @@ export function Checkout() {
 
   const paymentMethod = location.state?.paymentMethod || "tarjeta";
   const deliveryMethod = location.state?.deliveryMethod || "envio";
+  const discount = Math.max(0, Number(location.state?.discount || 0));
+  const coupon = String(location.state?.coupon || "");
   const isStripePayment = ["tarjeta", "bizum", "alternativos"].includes(paymentMethod);
 
   const cartItems = useMemo(() => JSON.parse(backendStorage.getItem("cart") || "[]"), []);
@@ -111,7 +113,7 @@ export function Checkout() {
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
   const shipping = deliveryMethod === "recoger" || deliveryMethod === "recogida" ? 0 : shippingCost;
-  const total = subtotal + shipping;
+  const total = Math.max(0, subtotal - discount + shipping);
 
   const handleChange = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -176,6 +178,8 @@ export function Checkout() {
         items: cartItems,
         metadata: {
           source: "frontend_checkout",
+          discount,
+          coupon: coupon || null,
           phone: form.phone,
           notes: form.notes,
           shippingDistance: shippingInfo,
@@ -305,6 +309,8 @@ export function Checkout() {
             shipping={shipping}
             metadata={{
               source: "frontend_checkout",
+              discount,
+              coupon: coupon || null,
               requestedPaymentMethod: paymentMethod,
               phone: form.phone,
               notes: form.notes,
