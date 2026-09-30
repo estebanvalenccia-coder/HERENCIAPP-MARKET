@@ -32,15 +32,44 @@ async function writeStorage(db, key, value) {
 async function sendResetEmail(to, resetUrl) {
   if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY no configurada");
   const from = process.env.EMAIL_FROM || "Herencia Market <onboarding@resend.dev>";
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from, to, subject: "Recupera tu contraseña de Herencia Market",
-      html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><h1 style="margin:0">Herencia Market</h1></td></tr><tr><td style="padding:28px"><h2>Recupera tu contraseña</h2><p style="line-height:1.6">Hemos recibido una solicitud para cambiar la contraseña de tu cuenta.</p><p style="margin:28px 0;text-align:center"><a href="${resetUrl}" style="display:inline-block;background:#426047;color:#fff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:13px;color:#718078">Este enlace caduca en 30 minutos y solo puede utilizarse una vez. Si no pediste este cambio, ignora este correo.</p></td></tr></table></td></tr></table></body></html>`
-    })
-  });
-  if (!response.ok) throw new Error(`Resend respondió ${response.status}`);
+  const payload = {
+    from,
+    to,
+    subject: "Recupera tu contraseña de Herencia Market",
+    html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><h1 style="margin:0">Herencia Market</h1></td></tr><tr><td style="padding:28px"><h2>Recupera tu contraseña</h2><p style="line-height:1.6">Hemos recibido una solicitud para cambiar la contraseña de tu cuenta.</p><p style="margin:28px 0;text-align:center"><a href="${resetUrl}" style="display:inline-block;background:#426047;color:#fff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:13px;color:#718078">Este enlace caduca en 30 minutos y solo puede utilizarse una vez. Si no pediste este cambio, ignora este correo.</p></td></tr></table></td></tr></table></body></html>`,
+  };
+
+  let lastError = null;
+  const idempotencyKey = crypto.createHash("sha256").update(`password-reset|${to}|${resetUrl}`).digest("hex");
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (response.ok) return { ok: true, attempts: attempt };
+
+      const detail = await response.text().catch(() => "");
+      lastError = new Error(`Resend respondió ${response.status}: ${detail}`);
+      const retryable = response.status === 429 || response.status >= 500;
+      if (!retryable || attempt === 3) throw lastError;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 350 : 900));
+  }
+
+  throw lastError || new Error("No se pudo enviar el correo de recuperación");
 }
 
 function installRoutes(app) {
