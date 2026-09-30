@@ -133,8 +133,7 @@ const adminPassword =
   process.env.ADMIN_PASSWORD || (!isProduction ? "13101098" : "");
 const sessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  (!isProduction ? "dev-only-change-me" : "");
+  (!isProduction ? process.env.SUPABASE_SERVICE_ROLE_KEY || "dev-only-change-me" : "");
 const usingDefaultAdminCredentials =
   !isProduction && (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD);
 const adminAuthConfigured = Boolean(
