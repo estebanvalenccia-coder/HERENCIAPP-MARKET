@@ -158,6 +158,7 @@ type CommerceProduct = {
   variants?: Array<{ name: string; price?: number; stock?: number }>;
   relatedProductIds?: number[];
   personalization?: boolean;
+  deletedAt?: string;
 };
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
