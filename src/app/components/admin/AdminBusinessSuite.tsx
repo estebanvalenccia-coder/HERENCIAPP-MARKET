@@ -20,6 +20,9 @@ type SuiteSettings = {
   pointsPerEuro: number;
   referralReward: number;
   maxDeliveryKm: number;
+  deliverySlotCapacity: number;
+  sameDayCutoffHour: number;
+  deliveryClosedWeekdays: number[];
 };
 
 const defaults: SuiteSettings = {
@@ -39,6 +42,9 @@ const defaults: SuiteSettings = {
   pointsPerEuro: 1,
   referralReward: 5,
   maxDeliveryKm: 18,
+  deliverySlotCapacity: 6,
+  sameDayCutoffHour: 14,
+  deliveryClosedWeekdays: [0],
 };
 
 const modules = [
@@ -87,6 +93,14 @@ export function AdminBusinessSuite() {
   const toggle = (key: keyof SuiteSettings) =>
     setSettings((current) => ({ ...current, [key]: !current[key] }));
 
+  const toggleClosedWeekday = (day: number) =>
+    setSettings((current) => ({
+      ...current,
+      deliveryClosedWeekdays: current.deliveryClosedWeekdays.includes(day)
+        ? current.deliveryClosedWeekdays.filter((value) => value !== day)
+        : [...current.deliveryClosedWeekdays, day].sort((a, b) => a - b),
+    }));
+
   return (
     <div className="space-y-6">
       <div className="rounded-3xl border border-border bg-gradient-to-br from-primary/10 via-card to-secondary/10 p-6 md:p-8">
@@ -126,12 +140,26 @@ export function AdminBusinessSuite() {
 
       <section className="rounded-2xl border border-border bg-card p-6">
         <div className="mb-5 flex items-center gap-2"><Calendar className="h-5 w-5 text-primary" /><h3 className="text-xl font-bold">Reglas operativas</h3></div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <NumberField label="Avisar stock ≤" value={settings.lowStockThreshold} onChange={(v) => setSettings({ ...settings, lowStockThreshold: v })} />
           <NumberField label="Envío gratis desde €" value={settings.freeShippingFrom} onChange={(v) => setSettings({ ...settings, freeShippingFrom: v })} />
           <NumberField label="Puntos por €" value={settings.pointsPerEuro} onChange={(v) => setSettings({ ...settings, pointsPerEuro: v })} />
           <NumberField label="Premio referido €" value={settings.referralReward} onChange={(v) => setSettings({ ...settings, referralReward: v })} />
           <NumberField label="Radio máximo km" value={settings.maxDeliveryKm} onChange={(v) => setSettings({ ...settings, maxDeliveryKm: v })} />
+          <NumberField label="Pedidos por franja" value={settings.deliverySlotCapacity} onChange={(v) => setSettings({ ...settings, deliverySlotCapacity: Math.max(1, v) })} />
+          <NumberField label="Cierre reparto hoy (hora)" value={settings.sameDayCutoffHour} onChange={(v) => setSettings({ ...settings, sameDayCutoffHour: Math.min(23, v) })} />
+        </div>
+        <div className="mt-5">
+          <p className="mb-2 text-sm font-semibold">Días sin reparto</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              [1,"Lun"],[2,"Mar"],[3,"Mié"],[4,"Jue"],[5,"Vie"],[6,"Sáb"],[0,"Dom"],
+            ].map(([day,label]) => {
+              const active = settings.deliveryClosedWeekdays.includes(Number(day));
+              return <button key={String(day)} type="button" onClick={() => toggleClosedWeekday(Number(day))} className={`rounded-full border px-3 py-2 text-sm font-bold ${active ? "border-red-200 bg-red-50 text-red-700" : "border-border bg-background text-muted-foreground"}`}>{label}{active ? " · cerrado" : ""}</button>;
+            })}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">La capacidad y el cierre se validan también en el backend para evitar aceptar franjas llenas.</p>
         </div>
       </section>
 
