@@ -25,31 +25,26 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-let createLocalSupabase = null;
-
-try {
-  const localModule = await import("./localSupabase.js");
-  createLocalSupabase = localModule.default;
-} catch (error) {
-  console.warn(
-    "localSupabase.js no disponible en este entorno. Configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY para producción.",
-    error?.message || error
-  );
-}
-
 let supabase = null;
 
 if (supabaseUrl && supabaseServiceRoleKey) {
   supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false },
   });
-} else {
-  if (createLocalSupabase) {
-    supabase = createLocalSupabase({ path: new URL("./local_db.json", import.meta.url).pathname });
+  console.log("Supabase de producción configurado");
+} else if (!isProduction) {
+  // El fallback local solo pertenece al entorno de desarrollo. En producción
+  // nunca intentamos importar un módulo local inexistente ni ocultamos una
+  // configuración incompleta de la base de datos.
+  try {
+    const localModule = await import("./localSupabase.js");
+    supabase = localModule.default({ path: new URL("./local_db.json", import.meta.url).pathname });
     console.warn("Supabase no configurado: usando almacenamiento local en backend/local_db.json para desarrollo");
-  } else {
-    console.warn("Supabase no configurado y localSupabase.js ausente. El backend responderá 503 en rutas que requieren base de datos.");
+  } catch {
+    console.warn("Supabase no configurado en desarrollo y no hay fallback local.");
   }
+} else {
+  console.error("Configuración Supabase incompleta en producción. Las rutas de base de datos responderán 503.");
 }
 
 const defaultAllowedOrigins = [
