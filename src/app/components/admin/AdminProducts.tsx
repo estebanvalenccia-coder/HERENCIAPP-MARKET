@@ -3,7 +3,7 @@ import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon, Sparkles, Printer } from "lu
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { products as initialProducts } from "../../data/products";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 
 interface Product {
   id: number;
@@ -122,27 +122,60 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   });
 
   useEffect(() => {
-    const saved = backendStorage.getItem("adminProducts");
-    if (saved) {
-      setProducts(JSON.parse(saved));
-    } else {
-      const productsWithState = initialProducts.map((p, index) => ({
-        ...p,
-        active: true,
-        onSale: p.featured || false,
-        salePrice: p.featured ? p.price * 0.8 : undefined,
-        sku: `SKU-${String(p.id ?? index + 1).padStart(4, "0")}`,
-        stock: 0,
-        iva: 21,
-      }));
-      setProducts(productsWithState);
-      backendStorage.setItem("adminProducts", JSON.stringify(productsWithState));
-    }
+    let active = true;
+    backendApi.listCommerceProducts({ includeArchived: true })
+      .then(({ products: rows }) => {
+        if (!active) return;
+        if (Array.isArray(rows) && rows.length) {
+          setProducts(rows);
+          return;
+        }
+        const productsWithState = initialProducts.map((p, index) => ({
+          ...p,
+          active: true,
+          onSale: p.featured || false,
+          salePrice: p.featured ? p.price * 0.8 : undefined,
+          sku: `SKU-${String(p.id ?? index + 1).padStart(4, "0")}`,
+          stock: 0,
+          iva: 21,
+        }));
+        setProducts(productsWithState);
+      })
+      .catch(() => {
+        try {
+          const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+          setProducts(Array.isArray(saved) && saved.length ? saved : initialProducts as Product[]);
+        } catch { setProducts(initialProducts as Product[]); }
+      });
+    return () => { active = false; };
   }, []);
 
   const saveProducts = (updatedProducts: Product[]) => {
+    const before = new Map(products.map((p) => [String(p.id), p]));
+    const after = new Map(updatedProducts.map((p) => [String(p.id), p]));
     setProducts(updatedProducts);
-    backendStorage.setItem("adminProducts", JSON.stringify(updatedProducts));
+    void backendStorage.setItem("adminProducts", JSON.stringify(updatedProducts));
+
+    for (const product of updatedProducts) {
+      const previous = before.get(String(product.id));
+      if (!previous || JSON.stringify(previous) !== JSON.stringify(product)) {
+        void backendApi.updateCommerceProduct(product.id, {
+          ...product,
+          status: product.deletedAt ? "archived" : product.active === false ? "draft" : "active",
+          compareAtPrice: product.onSale && product.salePrice ? product.price : product.originalPrice,
+          collections: Array.isArray((product as any).collections) && (product as any).collections.length
+            ? (product as any).collections
+            : undefined,
+          images: product.image ? [product.image] : [],
+        }).catch((error) => toast.error(error?.message || `No se pudo sincronizar ${product.name}`));
+      }
+    }
+
+    for (const [id] of before) {
+      if (!after.has(id)) {
+        void backendApi.deleteCommerceProduct(id, true).catch((error) => toast.error(error?.message || "No se pudo eliminar el producto"));
+      }
+    }
   };
 
   const toggleActive = (id: number) => {
