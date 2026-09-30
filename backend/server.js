@@ -106,6 +106,27 @@ app.options(
 
 app.use(securityHeaders());
 
+app.use((req, res, next) => {
+  const requestId = String(req.headers["x-request-id"] || crypto.randomUUID()).slice(0, 120);
+  const startedAt = Date.now();
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  res.on("finish", () => {
+    if (res.statusCode >= 500) {
+      console.error(JSON.stringify({
+        type: "http_error",
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+        at: new Date().toISOString(),
+      }));
+    }
+  });
+  next();
+});
+
 const adminUsername =
   process.env.ADMIN_USERNAME || (!isProduction ? "Daniel" : "");
 const adminPassword =
@@ -1052,6 +1073,31 @@ app.use((req, res, next) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
+});
+
+app.get("/api/ready", async (_req, res) => {
+  if (!supabase) {
+    return res.status(503).json({ ok: false, database: false, stripe: Boolean(stripe) });
+  }
+  try {
+    const { error } = await supabase.from("app_storage").select("key", { head: true, count: "exact" }).limit(1);
+    if (error) throw error;
+    res.json({
+      ok: true,
+      database: true,
+      stripe: Boolean(stripe),
+      email: Boolean(process.env.RESEND_API_KEY),
+      commerceCore: true,
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      database: false,
+      stripe: Boolean(stripe),
+      error: "Database readiness check failed",
+      requestId: _req.requestId,
+    });
+  }
 });
 
 app.post("/api/admin/login", (req, res) => {
