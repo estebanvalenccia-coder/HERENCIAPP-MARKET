@@ -278,7 +278,7 @@ export function AdminOrders() {
                         <option value="ready">Listo</option>
                         <option value="delivered">Entregado</option>
                         <option value="cancelled">Cancelado</option>
-                        <option value="refunded">Reembolsado</option>
+                        {order.status === "refunded" && <option value="refunded">Reembolsado</option>}
                       </select>
                       {order.metadata?.source === "frontend_checkout" && ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(order.status) && (
                         <button
