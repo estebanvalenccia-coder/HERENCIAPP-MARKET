@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Package, Eye, Truck, CheckCircle, Clock, Search, Filter, Download, Phone, MapPin, Mail, CreditCard } from "lucide-react";
+import { Package, Eye, Truck, CheckCircle, Clock, Search, Filter, Download, Phone, MapPin, Mail, CreditCard, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
@@ -32,6 +32,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   delivered: { label: "Entregado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   completed: { label: "Completado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   cancelled: { label: "Cancelado", color: "bg-red-100 text-red-800 border-red-200", icon: Package },
+  refunded: { label: "Reembolsado", color: "bg-rose-100 text-rose-800 border-rose-200", icon: RotateCcw },
 };
 
 function getStatus(order: Order) {
@@ -59,6 +60,7 @@ export function AdminOrders() {
   const [filter, setFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [refundingOrder, setRefundingOrder] = useState<string | null>(null);
 
   const loadOrders = () => {
     backendApi.listOrders()
@@ -115,6 +117,41 @@ export function AdminOrders() {
     } catch (error) {
       console.error("No se pudo actualizar el pedido", error);
       toast.error("No se pudo actualizar el pedido");
+    }
+  };
+
+  const refundOrder = async (order: Order) => {
+    if (order.metadata?.source !== "frontend_checkout") {
+      return toast.error("El reembolso automático solo está disponible para pedidos online");
+    }
+
+    const reason = window.prompt(
+      `Motivo del reembolso de #${order.id.slice(0, 8)}`,
+      "Reembolso solicitado por el cliente"
+    );
+    if (reason === null) return;
+
+    const confirmed = window.confirm(
+      `Se devolverán ${Number(order.total || 0).toFixed(2)} € mediante Stripe y se repondrá el stock. ¿Continuar?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setRefundingOrder(order.id);
+      const result = await backendApi.refundOnlineOrder(order.id, reason);
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? { ...item, status: result.order?.status || "refunded", metadata: result.order?.metadata || item.metadata }
+            : item
+        )
+      );
+      toast.success(result.idempotent ? "Este pedido ya estaba reembolsado" : "Reembolso completado y stock repuesto");
+    } catch (error: any) {
+      console.error("No se pudo reembolsar el pedido", error);
+      toast.error(error?.message || "No se pudo completar el reembolso");
+    } finally {
+      setRefundingOrder(null);
     }
   };
 
@@ -175,6 +212,7 @@ export function AdminOrders() {
               <option value="ready">Listos</option>
               <option value="delivered">Entregados</option>
               <option value="cancelled">Cancelados</option>
+              <option value="refunded">Reembolsados</option>
             </select>
           </div>
         </div>
@@ -240,7 +278,19 @@ export function AdminOrders() {
                         <option value="ready">Listo</option>
                         <option value="delivered">Entregado</option>
                         <option value="cancelled">Cancelado</option>
+                        <option value="refunded">Reembolsado</option>
                       </select>
+                      {order.metadata?.source === "frontend_checkout" && ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(order.status) && (
+                        <button
+                          onClick={() => void refundOrder(order)}
+                          disabled={refundingOrder === order.id}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          title="Reembolsar pago online"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          {refundingOrder === order.id ? "Reembolsando..." : "Reembolsar"}
+                        </button>
+                      )}
                       <button onClick={() => setExpandedOrder(expanded ? null : order.id)} className="p-2 bg-muted hover:bg-accent rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
                     </div>
                   </div>
