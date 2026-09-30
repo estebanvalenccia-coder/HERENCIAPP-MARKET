@@ -1029,6 +1029,20 @@ export const backendApi = {
     });
   },
 
+  async refundOnlineOrder(orderId: string, reason?: string) {
+    return request<{
+      ok: boolean;
+      order: any;
+      stripeRefundId?: string | null;
+      stripeRefundStatus?: string | null;
+      statusEmailResult?: any;
+      idempotent?: boolean;
+    }>(`/api/orders/${encodeURIComponent(orderId)}/refund`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || "Reembolso solicitado desde Administración" }),
+    });
+  },
+
   async getHerenciaIaCustomerStatus(email: string) {
     return request<{ totalPaid: number; isVip: boolean }>("/api/herencia-ia/customer-status", {
       method: "POST",
