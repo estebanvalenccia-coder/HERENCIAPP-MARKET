@@ -5,9 +5,10 @@
   "type": "module",
   "engines": { "node": "24.x" },
   "scripts": {
-    "build": "npm run test:pos && npm run test:security && vite build",
+    "build": "npm run test:pos && npm run test:security && npm run test:delivery && vite build",
     "test:pos": "node --test backend/posEngine.test.js",
     "test:security": "node --test backend/security.test.js",
+    "test:delivery": "node --test backend/deliveryCapacity.test.js",
     "dev": "vite",
     "dev:backend": "node --import ./backend/commerceCore.js --import ./backend/customerAccessRoutes.js --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixSalesAI.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
     "dev:full": "concurrently \"vite\" \"npm run dev:backend\"",
