@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useLocation, Link } from "react-router";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent } from "../lib/siteContent";
+import { loadCommerceCatalog } from "../lib/commerceCatalog";
 
 const normalize = (value: unknown) =>
   String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -42,26 +43,28 @@ export function Products() {
   }, [location.search]);
 
   useEffect(() => {
-    const load = () => {
-      const adminProducts = backendStorage.getItem("adminProducts");
-      if (adminProducts) {
-        try {
-          const parsed = JSON.parse(adminProducts);
-          setDisplayProducts(Array.isArray(parsed) ? parsed.filter((product: any) => product.active !== false) : []);
-        } catch { setDisplayProducts(products); }
-      }
+    let active = true;
+    const load = async () => {
+      const commerce = await loadCommerceCatalog();
+      if (active) setDisplayProducts(commerce.length ? commerce : products);
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       try { setFavorites(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String)); } catch { setFavorites([]); }
       backendApi.customerWishlist().then((r) => {
+        if (!active) return;
         const ids=(r.wishlist||[]).map(String);
         setFavorites(ids);
         void backendStorage.setItem("wishlist", JSON.stringify(ids));
       }).catch(()=>{});
     };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
-    return () => { window.removeEventListener("storage", load); window.removeEventListener("backend-storage", load); };
+    void load();
+    const reload = () => { void load(); };
+    window.addEventListener("storage", reload);
+    window.addEventListener("backend-storage", reload);
+    return () => {
+      active = false;
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("backend-storage", reload);
+    };
   }, []);
 
   const suggestions = useMemo(() => {
