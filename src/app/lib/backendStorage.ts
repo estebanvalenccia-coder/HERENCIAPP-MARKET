@@ -956,6 +956,22 @@ export const backendApi = {
     });
   },
 
+  async deliveryAvailability(date: string) {
+    return request<{
+      ok: boolean;
+      date: string;
+      capacity: number;
+      cutoffHour: number;
+      slots: Array<{
+        slot: string;
+        used: number;
+        capacity: number;
+        remaining: number;
+        available: boolean;
+      }>;
+    }>(`/api/shipping/availability?date=${encodeURIComponent(date)}`);
+  },
+
   async joinProductWaitlist(payload: { productId: string; productName?: string; email: string }) {
     return request<{ ok: boolean; entry: any; duplicate?: boolean }>("/api/experience/waitlist", {
       method: "POST",

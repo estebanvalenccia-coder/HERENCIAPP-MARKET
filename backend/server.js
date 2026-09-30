@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
+import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -851,6 +852,84 @@ async function upsertStorageValue(key, value) {
   if (error) throw error;
 }
 
+const ACTIVE_DELIVERY_STATUSES = new Set([
+  "payment_pending",
+  "pending",
+  "pending_bizum_review",
+  "pending_manual_review",
+  "pending_transfer_review",
+  "pending_store_confirmation",
+  "paid",
+  "confirmed",
+  "preparing",
+  "processing",
+  "ready",
+]);
+
+async function deliveryAvailabilityForDate(requestedDate, suite = {}) {
+  const schedule = validateDeliverySchedule({
+    requestedDate,
+    requestedTimeSlot: "",
+    settings: suite,
+  });
+  const rules = schedule.rules;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("status,metadata")
+    .contains("metadata", { requestedDate: schedule.requestedDate });
+
+  if (error) throw error;
+
+  const counts = new Map(DELIVERY_SLOTS.map((slot) => [slot, 0]));
+  for (const order of data || []) {
+    if (!ACTIVE_DELIVERY_STATUSES.has(String(order.status || ""))) continue;
+    const slot = String(order.metadata?.requestedTimeSlot || "");
+    if (counts.has(slot)) counts.set(slot, Number(counts.get(slot) || 0) + 1);
+  }
+
+  return {
+    date: schedule.requestedDate,
+    capacity: rules.capacity,
+    cutoffHour: rules.cutoffHour,
+    slots: DELIVERY_SLOTS.map((slot) => {
+      const used = Number(counts.get(slot) || 0);
+      return {
+        slot,
+        used,
+        capacity: rules.capacity,
+        remaining: Math.max(0, rules.capacity - used),
+        available: used < rules.capacity,
+      };
+    }),
+  };
+}
+
+async function assertDeliveryAvailability({ deliveryMethod, metadata = {}, suite = {} }) {
+  const normalizedMethod = String(deliveryMethod || "").toLowerCase();
+  if (["recoger", "recogida", "mostrador"].includes(normalizedMethod)) return { skipped: true };
+
+  const requestedDate = String(metadata?.requestedDate || "").trim();
+  const requestedTimeSlot = String(metadata?.requestedTimeSlot || "").trim();
+  const schedule = validateDeliverySchedule({
+    requestedDate,
+    requestedTimeSlot,
+    settings: suite,
+  });
+
+  if (!schedule.requestedDate || !schedule.requestedTimeSlot) return { ok: true, schedule };
+
+  const availability = await deliveryAvailabilityForDate(schedule.requestedDate, suite);
+  const selected = availability.slots.find((entry) => entry.slot === schedule.requestedTimeSlot);
+  if (!selected?.available) {
+    const error = new Error("La franja seleccionada acaba de llenarse. Elige otra hora.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return { ok: true, schedule, availability: selected };
+}
+
 function commerceReservationUnavailable(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return (
@@ -1139,6 +1218,19 @@ app.get("/api/ready", async (_req, res) => {
       error: "Database readiness check failed",
       requestId: _req.requestId,
     });
+  }
+});
+
+app.get("/api/shipping/availability", async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const date = String(req.query?.date || "").trim();
+    if (!date) return res.status(400).json({ error: "Indica una fecha" });
+    const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+    const availability = await deliveryAvailabilityForDate(date, suite);
+    res.json({ ok: true, ...availability });
+  } catch (error) {
+    res.status(error.statusCode || 409).json({ error: error.message || "No hay reparto disponible para esa fecha" });
   }
 });
 
@@ -2732,6 +2824,12 @@ async function validateCommerceOrderPayload(order = {}) {
     discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
   }
   const shipping = normalizeMoney(order.shipping || 0);
+  const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+  await assertDeliveryAvailability({
+    deliveryMethod: order.deliveryMethod || "envio",
+    metadata: order.metadata || {},
+    suite,
+  });
   return {items:normalizedItems,subtotal,shipping,discount,total:normalizeMoney(subtotal-discount+shipping)};
 }
 
@@ -5578,6 +5676,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+    await assertDeliveryAvailability({ deliveryMethod, metadata, suite });
     const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
 
     let authoritativeShipping = 0;
