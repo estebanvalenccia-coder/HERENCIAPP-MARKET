@@ -5,6 +5,7 @@ import { backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
+import { AdminCommerceCatalog } from "./AdminCommerceCatalog";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -255,6 +256,8 @@ export function AdminContent() {
       </div>
 
       <AdminMarketExperience site={site} onChange={setSite} />
+
+      <AdminCommerceCatalog />
 
       <section className="rounded-2xl border border-border bg-card p-6">
         <h3 className="mb-5 text-xl font-black">Marca y logo</h3>
