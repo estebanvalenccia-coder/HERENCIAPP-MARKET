@@ -685,6 +685,7 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
     html,
     reply_to: replyTo && isValidEmail(replyTo) ? replyTo : undefined,
   };
+  const idempotencyKey = crypto.createHash("sha256").update(`${to}|${subject}|${html}`).digest("hex");
 
   let lastError = null;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -694,7 +695,7 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
-          "Idempotency-Key": crypto.createHash("sha256").update(`${to}|${subject}`).digest("hex"),
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10000),
@@ -712,9 +713,14 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
 
       lastError = new Error(`Resend error ${response.status}: ${resultText}`);
       const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt === 3) throw lastError;
+      if (!retryable) {
+        lastError.nonRetryable = true;
+        throw lastError;
+      }
+      if (attempt === 3) throw lastError;
     } catch (error) {
       lastError = error;
+      if (error?.nonRetryable) throw error;
       if (attempt === 3) break;
     }
 
