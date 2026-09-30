@@ -6,6 +6,7 @@ import { backendStorage } from "../lib/backendStorage";
 import { products as fallbackProducts } from "../data/products";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { loadCommerceCatalog } from "../lib/commerceCatalog";
 
 type Kind = "dulce" | "moda";
 
@@ -62,27 +63,34 @@ function CollectionPage({ kind }: { kind: Kind }) {
   const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
 
   useEffect(() => {
-    const load = () => {
+    let active = true;
+    const load = async () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
-      try {
-        const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-        setCatalog(Array.isArray(rows) && rows.length ? rows.filter((item: any) => item.active !== false) : fallbackProducts);
-      } catch {
-        setCatalog(fallbackProducts);
+      const rows = await loadCommerceCatalog({ collection: kind });
+      if (!active) return;
+      if (rows.length) setCatalog(rows);
+      else {
+        const fallback = await loadCommerceCatalog();
+        setCatalog(fallback.length ? fallback : fallbackProducts);
       }
     };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
+    void load();
+    const reload = () => { void load(); };
+    window.addEventListener("storage", reload);
+    window.addEventListener("backend-storage", reload);
     return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener("backend-storage", load);
+      active = false;
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("backend-storage", reload);
     };
-  }, []);
+  }, [kind]);
 
   const market = getMarketExperience(site);
   const content = market[kind];
-  const rows = useMemo(() => catalog.filter((product) => matchesKind(product, kind)), [catalog, kind]);
+  const rows = useMemo(() => catalog.filter((product) => {
+    if (Array.isArray(product.collections) && product.collections.length) return product.collections.includes(kind);
+    return matchesKind(product, kind);
+  }), [catalog, kind]);
 
   const chips =
     kind === "dulce"
