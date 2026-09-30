@@ -159,6 +159,20 @@ type CommerceProduct = {
   relatedProductIds?: number[];
   personalization?: boolean;
   deletedAt?: string;
+  compareAtPrice?: number;
+  weight?: number;
+  barcode?: string;
+  vendor?: string;
+  collection?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  scheduledAt?: string;
+  minOrder?: number;
+  maxOrder?: number;
+  care?: string;
+  material?: string;
+  flavor?: string;
+  serviceDuration?: string;
 };
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
@@ -188,6 +202,9 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   const [products, setProducts] = useState<CommerceProduct[]>([]);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<CommerceProduct | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [sort, setSort] = useState("name");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const load = () => {
     try { setProducts(JSON.parse(backendStorage.getItem("adminProducts") || "[]")); }
@@ -196,7 +213,11 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   useEffect(() => { load(); }, []);
 
   const aliases = CATEGORY_ALIASES[category] || [category];
-  const visible = useMemo(() => products.filter((p) => !p.deletedAt && aliases.includes(String(p.category || "").toLowerCase()) && (!query || (p.name + " " + (p.sku || "")).toLowerCase().includes(query.toLowerCase()))), [products, query, category]);
+  const visible = useMemo(() => products
+    .filter((p) => !p.deletedAt && aliases.includes(String(p.category || "").toLowerCase()))
+    .filter((p) => statusFilter === "all" || (p.status || (p.active!==false ? "published" : "hidden")) === statusFilter)
+    .filter((p) => !query || (p.name + " " + (p.sku || "") + " " + (p.tags||[]).join(" ")).toLowerCase().includes(query.toLowerCase()))
+    .sort((a,b) => sort==="price" ? Number(a.price)-Number(b.price) : sort==="stock" ? Number(a.stock||0)-Number(b.stock||0) : a.name.localeCompare(b.name)), [products, query, category, sort, statusFilter]);
 
   const persist = async (next: CommerceProduct[]) => {
     setProducts(next);
@@ -207,7 +228,7 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   const blank = (): CommerceProduct => ({
     id: Date.now(), name: "", description: "", category, price: 0, cost: 0, iva: 21, sku: "", stock: 0,
     image: "", images: [], active: false, featured: false, onSale: false, status: "draft", tags: [], variants: [],
-    relatedProductIds: [], personalization: false,
+    relatedProductIds: [], personalization: false, care: "", material: "", flavor: "", serviceDuration: "", compareAtPrice: 0, weight: 0, barcode: "", vendor: "", collection: "", seoTitle: "", seoDescription: "", scheduledAt: "", minOrder: 1, maxOrder: 99,
   });
 
   const save = async () => {
@@ -224,6 +245,18 @@ function ProductManager({ title, category, onClose }: { title: string; category:
     await persist([copy, ...products]); toast.success("Producto duplicado como borrador");
   };
 
+  const bulkStatus = async (status: CommerceProduct["status"]) => {
+    if (!selected.length) return toast.error("Selecciona al menos un producto");
+    await persist(products.map(p => selected.includes(p.id) ? {...p,status,active:status==="published"} : p));
+    setSelected([]); toast.success("Productos actualizados");
+  };
+
+  const exportCsv = () => {
+    const rows = visible.map(p => [p.sku||"",p.name,p.category,p.price,p.stock||0,p.iva||21,p.status||"", (p.tags||[]).join("|")]);
+    const csv = [["SKU","Nombre","Categoría","Precio","Stock","IVA","Estado","Etiquetas"],...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); a.download=`herencia-${category}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  };
+
   const remove = async (id: number) => {
     if (!confirm("¿Mover este producto a la papelera?")) return;
     await persist(products.map((p:any) => p.id === id ? { ...p, active:false, deletedAt:new Date().toISOString() } : p));
@@ -236,10 +269,16 @@ function ProductManager({ title, category, onClose }: { title: string; category:
         <div className="flex gap-2"><button onClick={()=>setEditing(blank())} className="inline-flex items-center gap-2 rounded-xl bg-[#315b42] px-4 py-2.5 text-sm font-black text-white"><PackagePlus className="h-4 w-4"/>Nuevo producto</button><button onClick={onClose} className="rounded-xl border border-border p-2.5"><X className="h-5 w-5"/></button></div>
       </div>
       <div className="p-5">
-        <div className="mb-5 flex items-center gap-2 rounded-xl border border-border bg-white px-3"><Search className="h-4 w-4 text-muted-foreground"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por nombre o SKU…" className="w-full bg-transparent py-3 outline-none"/></div>
+        <div className="mb-4 grid gap-2 lg:grid-cols-[1fr_auto_auto_auto]">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3"><Search className="h-4 w-4 text-muted-foreground"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por nombre, SKU o etiqueta…" className="w-full bg-transparent py-3 outline-none"/></div>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold"><option value="all">Todos los estados</option><option value="published">Publicados</option><option value="draft">Borradores</option><option value="hidden">Ocultos</option><option value="soldout">Agotados</option></select>
+          <select value={sort} onChange={e=>setSort(e.target.value)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold"><option value="name">Ordenar: nombre</option><option value="price">Precio</option><option value="stock">Stock</option></select>
+          <button onClick={exportCsv} className="rounded-xl border border-border bg-white px-4 py-2 text-sm font-black">Exportar CSV</button>
+        </div>
+        {selected.length?<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-[#eef4ef] p-3 text-sm"><b>{selected.length} seleccionados</b><button onClick={()=>void bulkStatus("published")} className="rounded-lg bg-[#315b42] px-3 py-2 font-bold text-white">Publicar</button><button onClick={()=>void bulkStatus("hidden")} className="rounded-lg border border-border bg-white px-3 py-2 font-bold">Ocultar</button><button onClick={()=>void bulkStatus("draft")} className="rounded-lg border border-border bg-white px-3 py-2 font-bold">Borrador</button></div>:null}
         <div className="grid gap-3">
           {visible.map(p=><div key={p.id} className="grid gap-4 rounded-2xl border border-border bg-white p-4 md:grid-cols-[84px_1fr_auto] md:items-center">
-            <div className="h-20 w-20 overflow-hidden rounded-xl bg-muted">{p.image?<img src={p.image} className="h-full w-full object-cover"/>:null}</div>
+            <div className="flex items-center gap-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>setSelected(e.target.checked?[...selected,p.id]:selected.filter(id=>id!==p.id))}/><div className="h-20 w-20 overflow-hidden rounded-xl bg-muted">{p.image?<img src={p.image} className="h-full w-full object-cover"/>:null}</div></div>
             <div><div className="flex flex-wrap items-center gap-2"><p className="font-black">{p.name}</p><span className="rounded-full bg-muted px-2 py-1 text-[11px] font-bold uppercase">{p.status || (p.active!==false?"published":"hidden")}</span></div><p className="mt-1 text-sm text-muted-foreground">{p.sku || "Sin SKU"} · Stock {Number(p.stock||0)} · IVA {Number(p.iva||21)}%</p><p className="mt-1 font-black">{Number(p.salePrice||p.price||0).toLocaleString("es-ES",{style:"currency",currency:"EUR"})}</p></div>
             <div className="flex flex-wrap gap-2"><button onClick={()=>setEditing({...p})} className="rounded-xl border border-border p-2.5" title="Editar"><Edit3 className="h-4 w-4"/></button><button onClick={()=>void duplicate(p)} className="rounded-xl border border-border p-2.5" title="Duplicar"><Copy className="h-4 w-4"/></button><button onClick={()=>void remove(p.id)} className="rounded-xl border border-red-200 p-2.5 text-red-600" title="Papelera"><Trash2 className="h-4 w-4"/></button></div>
           </div>)}
@@ -256,8 +295,20 @@ function ProductManager({ title, category, onClose }: { title: string; category:
         <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Coste €</span><input type="number" step=".01" value={editing.cost||0} onChange={e=>setEditing({...editing,cost:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
         <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Stock</span><input type="number" value={editing.stock||0} onChange={e=>setEditing({...editing,stock:Math.max(0,Number(e.target.value))})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
         <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">IVA %</span><input type="number" step=".01" value={editing.iva||21} onChange={e=>setEditing({...editing,iva:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
-        <div className="md:col-span-2"><Field label="Descripción" value={editing.description||""} onChange={description=>setEditing({...editing,description})} multiline/></div>
+        <Field label="Código de barras / EAN" value={editing.barcode||""} onChange={barcode=>setEditing({...editing,barcode})}/>
+        <Field label="Proveedor / marca" value={editing.vendor||""} onChange={vendor=>setEditing({...editing,vendor})}/>
+        <Field label="Colección / subcategoría" value={editing.collection||""} onChange={collection=>setEditing({...editing,collection})}/>
+        <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Peso (g)</span><input type="number" value={editing.weight||0} onChange={e=>setEditing({...editing,weight:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
+        <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-[.12em] text-muted-foreground">Precio anterior €</span><input type="number" step=".01" value={editing.compareAtPrice||0} onChange={e=>setEditing({...editing,compareAtPrice:Number(e.target.value)})} className="w-full rounded-xl border border-border px-3 py-2.5"/></label>
+        <Field label="Publicar el (ISO/fecha)" value={editing.scheduledAt||""} onChange={scheduledAt=>setEditing({...editing,scheduledAt})}/>
+        <div className="md:col-span-2"><Field label="Descripción" value={editing.description||""} onChange={description=>setEditing({...editing,description})} multiline/></div><div className="md:col-span-2 rounded-2xl border border-border bg-[#f7f7f3] p-4"><p className="mb-3 font-black">Datos específicos de ${title}</p><div className="grid gap-3 md:grid-cols-2">
+          {category==="plantas"||category==="semillas"||category==="jardineria"||category==="sustratos"?<Field label="Cuidados / instrucciones" value={editing.care||""} onChange={care=>setEditing({...editing,care})} multiline/>:null}
+          {category==="moda"||category==="decoracion"?<Field label="Material / composición" value={editing.material||""} onChange={material=>setEditing({...editing,material})}/>:null}
+          {category==="dulce"?<Field label="Sabor / alérgenos / conservación" value={editing.flavor||""} onChange={flavor=>setEditing({...editing,flavor})} multiline/>:null}
+          {category==="servicios"?<Field label="Duración / condiciones del servicio" value={editing.serviceDuration||""} onChange={serviceDuration=>setEditing({...editing,serviceDuration})} multiline/>:null}
+        </div></div>
         <div className="md:col-span-2"><ImageField label="Imagen principal" value={editing.image||""} onChange={image=>setEditing({...editing,image})}/></div>
+        <div className="md:col-span-2 rounded-2xl border border-border bg-muted/20 p-4"><p className="mb-3 font-black">SEO y venta</p><div className="grid gap-3 md:grid-cols-2"><Field label="Título SEO" value={editing.seoTitle||""} onChange={seoTitle=>setEditing({...editing,seoTitle})}/><Field label="Meta descripción" value={editing.seoDescription||""} onChange={seoDescription=>setEditing({...editing,seoDescription})}/><label className="text-sm font-bold">Compra mínima<input type="number" min="1" value={editing.minOrder||1} onChange={e=>setEditing({...editing,minOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label><label className="text-sm font-bold">Compra máxima<input type="number" min="1" value={editing.maxOrder||99} onChange={e=>setEditing({...editing,maxOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label></div></div>
         <div className="md:col-span-2"><Field label="Etiquetas (separadas por coma)" value={(editing.tags||[]).join(", ")} onChange={v=>setEditing({...editing,tags:v.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
         <div className="md:col-span-2"><Field label="Variantes · una por línea: nombre | precio | stock" value={(editing.variants||[]).map(v=>`${v.name} | ${v.price??""} | ${v.stock??""}`).join("\n")} onChange={v=>setEditing({...editing,variants:v.split("\n").map(x=>{const [name,price,stock]=x.split("|").map(y=>y.trim());return {name,price:price?Number(price):undefined,stock:stock?Number(stock):undefined}}).filter(x=>x.name)})} multiline/></div>
       </div>
