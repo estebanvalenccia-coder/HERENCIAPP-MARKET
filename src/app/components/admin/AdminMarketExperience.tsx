@@ -155,7 +155,7 @@ type CommerceProduct = {
   onSale?: boolean;
   status?: "draft" | "published" | "hidden" | "soldout";
   tags?: string[];
-  variants?: Array<{ name: string; price?: number; stock?: number }>;
+  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string; image?: string }>;
   relatedProductIds?: number[];
   personalization?: boolean;
   deletedAt?: string;
@@ -205,6 +205,7 @@ function ProductManager({ title, category, onClose }: { title: string; category:
   const [selected, setSelected] = useState<number[]>([]);
   const [sort, setSort] = useState("name");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showTrash, setShowTrash] = useState(false);
 
   const load = () => {
     try { setProducts(JSON.parse(backendStorage.getItem("adminProducts") || "[]")); }
@@ -214,10 +215,10 @@ function ProductManager({ title, category, onClose }: { title: string; category:
 
   const aliases = CATEGORY_ALIASES[category] || [category];
   const visible = useMemo(() => products
-    .filter((p) => !p.deletedAt && aliases.includes(String(p.category || "").toLowerCase()))
+    .filter((p) => (showTrash ? !!p.deletedAt : !p.deletedAt) && aliases.includes(String(p.category || "").toLowerCase()))
     .filter((p) => statusFilter === "all" || (p.status || (p.active!==false ? "published" : "hidden")) === statusFilter)
     .filter((p) => !query || (p.name + " " + (p.sku || "") + " " + (p.tags||[]).join(" ")).toLowerCase().includes(query.toLowerCase()))
-    .sort((a,b) => sort==="price" ? Number(a.price)-Number(b.price) : sort==="stock" ? Number(a.stock||0)-Number(b.stock||0) : a.name.localeCompare(b.name)), [products, query, category, sort, statusFilter]);
+    .sort((a,b) => sort==="price" ? Number(a.price)-Number(b.price) : sort==="stock" ? Number(a.stock||0)-Number(b.stock||0) : a.name.localeCompare(b.name)), [products, query, category, sort, statusFilter, showTrash]);
 
   const persist = async (next: CommerceProduct[]) => {
     setProducts(next);
@@ -262,6 +263,26 @@ function ProductManager({ title, category, onClose }: { title: string; category:
     await persist(products.map((p:any) => p.id === id ? { ...p, active:false, deletedAt:new Date().toISOString() } : p));
   };
 
+  const restore = async (id: number) => {
+    await persist(products.map((p:any) => p.id === id ? { ...p, deletedAt: undefined, status:"draft", active:false } : p));
+    toast.success("Producto recuperado como borrador");
+  };
+
+  const importCsv = async (file?: File) => {
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return toast.error("El CSV no contiene productos");
+    const parse = (line:string) => line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)?.map(v=>v.replace(/^"|"$/g,"").replace(/""/g,'"')) || [];
+    const headers=parse(lines[0]).map(x=>x.toLowerCase());
+    const imported=lines.slice(1).map((line,idx)=>{
+      const row=parse(line); const get=(name:string)=>row[headers.indexOf(name)]||"";
+      return { ...blank(), id:Date.now()+idx, sku:get("sku"), name:get("nombre")||get("name"), category:category, price:Number(get("precio")||get("price")||0), stock:Number(get("stock")||0), iva:Number(get("iva")||21), status:(get("estado")||"draft") as any, active:(get("estado")||"draft")==="published", tags:(get("etiquetas")||"").split("|").filter(Boolean) };
+    }).filter(p=>p.name);
+    if(!imported.length) return toast.error("No se encontraron filas válidas");
+    await persist([...imported,...products]); toast.success(`${imported.length} productos importados`);
+  };
+
   return <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/55 p-3 backdrop-blur-sm sm:p-6">
     <div className="mx-auto max-w-6xl rounded-3xl border border-border bg-[#fbfaf6] shadow-2xl">
       <div className="sticky top-0 z-10 flex flex-col gap-3 rounded-t-3xl border-b border-border bg-white/95 p-5 backdrop-blur md:flex-row md:items-center md:justify-between">
@@ -273,14 +294,14 @@ function ProductManager({ title, category, onClose }: { title: string; category:
           <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3"><Search className="h-4 w-4 text-muted-foreground"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por nombre, SKU o etiqueta…" className="w-full bg-transparent py-3 outline-none"/></div>
           <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold"><option value="all">Todos los estados</option><option value="published">Publicados</option><option value="draft">Borradores</option><option value="hidden">Ocultos</option><option value="soldout">Agotados</option></select>
           <select value={sort} onChange={e=>setSort(e.target.value)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold"><option value="name">Ordenar: nombre</option><option value="price">Precio</option><option value="stock">Stock</option></select>
-          <button onClick={exportCsv} className="rounded-xl border border-border bg-white px-4 py-2 text-sm font-black">Exportar CSV</button>
+          <div className="flex gap-2"><button onClick={exportCsv} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-black">Exportar CSV</button><label className="cursor-pointer rounded-xl border border-border bg-white px-3 py-2 text-sm font-black">Importar CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={e=>void importCsv(e.target.files?.[0])}/></label><button onClick={()=>setShowTrash(!showTrash)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-black">{showTrash?"Ver catálogo":"Papelera"}</button></div>
         </div>
         {selected.length?<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-[#eef4ef] p-3 text-sm"><b>{selected.length} seleccionados</b><button onClick={()=>void bulkStatus("published")} className="rounded-lg bg-[#315b42] px-3 py-2 font-bold text-white">Publicar</button><button onClick={()=>void bulkStatus("hidden")} className="rounded-lg border border-border bg-white px-3 py-2 font-bold">Ocultar</button><button onClick={()=>void bulkStatus("draft")} className="rounded-lg border border-border bg-white px-3 py-2 font-bold">Borrador</button></div>:null}
         <div className="grid gap-3">
           {visible.map(p=><div key={p.id} className="grid gap-4 rounded-2xl border border-border bg-white p-4 md:grid-cols-[84px_1fr_auto] md:items-center">
             <div className="flex items-center gap-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>setSelected(e.target.checked?[...selected,p.id]:selected.filter(id=>id!==p.id))}/><div className="h-20 w-20 overflow-hidden rounded-xl bg-muted">{p.image?<img src={p.image} className="h-full w-full object-cover"/>:null}</div></div>
             <div><div className="flex flex-wrap items-center gap-2"><p className="font-black">{p.name}</p><span className="rounded-full bg-muted px-2 py-1 text-[11px] font-bold uppercase">{p.status || (p.active!==false?"published":"hidden")}</span></div><p className="mt-1 text-sm text-muted-foreground">{p.sku || "Sin SKU"} · Stock {Number(p.stock||0)} · IVA {Number(p.iva||21)}%</p><p className="mt-1 font-black">{Number(p.salePrice||p.price||0).toLocaleString("es-ES",{style:"currency",currency:"EUR"})}</p></div>
-            <div className="flex flex-wrap gap-2"><button onClick={()=>setEditing({...p})} className="rounded-xl border border-border p-2.5" title="Editar"><Edit3 className="h-4 w-4"/></button><button onClick={()=>void duplicate(p)} className="rounded-xl border border-border p-2.5" title="Duplicar"><Copy className="h-4 w-4"/></button><button onClick={()=>void remove(p.id)} className="rounded-xl border border-red-200 p-2.5 text-red-600" title="Papelera"><Trash2 className="h-4 w-4"/></button></div>
+            <div className="flex flex-wrap gap-2">{showTrash?<button onClick={()=>void restore(p.id)} className="rounded-xl border border-emerald-200 px-3 py-2 text-xs font-black text-emerald-700">Recuperar</button>:null}<button onClick={()=>setEditing({...p})} className="rounded-xl border border-border p-2.5" title="Editar"><Edit3 className="h-4 w-4"/></button><button onClick={()=>void duplicate(p)} className="rounded-xl border border-border p-2.5" title="Duplicar"><Copy className="h-4 w-4"/></button><button onClick={()=>void remove(p.id)} className="rounded-xl border border-red-200 p-2.5 text-red-600" title="Papelera"><Trash2 className="h-4 w-4"/></button></div>
           </div>)}
           {!visible.length?<div className="rounded-2xl border border-dashed border-border bg-white p-10 text-center"><PackagePlus className="mx-auto h-9 w-9 text-primary"/><p className="mt-3 font-black">Aún no hay productos en {title}</p><button onClick={()=>setEditing(blank())} className="mt-3 text-sm font-black text-primary">+ Añadir el primero</button></div>:null}
         </div>
@@ -308,9 +329,10 @@ function ProductManager({ title, category, onClose }: { title: string; category:
           {category==="servicios"?<Field label="Duración / condiciones del servicio" value={editing.serviceDuration||""} onChange={serviceDuration=>setEditing({...editing,serviceDuration})} multiline/>:null}
         </div></div>
         <div className="md:col-span-2"><ImageField label="Imagen principal" value={editing.image||""} onChange={image=>setEditing({...editing,image})}/></div>
+        <div className="md:col-span-2 rounded-2xl border border-border p-4"><p className="mb-3 font-black">Galería de imágenes</p><div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{(editing.images||[]).map((img,i)=><div key={i} className="rounded-xl border border-border p-2"><img src={img} className="h-28 w-full rounded-lg object-cover"/><div className="mt-2 flex gap-1"><button onClick={()=>setEditing({...editing,image:img})} className="flex-1 rounded-lg bg-muted px-2 py-1 text-xs font-bold">Portada</button><button onClick={()=>setEditing({...editing,images:(editing.images||[]).filter((_,x)=>x!==i)})} className="rounded-lg px-2 py-1 text-xs text-red-600">Quitar</button></div></div>)}</div><div className="mt-3"><ImageField label="Añadir imagen a galería" value="" onChange={img=>img&&setEditing({...editing,images:[...(editing.images||[]),img]})}/></div></div>
         <div className="md:col-span-2 rounded-2xl border border-border bg-muted/20 p-4"><p className="mb-3 font-black">SEO y venta</p><div className="grid gap-3 md:grid-cols-2"><Field label="Título SEO" value={editing.seoTitle||""} onChange={seoTitle=>setEditing({...editing,seoTitle})}/><Field label="Meta descripción" value={editing.seoDescription||""} onChange={seoDescription=>setEditing({...editing,seoDescription})}/><label className="text-sm font-bold">Compra mínima<input type="number" min="1" value={editing.minOrder||1} onChange={e=>setEditing({...editing,minOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label><label className="text-sm font-bold">Compra máxima<input type="number" min="1" value={editing.maxOrder||99} onChange={e=>setEditing({...editing,maxOrder:Number(e.target.value)})} className="mt-2 w-full rounded-xl border border-border p-2.5"/></label></div></div>
         <div className="md:col-span-2"><Field label="Etiquetas (separadas por coma)" value={(editing.tags||[]).join(", ")} onChange={v=>setEditing({...editing,tags:v.split(",").map(x=>x.trim()).filter(Boolean)})}/></div>
-        <div className="md:col-span-2"><Field label="Variantes · una por línea: nombre | precio | stock" value={(editing.variants||[]).map(v=>`${v.name} | ${v.price??""} | ${v.stock??""}`).join("\n")} onChange={v=>setEditing({...editing,variants:v.split("\n").map(x=>{const [name,price,stock]=x.split("|").map(y=>y.trim());return {name,price:price?Number(price):undefined,stock:stock?Number(stock):undefined}}).filter(x=>x.name)})} multiline/></div>
+        <div className="md:col-span-2"><Field label="Variantes · una por línea: nombre | precio | stock | SKU | imagen" value={(editing.variants||[]).map(v=>`${v.name} | ${v.price??""} | ${v.stock??""} | ${v.sku??""} | ${v.image??""}`).join("\n")} onChange={v=>setEditing({...editing,variants:v.split("\n").map(x=>{const [name,price,stock]=x.split("|").map(y=>y.trim());const [n,p,s,sku,image]=x.split("|").map(y=>y.trim());return {name:n,price:p?Number(p):undefined,stock:s?Number(s):undefined,sku:sku||undefined,image:image||undefined}}).filter(x=>x.name)})} multiline/></div>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <label className="rounded-xl border border-border p-3 text-sm font-bold">Estado<select value={editing.status||"draft"} onChange={e=>setEditing({...editing,status:e.target.value as any})} className="mt-2 w-full rounded-lg border border-border p-2"><option value="draft">Borrador</option><option value="published">Publicado</option><option value="hidden">Oculto</option><option value="soldout">Agotado</option></select></label>
