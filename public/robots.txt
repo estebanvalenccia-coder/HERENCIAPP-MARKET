@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /pedido-confirmado
+Disallow: /perfil
+Disallow: /login
+Disallow: /recuperar-contrasena
+
+Sitemap: https://www.herenciamarket.es/sitemap.xml

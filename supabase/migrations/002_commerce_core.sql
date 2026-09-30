@@ -87,14 +87,22 @@ create table if not exists public.commerce_inventory_locations (
 );
 
 create table if not exists public.commerce_inventory_levels (
+  id uuid primary key default gen_random_uuid(),
   product_id text not null references public.commerce_products(id) on delete cascade,
   variant_id uuid references public.commerce_product_variants(id) on delete cascade,
   location_id text not null references public.commerce_inventory_locations(id) on delete cascade,
   available integer not null default 0,
   reserved integer not null default 0,
-  updated_at timestamptz not null default now(),
-  primary key (product_id, variant_id, location_id)
+  updated_at timestamptz not null default now()
 );
+
+create unique index if not exists commerce_inventory_levels_variant_unique
+  on public.commerce_inventory_levels(product_id, variant_id, location_id)
+  where variant_id is not null;
+
+create unique index if not exists commerce_inventory_levels_base_unique
+  on public.commerce_inventory_levels(product_id, location_id)
+  where variant_id is null;
 
 create table if not exists public.commerce_stock_reservations (
   id uuid primary key default gen_random_uuid(),

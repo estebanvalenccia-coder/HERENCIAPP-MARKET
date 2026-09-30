@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
+import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -103,14 +104,38 @@ app.options(
   })
 );
 
-const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
-const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
+app.use(securityHeaders());
+
+app.use((req, res, next) => {
+  const requestId = String(req.headers["x-request-id"] || crypto.randomUUID()).slice(0, 120);
+  const startedAt = Date.now();
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  res.on("finish", () => {
+    if (res.statusCode >= 500) {
+      console.error(JSON.stringify({
+        type: "http_error",
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+        at: new Date().toISOString(),
+      }));
+    }
+  });
+  next();
+});
+
+const adminUsername =
+  process.env.ADMIN_USERNAME || (!isProduction ? "Daniel" : "");
+const adminPassword =
+  process.env.ADMIN_PASSWORD || (!isProduction ? "13101098" : "");
 const sessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "change-me-in-production";
+  (!isProduction ? process.env.SUPABASE_SERVICE_ROLE_KEY || "dev-only-change-me" : "");
 const usingDefaultAdminCredentials =
-  !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
+  !isProduction && (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD);
 const adminAuthConfigured = Boolean(
   adminUsername &&
   adminPassword &&
@@ -119,8 +144,12 @@ const adminAuthConfigured = Boolean(
 
 if (usingDefaultAdminCredentials) {
   console.warn(
-    "Admin auth usando credenciales por defecto. Configura ADMIN_USERNAME y ADMIN_PASSWORD para endurecer producción."
+    "Admin auth de desarrollo usando credenciales locales por defecto. Producción falla cerrado si faltan variables."
   );
+}
+
+if (isProduction && !adminAuthConfigured) {
+  console.error("Admin auth incompleto en producción. El acceso administrativo queda bloqueado.");
 }
 
 const publicKeys = new Set([
@@ -799,6 +828,76 @@ async function upsertStorageValue(key, value) {
   if (error) throw error;
 }
 
+function commerceReservationUnavailable(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("reserve_commerce_stock") ||
+    message.includes("consume_commerce_stock_reservation") ||
+    message.includes("release_commerce_stock_reservation") ||
+    message.includes("commerce_stock_reservations") ||
+    message.includes("schema cache") ||
+    message.includes("pgrst202") ||
+    (message.includes("function") && message.includes("does not exist"))
+  );
+}
+
+async function reserveCommerceStock(cartToken, items) {
+  const payload = (Array.isArray(items) ? items : []).map((item) => ({
+    productId: String(item?.id || ""),
+    variantName: String(item?.selectedVariant || ""),
+    quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
+  }));
+
+  const { data, error } = await supabase.rpc("reserve_commerce_stock", {
+    p_cart_token: String(cartToken),
+    p_items: payload,
+    p_ttl_minutes: 15,
+  });
+
+  if (error) {
+    if (commerceReservationUnavailable(error)) {
+      return { active: false, mode: "legacy_validation_only", reason: "commerce_reservation_rpc_unavailable" };
+    }
+    const message = String(error.message || error);
+    const conflict = new Error(
+      message.includes("stock_insufficient")
+        ? "El stock cambió mientras estabas pagando. Revisa el carrito e inténtalo de nuevo."
+        : message
+    );
+    conflict.statusCode = message.includes("stock_insufficient") || message.includes("product_unavailable") || message.includes("variant_unavailable") ? 409 : 500;
+    throw conflict;
+  }
+
+  return {
+    active: true,
+    mode: "atomic_commerce_reservation",
+    expiresAt: data?.expiresAt || data?.expires_at || null,
+    reservedItems: Number(data?.reservedItems || data?.reserved_items || payload.length),
+  };
+}
+
+async function consumeCommerceStockReservation(cartToken) {
+  const { data, error } = await supabase.rpc("consume_commerce_stock_reservation", {
+    p_cart_token: String(cartToken),
+  });
+  if (error) {
+    if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
+    throw error;
+  }
+  return data || { ok: true };
+}
+
+async function releaseCommerceStockReservation(cartToken) {
+  const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
+    p_cart_token: String(cartToken),
+  });
+  if (error) {
+    if (commerceReservationUnavailable(error)) return { skipped: true, reason: "rpc_unavailable" };
+    throw error;
+  }
+  return data || { ok: true };
+}
+
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -839,6 +938,7 @@ app.post(
         } else {
           let inventoryOrder = updatedOrder;
           try {
+            await consumeCommerceStockReservation(updatedOrder.id);
             const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
             inventoryOrder = inventoryResult.order || updatedOrder;
           } catch (inventoryError) {
@@ -865,11 +965,67 @@ app.post(
       }
     }
 
+    if (["payment_intent.payment_failed", "payment_intent.canceled"].includes(event.type)) {
+      const paymentIntent = event.data.object;
+      const orderId = paymentIntent.metadata?.orderId;
+      if (orderId && supabase) {
+        await releaseCommerceStockReservation(orderId).catch((error) =>
+          console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
+        );
+        await supabase
+          .from("orders")
+          .update({
+            status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
+            stripe_payment_intent_id: paymentIntent.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", orderId);
+      }
+    }
+
     res.json({ received: true });
   }
 );
 
 app.use(express.json({ limit: "10mb" }));
+
+app.use(requireTrustedBrowserRequest(isAllowedOrigin));
+
+const authRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  message: "Demasiados intentos de acceso. Espera unos minutos y vuelve a intentarlo.",
+});
+const passwordResetRateLimit = createRateLimiter({
+  windowMs: 30 * 60 * 1000,
+  max: 6,
+  message: "Has solicitado demasiados cambios de contraseña. Inténtalo más tarde.",
+});
+const checkoutRateLimit = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: "Demasiados intentos de pago. Espera unos minutos y vuelve a intentarlo.",
+});
+
+app.use((req, res, next) => {
+  const path = req.path;
+  if (
+    req.method === "POST" &&
+    ["/api/admin/login", "/api/customer/login", "/api/customer/register"].includes(path)
+  ) {
+    return authRateLimit(req, res, next);
+  }
+  if (
+    req.method === "POST" &&
+    ["/api/customer/password/forgot", "/api/customer/password/reset"].includes(path)
+  ) {
+    return passwordResetRateLimit(req, res, next);
+  }
+  if (req.method === "POST" && path === "/api/stripe/create-payment-intent") {
+    return checkoutRateLimit(req, res, next);
+  }
+  next();
+});
 
 const ADMIN_AUDIT_LOG_KEY = "adminAuditLog";
 
@@ -916,6 +1072,31 @@ app.use((req, res, next) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
+});
+
+app.get("/api/ready", async (_req, res) => {
+  if (!supabase) {
+    return res.status(503).json({ ok: false, database: false, stripe: Boolean(stripe) });
+  }
+  try {
+    const { error } = await supabase.from("app_storage").select("key", { head: true, count: "exact" }).limit(1);
+    if (error) throw error;
+    res.json({
+      ok: true,
+      database: true,
+      stripe: Boolean(stripe),
+      email: Boolean(process.env.RESEND_API_KEY),
+      commerceCore: true,
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      database: false,
+      stripe: Boolean(stripe),
+      error: "Database readiness check failed",
+      requestId: _req.requestId,
+    });
+  }
 });
 
 app.post("/api/admin/login", (req, res) => {
@@ -5276,12 +5457,14 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const orderId = crypto.randomUUID();
+    const stockReservation = await reserveCommerceStock(orderId, authoritativeItems);
     const secureMetadata = {
       ...metadata,
       source: "frontend_checkout",
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
       pricingSource: "backend_catalog_and_maps",
+      inventoryReservation: stockReservation,
       shippingDistance: shippingQuote
         ? {
             distanceKm: shippingQuote.distanceKm,
@@ -5305,7 +5488,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       items: authoritativeItems,
       metadata: secureMetadata,
     });
-    if (orderError) return res.status(500).json({ error: orderError.message });
+    if (orderError) {
+      if (stockReservation.active) {
+        await releaseCommerceStockReservation(orderId).catch(() => null);
+      }
+      return res.status(500).json({ error: orderError.message });
+    }
 
     try {
       const paymentIntentParams = {
@@ -5329,6 +5517,9 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         shippingQuote,
       });
     } catch (error) {
+      if (stockReservation.active) {
+        await releaseCommerceStockReservation(orderId).catch(() => null);
+      }
       await supabase.from("orders").update({
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
@@ -5607,6 +5798,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   }
 
   if (!isPaid && !isProcessing) {
+    await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
       error: `Stripe devolviÃ³ estado: ${paymentIntent.status}`,
       paymentIntentStatus: paymentIntent.status,
@@ -5619,6 +5811,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (isPaid) {
     let inventoryOrder = updatedOrder;
     try {
+      await consumeCommerceStockReservation(updatedOrder.id);
       const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
       inventoryOrder = inventoryResult.order || updatedOrder;
     } catch (inventoryError) {
