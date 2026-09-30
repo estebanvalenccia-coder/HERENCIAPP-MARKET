@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
+import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -103,14 +104,18 @@ app.options(
   })
 );
 
-const adminUsername = process.env.ADMIN_USERNAME || "Daniel";
-const adminPassword = process.env.ADMIN_PASSWORD || "13101098";
+app.use(securityHeaders());
+
+const adminUsername =
+  process.env.ADMIN_USERNAME || (!isProduction ? "Daniel" : "");
+const adminPassword =
+  process.env.ADMIN_PASSWORD || (!isProduction ? "13101098" : "");
 const sessionSecret =
   process.env.ADMIN_SESSION_SECRET ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "change-me-in-production";
+  (!isProduction ? "dev-only-change-me" : "");
 const usingDefaultAdminCredentials =
-  !process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD;
+  !isProduction && (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD);
 const adminAuthConfigured = Boolean(
   adminUsername &&
   adminPassword &&
@@ -119,8 +124,12 @@ const adminAuthConfigured = Boolean(
 
 if (usingDefaultAdminCredentials) {
   console.warn(
-    "Admin auth usando credenciales por defecto. Configura ADMIN_USERNAME y ADMIN_PASSWORD para endurecer producción."
+    "Admin auth de desarrollo usando credenciales locales por defecto. Producción falla cerrado si faltan variables."
   );
+}
+
+if (isProduction && !adminAuthConfigured) {
+  console.error("Admin auth incompleto en producción. El acceso administrativo queda bloqueado.");
 }
 
 const publicKeys = new Set([
@@ -870,6 +879,44 @@ app.post(
 );
 
 app.use(express.json({ limit: "10mb" }));
+
+app.use(requireTrustedBrowserRequest(isAllowedOrigin));
+
+const authRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  message: "Demasiados intentos de acceso. Espera unos minutos y vuelve a intentarlo.",
+});
+const passwordResetRateLimit = createRateLimiter({
+  windowMs: 30 * 60 * 1000,
+  max: 6,
+  message: "Has solicitado demasiados cambios de contraseña. Inténtalo más tarde.",
+});
+const checkoutRateLimit = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: "Demasiados intentos de pago. Espera unos minutos y vuelve a intentarlo.",
+});
+
+app.use((req, res, next) => {
+  const path = req.path;
+  if (
+    req.method === "POST" &&
+    ["/api/admin/login", "/api/customer/login", "/api/customer/register"].includes(path)
+  ) {
+    return authRateLimit(req, res, next);
+  }
+  if (
+    req.method === "POST" &&
+    ["/api/customer/password/forgot", "/api/customer/password/reset"].includes(path)
+  ) {
+    return passwordResetRateLimit(req, res, next);
+  }
+  if (req.method === "POST" && path === "/api/stripe/create-payment-intent") {
+    return checkoutRateLimit(req, res, next);
+  }
+  next();
+});
 
 const ADMIN_AUDIT_LOG_KEY = "adminAuditLog";
 
