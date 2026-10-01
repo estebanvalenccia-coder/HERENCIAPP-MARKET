@@ -41,6 +41,7 @@ export function normalizePosProduct(product = {}) {
     price,
     iva,
     stock,
+    trackInventory: product.trackInventory !== false,
     active: product.active !== false,
   };
 }
@@ -125,7 +126,7 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
     const product = byId.get(id);
     if (!product) throw new Error(`Producto no encontrado: ${id}`);
     if (!product.active) throw new Error(`Producto inactivo: ${product.name}`);
-    if (product.stock < qty) {
+    if (product.trackInventory && product.stock < qty) {
       throw new Error(`Stock insuficiente para ${product.name}. Disponible: ${product.stock}`);
     }
 
@@ -142,13 +143,14 @@ export function validateAndApplyStock(products = [], requestedItems = []) {
       quantity: qty,
       qty,
       discountPercent,
+      trackInventory: product.trackInventory,
     });
   }
 
   const updatedProducts = products.map((raw) => {
     const id = String(raw?.id ?? "").trim();
     const qty = mergedRequested.get(id) || 0;
-    if (!qty) return raw;
+    if (!qty || raw?.trackInventory === false) return raw;
     return { ...raw, stock: Math.max(0, Math.floor(asNumber(raw.stock, 0)) - qty) };
   });
 
