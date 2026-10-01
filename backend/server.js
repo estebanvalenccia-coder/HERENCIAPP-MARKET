@@ -6460,7 +6460,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
   if (!requireSupabase(res)) return;
   try {
     const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
-      supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("orders").select("id,customer_name,customer_email,status,total,items,created_at,updated_at").order("created_at", { ascending: false }).limit(250),
       readStorageValue("adminProducts"),
       readStorageValue("posCashSession"),
       readStorageValue("siteContent"),
