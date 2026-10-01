@@ -918,6 +918,14 @@ async function deleteOrderPrimary(id) {
   return true;
 }
 
+async function deleteOrderPrimary(id) {
+  if (hasNeon()) return deleteNeonOrder(id);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { error } = await supabase.from("orders").delete().eq("id", id);
+  if (error) throw error;
+  return true;
+}
+
 const ACTIVE_DELIVERY_STATUSES = new Set([
   "payment_pending",
   "pending",
