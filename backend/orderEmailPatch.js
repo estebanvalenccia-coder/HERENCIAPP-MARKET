@@ -8,7 +8,7 @@ const originalJson = express.response.json;
 const originalListen = express.application.listen;
 let aiBouquetRoutesMounted = false;
 
-const configuredSessionSecret = process.env.ADMIN_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const configuredSessionSecret = process.env.ADMIN_SESSION_SECRET || process.env.JWT_SECRET || "";
 const sessionSecret = configuredSessionSecret || crypto.randomBytes(32).toString("hex");
 if (!configuredSessionSecret) console.warn("orderEmailPatch: ADMIN_SESSION_SECRET no configurado; las sesiones no persistirán tras reiniciar.");
 
