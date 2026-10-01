@@ -148,6 +148,13 @@ export async function patchNeonOrder(id, patch = {}) {
   return result.rows?.[0] || null;
 }
 
+export async function deleteNeonOrder(id) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  await neonPool.query("delete from orders where id::text = $1", [String(id)]);
+  return true;
+}
+
+
 
 function slugify(value) {
   return String(value || "")

@@ -16,6 +16,7 @@ import {
   getNeonOrder,
   insertNeonOrder,
   patchNeonOrder,
+  deleteNeonOrder,
 } from "./neonDb.js";
 import {
   calculatePosTotals,
@@ -907,6 +908,14 @@ async function patchOrderPrimary(id, patch) {
   const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("*").single();
   if (error) throw error;
   return data;
+}
+
+async function deleteOrderPrimary(id) {
+  if (hasNeon()) return deleteNeonOrder(id);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { error } = await supabase.from("orders").delete().eq("id", id);
+  if (error) throw error;
+  return true;
 }
 
 const ACTIVE_DELIVERY_STATUSES = new Set([
@@ -2371,13 +2380,11 @@ app.post("/api/experience/reviews", async (req, res) => {
       return res.status(400).json({ error: "Completa nombre, email, valoración y comentario" });
     }
 
-    const { data: purchasedRows, error: purchasedError } = await supabase
-      .from("orders")
-      .select("id,items,status,customer_email")
-      .eq("customer_email", email)
-      .in("status", ["paid", "confirmed", "preparing", "ready", "delivered", "completed"]);
-
-    if (purchasedError) throw purchasedError;
+    const purchasedRows = await listOrdersPrimary({
+      email,
+      statuses: ["paid", "confirmed", "preparing", "ready", "delivered", "completed"],
+      limit: 500,
+    });
 
     const verifiedPurchase = (purchasedRows || []).some((order) =>
       (Array.isArray(order.items) ? order.items : []).some((item) => String(item?.id) === productId)
@@ -3047,18 +3054,13 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado" });
 
   try {
     const orderId = String(req.params.id || "").trim();
     const reason = String(req.body?.reason || "Reembolso solicitado desde Administración").trim().slice(0, 500);
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .maybeSingle();
+    const order = await getOrderPrimary(orderId);
 
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
     if (String(order?.metadata?.source || "") !== "frontend_checkout") {
@@ -3108,18 +3110,10 @@ app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
       refundedBy: "admin",
     };
 
-    const { data: updated, error: updateError } = await supabase
-      .from("orders")
-      .update({
-        status: "refunded",
-        metadata,
-        updated_at: refundedAt,
-      })
-      .eq("id", orderId)
-      .select("*")
-      .single();
-
-    if (updateError) throw updateError;
+    const updated = await patchOrderPrimary(orderId, {
+      status: "refunded",
+      metadata,
+    });
 
     broadcastAdminOrderEvent(updated, "order_refunded");
     void emitNeuralBusinessEvent("order.refunded", normalizeOrder(updated));
@@ -4302,7 +4296,6 @@ app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/pos/reports/summary", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const now = new Date();
     const fromRaw = String(req.query?.from || "").trim();
@@ -4311,15 +4304,10 @@ app.get("/api/pos/reports/summary", requireAdmin, async (req, res) => {
     const to = toRaw ? new Date(toRaw) : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return res.status(400).json({ error: "Rango de fechas inválido" });
 
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("delivery_method", "mostrador")
-      .order("created_at", { ascending: false })
-      .limit(1000);
-    if (error) throw error;
+    const data = await listOrdersPrimary({ limit: 1000 });
 
     const orders = (data || []).filter((order) => {
+      if (order.delivery_method !== "mostrador") return false;
       const at = new Date(order.created_at || 0).getTime();
       return at >= from.getTime() && at < to.getTime();
     });
@@ -4374,18 +4362,12 @@ app.get("/api/pos/reports/summary", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/pos/sales", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 50)));
     const query = String(req.query?.q || "").trim().toLowerCase();
     const fetchLimit = query ? 500 : limit;
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .in("delivery_method", ["mostrador"])
-      .order("created_at", { ascending: false })
-      .limit(fetchLimit);
-    if (error) throw error;
+    const data = (await listOrdersPrimary({ limit: fetchLimit }))
+      .filter((order) => order.delivery_method === "mostrador");
 
     const filtered = query
       ? (data || []).filter((order) => {
@@ -4407,8 +4389,6 @@ app.get("/api/pos/sales", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/refund", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   try {
     const orderId = String(req.body?.orderId || "").trim();
     const reason = String(req.body?.reason || "Devolución TPV").trim();
@@ -4419,12 +4399,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
     };
     if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (orderError) throw orderError;
+    const order = await getOrderPrimary(orderId);
     if (!order) return res.status(404).json({ error: "Venta no encontrada" });
     if (order?.metadata?.refundedAt || order.status === "refunded") {
       return res.status(409).json({ error: "Esta venta ya está devuelta" });
@@ -4495,13 +4470,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       refundedBy: refundStaff,
     };
 
-    const { data: updated, error: updateError } = await supabase
-      .from("orders")
-      .update({ status: "refunded", metadata })
-      .eq("id", orderId)
-      .select("*")
-      .single();
-    if (updateError) throw updateError;
+    const updated = await patchOrderPrimary(orderId, { status: "refunded", metadata });
 
     const loyaltyCustomerId = String(order.metadata?.customerId || "").trim();
     const loyaltyPointsEarned = Math.max(0, Math.floor(Number(order.metadata?.loyaltyPointsEarned || 0)));
@@ -4590,8 +4559,6 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   try {
     const orderId = String(req.body?.orderId || "").trim();
     const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -4605,12 +4572,7 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
     if (!orderId) return res.status(400).json({ error: "Falta el identificador de la venta" });
     if (!requestedItems.length) return res.status(400).json({ error: "Selecciona al menos un artículo para devolver" });
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (orderError) throw orderError;
+    const order = await getOrderPrimary(orderId);
     if (!order) return res.status(404).json({ error: "Venta no encontrada" });
     if (order.delivery_method !== "mostrador") return res.status(400).json({ error: "La devolución parcial solo admite ventas de mostrador" });
     if (order?.metadata?.refundedAt || order.status === "refunded") return res.status(409).json({ error: "Esta venta ya está devuelta por completo" });
@@ -4913,13 +4875,7 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
     };
 
     const nextStatus = fullRefund ? "refunded" : manualRefunds.length ? "partially_refunded_pending_manual" : "partially_refunded";
-    const { data: updated, error: updateError } = await supabase
-      .from("orders")
-      .update({ status: nextStatus, metadata })
-      .eq("id", orderId)
-      .select("*")
-      .single();
-    if (updateError) throw updateError;
+    const updated = await patchOrderPrimary(orderId, { status: nextStatus, metadata });
 
     broadcastAdminOrderEvent(updated, fullRefund ? "order_refunded" : "order_partially_refunded");
     res.json({
@@ -4981,7 +4937,6 @@ app.post("/api/pos/mixed-card-intent", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   if (!stripe) {
     return res.status(503).json({ error: "Stripe no está configurado en el backend" });
   }
@@ -5015,7 +4970,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       inventoryCommittedAt: null,
     };
 
-    const { error: orderError } = await supabase.from("orders").insert({
+    await insertOrderPrimary({
       id: orderId,
       customer_email: customer.email || null,
       customer_name: customer.name || "Cliente mostrador",
@@ -5029,8 +4984,6 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       metadata,
     });
 
-    if (orderError) throw orderError;
-
     try {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: totalCents,
@@ -5043,10 +4996,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
         payment_method_types: ["card"],
       });
 
-      await supabase
-        .from("orders")
-        .update({ stripe_payment_intent_id: paymentIntent.id })
-        .eq("id", orderId);
+      await patchOrderPrimary(orderId, { stripe_payment_intent_id: paymentIntent.id });
 
       res.json({
         clientSecret: paymentIntent.client_secret,
@@ -5055,13 +5005,10 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
         totals,
       });
     } catch (error) {
-      await supabase
-        .from("orders")
-        .update({
-          status: "payment_error",
-          metadata: { ...metadata, stripeError: error.message },
-        })
-        .eq("id", orderId);
+      await patchOrderPrimary(orderId, {
+        status: "payment_error",
+        metadata: { ...metadata, stripeError: error.message },
+      }).catch(() => null);
       throw error;
     }
   } catch (error) {
@@ -5070,8 +5017,6 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   let originalProducts = null;
   let stockWasWritten = false;
   let createdOrderId = null;
@@ -5101,12 +5046,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let existingOrder = null;
     if (existingOrderId) {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", existingOrderId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await getOrderPrimary(existingOrderId);
       if (!data) return res.status(404).json({ error: "Pedido de tarjeta no encontrado" });
 
       if (data?.metadata?.inventoryCommittedAt) {
@@ -5274,47 +5214,34 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let savedOrder;
     if (existingOrder) {
-      const { data, error } = await supabase
-        .from("orders")
-        .update({
-          customer_email: customer.email || null,
-          customer_name: customer.name || "Cliente mostrador",
-          payment_method: "card",
-          delivery_method: "mostrador",
-          status: "paid",
-          subtotal: totals.subtotal,
-          shipping: 0,
-          total: totals.total,
-          items: prepared.items,
-          metadata,
-        })
-        .eq("id", existingOrder.id)
-        .select("*")
-        .single();
-      if (error) throw error;
-      savedOrder = data;
+      savedOrder = await patchOrderPrimary(existingOrder.id, {
+        customer_email: customer.email || null,
+        customer_name: customer.name || "Cliente mostrador",
+        payment_method: "card",
+        delivery_method: "mostrador",
+        status: "paid",
+        subtotal: totals.subtotal,
+        shipping: 0,
+        total: totals.total,
+        items: prepared.items,
+        metadata,
+      });
     } else {
       const id = crypto.randomUUID();
-      const { data, error } = await supabase
-        .from("orders")
-        .insert({
-          id,
-          customer_email: customer.email || null,
-          customer_name: customer.name || "Cliente mostrador",
-          payment_method: paymentMethod,
-          delivery_method: "mostrador",
-          status,
-          subtotal: totals.subtotal,
-          shipping: 0,
-          total: totals.total,
-          items: prepared.items,
-          metadata,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
+      savedOrder = await insertOrderPrimary({
+        id,
+        customer_email: customer.email || null,
+        customer_name: customer.name || "Cliente mostrador",
+        payment_method: paymentMethod,
+        delivery_method: "mostrador",
+        status,
+        subtotal: totals.subtotal,
+        shipping: 0,
+        total: totals.total,
+        items: prepared.items,
+        metadata,
+      });
       createdOrderId = id;
-      savedOrder = data;
     }
 
     let cashSession = null;
@@ -5392,11 +5319,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     if (createdOrderId) {
       try {
-        const { error: deleteOrderError } = await supabase
-          .from("orders")
-          .delete()
-          .eq("id", createdOrderId);
-        if (deleteOrderError) throw deleteOrderError;
+        await deleteOrderPrimary(createdOrderId);
       } catch (rollbackError) {
         console.error("No se pudo revertir el pedido tras fallo TPV:", rollbackError.message);
       }
@@ -6666,10 +6589,8 @@ app.post("/api/neural-bridge/suppliers", requireNeuralBridge, async (req, res) =
 app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (req, res) => {
   const actionId = requireNeuralActionId(req, res);
   if (!actionId) return;
-  if (!requireSupabase(res)) return;
   try {
-    const { data: order, error } = await supabase.from("orders").select("*").eq("id", req.params.id).maybeSingle();
-    if (error) throw error;
+    const order = await getOrderPrimary(req.params.id);
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
     if (!["paid","confirmed","preparing","processing","ready","delivered","completed"].includes(order.status)) {
       return res.status(409).json({ error: "Solo se puede emitir factura para un pedido cobrado o confirmado" });
@@ -6701,13 +6622,11 @@ app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (re
       customerPhone: customer.phone,
       fiscalSnapshot: bootstrap.fiscalSettings || {},
     };
-    const { data: updated, error: updateError } = await supabase
-      .from("orders")
-      .update({ customer_email: customer.email || null, customer_name: customer.name, metadata: nextMetadata, updated_at: now })
-      .eq("id", order.id)
-      .select("*")
-      .single();
-    if (updateError) throw updateError;
+    const updated = await patchOrderPrimary(order.id, {
+      customer_email: customer.email || null,
+      customer_name: customer.name,
+      metadata: nextMetadata,
+    });
     void emitNeuralBusinessEvent("invoice.issued", { actionId, orderId: order.id, invoiceNumber, total: Number(updated.total || 0) });
     res.status(201).json({
       ok: true,
