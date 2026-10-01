@@ -57,6 +57,15 @@ export async function deleteNeonStorageValue(key) {
   await neonPool.query("delete from app_storage where key = $1", [String(key)]);
 }
 
+export async function listNeonStorageByPrefix(prefix = "") {
+  if (!neonPool) return [];
+  const result = await neonPool.query(
+    "select key, value, updated_at from app_storage where key like $1 order by updated_at desc",
+    [String(prefix) + "%"]
+  );
+  return result.rows || [];
+}
+
 export async function listNeonOrders({ email = null, statuses = null, requestedDate = null, limit = 500 } = {}) {
   if (!neonPool) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
