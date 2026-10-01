@@ -16,6 +16,7 @@ import {
   getNeonOrder,
   insertNeonOrder,
   patchNeonOrder,
+  deleteNeonOrder,
 } from "./neonDb.js";
 import {
   calculatePosTotals,
@@ -907,6 +908,14 @@ async function patchOrderPrimary(id, patch) {
   const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("*").single();
   if (error) throw error;
   return data;
+}
+
+async function deleteOrderPrimary(id) {
+  if (hasNeon()) return deleteNeonOrder(id);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { error } = await supabase.from("orders").delete().eq("id", id);
+  if (error) throw error;
+  return true;
 }
 
 const ACTIVE_DELIVERY_STATUSES = new Set([
