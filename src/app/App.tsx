@@ -55,9 +55,14 @@ export default function App() {
 
     backendStorage.refresh().catch(() => null);
 
+    // Avoid downloading the complete remote storage every 5 seconds for every visitor.
+    // Local writes already update the browser immediately; this slow safety refresh keeps
+    // long-lived tabs reasonably fresh without exhausting the free database egress quota.
     const syncInterval = window.setInterval(() => {
-      backendStorage.refresh().catch(() => null);
-    }, 5000);
+      if (document.visibilityState === "visible") {
+        backendStorage.refresh().catch(() => null);
+      }
+    }, 15 * 60 * 1000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
