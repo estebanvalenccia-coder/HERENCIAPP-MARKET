@@ -2829,14 +2829,12 @@ app.get("/api/admin/abandoned-carts", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/orders", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
-
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(500).json({ error: error.message });
+  let data;
+  try {
+    data = await listOrdersPrimary({ limit: 2000 });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   const orders = (data || []).map((order) => ({
     id: order.id,
@@ -2897,8 +2895,6 @@ async function validateCommerceOrderPayload(order = {}) {
 }
 
 app.post("/api/orders", async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   let order = req.body;
   const id = order.id || crypto.randomUUID();
   try {
@@ -2908,9 +2904,9 @@ app.post("/api/orders", async (req, res) => {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
 
-  const { data, error } = await supabase
-    .from("orders")
-    .insert({
+  let data;
+  try {
+    data = await insertOrderPrimary({
       id,
       customer_email: order.customerEmail || order.email || null,
       customer_name: order.customerName || order.name || null,
@@ -2922,11 +2918,10 @@ app.post("/api/orders", async (req, res) => {
       total: order.total || 0,
       items: order.items || [],
       metadata: order.metadata || {},
-    })
-    .select("*")
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   broadcastAdminOrderEvent(data, "order_created");
   void evaluateDelayedOrders().catch((error) => console.warn("Automations order check:", error?.message || error));
@@ -2942,18 +2937,13 @@ app.post("/api/orders", async (req, res) => {
 });
 
 app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   const { status } = req.body;
 
-  const { data: previousOrder, error: previousOrderError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", req.params.id)
-    .maybeSingle();
-
-  if (previousOrderError) {
-    return res.status(500).json({ error: previousOrderError.message });
+  let previousOrder;
+  try {
+    previousOrder = await getOrderPrimary(req.params.id);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 
   if (!previousOrder) {
@@ -3032,14 +3022,12 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     }
   }
 
-  const { data, error } = await supabase
-    .from("orders")
-    .update({ status, metadata: nextMetadata })
-    .eq("id", req.params.id)
-    .select("*")
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
+  let data;
+  try {
+    data = await patchOrderPrimary(req.params.id, { status, metadata: nextMetadata });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   // Pedidos online no-Stripe (transferencia / confirmación manual) comprometen
   // inventario al ser confirmados por el administrador. Stripe lo hace al
