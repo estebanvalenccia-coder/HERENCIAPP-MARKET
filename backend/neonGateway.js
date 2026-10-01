@@ -20,7 +20,7 @@ async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin
 async function bodyJson(req){const chunks=[];for await(const c of req)chunks.push(c);if(!chunks.length)return {};return JSON.parse(Buffer.concat(chunks).toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});res.writeHead(r.status,Object.fromEntries(r.headers.entries()));if(r.body){for await(const c of r.body)res.write(c);}res.end();}
 
-const child=spawn(process.execPath,["--import","./backend/commerceCore.js","--import","./backend/customerAccessRoutes.js","--import","./backend/fixCors.js","--import","./backend/fixAdminEmail.js","--import","./backend/fixAIBouquet.js","--import","./backend/fixSalesAI.js","--import","./backend/fixTTS.js","--import","./backend/fixMapsShipping.js","backend/server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
+const child=spawn(process.execPath,["--import","./commerceCore.js","--import","./customerAccessRoutes.js","--import","./fixCors.js","--import","./fixAdminEmail.js","--import","./fixAIBouquet.js","--import","./fixSalesAI.js","--import","./fixTTS.js","--import","./fixMapsShipping.js","server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
 child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.exit(code??1);});
 
 const server=http.createServer(async(req,res)=>{try{
