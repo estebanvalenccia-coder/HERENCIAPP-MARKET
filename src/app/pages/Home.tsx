@@ -15,11 +15,10 @@ import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
-const DEFAULT_HERO =
-  "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88";
+const DEFAULT_HERO = "/herencia-portada.avif";
 
 const IMAGE_FALLBACKS = {
-  hero: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86",
+  hero: DEFAULT_HERO,
   dulce: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=1600&q=86",
   moda: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1600&q=86",
   category: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=900&q=82",
@@ -103,6 +102,7 @@ export function Home() {
           alt=""
           onError={(event) => imageFallback(event, IMAGE_FALLBACKS.hero)}
           className="absolute inset-0 h-full w-full object-cover"
+          style={{ objectPosition: "center 15%" }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#173d2a]/62 to-transparent" />
         <div className="relative mx-auto flex min-h-[620px] max-w-7xl items-center px-5 py-16 sm:px-8 lg:px-10">
