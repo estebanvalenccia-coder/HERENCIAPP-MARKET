@@ -67,7 +67,18 @@ export function AdminBusinessSuite() {
   useEffect(() => {
     try {
       const raw = backendStorage.getItem("businessSuiteSettings");
-      if (raw) setSettings({ ...defaults, ...JSON.parse(raw) });
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // These three switches do not have a production provider/workflow yet.
+        // Keep them visibly unavailable instead of persisting a misleading "on" state.
+        setSettings({
+          ...defaults,
+          ...parsed,
+          subscriptionsEnabled: false,
+          pushEnabled: false,
+          whatsappEnabled: false,
+        });
+      }
     } catch {
       setSettings(defaults);
     }
@@ -85,7 +96,13 @@ export function AdminBusinessSuite() {
   }, [filter]);
 
   const save = async () => {
-    const result = await backendStorage.setItem("businessSuiteSettings", JSON.stringify(settings));
+    const safeSettings = {
+      ...settings,
+      subscriptionsEnabled: false,
+      pushEnabled: false,
+      whatsappEnabled: false,
+    };
+    const result = await backendStorage.setItem("businessSuiteSettings", JSON.stringify(safeSettings));
     if (!result.ok) return toast.error(result.error || "No se pudo guardar");
     toast.success("Centro de Negocio guardado");
   };
@@ -115,7 +132,7 @@ export function AdminBusinessSuite() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Módulos organizados" value="36+" detail="en 6 áreas de negocio" />
+        <Metric label="Áreas de negocio" value="6" detail="funciones operativas + hoja de ruta" />
         <Metric label="Stock bajo" value={String(settings.lowStockThreshold)} detail="umbral configurable" />
         <Metric label="Envío gratis" value={settings.freeShippingFrom ? `€${settings.freeShippingFrom}` : "No"} detail="importe mínimo" />
         <Metric label="Radio reparto" value={`${settings.maxDeliveryKm} km`} detail="límite operativo" />
@@ -127,13 +144,13 @@ export function AdminBusinessSuite() {
           <Toggle label="Programa de puntos" value={settings.loyaltyEnabled} onClick={() => toggle("loyaltyEnabled")} />
           <Toggle label="Referidos" value={settings.referralsEnabled} onClick={() => toggle("referralsEnabled")} />
           <Toggle label="Tarjetas regalo" value={settings.giftCardsEnabled} onClick={() => toggle("giftCardsEnabled")} />
-          <Toggle label="Suscripciones" value={settings.subscriptionsEnabled} onClick={() => toggle("subscriptionsEnabled")} />
+          <Toggle label="Suscripciones" value={false} onClick={() => {}} disabled note="Requiere Stripe Billing" />
           <Toggle label="Pedidos programados" value={settings.scheduledOrdersEnabled} onClick={() => toggle("scheduledOrdersEnabled")} />
           <Toggle label="Reseñas verificadas" value={settings.reviewsEnabled} onClick={() => toggle("reviewsEnabled")} />
           <Toggle label="Lista de espera" value={settings.waitlistEnabled} onClick={() => toggle("waitlistEnabled")} />
           <Toggle label="Niveles Semilla/Brote/Jardín" value={settings.customerLevelsEnabled} onClick={() => toggle("customerLevelsEnabled")} />
-          <Toggle label="Notificaciones push" value={settings.pushEnabled} onClick={() => toggle("pushEnabled")} />
-          <Toggle label="WhatsApp automático" value={settings.whatsappEnabled} onClick={() => toggle("whatsappEnabled")} />
+          <Toggle label="Notificaciones push" value={false} onClick={() => {}} disabled note="Requiere Web Push" />
+          <Toggle label="WhatsApp automático" value={false} onClick={() => {}} disabled note="Requiere WhatsApp Business API" />
           <Toggle label="Modo mantenimiento" value={settings.maintenanceMode} onClick={() => toggle("maintenanceMode")} />
         </div>
       </section>
@@ -210,8 +227,35 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   return <div className="rounded-2xl border border-border bg-card p-5"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-black text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-function Toggle({ label, value, onClick }: { label: string; value: boolean; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="flex items-center justify-between rounded-xl border border-border bg-background p-4 text-left"><span className="text-sm font-semibold">{label}</span><span className={`relative h-6 w-11 rounded-full transition-colors ${value ? "bg-primary" : "bg-muted-foreground/30"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-6" : "translate-x-1"}`} /></span></button>;
+function Toggle({
+  label,
+  value,
+  onClick,
+  disabled = false,
+  note,
+}: {
+  label: string;
+  value: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  note?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-4 text-left disabled:cursor-not-allowed disabled:opacity-65"
+    >
+      <span>
+        <span className="block text-sm font-semibold">{label}</span>
+        {note ? <span className="mt-1 block text-[11px] font-medium text-amber-700">{note}</span> : null}
+      </span>
+      <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${value ? "bg-primary" : "bg-muted-foreground/30"}`}>
+        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-6" : "translate-x-1"}`} />
+      </span>
+    </button>
+  );
 }
 
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
