@@ -777,19 +777,14 @@ async function sendOrderConfirmationEmails(order, reason = "order_created") {
     results.admin = { skipped: true, reason: "missing_ADMIN_ORDER_EMAIL" };
   }
 
-  if (supabase) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...metadata,
-          confirmationEmailSentAt: new Date().toISOString(),
-          confirmationEmailReason: reason,
-          confirmationEmailResults: results,
-        },
-      })
-      .eq("id", normalized.id);
-  }
+  await patchOrderPrimary(normalized.id, {
+    metadata: {
+      ...metadata,
+      confirmationEmailSentAt: new Date().toISOString(),
+      confirmationEmailReason: reason,
+      confirmationEmailResults: results,
+    },
+  }).catch((error) => console.warn("No se pudo guardar estado de email del pedido:", error?.message || error));
 
   return results;
 }
@@ -819,22 +814,17 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
     replyTo: adminEmail,
   });
 
-  if (supabase) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...metadata,
-          lastStatusEmailSentAt: new Date().toISOString(),
-          lastStatusEmailReason: reason,
-          statusEmailHistory: {
-            ...(metadata.statusEmailHistory || {}),
-            [normalized.status]: new Date().toISOString(),
-          },
-        },
-      })
-      .eq("id", normalized.id);
-  }
+  await patchOrderPrimary(normalized.id, {
+    metadata: {
+      ...metadata,
+      lastStatusEmailSentAt: new Date().toISOString(),
+      lastStatusEmailReason: reason,
+      statusEmailHistory: {
+        ...(metadata.statusEmailHistory || {}),
+        [normalized.status]: new Date().toISOString(),
+      },
+    },
+  }).catch((error) => console.warn("No se pudo guardar historial de email:", error?.message || error));
 
   return result;
 }
@@ -940,12 +930,7 @@ async function deliveryAvailabilityForDate(requestedDate, suite = {}) {
   });
   const rules = schedule.rules;
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("status,metadata")
-    .contains("metadata", { requestedDate: schedule.requestedDate });
-
-  if (error) throw error;
+  const data = await listOrdersPrimary({ requestedDate: schedule.requestedDate, limit: 2000 });
 
   const counts = new Map(DELIVERY_SLOTS.map((slot) => [slot, 0]));
   for (const order of data || []) {
@@ -1017,6 +1002,15 @@ async function reserveCommerceStock(cartToken, items) {
     quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
   }));
 
+  if (hasNeon()) {
+    return {
+      active: false,
+      mode: "neon_validation_then_commit",
+      reason: "neon_primary_inventory",
+      reservedItems: payload.filter((item) => item.productId && item.quantity > 0).length,
+    };
+  }
+
   const { data, error } = await supabase.rpc("reserve_commerce_stock", {
     p_cart_token: String(cartToken),
     p_items: payload,
@@ -1046,6 +1040,7 @@ async function reserveCommerceStock(cartToken, items) {
 }
 
 async function consumeCommerceStockReservation(cartToken) {
+  if (hasNeon()) return { skipped: true, reason: "neon_inventory_commit_handles_stock" };
   const { data, error } = await supabase.rpc("consume_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1057,6 +1052,7 @@ async function consumeCommerceStockReservation(cartToken) {
 }
 
 async function releaseCommerceStockReservation(cartToken) {
+  if (hasNeon()) return { skipped: true, reason: "no_neon_reservation_to_release" };
   const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1068,6 +1064,7 @@ async function releaseCommerceStockReservation(cartToken) {
 }
 
 async function restockCommerceCoreStock(items) {
+  if (hasNeon()) return { skipped: true, reason: "neon_storage_restock_is_authoritative" };
   const payload = (Array.isArray(items) ? items : []).map((item) => ({
     productId: String(item?.id || ""),
     variantName: String(item?.selectedVariant || ""),
