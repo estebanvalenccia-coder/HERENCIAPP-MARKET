@@ -4947,7 +4947,6 @@ app.post("/api/pos/mixed-card-intent", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   if (!stripe) {
     return res.status(503).json({ error: "Stripe no está configurado en el backend" });
   }
@@ -4981,7 +4980,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       inventoryCommittedAt: null,
     };
 
-    const { error: orderError } = await supabase.from("orders").insert({
+    await insertOrderPrimary({
       id: orderId,
       customer_email: customer.email || null,
       customer_name: customer.name || "Cliente mostrador",
@@ -4995,8 +4994,6 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
       metadata,
     });
 
-    if (orderError) throw orderError;
-
     try {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: totalCents,
@@ -5009,10 +5006,7 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
         payment_method_types: ["card"],
       });
 
-      await supabase
-        .from("orders")
-        .update({ stripe_payment_intent_id: paymentIntent.id })
-        .eq("id", orderId);
+      await patchOrderPrimary(orderId, { stripe_payment_intent_id: paymentIntent.id });
 
       res.json({
         clientSecret: paymentIntent.client_secret,
@@ -5021,13 +5015,10 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
         totals,
       });
     } catch (error) {
-      await supabase
-        .from("orders")
-        .update({
-          status: "payment_error",
-          metadata: { ...metadata, stripeError: error.message },
-        })
-        .eq("id", orderId);
+      await patchOrderPrimary(orderId, {
+        status: "payment_error",
+        metadata: { ...metadata, stripeError: error.message },
+      }).catch(() => null);
       throw error;
     }
   } catch (error) {
@@ -5036,8 +5027,6 @@ app.post("/api/pos/card-intent", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   let originalProducts = null;
   let stockWasWritten = false;
   let createdOrderId = null;
@@ -5067,12 +5056,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let existingOrder = null;
     if (existingOrderId) {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", existingOrderId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await getOrderPrimary(existingOrderId);
       if (!data) return res.status(404).json({ error: "Pedido de tarjeta no encontrado" });
 
       if (data?.metadata?.inventoryCommittedAt) {
@@ -5240,47 +5224,34 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     let savedOrder;
     if (existingOrder) {
-      const { data, error } = await supabase
-        .from("orders")
-        .update({
-          customer_email: customer.email || null,
-          customer_name: customer.name || "Cliente mostrador",
-          payment_method: "card",
-          delivery_method: "mostrador",
-          status: "paid",
-          subtotal: totals.subtotal,
-          shipping: 0,
-          total: totals.total,
-          items: prepared.items,
-          metadata,
-        })
-        .eq("id", existingOrder.id)
-        .select("*")
-        .single();
-      if (error) throw error;
-      savedOrder = data;
+      savedOrder = await patchOrderPrimary(existingOrder.id, {
+        customer_email: customer.email || null,
+        customer_name: customer.name || "Cliente mostrador",
+        payment_method: "card",
+        delivery_method: "mostrador",
+        status: "paid",
+        subtotal: totals.subtotal,
+        shipping: 0,
+        total: totals.total,
+        items: prepared.items,
+        metadata,
+      });
     } else {
       const id = crypto.randomUUID();
-      const { data, error } = await supabase
-        .from("orders")
-        .insert({
-          id,
-          customer_email: customer.email || null,
-          customer_name: customer.name || "Cliente mostrador",
-          payment_method: paymentMethod,
-          delivery_method: "mostrador",
-          status,
-          subtotal: totals.subtotal,
-          shipping: 0,
-          total: totals.total,
-          items: prepared.items,
-          metadata,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
+      savedOrder = await insertOrderPrimary({
+        id,
+        customer_email: customer.email || null,
+        customer_name: customer.name || "Cliente mostrador",
+        payment_method: paymentMethod,
+        delivery_method: "mostrador",
+        status,
+        subtotal: totals.subtotal,
+        shipping: 0,
+        total: totals.total,
+        items: prepared.items,
+        metadata,
+      });
       createdOrderId = id;
-      savedOrder = data;
     }
 
     let cashSession = null;
@@ -5358,11 +5329,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     if (createdOrderId) {
       try {
-        const { error: deleteOrderError } = await supabase
-          .from("orders")
-          .delete()
-          .eq("id", createdOrderId);
-        if (deleteOrderError) throw deleteOrderError;
+        await deleteOrderPrimary(createdOrderId);
       } catch (rollbackError) {
         console.error("No se pudo revertir el pedido tras fallo TPV:", rollbackError.message);
       }
