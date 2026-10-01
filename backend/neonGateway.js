@@ -5,7 +5,7 @@ import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
   listNeonOrders, patchNeonOrder,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
-  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, archiveNeonCommerceProduct
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, archiveNeonCommerceProduct
 } from "./neonDb.js";
 import {
   hasR2,
@@ -157,6 +157,14 @@ const server=http.createServer(async(req,res)=>{try{
       listNeonCommerceCollections()
     ]);
     return json(res,200,{ok:true,products:products.length,collections:collections.length,source:"neon"});
+  }
+
+  if(path==="/api/admin/commerce/collections"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    if(!String(body?.name||"").trim())return json(res,400,{error:"Nombre obligatorio"});
+    const collections=await saveNeonCommerceCollection(body);
+    return json(res,200,{collections,source:"neon"});
   }
 
   if(path==="/api/admin/commerce/products"&&req.method==="POST"){

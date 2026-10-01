@@ -466,6 +466,43 @@ export async function listNeonCommerceCollections() {
   return r.rows||[];
 }
 
+export async function saveNeonCommerceCollection(input = {}) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  await ensureNeonCommerceDefaults();
+
+  const name = String(input.name || "").trim();
+  if (!name) {
+    const error = new Error("Nombre obligatorio");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const id = String(input.id || slugify(name)).trim();
+  const slug = slugify(input.slug || name);
+  const description = String(input.description || "");
+  const imageUrl = input.imageUrl ?? input.image_url ?? null;
+  const status = ["draft", "active", "archived"].includes(String(input.status || "active"))
+    ? String(input.status || "active")
+    : "active";
+  const sortOrder = int(input.sortOrder ?? input.sort_order, 0);
+
+  await neonPool.query(
+    `insert into commerce_collections(id,slug,name,description,image_url,status,sort_order,created_at,updated_at)
+     values($1,$2,$3,$4,$5,$6,$7,now(),now())
+     on conflict(id) do update set
+       slug=excluded.slug,
+       name=excluded.name,
+       description=excluded.description,
+       image_url=excluded.image_url,
+       status=excluded.status,
+       sort_order=excluded.sort_order,
+       updated_at=now()`,
+    [id, slug, name, description, imageUrl, status, sortOrder]
+  );
+
+  return listNeonCommerceCollections();
+}
+
 export async function listNeonCommerceProducts({ collection = "", includeArchived = false } = {}) {
   if (!neonPool) return [];
   await ensureNeonCommerceDefaults();
