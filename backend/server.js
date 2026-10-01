@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
+import { hasNeon, readNeonStorageValue, upsertNeonStorageValue } from "./neonDb.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -831,6 +832,16 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
 }
 
 async function readStorageValue(key) {
+  if (hasNeon()) {
+    try {
+      return await readNeonStorageValue(key);
+    } catch (error) {
+      console.warn("Neon storage read failed; trying legacy Supabase:", error?.message || error);
+    }
+  }
+
+  if (!supabase) return null;
+
   const { data, error } = await supabase
     .from("app_storage")
     .select("value")
@@ -843,6 +854,13 @@ async function readStorageValue(key) {
 }
 
 async function upsertStorageValue(key, value) {
+  if (hasNeon()) {
+    await upsertNeonStorageValue(key, value);
+    return;
+  }
+
+  if (!supabase) throw new Error("No hay base de datos configurada");
+
   const { error } = await supabase.from("app_storage").upsert({
     key,
     value,
