@@ -7,7 +7,15 @@ import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
-import { hasNeon, readNeonStorageValue, upsertNeonStorageValue } from "./neonDb.js";
+import {
+  hasNeon,
+  readNeonStorageValue,
+  upsertNeonStorageValue,
+  listNeonOrders,
+  getNeonOrder,
+  insertNeonOrder,
+  patchNeonOrder,
+} from "./neonDb.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -868,6 +876,46 @@ async function upsertStorageValue(key, value) {
   });
 
   if (error) throw error;
+}
+
+async function listOrdersPrimary({ email = null, statuses = null, requestedDate = null, limit = 2000 } = {}) {
+  if (hasNeon()) {
+    return listNeonOrders({ email, statuses, requestedDate, limit });
+  }
+  if (!supabase) return [];
+
+  let query = supabase.from("orders").select("*").order("created_at", { ascending: false });
+  if (email) query = query.eq("customer_email", email);
+  if (Array.isArray(statuses) && statuses.length) query = query.in("status", statuses);
+  if (requestedDate) query = query.contains("metadata", { requestedDate });
+  query = query.limit(Math.max(1, Math.min(Number(limit) || 2000, 2000)));
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function getOrderPrimary(id) {
+  if (hasNeon()) return getNeonOrder(id);
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("orders").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function insertOrderPrimary(row) {
+  if (hasNeon()) return insertNeonOrder(row);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { data, error } = await supabase.from("orders").insert(row).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+async function patchOrderPrimary(id, patch) {
+  if (hasNeon()) return patchNeonOrder(id, patch);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("*").single();
+  if (error) throw error;
+  return data;
 }
 
 const ACTIVE_DELIVERY_STATUSES = new Set([
