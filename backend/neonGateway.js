@@ -1,7 +1,11 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue } from "./neonDb.js";
+import {
+  neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
+  listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, archiveNeonCommerceProduct
+} from "./neonDb.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -41,6 +45,73 @@ const server=http.createServer(async(req,res)=>{try{
     const keys=["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent"];
     const rows=await readNeonStorageValues(keys);const settings={};for(const row of rows){const safe=sanitize(row.key,row.value,false);try{settings[row.key]=JSON.parse(safe);}catch{settings[row.key]=safe;}}return json(res,200,{settings,source:"neon"});
   }
+
+  if(path==="/api/commerce/collections"&&req.method==="GET"){
+    const collections=await listNeonCommerceCollections();
+    return json(res,200,{collections,source:"neon"});
+  }
+
+  if(path==="/api/commerce/products"&&req.method==="GET"){
+    const url=new URL(req.url,"http://localhost");
+    const collection=String(url.searchParams.get("collection")||"");
+    const includeArchived=url.searchParams.get("includeArchived")==="1" && await adminSession(req);
+    await bootstrapNeonCommerceFromLegacy();
+    const products=await listNeonCommerceProducts({collection,includeArchived});
+    return json(res,200,{products,source:"neon"});
+  }
+
+  const commerceProductMatch=path.match(/^\/api\/commerce\/products\/([^/]+)$/);
+  if(commerceProductMatch&&req.method==="GET"){
+    const isAdmin=await adminSession(req);
+    const product=await getNeonCommerceProduct(decodeURIComponent(commerceProductMatch[1]),{includeArchived:isAdmin});
+    if(!product)return json(res,404,{error:"Producto no encontrado"});
+    if(!isAdmin&&(product.active===false||product.deletedAt))return json(res,404,{error:"Producto no encontrado"});
+    return json(res,200,{product,source:"neon"});
+  }
+
+  if(path==="/api/admin/commerce/bootstrap"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const result=await bootstrapNeonCommerceFromLegacy();
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    return json(res,200,{ok:true,...result,products,source:"neon"});
+  }
+
+  if(path==="/api/admin/commerce/health"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    await bootstrapNeonCommerceFromLegacy();
+    const [products,collections]=await Promise.all([
+      listNeonCommerceProducts({includeArchived:true}),
+      listNeonCommerceCollections()
+    ]);
+    return json(res,200,{ok:true,products:products.length,collections:collections.length,source:"neon"});
+  }
+
+  if(path==="/api/admin/commerce/products"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    if(!String(body?.name||"").trim())return json(res,400,{error:"El nombre es obligatorio"});
+    const product=await saveNeonCommerceProduct(body);
+    return json(res,201,{product,source:"neon"});
+  }
+
+  const adminCommerceProductMatch=path.match(/^\/api\/admin\/commerce\/products\/([^/]+)$/);
+  if(adminCommerceProductMatch){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const id=decodeURIComponent(adminCommerceProductMatch[1]);
+    if(req.method==="PATCH"){
+      const current=await getNeonCommerceProduct(id,{includeArchived:true});
+      if(!current)return json(res,404,{error:"Producto no encontrado"});
+      const body=await bodyJson(req);
+      const product=await saveNeonCommerceProduct({...current,...body,id},{id});
+      return json(res,200,{product,source:"neon"});
+    }
+    if(req.method==="DELETE"){
+      const url=new URL(req.url,"http://localhost");
+      await archiveNeonCommerceProduct(id,{permanent:url.searchParams.get("permanent")==="1"});
+      return json(res,200,{ok:true,source:"neon"});
+    }
+  }
+
   return await proxy(req,res);
 }catch(error){console.error("Hybrid gateway error",error);return json(res,500,{error:"Hybrid gateway error",message:error?.message||String(error)});}});
 
