@@ -1107,19 +1107,20 @@ app.post(
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
 
-      if (orderId && supabase) {
-        const { data: updatedOrder, error } = await supabase
-          .from("orders")
-          .update({
+      if (orderId) {
+        let updatedOrder = null;
+        let orderUpdateError = null;
+        try {
+          updatedOrder = await patchOrderPrimary(orderId, {
             status: "paid",
             stripe_payment_intent_id: paymentIntent.id,
-          })
-          .eq("id", orderId)
-          .select("*")
-          .single();
+          });
+        } catch (error) {
+          orderUpdateError = error;
+        }
 
-        if (error) {
-          console.error("Error actualizando pedido pagado:", error.message);
+        if (orderUpdateError || !updatedOrder) {
+          console.error("Error actualizando pedido pagado:", orderUpdateError?.message || "Pedido no encontrado");
         } else {
           let inventoryOrder = updatedOrder;
           try {
@@ -1153,18 +1154,16 @@ app.post(
     if (["payment_intent.payment_failed", "payment_intent.canceled"].includes(event.type)) {
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
-      if (orderId && supabase) {
+      if (orderId) {
         await releaseCommerceStockReservation(orderId).catch((error) =>
           console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
         );
-        await supabase
-          .from("orders")
-          .update({
-            status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
-            stripe_payment_intent_id: paymentIntent.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", orderId);
+        await patchOrderPrimary(orderId, {
+          status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
+          stripe_payment_intent_id: paymentIntent.id,
+        }).catch((error) =>
+          console.warn("No se pudo actualizar el pedido fallido en Neon:", error?.message || error)
+        );
       }
     }
 
