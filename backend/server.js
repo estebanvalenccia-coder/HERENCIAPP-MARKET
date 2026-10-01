@@ -2861,11 +2861,12 @@ async function validateCommerceOrderPayload(order = {}) {
     const variant = variantName ? (product.variants || []).find(v => String(v?.name || v) === variantName) : null;
     if (variantName && !variant) throw new Error(`Variante no disponible: ${product.name}`);
     const qty = Math.max(1, Math.floor(Number(item?.quantity || 1)));
+    const trackInventory = product.trackInventory !== false;
     const available = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
-    if (available < qty) throw new Error(`Stock insuficiente para ${product.name}`);
+    if (trackInventory && available < qty) throw new Error(`Stock insuficiente para ${product.name}`);
     const unitPrice = normalizeMoney(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price));
     subtotal += unitPrice * qty;
-    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty});
+    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty,trackInventory});
   }
 
   subtotal = normalizeMoney(subtotal);
@@ -2967,6 +2968,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
       const restockedProducts = currentProducts.map((product) => {
         const id = String(product?.id ?? "");
+        if (product?.trackInventory === false) return product;
         const qty = quantities.get(id) || 0;
         if (!qty) return product;
         return {
@@ -5584,11 +5586,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         return res.status(409).json({ error: `Variante no disponible para ${product.name}` });
       }
 
+      const trackInventory = product.trackInventory !== false;
       const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
       const stockKey = `${id}::${selectedVariantName || "base"}`;
       const requested = Number(requestedByProduct.get(stockKey) || 0) + quantity;
       requestedByProduct.set(stockKey, requested);
-      if (requested > stock) {
+      if (trackInventory && requested > stock) {
         return res.status(409).json({ error: `Stock insuficiente para ${product.name}${selectedVariantName ? ` (${selectedVariantName})` : ""}. Disponible: ${stock}` });
       }
 
@@ -5613,6 +5616,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           ? { dedication: String(raw.personalization.dedication || "").slice(0, 280) }
           : undefined,
         image: product.image || undefined,
+        trackInventory,
       });
     }
 
@@ -5746,6 +5750,8 @@ async function commitOnlineOrderInventory(order) {
     const variantName = String(item?.selectedVariant || "").trim();
     const qty = Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0)));
     if (!id || qty <= 0) continue;
+    const product = byId.get(id);
+    if (product?.trackInventory === false || item?.trackInventory === false) continue;
     const key = `${id}::${variantName || "base"}`;
     requirements.set(key, {
       id,
@@ -5857,6 +5863,7 @@ async function restockOnlineOrderInventory(order) {
 
   const restoredProducts = products.map((product) => {
     const id = String(product?.id ?? "");
+    if (product?.trackInventory === false) return product;
     const baseQty = Number(quantities.get(`${id}::base`) || 0);
     let next = baseQty
       ? { ...product, stock: Math.max(0, Math.floor(Number(product.stock || 0))) + baseQty }
