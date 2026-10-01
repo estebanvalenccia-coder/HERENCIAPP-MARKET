@@ -281,9 +281,13 @@ export function AdminDashboard() {
       setRealtimeConnected(false);
     }
 
+    // SSE is the primary real-time channel. Poll only while disconnected, and at a
+    // conservative cadence so an open admin tab does not repeatedly download orders.
     fallbackTimer = window.setInterval(() => {
-      void syncOrdersFallback(false);
-    }, 15000);
+      if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+        void syncOrdersFallback(false);
+      }
+    }, 5 * 60 * 1000);
 
     return () => {
       cancelled = true;
