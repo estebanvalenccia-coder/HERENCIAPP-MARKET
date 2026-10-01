@@ -2120,37 +2120,29 @@ app.get("/api/customer/account", requireCustomer, async (req, res) => {
 });
 
 app.get("/api/storage", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const keys = [...publicKeys];
   const visitorId = getVisitorId(req, res);
-
   const scopedVisitorKeys = [...privateVisitorKeys].map(
     (key) => `visitor:${visitorId}:${key}`
   );
-
   if (isAdmin(req)) keys.push(...adminOnlyStorageKeys);
 
-  const { data, error } = await supabase
-    .from("app_storage")
-    .select("key,value")
-    .in("key", [...keys, ...scopedVisitorKeys]);
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const response = {};
-
-  for (const row of data || []) {
-    let key = row.key;
-
-    if (key.startsWith(`visitor:${visitorId}:`)) {
-      key = key.split(":").pop();
+  try {
+    const requestedKeys = [...keys, ...scopedVisitorKeys];
+    const values = await Promise.all(requestedKeys.map(async (key) => [key, await readStorageValue(key)]));
+    const response = {};
+    for (const [storedKey, value] of values) {
+      if (value == null) continue;
+      let key = storedKey;
+      if (key.startsWith(`visitor:${visitorId}:`)) key = key.split(":").pop();
+      response[key] = sanitizeValueForClient(key, value, isAdmin(req));
     }
-
-    response[key] = sanitizeValueForClient(key, row.value, isAdmin(req));
+    res.json({ data: response, source: hasNeon() ? "neon" : "legacy_fallback" });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar el almacenamiento" });
   }
-
-  res.json({ data: response });
 });
 
 app.get("/api/storage/:key", async (req, res) => {
@@ -2210,30 +2202,26 @@ app.put("/api/storage/:key", async (req, res) => {
 });
 
 app.delete("/api/storage/:key", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const key = req.params.key;
-
   if (protectedKeys.has(key) && !isAdmin(req)) {
     return res.status(401).json({ error: "Acceso de administrador requerido" });
   }
-
   if (!protectedKeys.has(key) && !privateVisitorKeys.has(key)) {
     return res.status(403).json({ error: "Clave no permitida" });
   }
 
-  const { error } = await supabase
-    .from("app_storage")
-    .delete()
-    .eq("key", storageKeyFor(req, res, key));
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  res.json({ ok: true });
+  try {
+    await deleteStorageValue(storageKeyFor(req, res, key));
+    res.json({ ok: true, source: hasNeon() ? "neon" : "legacy_fallback" });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo eliminar la clave" });
+  }
 });
 
 app.get("/api/settings/public", async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const keys = [
     "chatboxSettings",
@@ -2249,27 +2237,21 @@ app.get("/api/settings/public", async (_req, res) => {
     "marketingContent",
   ];
 
-  const { data, error } = await supabase
-    .from("app_storage")
-    .select("key,value")
-    .in("key", keys);
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const settings = Object.fromEntries(
-    (data || []).map((row) => {
-      try {
-        return [
-          row.key,
-          JSON.parse(sanitizeValueForClient(row.key, row.value)),
-        ];
-      } catch {
-        return [row.key, row.value];
-      }
-    })
-  );
-
-  res.json({ settings });
+  try {
+    const entries = await Promise.all(keys.map(async (key) => [key, await readStorageValue(key)]));
+    const settings = Object.fromEntries(
+      entries
+        .filter(([, value]) => value != null)
+        .map(([key, value]) => {
+          const safe = sanitizeValueForClient(key, value);
+          try { return [key, JSON.parse(safe)]; }
+          catch { return [key, safe]; }
+        })
+    );
+    res.json({ settings, source: hasNeon() ? "neon" : "legacy_fallback" });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar los ajustes públicos" });
+  }
 });
 
 
