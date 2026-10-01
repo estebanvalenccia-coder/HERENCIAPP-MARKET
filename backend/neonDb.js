@@ -66,6 +66,197 @@ export async function listNeonStorageByPrefix(prefix = "") {
   return result.rows || [];
 }
 
+
+const NEON_RESERVATIONS_KEY = "commerceStockReservations";
+const NEON_RESERVATION_LOCK = "herencia:commerce-stock-reservations";
+
+function parseArrayJson(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes = 15) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const token = String(cartToken || "").trim();
+  if (!token) throw new Error("reservation_token_required");
+
+  const requested = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      productId: String(item?.productId ?? item?.id ?? "").trim(),
+      variantName: String(item?.variantName ?? item?.selectedVariant ?? "").trim(),
+      quantity: Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0))),
+      trackInventory: item?.trackInventory !== false,
+    }))
+    .filter((item) => item.productId && item.quantity > 0 && item.trackInventory);
+
+  if (!requested.length) {
+    return { active: false, mode: "neon_atomic_reservation", reason: "no_tracked_items", reservedItems: 0 };
+  }
+
+  const client = await neonPool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [NEON_RESERVATION_LOCK]);
+
+    const [productsResult, reservationsResult] = await Promise.all([
+      client.query("select value from app_storage where key=$1 limit 1 for update", ["adminProducts"]),
+      client.query("select value from app_storage where key=$1 limit 1 for update", [NEON_RESERVATIONS_KEY]),
+    ]);
+
+    const products = parseArrayJson(productsResult.rows?.[0]?.value);
+    const now = Date.now();
+    const active = parseArrayJson(reservationsResult.rows?.[0]?.value)
+      .filter((row) =>
+        row &&
+        row.status === "active" &&
+        String(row.cartToken || "") !== token &&
+        new Date(row.expiresAt || 0).getTime() > now
+      );
+
+    const reservedByKey = new Map();
+    for (const reservation of active) {
+      for (const item of Array.isArray(reservation.items) ? reservation.items : []) {
+        const key = `${String(item.productId)}::${String(item.variantName || "base")}`;
+        reservedByKey.set(key, Number(reservedByKey.get(key) || 0) + Math.max(0, Number(item.quantity || 0)));
+      }
+    }
+
+    for (const item of requested) {
+      const product = products.find((row) => String(row?.id ?? "") === item.productId);
+      if (!product || product.active === false || product.deletedAt) {
+        const error = new Error(`Producto no disponible: ${item.productId}`);
+        error.statusCode = 409;
+        throw error;
+      }
+      if (product.trackInventory === false) continue;
+
+      const variant = item.variantName
+        ? (Array.isArray(product.variants) ? product.variants : [])
+            .find((row) => String(row?.name || row) === item.variantName)
+        : null;
+      if (item.variantName && !variant) {
+        const error = new Error(`Variante no disponible: ${product.name || item.productId}`);
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const key = `${item.productId}::${item.variantName || "base"}`;
+      const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
+      const alreadyReserved = Math.max(0, Number(reservedByKey.get(key) || 0));
+      if (stock - alreadyReserved < item.quantity) {
+        const error = new Error(
+          `Stock insuficiente para ${product.name || item.productId}${item.variantName ? ` (${item.variantName})` : ""}. Disponible: ${Math.max(0, stock - alreadyReserved)}`
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+      reservedByKey.set(key, alreadyReserved + item.quantity);
+    }
+
+    const safeTtl = Math.max(1, Math.min(60, Math.floor(Number(ttlMinutes) || 15)));
+    const expiresAt = new Date(now + safeTtl * 60_000).toISOString();
+    active.push({
+      cartToken: token,
+      status: "active",
+      createdAt: new Date(now).toISOString(),
+      expiresAt,
+      items: requested.map(({ productId, variantName, quantity }) => ({ productId, variantName, quantity })),
+    });
+
+    await client.query(
+      `insert into app_storage(key,value,created_at,updated_at)
+       values($1,$2,now(),now())
+       on conflict(key) do update set value=excluded.value, updated_at=now()`,
+      [NEON_RESERVATIONS_KEY, JSON.stringify(active)]
+    );
+    await client.query("commit");
+    return { active: true, mode: "neon_atomic_reservation", expiresAt, reservedItems: requested.length };
+  } catch (error) {
+    await client.query("rollback").catch(() => null);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function clearNeonCommerceReservation(cartToken, outcome) {
+  if (!neonPool) return { skipped: true, reason: "neon_unavailable" };
+  const token = String(cartToken || "").trim();
+  if (!token) return { skipped: true, reason: "missing_token" };
+
+  const client = await neonPool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [NEON_RESERVATION_LOCK]);
+    const result = await client.query(
+      "select value from app_storage where key=$1 limit 1 for update",
+      [NEON_RESERVATIONS_KEY]
+    );
+    const rows = parseArrayJson(result.rows?.[0]?.value);
+    const removed = rows.filter((row) => row?.status === "active" && String(row.cartToken || "") === token).length;
+    const next = rows.filter((row) => !(row?.status === "active" && String(row.cartToken || "") === token));
+    await client.query(
+      `insert into app_storage(key,value,created_at,updated_at)
+       values($1,$2,now(),now())
+       on conflict(key) do update set value=excluded.value, updated_at=now()`,
+      [NEON_RESERVATIONS_KEY, JSON.stringify(next)]
+    );
+    await client.query("commit");
+    return { ok: true, [outcome]: removed };
+  } catch (error) {
+    await client.query("rollback").catch(() => null);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function consumeNeonCommerceStockReservation(cartToken) {
+  return clearNeonCommerceReservation(cartToken, "consumed");
+}
+
+export async function releaseNeonCommerceStockReservation(cartToken) {
+  return clearNeonCommerceReservation(cartToken, "released");
+}
+
+export async function syncNeonCommerceInventory(products = []) {
+  if (!neonPool || !Array.isArray(products)) return { synced: 0 };
+  const client = await neonPool.connect();
+  let synced = 0;
+  try {
+    await client.query("begin");
+    for (const product of products) {
+      const productId = String(product?.id ?? "").trim();
+      if (!productId) continue;
+      await client.query(
+        "update commerce_products set stock=$2, track_inventory=$3, updated_at=now() where id=$1",
+        [productId, int(product.stock), product.trackInventory !== false]
+      );
+      if (Array.isArray(product.variants)) {
+        for (const variant of product.variants) {
+          if (!variant || typeof variant !== "object" || !String(variant.name || "").trim()) continue;
+          await client.query(
+            "update commerce_product_variants set stock=$3, updated_at=now() where product_id=$1 and name=$2",
+            [productId, String(variant.name), int(variant.stock)]
+          );
+        }
+      }
+      synced++;
+    }
+    await client.query("commit");
+    return { synced };
+  } catch (error) {
+    await client.query("rollback").catch(() => null);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function listNeonOrders({ email = null, statuses = null, requestedDate = null, limit = 500 } = {}) {
   if (!neonPool) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
@@ -178,19 +369,41 @@ function num(value, fallback = 0) {
 function int(value, fallback = 0) {
   return Math.max(0, Math.floor(num(value, fallback)));
 }
+const COMMERCE_COLLECTION_IDS = new Set([
+  "plantas", "semillas", "jardineria", "sustratos", "decoracion", "dulce", "moda", "servicios"
+]);
+const COMMERCE_COLLECTION_ALIASES = new Map([
+  ["planta", "plantas"], ["plantas", "plantas"], ["flores", "plantas"],
+  ["plantas-interior", "plantas"], ["plantas-exterior", "plantas"], ["orquideas", "plantas"],
+  ["semilla", "semillas"], ["semillas", "semillas"],
+  ["jardineria", "jardineria"],
+  ["sustrato", "sustratos"], ["sustratos", "sustratos"], ["tierra-y-sustratos", "sustratos"],
+  ["decoracion", "decoracion"],
+  ["dulce", "dulce"],
+  ["moda", "moda"],
+  ["servicio", "servicios"], ["servicios", "servicios"],
+]);
+
+function normalizeCommerceCollectionId(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const normalized = COMMERCE_COLLECTION_ALIASES.get(raw) || raw;
+  return COMMERCE_COLLECTION_IDS.has(normalized) ? normalized : "";
+}
+
 function inferCollections(product = {}) {
-  const text = [product.category, product.type, product.name, product.description, product.tags]
-    .filter(Boolean).join(" ").toLowerCase();
-  const explicit = Array.isArray(product.collections) ? product.collections.map(String) : [];
+  const explicit = [
+    ...(Array.isArray(product.collections) ? product.collections : []),
+    ...(product.collection ? [product.collection] : []),
+  ]
+    .map(normalizeCommerceCollectionId)
+    .filter(Boolean);
   if (explicit.length) return [...new Set(explicit)];
-  if (/dulce|postre|tarta|pastel|reposter|brownie|galleta/.test(text)) return ["dulce"];
-  if (/moda|ropa|textil|camisa|delantal/.test(text)) return ["moda"];
-  if (/semilla/.test(text)) return ["semillas"];
-  if (/sustrato|tierra/.test(text)) return ["sustratos"];
-  if (/jardin/.test(text)) return ["jardineria"];
-  if (/decor/.test(text)) return ["decoracion"];
-  if (/servicio/.test(text)) return ["servicios"];
-  return ["plantas"];
+
+  // Compatibilidad para productos históricos: solo equivalencias exactas.
+  // Nunca se decide la colección leyendo nombre, descripción o etiquetas.
+  const categoryCollection = normalizeCommerceCollectionId(product.category);
+  return [categoryCollection || "plantas"];
 }
 
 export async function ensureNeonCommerceDefaults() {
