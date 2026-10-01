@@ -1915,7 +1915,7 @@ app.delete("/api/customer/reminders/:id", requireCustomer, async (req, res) => {
 });
 
 async function processCustomerReminders() {
-  if (!supabase || !process.env.RESEND_API_KEY) return { skipped: true };
+  if ((!hasNeon() && !supabase) || !process.env.RESEND_API_KEY) return { skipped: true };
   const rows = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
   if (!rows.length) return { sent: 0 };
 
