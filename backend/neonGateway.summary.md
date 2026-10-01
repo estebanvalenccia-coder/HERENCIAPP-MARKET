@@ -1,0 +1,1 @@
+This branch introduces the first zero-toggle cutover: high-frequency key/value state goes to Neon, while the existing backend remains available for payments and features not yet migrated. Supabase is retained rather than disabled.

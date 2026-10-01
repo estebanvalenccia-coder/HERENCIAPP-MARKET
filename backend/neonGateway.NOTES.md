@@ -1,0 +1,1 @@
+Orders are intentionally left on the legacy backend in the first gateway deployment. This keeps the existing Stripe webhook/order workflow intact while high-frequency app storage traffic moves to Neon. The Neon `orders` schema is already prepared for the next migration stage. This avoids changing payment persistence and storage persistence in the same production cutover.

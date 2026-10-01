@@ -1,0 +1,1 @@
+After deployment verify `/api/health` reports `service: Herencia hybrid gateway` and `neon: true`. Then verify `/api/settings/public` returns `source: neon`. Admin login/session remains served by the legacy backend. Do not remove Supabase or Stripe variables during this stage.

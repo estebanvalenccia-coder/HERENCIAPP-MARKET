@@ -1,0 +1,10 @@
+Browser -> Railway public PORT -> Neon Gateway
+  |-- /api/storage* --------> Neon PostgreSQL
+  |-- /api/settings/public -> Neon PostgreSQL
+  `-- other /api/* --------> Legacy Herencia backend (loopback)
+                               |-- Stripe (unchanged)
+                               |-- Supabase compatibility (unchanged)
+                               `-- Resend / Neural / other existing services
+
+Future media path:
+  /api/admin/media -> Cloudflare R2
