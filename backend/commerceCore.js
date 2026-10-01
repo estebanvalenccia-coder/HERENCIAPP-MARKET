@@ -25,7 +25,7 @@ function parseCookies(req) {
   }));
 }
 function sessionSecret() {
-  return process.env.ADMIN_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "change-me-in-production";
+  return process.env.ADMIN_SESSION_SECRET || process.env.JWT_SECRET || "change-me-in-production";
 }
 function sign(value) {
   return crypto.createHmac("sha256", sessionSecret()).update(value).digest("hex");
@@ -56,25 +56,31 @@ function integer(value, fallback = 0) {
   return Math.max(0, Math.floor(number(value, fallback)));
 }
 function inferCollections(product) {
-  const raw = [product?.category, product?.collection, ...(Array.isArray(product?.collections) ? product.collections : [])]
-    .filter(Boolean).map((x) => String(x).toLowerCase());
-  const text = [product?.name, product?.category, product?.description, product?.tags].filter(Boolean).join(" ").toLowerCase();
-  const ids = new Set();
-  for (const value of raw) {
-    if (/dulce|postre|tarta|pastel|reposter/.test(value)) ids.add("dulce");
-    else if (/moda|textil|camisa|delantal|guante|ropa/.test(value)) ids.add("moda");
-    else if (/semilla/.test(value)) ids.add("semillas");
-    else if (/sustrato|tierra/.test(value)) ids.add("sustratos");
-    else if (/jardin/.test(value)) ids.add("jardineria");
-    else if (/decor/.test(value)) ids.add("decoracion");
-    else if (/servicio/.test(value)) ids.add("servicios");
-    else ids.add("plantas");
-  }
-  if (/dulce|postre|tarta|pastel|brownie|galleta|desayuno|reposter/.test(text)) ids.add("dulce");
-  if (/moda|camisa|delantal|guante|ropa|textil|uniforme/.test(text)) ids.add("moda");
-  if (!ids.size) ids.add("plantas");
-  return [...ids];
+  const aliases = new Map([
+    ["planta","plantas"],["plantas","plantas"],["flores","plantas"],
+    ["plantas-interior","plantas"],["plantas-exterior","plantas"],["orquideas","plantas"],
+    ["semilla","semillas"],["semillas","semillas"],
+    ["jardineria","jardineria"],
+    ["sustrato","sustratos"],["sustratos","sustratos"],["tierra-y-sustratos","sustratos"],
+    ["decoracion","decoracion"],["dulce","dulce"],["moda","moda"],
+    ["servicio","servicios"],["servicios","servicios"],
+  ]);
+  const allowed = new Set(["plantas","semillas","jardineria","sustratos","decoracion","dulce","moda","servicios"]);
+  const raw = [
+    ...(Array.isArray(product?.collections) ? product.collections : []),
+    ...(product?.collection ? [product.collection] : []),
+    ...(product?.category ? [product.category] : []),
+  ];
+  const ids = raw
+    .map((value) => {
+      const normalized=String(value||"").trim().toLowerCase();
+      const mapped=aliases.get(normalized)||normalized;
+      return allowed.has(mapped)?mapped:"";
+    })
+    .filter(Boolean);
+  return [...new Set(ids.length ? ids : ["plantas"])];
 }
+
 function productRowToLegacy(row, variants = [], images = [], collections = []) {
   const metadata = row.metadata || {};
   const primary = images.find((image) => image.is_primary) || images[0];
