@@ -181,7 +181,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $restock$
 declare
   item jsonb;
   p_id text;
@@ -223,7 +223,7 @@ begin
 
   return jsonb_build_object('ok', true, 'restored', restored_count);
 end;
-$;
+$restock$;
 
 revoke all on function public.reserve_commerce_stock(text, jsonb, integer) from public, anon, authenticated;
 revoke all on function public.consume_commerce_stock_reservation(text) from public, anon, authenticated;
