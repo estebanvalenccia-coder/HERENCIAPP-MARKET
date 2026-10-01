@@ -62,7 +62,26 @@ export function AdminHerenciaNeural(){
   setLoading(false);
  },[]);
 
- useEffect(()=>{void refresh();const timer=window.setInterval(()=>void refresh(),10000);return()=>window.clearInterval(timer)},[refresh]);
+ useEffect(()=>{
+  void refresh();
+
+  // Neural exposes a large dashboard snapshot (17 endpoints). Refreshing every
+  // 10 seconds generated unnecessary traffic while an admin tab stayed open.
+  // Explicit actions still refresh immediately; this timer is only a safety sync.
+  const timer=window.setInterval(()=>{
+   if(document.visibilityState==="visible") void refresh();
+  },2*60*1000);
+
+  const onVisibility=()=>{
+   if(document.visibilityState==="visible") void refresh();
+  };
+  document.addEventListener("visibilitychange",onVisibility);
+
+  return()=>{
+   window.clearInterval(timer);
+   document.removeEventListener("visibilitychange",onVisibility);
+  };
+ },[refresh]);
 
  const permissions:Record<string,Mode>=status?.policy?.permissions||{};
  const autonomy=status?.policy?.autonomy==="ACTIVE";
