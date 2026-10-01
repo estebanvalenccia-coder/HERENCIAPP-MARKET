@@ -233,7 +233,7 @@ async function hydrateNeonProductRows(rows = []) {
       compareAtPrice:row.compare_at_price==null?undefined:num(row.compare_at_price),
       onSale:Boolean(row.compare_at_price && num(row.compare_at_price)>num(row.price)),
       cost:row.cost==null?undefined:num(row.cost), iva:num(row.tax_rate,21), taxRate:num(row.tax_rate,21),
-      sku:row.sku||"", stock:int(row.stock), active:row.status==="active",
+      sku:row.sku||"", stock:int(row.stock), trackInventory:row.track_inventory!==false, active:row.status==="active",
       deletedAt:row.status==="archived"?row.updated_at:undefined, status:row.status, featured:Boolean(row.featured),
       environment:row.environment||"", light:row.light||"", size:row.size||"", difficulty:row.difficulty||"",
       petSafe:Boolean(row.pet_safe), toxicity:row.toxicity||"", water:row.water||"", temperature:row.temperature||"",
@@ -330,6 +330,10 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
      Boolean(input.petSafe),String(input.toxicity||"")||null,String(input.water||"")||null,String(input.temperature||"")||null,
      String(input.occasion||"")||null,input.allowDedication!==false,String(input.seoTitle||input.name||"")||null,
      String(input.seoDescription||input.description||"")||null,metadata]
+  );
+  await neonPool.query(
+    "update commerce_products set track_inventory=$2, updated_at=now() where id=$1",
+    [productId, input.trackInventory !== false]
   );
   const collections=inferCollections(input);
   await neonPool.query("delete from commerce_product_collections where product_id=$1",[productId]);
