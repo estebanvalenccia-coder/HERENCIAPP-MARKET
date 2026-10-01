@@ -391,6 +391,18 @@ export const backendApi = {
     return request<{ ok: boolean; service?: string }>("/api/health");
   },
 
+  async readiness() {
+    return request<{
+      ok: boolean;
+      database: boolean;
+      databaseProvider?: string;
+      stripe?: boolean;
+      email?: boolean;
+      commerceCore?: boolean;
+    }>("/api/ready");
+  },
+
+
   async listCommerceCollections() {
     return request<{ collections: any[]; source?: string }>("/api/commerce/collections");
   },
@@ -474,6 +486,18 @@ export const backendApi = {
 
   async adminSession() {
     return request<{ authenticated: boolean }>("/api/admin/session");
+  },
+
+  async siteMediaStatus() {
+    return request<{
+      provider: "cloudflare_r2" | "legacy_supabase";
+      configured: boolean;
+      account?: boolean;
+      accessKey?: boolean;
+      secretKey?: boolean;
+      bucket?: boolean;
+      publicUrl?: boolean;
+    }>("/api/admin/media/status");
   },
 
   async listSiteMedia() {

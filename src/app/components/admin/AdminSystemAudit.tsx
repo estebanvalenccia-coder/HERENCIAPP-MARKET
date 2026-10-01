@@ -6,9 +6,24 @@ export function AdminSystemAudit(){
  const [running,setRunning]=useState(false),[checks,setChecks]=useState<Check[]>([]),[ranAt,setRanAt]=useState("");
  const run=async()=>{setRunning(true);const out:Check[]=[];
   try{const h=await backendApi.health();out.push({name:"Backend / Railway",ok:!!h.ok,detail:h.ok?"API responde correctamente":"API sin respuesta válida"});}catch(e:any){out.push({name:"Backend / Railway",ok:false,detail:e?.message||"Sin conexión"});}
-  try{const p=await backendApi.posSelfTest();out.push(...(p.tests||[]).map((t:any)=>({name:"TPV · "+t.name,ok:!!t.ok,detail:t.detail})));out.push({name:"Stripe / tarjeta",ok:!!p.cardReady,detail:p.cardReady?"Configuración disponible":"Falta configuración o validación"});out.push({name:"Datos fiscales",ok:!!p.fiscalReady,detail:p.fiscalReady?"Datos del emisor configurados":"Completa los datos fiscales del emisor"});}catch(e:any){out.push({name:"TPV",ok:false,detail:e?.message||"No se pudo ejecutar el autotest"});}
+  try{
+    const r=await backendApi.readiness();
+    out.push({name:"Base de datos primaria",ok:!!r.database,detail:r.database?`Operativa · ${r.databaseProvider||"proveedor configurado"}`:"No disponible"});
+    out.push({name:"Stripe backend",ok:!!r.stripe,detail:r.stripe?"Clave servidor configurada":"Stripe no está configurado"});
+    out.push({name:"Email transaccional",ok:!!r.email,detail:r.email?"Resend configurado":"Falta proveedor de email"});
+  }catch(e:any){out.push({name:"Readiness del backend",ok:false,detail:e?.message||"No disponible"});}
+  try{
+    const commerce=await backendApi.commerceHealth();
+    out.push({name:"Commerce Core",ok:commerce?.ok!==false,detail:`${commerce?.products||0} productos · ${commerce?.collections||0} colecciones · ${commerce?.source||"sin fuente"}`});
+  }catch(e:any){out.push({name:"Commerce Core",ok:false,detail:e?.message||"No accesible"});}
+  try{
+    const media=await backendApi.siteMediaStatus();
+    const ready=media.provider==="cloudflare_r2"&&media.configured;
+    out.push({name:"Biblioteca multimedia",ok:ready,detail:ready?"Cloudflare R2 operativo":"R2 pendiente; el fallback de Supabase puede estar restringido"});
+  }catch(e:any){out.push({name:"Biblioteca multimedia",ok:false,detail:e?.message||"No se pudo comprobar"});}
+  try{const p=await backendApi.posSelfTest();out.push(...(p.tests||[]).map((t:any)=>({name:"TPV · "+t.name,ok:!!t.ok,detail:t.detail})));out.push({name:"Stripe / tarjeta TPV",ok:!!p.cardReady,detail:p.cardReady?"Configuración disponible":"Falta configuración o validación"});out.push({name:"Datos fiscales",ok:!!p.fiscalReady,detail:p.fiscalReady?"Datos del emisor configurados":"Completa los datos fiscales del emisor"});}catch(e:any){out.push({name:"TPV",ok:false,detail:e?.message||"No se pudo ejecutar el autotest"});}
   try{const n=await backendApi.neuralSelfTest();out.push({name:"HERENCIA Neural",ok:n?.ok!==false,detail:n?.ok===false?(n?.error||"Autotest con incidencias"):"Core Neural responde"});}catch(e:any){out.push({name:"HERENCIA Neural",ok:false,detail:e?.message||"Sin respuesta"});}
-  try{const o=await backendApi.listOrders();out.push({name:"Pedidos / Base de datos",ok:Array.isArray(o.orders),detail:Array.isArray(o.orders)?o.orders.length+" pedidos accesibles":"Respuesta inválida"});}catch(e:any){out.push({name:"Pedidos / Base de datos",ok:false,detail:e?.message||"No accesible"});}
+  try{const o=await backendApi.listOrders();out.push({name:"Pedidos",ok:Array.isArray(o.orders),detail:Array.isArray(o.orders)?o.orders.length+" pedidos accesibles desde la base primaria":"Respuesta inválida"});}catch(e:any){out.push({name:"Pedidos",ok:false,detail:e?.message||"No accesible"});}
   out.push({name:"PWA / Service Worker",ok:"serviceWorker" in navigator,detail:"serviceWorker" in navigator?"Navegador compatible con instalación offline":"Navegador sin Service Worker"});
   out.push({name:"Notificaciones navegador",ok:typeof Notification!=="undefined",detail:typeof Notification!=="undefined"?`Soportadas · permiso: ${Notification.permission}`:"No compatibles"});
   setChecks(out);setRanAt(new Date().toLocaleString("es-ES"));setRunning(false);
