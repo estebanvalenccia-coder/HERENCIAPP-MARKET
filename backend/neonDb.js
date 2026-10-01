@@ -14,6 +14,15 @@ export const neonPool = connectionString
     })
   : null;
 
+// pg emits pool-level errors when an idle Neon connection is interrupted.
+// Without a listener Node treats that event as unhandled and terminates the backend.
+// Individual queries still reject normally and are handled by their callers.
+if (neonPool) {
+  neonPool.on("error", (error) => {
+    console.error("Neon pool connection error:", error?.message || error);
+  });
+}
+
 export function hasNeon() {
   return Boolean(neonPool);
 }
