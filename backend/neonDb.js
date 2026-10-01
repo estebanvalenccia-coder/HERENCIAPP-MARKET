@@ -265,20 +265,20 @@ export async function listNeonOrders({ email = null, statuses = null, requestedD
 
   if (email) {
     values.push(String(email));
-    where.push(`lower(customer_email) = lower(${values.length})`);
+    where.push(`lower(customer_email) = lower($${values.length})`);
   }
   if (Array.isArray(statuses) && statuses.length) {
     values.push(statuses.map(String));
-    where.push(`status = any(${values.length}::text[])`);
+    where.push(`status = any($${values.length}::text[])`);
   }
   if (requestedDate) {
     values.push(String(requestedDate));
-    where.push(`metadata->>'requestedDate' = ${values.length}`);
+    where.push(`metadata->>'requestedDate' = $${values.length}`);
   }
 
   values.push(safeLimit);
   const sql = `select * from orders${where.length ? " where " + where.join(" and ") : ""}
-               order by created_at desc limit ${values.length}`;
+               order by created_at desc limit $${values.length}`;
   const result = await neonPool.query(sql, values);
   return result.rows || [];
 }
@@ -474,7 +474,7 @@ export async function listNeonCommerceProducts({ collection = "", includeArchive
   const where=[];
   if (collection) {
     sql+=" join commerce_product_collections pc on pc.product_id=p.id";
-    params.push(String(collection)); where.push(`pc.collection_id=${params.length}`);
+    params.push(String(collection)); where.push(`pc.collection_id=$${params.length}`);
   }
   if (!includeArchived) where.push("p.status <> 'archived'");
   if (where.length) sql+=" where "+where.join(" and ");
