@@ -9,6 +9,7 @@ import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
   hasNeon,
+  neonReady,
   readNeonStorageValue,
   upsertNeonStorageValue,
   listNeonOrders,
@@ -1259,15 +1260,13 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/ready", async (_req, res) => {
-  if (!supabase) {
-    return res.status(503).json({ ok: false, database: false, stripe: Boolean(stripe) });
-  }
   try {
-    const { error } = await supabase.from("app_storage").select("key", { head: true, count: "exact" }).limit(1);
-    if (error) throw error;
+    const database = hasNeon() ? await neonReady() : Boolean(supabase);
+    if (!database) throw new Error("Primary database unavailable");
     res.json({
       ok: true,
       database: true,
+      databaseProvider: hasNeon() ? "neon" : "supabase",
       stripe: Boolean(stripe),
       email: Boolean(process.env.RESEND_API_KEY),
       commerceCore: true,
@@ -1921,19 +1920,13 @@ async function processCustomerReminders() {
 
 
 app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const accounts = await loadCustomerAccounts();
     const account = accounts.find((item) => item.id === req.customerSession.customerId);
     if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
     const email = normalizeCustomerEmail(account.email);
 
-    const { data: orders, error: ordersError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("customer_email", email)
-      .order("created_at", { ascending: false });
-    if (ordersError) throw ordersError;
+    const orders = await listOrdersPrimary({ email, limit: 2000 });
 
     const reminders = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), [])
       .filter((item) => item.customerId === account.id);
@@ -1959,7 +1952,6 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
 });
 
 app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const accounts = await loadCustomerAccounts();
     const account = accounts.find((item) => item.id === req.customerSession.customerId);
@@ -1991,11 +1983,7 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
     const cleanedWaitlist = waitlist.filter((item) => normalizeCustomerEmail(item.email) !== email);
     await writeExperienceList(EXPERIENCE_WAITLIST_KEY, cleanedWaitlist);
 
-    const { data: orderRows, error: ordersError } = await supabase
-      .from("orders")
-      .select("id,metadata")
-      .eq("customer_email", email);
-    if (ordersError) throw ordersError;
+    const orderRows = await listOrdersPrimary({ email, limit: 2000 });
 
     for (const order of orderRows || []) {
       const metadata = order.metadata || {};
@@ -2020,11 +2008,7 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
           ? {}
           : { customer_email: null, customer_name: "Cliente eliminado" }),
       };
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update(patch)
-        .eq("id", order.id);
-      if (updateError) throw updateError;
+      await patchOrderPrimary(order.id, patch);
     }
 
     res.setHeader("Set-Cookie", `customer_session=; ${cookieOptions(0)}`);
@@ -2039,19 +2023,13 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
 });
 
 app.get("/api/customer/account", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const accounts = await loadCustomerAccounts();
     const account = accounts.find((item) => item.id === req.customerSession.customerId);
     if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
 
     const email = normalizeCustomerEmail(account.email);
-    const { data: rows, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("customer_email", email)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
+    const rows = await listOrdersPrimary({ email, limit: 2000 });
 
     const paidStatuses = new Set(["paid", "confirmed", "preparing", "ready", "delivered", "completed"]);
     const allOrders = (rows || []).map(normalizeOrder);
@@ -2067,13 +2045,13 @@ app.get("/api/customer/account", requireCustomer, async (req, res) => {
     const referredEmails = [...new Set(mine.map((item) => normalizeCustomerEmail(item.referredEmail)).filter(Boolean))];
     let qualifiedReferrals = 0;
     if (referredEmails.length) {
-      const { data: referredOrders, error: referredError } = await supabase
-        .from("orders")
-        .select("customer_email,status")
-        .in("customer_email", referredEmails)
-        .in("status", [...paidStatuses]);
-      if (referredError) throw referredError;
-      qualifiedReferrals = new Set((referredOrders || []).map((item) => normalizeCustomerEmail(item.customer_email))).size;
+      const referredEmailSet = new Set(referredEmails);
+      const referredOrders = await listOrdersPrimary({ statuses: [...paidStatuses], limit: 2000 });
+      qualifiedReferrals = new Set(
+        (referredOrders || [])
+          .filter((item) => referredEmailSet.has(normalizeCustomerEmail(item.customer_email)))
+          .map((item) => normalizeCustomerEmail(item.customer_email))
+      ).size;
     }
 
     const remindersAll = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
@@ -2601,16 +2579,15 @@ async function evaluateInventoryAutomations(products = []) {
 
 async function evaluateDelayedOrders() {
   const rules = await loadAutomationRules();
-  if (!rules.delayedOrder?.enabled || !supabase) return;
+  if (!rules.delayedOrder?.enabled) return;
   const minutes = Math.max(15, Number(rules.delayedOrder?.minutes ?? 90));
-  const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id,customer_name,status,created_at")
-    .lt("created_at", cutoff)
-    .in("status", ["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed"]);
-  if (error) throw error;
+  const cutoffMs = Date.now() - minutes * 60 * 1000;
+  const data = await listOrdersPrimary({
+    statuses: ["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed"],
+    limit: 2000,
+  });
   for (const order of data || []) {
+    if (new Date(order.created_at || 0).getTime() >= cutoffMs) continue;
     await addAutomationNotification({
       type: "delayed_order",
       title: "Pedido requiere atención",
@@ -2717,18 +2694,12 @@ const BACKUP_STORAGE_KEYS = [
 ];
 
 app.get("/api/admin/backup", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const storage = {};
     for (const key of BACKUP_STORAGE_KEYS) {
       storage[key] = await readStorageValue(key);
     }
-    const { data: orders, error } = await supabase
-      .from("orders")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    if (error) throw error;
+    const orders = await listOrdersPrimary({ limit: 2000 });
     res.json({
       version: 1,
       createdAt: new Date().toISOString(),
@@ -2742,7 +2713,6 @@ app.get("/api/admin/backup", requireAdmin, async (_req, res) => {
 });
 
 app.post("/api/admin/backup/restore", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const backup = req.body?.backup;
     if (!backup || typeof backup !== "object" || !backup.storage || typeof backup.storage !== "object") {
@@ -3090,7 +3060,6 @@ app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
       .eq("id", orderId)
       .maybeSingle();
 
-    if (orderError) throw orderError;
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
     if (String(order?.metadata?.source || "") !== "frontend_checkout") {
       return res.status(400).json({ error: "Este reembolso está reservado para pedidos de la tienda online" });
@@ -6468,10 +6437,12 @@ app.post("/api/neural/customer-chat-event", async (req, res) => {
 });
 
 app.get("/api/neural-bridge/orders", requireNeuralBridge, async (_req, res) => {
-  if (!requireSupabase(res)) return;
-  const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(1000);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ orders: data || [], observedAt: new Date().toISOString() });
+  try {
+    const data = await listOrdersPrimary({ limit: 1000 });
+    res.json({ orders: data || [], observedAt: new Date().toISOString() });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar los pedidos" });
+  }
 });
 
 app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) => {
@@ -6483,10 +6454,9 @@ app.get("/api/neural-bridge/products", requireNeuralBridge, async (_req, res) =>
 });
 
 app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, res) => {
-  if (!requireSupabase(res)) return;
   try {
-    const [{ data: orders, error: orderError }, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
-      supabase.from("orders").select("id,customer_name,customer_email,status,total,items,created_at,updated_at").order("created_at", { ascending: false }).limit(250),
+    const [orders, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
+      listOrdersPrimary({ limit: 250 }),
       readStorageValue("adminProducts"),
       readStorageValue("posCashSession"),
       readStorageValue("siteContent"),
