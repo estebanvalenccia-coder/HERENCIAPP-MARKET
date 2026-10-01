@@ -23,7 +23,7 @@ const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","
 const protectedKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","adminFlowerCosts","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","__backendStorage_test__"]);
 const adminOnly = ["supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
 
-function json(res,status,body){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}
+function json(res,status,body){if(res.headersSent||res.writableEnded)return res;if(!res.destroyed){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}return res;}
 function cookies(req){return String(req.headers.cookie||"");}
 function visitorId(req,res){const match=cookies(req).match(/(?:^|;\s*)visitor_id=([^;]+)/);if(match)return decodeURIComponent(match[1]);const id=crypto.randomUUID();res.setHeader("Set-Cookie",`visitor_id=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=None; Secure`);return id;}
 function storageKey(req,res,key){return key==="cart"||key==="user"?`visitor:${visitorId(req,res)}:${key}`:key;}
@@ -186,7 +186,7 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   return await proxy(req,res);
-}catch(error){console.error("Hybrid gateway error",error);return json(res,500,{error:"Hybrid gateway error",message:error?.message||String(error)});}});
+}catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}return json(res,500,{error:"Hybrid gateway error",message:error?.message||String(error)});}});
 
 server.listen(publicPort,"0.0.0.0",()=>console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`));
 process.on("SIGTERM",()=>{child.kill("SIGTERM");server.close(()=>process.exit(0));});
