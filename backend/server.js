@@ -5646,7 +5646,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 });
 
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
-  if (!requireSupabase(res)) return;
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
   try {
@@ -5774,20 +5773,21 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         : null,
     };
 
-    const { error: orderError } = await supabase.from("orders").insert({
-      id: orderId,
-      customer_email: customerEmail || null,
-      customer_name: customerName || null,
-      payment_method: selectedPaymentMethod,
-      delivery_method: deliveryMethod,
-      status: "payment_pending",
-      subtotal: authoritativeSubtotal,
-      shipping: authoritativeShipping,
-      total: authoritativeTotal,
-      items: authoritativeItems,
-      metadata: secureMetadata,
-    });
-    if (orderError) {
+    try {
+      await insertOrderPrimary({
+        id: orderId,
+        customer_email: customerEmail || null,
+        customer_name: customerName || null,
+        payment_method: selectedPaymentMethod,
+        delivery_method: deliveryMethod,
+        status: "payment_pending",
+        subtotal: authoritativeSubtotal,
+        shipping: authoritativeShipping,
+        total: authoritativeTotal,
+        items: authoritativeItems,
+        metadata: secureMetadata,
+      });
+    } catch (orderError) {
       if (stockReservation.active) {
         await releaseCommerceStockReservation(orderId).catch(() => null);
       }
@@ -5803,7 +5803,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         payment_method_types: selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"],
       };
       const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
-      await supabase.from("orders").update({ stripe_payment_intent_id: paymentIntent.id }).eq("id", orderId);
+      await patchOrderPrimary(orderId, { stripe_payment_intent_id: paymentIntent.id });
       res.json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
@@ -5819,10 +5819,10 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       if (stockReservation.active) {
         await releaseCommerceStockReservation(orderId).catch(() => null);
       }
-      await supabase.from("orders").update({
+      await patchOrderPrimary(orderId, {
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
-      }).eq("id", orderId);
+      }).catch(() => null);
       res.status(error.statusCode || 500).json({
         error: error.message || "Error al crear el pago en Stripe",
         code: error.code || "stripe_error",
@@ -5839,12 +5839,7 @@ async function commitOnlineOrderInventory(order) {
     return { skipped: true, reason: "not_frontend_checkout", order };
   }
 
-  const { data: freshOrder, error: freshError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", order.id)
-    .maybeSingle();
-  if (freshError) throw freshError;
+  const freshOrder = await getOrderPrimary(order.id);
   if (!freshOrder) throw new Error("Pedido no encontrado al confirmar inventario");
   if (freshOrder?.metadata?.inventoryCommittedAt) {
     return { skipped: true, reason: "already_committed", order: freshOrder };
@@ -5925,13 +5920,7 @@ async function commitOnlineOrderInventory(order) {
   };
 
   // Mark the order first to make repeated Stripe confirmations idempotent in normal retry flows.
-  const { data: markedOrder, error: markError } = await supabase
-    .from("orders")
-    .update({ metadata: nextMetadata, updated_at: committedAt })
-    .eq("id", freshOrder.id)
-    .select("*")
-    .single();
-  if (markError) throw markError;
+  const markedOrder = await patchOrderPrimary(freshOrder.id, { metadata: nextMetadata });
 
   try {
     await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
@@ -5939,16 +5928,13 @@ async function commitOnlineOrderInventory(order) {
       console.warn("Automations post-sale stock check:", error?.message || error)
     );
   } catch (error) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...(freshOrder.metadata || {}),
-          inventoryCommitError: error?.message || String(error),
-          inventoryCommitFailedAt: new Date().toISOString(),
-        },
-      })
-      .eq("id", freshOrder.id);
+    await patchOrderPrimary(freshOrder.id, {
+      metadata: {
+        ...(freshOrder.metadata || {}),
+        inventoryCommitError: error?.message || String(error),
+        inventoryCommitFailedAt: new Date().toISOString(),
+      },
+    }).catch(() => null);
     throw error;
   }
 
@@ -6003,8 +5989,6 @@ async function restockOnlineOrderInventory(order) {
 }
 
 app.post("/api/stripe/confirm-order", async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   if (!stripe) {
     return res
       .status(503)
@@ -6038,13 +6022,10 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     });
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (orderError) {
+  let order;
+  try {
+    order = await getOrderPrimary(orderId);
+  } catch (orderError) {
     return res.status(500).json({ error: orderError.message });
   }
 
@@ -6080,19 +6061,14 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     nextMetadata.stripeConfirmationError = `Stripe devolviÃ³ estado: ${paymentIntent.status}`;
   }
 
-  const { data: updatedOrder, error: updateError } = await supabase
-    .from("orders")
-    .update({
+  let updatedOrder;
+  try {
+    updatedOrder = await patchOrderPrimary(orderId, {
       status: nextStatus,
       stripe_payment_intent_id: paymentIntent.id,
       metadata: nextMetadata,
-      updated_at: now,
-    })
-    .eq("id", orderId)
-    .select("*")
-    .single();
-
-  if (updateError) {
+    });
+  } catch (updateError) {
     return res.status(500).json({ error: updateError.message });
   }
 
