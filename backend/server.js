@@ -19,6 +19,10 @@ import {
   insertNeonOrder,
   patchNeonOrder,
   deleteNeonOrder,
+  reserveNeonCommerceStock,
+  consumeNeonCommerceStockReservation,
+  releaseNeonCommerceStockReservation,
+  syncNeonCommerceInventory,
 } from "./neonDb.js";
 import {
   calculatePosTotals,
@@ -324,6 +328,14 @@ function storageKeyFor(req, res, key) {
   }
 
   return key;
+}
+
+function requirePrimaryDatabase(res) {
+  if (!hasNeon() && !supabase) {
+    res.status(503).json({ error: "Base de datos primaria no configurada" });
+    return false;
+  }
+  return true;
 }
 
 function requireSupabase(res) {
@@ -858,6 +870,14 @@ async function readStorageValue(key) {
 async function upsertStorageValue(key, value) {
   if (hasNeon()) {
     await upsertNeonStorageValue(key, value);
+    if (key === "adminProducts") {
+      try {
+        const parsed = JSON.parse(value || "[]");
+        if (Array.isArray(parsed)) await syncNeonCommerceInventory(parsed);
+      } catch (error) {
+        console.warn("No se pudo sincronizar inventario Commerce Core con adminProducts:", error?.message || error);
+      }
+    }
     return;
   }
 
@@ -1022,15 +1042,11 @@ async function reserveCommerceStock(cartToken, items) {
     productId: String(item?.id || ""),
     variantName: String(item?.selectedVariant || ""),
     quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
+    trackInventory: item?.trackInventory !== false,
   }));
 
   if (hasNeon()) {
-    return {
-      active: false,
-      mode: "neon_validation_then_commit",
-      reason: "neon_primary_inventory",
-      reservedItems: payload.filter((item) => item.productId && item.quantity > 0).length,
-    };
+    return reserveNeonCommerceStock(String(cartToken), payload, 15);
   }
 
   const { data, error } = await supabase.rpc("reserve_commerce_stock", {
@@ -1062,7 +1078,7 @@ async function reserveCommerceStock(cartToken, items) {
 }
 
 async function consumeCommerceStockReservation(cartToken) {
-  if (hasNeon()) return { skipped: true, reason: "neon_inventory_commit_handles_stock" };
+  if (hasNeon()) return consumeNeonCommerceStockReservation(String(cartToken));
   const { data, error } = await supabase.rpc("consume_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1074,7 +1090,7 @@ async function consumeCommerceStockReservation(cartToken) {
 }
 
 async function releaseCommerceStockReservation(cartToken) {
-  if (hasNeon()) return { skipped: true, reason: "no_neon_reservation_to_release" };
+  if (hasNeon()) return releaseNeonCommerceStockReservation(String(cartToken));
   const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1086,7 +1102,7 @@ async function releaseCommerceStockReservation(cartToken) {
 }
 
 async function restockCommerceCoreStock(items) {
-  if (hasNeon()) return { skipped: true, reason: "neon_storage_restock_is_authoritative" };
+  if (hasNeon()) return { skipped: true, reason: "adminProducts_sync_updates_neon_commerce_stock" };
   const payload = (Array.isArray(items) ? items : []).map((item) => ({
     productId: String(item?.id || ""),
     variantName: String(item?.selectedVariant || ""),
@@ -1304,7 +1320,7 @@ app.get("/api/ready", async (_req, res) => {
 });
 
 app.get("/api/shipping/availability", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const date = String(req.query?.date || "").trim();
     if (!date) return res.status(400).json({ error: "Indica una fecha" });
@@ -1660,7 +1676,7 @@ async function saveCustomerAccounts(accounts) {
 }
 
 app.post("/api/customer/register", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const email = normalizeCustomerEmail(req.body?.email);
     const password = String(req.body?.password || "");
@@ -1701,7 +1717,7 @@ app.post("/api/customer/register", async (req, res) => {
 });
 
 app.post("/api/customer/login", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const email = normalizeCustomerEmail(req.body?.email);
     const password = String(req.body?.password || "");
@@ -1724,7 +1740,7 @@ app.post("/api/customer/login", async (req, res) => {
 });
 
 app.get("/api/customer/session", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const session = getCustomerSession(req);
     if (!session) return res.json({ authenticated: false, user: null });
@@ -1745,7 +1761,7 @@ app.post("/api/customer/logout", (_req, res) => {
 
 
 app.patch("/api/customer/profile", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const accounts = await loadCustomerAccounts();
     const index = accounts.findIndex((item) => item.id === req.customerSession.customerId);
@@ -1792,7 +1808,7 @@ app.patch("/api/customer/profile", requireCustomer, async (req, res) => {
 });
 
 app.get("/api/customer/wishlist", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const accounts = await loadCustomerAccounts();
     const account = accounts.find((item) => item.id === req.customerSession.customerId);
@@ -1804,7 +1820,7 @@ app.get("/api/customer/wishlist", requireCustomer, async (req, res) => {
 });
 
 app.put("/api/customer/wishlist", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const ids = Array.isArray(req.body?.wishlist)
       ? [...new Set(req.body.wishlist.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 500)
@@ -1821,7 +1837,7 @@ app.put("/api/customer/wishlist", requireCustomer, async (req, res) => {
 });
 
 app.post("/api/customer/referral/claim", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const code = cleanText(req.body?.code, 40).toUpperCase();
     if (!code) return res.status(400).json({ error: "Código de referido obligatorio" });
@@ -1855,7 +1871,7 @@ app.post("/api/customer/referral/claim", requireCustomer, async (req, res) => {
 
 
 app.post("/api/customer/reminders", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const title = cleanText(req.body?.title, 120);
     const date = String(req.body?.date || "").trim();
@@ -1885,7 +1901,7 @@ app.post("/api/customer/reminders", requireCustomer, async (req, res) => {
 });
 
 app.delete("/api/customer/reminders/:id", requireCustomer, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const rows = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), []);
     const exists = rows.some((item) => item.id === req.params.id && item.customerId === req.customerSession.customerId);
@@ -2138,7 +2154,7 @@ app.get("/api/storage", async (req, res) => {
 });
 
 app.get("/api/storage/:key", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const key = req.params.key;
 
@@ -2158,7 +2174,7 @@ app.get("/api/storage/:key", async (req, res) => {
 });
 
 app.put("/api/storage/:key", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const key = req.params.key;
 
@@ -2311,7 +2327,7 @@ async function notifyWaitlistForRestockedProducts(previousProducts = [], nextPro
 }
 
 app.post("/api/experience/waitlist", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const productId = cleanText(req.body?.productId, 120);
     const productName = cleanText(req.body?.productName, 180);
@@ -2339,7 +2355,7 @@ app.post("/api/experience/waitlist", async (req, res) => {
 });
 
 app.get("/api/admin/experience/waitlist", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     res.json({ entries: await readExperienceList(EXPERIENCE_WAITLIST_KEY) });
   } catch (error) {
@@ -2348,7 +2364,7 @@ app.get("/api/admin/experience/waitlist", requireAdmin, async (_req, res) => {
 });
 
 app.patch("/api/admin/experience/waitlist/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const rows = await readExperienceList(EXPERIENCE_WAITLIST_KEY);
     const index = rows.findIndex((row) => row.id === req.params.id);
@@ -2366,7 +2382,7 @@ app.patch("/api/admin/experience/waitlist/:id", requireAdmin, async (req, res) =
 });
 
 app.get("/api/experience/reviews/:productId", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const productId = cleanText(req.params.productId, 120);
     const rows = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
@@ -2380,7 +2396,7 @@ app.get("/api/experience/reviews/:productId", async (req, res) => {
 });
 
 app.post("/api/experience/reviews", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const productId = cleanText(req.body?.productId, 120);
     const productName = cleanText(req.body?.productName, 180);
@@ -2428,7 +2444,7 @@ app.post("/api/experience/reviews", async (req, res) => {
 
 
 app.get("/api/experience/questions/:productId", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const productId = cleanText(req.params.productId, 120);
     const rows = await readExperienceList(EXPERIENCE_QUESTIONS_KEY);
@@ -2442,7 +2458,7 @@ app.get("/api/experience/questions/:productId", async (req, res) => {
 });
 
 app.post("/api/experience/questions", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const productId = cleanText(req.body?.productId, 120);
     const productName = cleanText(req.body?.productName, 180);
@@ -2473,7 +2489,7 @@ app.post("/api/experience/questions", async (req, res) => {
 });
 
 app.get("/api/admin/experience/questions", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     res.json({ questions: await readExperienceList(EXPERIENCE_QUESTIONS_KEY) });
   } catch (error) {
@@ -2482,7 +2498,7 @@ app.get("/api/admin/experience/questions", requireAdmin, async (_req, res) => {
 });
 
 app.patch("/api/admin/experience/questions/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const rows = await readExperienceList(EXPERIENCE_QUESTIONS_KEY);
     const index = rows.findIndex((row) => row.id === req.params.id);
@@ -2503,7 +2519,7 @@ app.patch("/api/admin/experience/questions/:id", requireAdmin, async (req, res) 
 });
 
 app.get("/api/admin/experience/reviews", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     res.json({ reviews: await readExperienceList(EXPERIENCE_REVIEWS_KEY) });
   } catch (error) {
@@ -2512,7 +2528,7 @@ app.get("/api/admin/experience/reviews", requireAdmin, async (_req, res) => {
 });
 
 app.patch("/api/admin/experience/reviews/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const rows = await readExperienceList(EXPERIENCE_REVIEWS_KEY);
     const index = rows.findIndex((row) => row.id === req.params.id);
@@ -2620,7 +2636,7 @@ async function evaluateDelayedOrders() {
 
 
 app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 200)));
     const rows = parseStoredJson(await readStorageValue(ADMIN_AUDIT_LOG_KEY), []);
@@ -2631,7 +2647,7 @@ app.get("/api/admin/audit-log", requireAdmin, async (req, res) => {
 });
 
 app.delete("/api/admin/audit-log", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     await upsertStorageValue(ADMIN_AUDIT_LOG_KEY, JSON.stringify([]));
     res.json({ ok: true });
@@ -2641,7 +2657,7 @@ app.delete("/api/admin/audit-log", requireAdmin, async (_req, res) => {
 });
 
 app.get("/api/admin/automations", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     await evaluateDelayedOrders();
     const [rules, notifications] = await Promise.all([loadAutomationRules(), loadAutomationNotifications()]);
@@ -2652,7 +2668,7 @@ app.get("/api/admin/automations", requireAdmin, async (_req, res) => {
 });
 
 app.put("/api/admin/automations/rules", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const current = await loadAutomationRules();
     const next = {
@@ -2676,7 +2692,7 @@ app.put("/api/admin/automations/rules", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/admin/automations/notifications/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const rows = await loadAutomationNotifications();
     const index = rows.findIndex((row) => row.id === req.params.id);
@@ -2697,6 +2713,12 @@ app.patch("/api/admin/automations/notifications/:id", requireAdmin, async (req, 
 
 const BACKUP_STORAGE_KEYS = [
   "adminProducts",
+  "customerAccounts",
+  "customerReferrals",
+  "customerReminders",
+  "experienceWaitlist",
+  "experienceReviews",
+  "experienceQuestions",
   "posCustomers",
   "posFiscalSettings",
   "posOperations",
@@ -3327,7 +3349,7 @@ async function registerCashSaleInSession(amount, orderId, registerId = "caja-01"
 }
 
 app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   try {
     const data = await loadPosBootstrap();
@@ -3338,7 +3360,7 @@ app.get("/api/pos/bootstrap", requireAdmin, async (_req, res) => {
 });
 
 app.get("/api/pos/cash-session", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const registerId = normalizeRegisterId(req.query?.registerId);
     res.json({ session: await readPosCashSession(registerId) });
@@ -3348,7 +3370,7 @@ app.get("/api/pos/cash-session", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const registerId = normalizeRegisterId(req.body?.registerId);
     const current = await readPosCashSession(registerId);
@@ -3394,7 +3416,7 @@ app.post("/api/pos/cash-session/open", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const registerId = normalizeRegisterId(req.body?.registerId);
     const session = await readPosCashSession(registerId);
@@ -3443,7 +3465,7 @@ app.post("/api/pos/cash-session/movement", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const registerId = normalizeRegisterId(req.body?.registerId);
     const session = await readPosCashSession(registerId);
@@ -3486,7 +3508,7 @@ app.post("/api/pos/cash-session/close", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const tests = [];
   let storageOk = false;
@@ -3621,7 +3643,7 @@ app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
 });
 
 app.post("/api/pos/customers", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   try {
     const customer = normalizePosCustomer(req.body || {});
@@ -3645,7 +3667,7 @@ app.post("/api/pos/customers", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   try {
     const settings = {
@@ -3669,7 +3691,7 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
 
 
 app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3687,7 +3709,7 @@ app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3711,7 +3733,7 @@ app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) =
 });
 
 app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3739,7 +3761,7 @@ app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
 
 
 app.post("/api/admin/inventory/lots", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { inventoryLots: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3773,7 +3795,7 @@ app.post("/api/admin/inventory/lots", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/admin/inventory/lots/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { inventoryLots: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3792,7 +3814,7 @@ app.patch("/api/admin/inventory/lots/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
@@ -3807,7 +3829,7 @@ app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
 });
 
 app.post("/api/pos/registers", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3827,7 +3849,7 @@ app.post("/api/pos/registers", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/pos/operations", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3840,7 +3862,7 @@ app.put("/api/pos/operations", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/held-sales", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3878,7 +3900,7 @@ app.post("/api/pos/held-sales", requireAdmin, async (req, res) => {
 });
 
 app.delete("/api/pos/held-sales/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }], heldSales: [] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3894,7 +3916,7 @@ app.delete("/api/pos/held-sales/:id", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3926,7 +3948,7 @@ app.post("/api/pos/florist-orders", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3944,7 +3966,7 @@ app.post("/api/pos/gift-cards", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/pos/florist-orders/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -3973,7 +3995,7 @@ app.patch("/api/pos/florist-orders/:id", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4000,7 +4022,7 @@ app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4025,7 +4047,7 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4082,7 +4104,7 @@ app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/staff", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4118,7 +4140,7 @@ app.post("/api/pos/staff", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/staff/unlock", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4139,7 +4161,7 @@ app.post("/api/pos/staff/unlock", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/staff-shifts/start", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4166,7 +4188,7 @@ app.post("/api/pos/staff-shifts/start", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/staff-shifts/end", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
     const operations = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4186,7 +4208,7 @@ app.post("/api/pos/staff-shifts/end", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4207,7 +4229,7 @@ app.post("/api/pos/loyalty/adjust", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/quotes", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4239,7 +4261,7 @@ app.post("/api/pos/quotes", requireAdmin, async (req, res) => {
 });
 
 app.patch("/api/pos/quotes/:id", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
@@ -4256,7 +4278,7 @@ app.patch("/api/pos/quotes/:id", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   try {
     const bootstrap = await loadPosBootstrap();
     const productId = String(req.body?.productId || "").trim();
@@ -4911,7 +4933,7 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/pos/mixed-card-intent", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
   try {
@@ -5392,7 +5414,7 @@ async function getAiSettings() {
 }
 
 app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const { description = "", budget = 0, style = "Elegante", color = "Mix", size = "M" } = req.body || {};
 
@@ -5463,7 +5485,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/ai/plant-description", async (req, res) => {
-  if (!requireSupabase(res)) return;
+  if (!requirePrimaryDatabase(res)) return;
 
   const { plantName, baseDescription = "" } = req.body;
 
@@ -5985,9 +6007,9 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (isPaid) {
     let inventoryOrder = updatedOrder;
     try {
-      await consumeCommerceStockReservation(updatedOrder.id);
       const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
       inventoryOrder = inventoryResult.order || updatedOrder;
+      await consumeCommerceStockReservation(updatedOrder.id);
     } catch (inventoryError) {
       console.error("Pago confirmado pero falló el compromiso de inventario:", inventoryError?.message || inventoryError);
       await addAutomationNotification({
@@ -6398,7 +6420,6 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       readStorageValue("herencia_finance_closures"),
       readStorageValue("adminSuppliers"),
     ]);
-    if (orderError) throw orderError;
     const products = parseStoredJson(productsRaw, []);
     const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null, sku: p.sku || null }));
     const orderCustomers = (orders || []).filter(o => o.customer_email).map(o => ({ email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }));
