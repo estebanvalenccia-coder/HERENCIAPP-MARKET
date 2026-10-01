@@ -12,6 +12,8 @@ import {
   neonReady,
   readNeonStorageValue,
   upsertNeonStorageValue,
+  deleteNeonStorageValue,
+  listNeonStorageByPrefix,
   listNeonOrders,
   getNeonOrder,
   insertNeonOrder,
@@ -867,6 +869,16 @@ async function upsertStorageValue(key, value) {
     updated_at: new Date().toISOString(),
   });
 
+  if (error) throw error;
+}
+
+async function deleteStorageValue(key) {
+  if (hasNeon()) {
+    await deleteNeonStorageValue(key);
+    return;
+  }
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { error } = await supabase.from("app_storage").delete().eq("key", key);
   if (error) throw error;
 }
 
@@ -2750,14 +2762,20 @@ app.post("/api/admin/backup/restore", requireAdmin, async (req, res) => {
 
 
 app.get("/api/admin/abandoned-carts", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
   try {
     const minMinutes = Math.max(5, Number(req.query?.minMinutes || 30));
-    const { data, error } = await supabase
-      .from("app_storage")
-      .select("key,value,updated_at")
-      .like("key", "visitor:%");
-    if (error) throw error;
+    let data;
+    if (hasNeon()) {
+      data = await listNeonStorageByPrefix("visitor:");
+    } else {
+      if (!supabase) return res.status(503).json({ error: "Base de datos no configurada" });
+      const result = await supabase
+        .from("app_storage")
+        .select("key,value,updated_at")
+        .like("key", "visitor:%");
+      if (result.error) throw result.error;
+      data = result.data || [];
+    }
 
     const visitors = new Map();
     for (const row of data || []) {
@@ -3512,13 +3530,12 @@ app.get("/api/pos/self-test", requireAdmin, async (_req, res) => {
     const testKey = `__pos_self_test__:${crypto.randomUUID()}`;
     await upsertStorageValue(testKey, JSON.stringify({ ok: true, at: new Date().toISOString() }));
     const stored = await readStorageValue(testKey);
-    const { error: deleteError } = await supabase.from("app_storage").delete().eq("key", testKey);
-    if (deleteError) throw deleteError;
+    await deleteStorageValue(testKey);
     storageOk = Boolean(parseStoredJson(stored, {})?.ok);
     tests.push({
-      name: "supabase_rw",
+      name: "database_rw",
       ok: storageOk,
-      detail: "Lectura, escritura y limpieza temporal en Supabase",
+      detail: `Lectura, escritura y limpieza temporal en ${hasNeon() ? "Neon" : "Supabase"}`,
     });
 
     if (stripe) {
@@ -5365,14 +5382,8 @@ function groqModel(model) {
 }
 
 async function getAiSettings() {
-  const { data } = await supabase
-    .from("app_storage")
-    .select("value")
-    .eq("key", "aiSettings")
-    .maybeSingle();
-
   try {
-    return JSON.parse(data?.value || "{}");
+    return parseStoredJson(await readStorageValue("aiSettings"), {});
   } catch {
     return {};
   }
@@ -5454,17 +5465,7 @@ app.post("/api/ai/plant-description", async (req, res) => {
 
   const { plantName, baseDescription = "" } = req.body;
 
-  const { data } = await supabase
-    .from("app_storage")
-    .select("value")
-    .eq("key", "aiSettings")
-    .maybeSingle();
-
-  let settings = {};
-
-  try {
-    settings = JSON.parse(data?.value || "{}");
-  } catch {}
+  const settings = await getAiSettings();
 
   if (!settings.enabled || !settings.apiKey) {
     return res.status(400).json({ error: "IA no configurada en backend" });
