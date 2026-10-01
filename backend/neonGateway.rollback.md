@@ -1,0 +1,1 @@
+Rollback is a normal code rollback to the previous `main` commit. Supabase variables are preserved throughout the migration, so reverting the gateway immediately restores the previous backend behavior without reconfiguring Stripe or Supabase.
