@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
+  listNeonOrders, patchNeonOrder,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, archiveNeonCommerceProduct
 } from "./neonDb.js";
@@ -20,6 +21,28 @@ function cookies(req){return String(req.headers.cookie||"");}
 function visitorId(req,res){const match=cookies(req).match(/(?:^|;\s*)visitor_id=([^;]+)/);if(match)return decodeURIComponent(match[1]);const id=crypto.randomUUID();res.setHeader("Set-Cookie",`visitor_id=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=None; Secure`);return id;}
 function storageKey(req,res,key){return key==="cart"||key==="user"?`visitor:${visitorId(req,res)}:${key}`:key;}
 function sanitize(key,value,isAdmin){if(!value)return value;try{if(key==="aiSettings"){const p=JSON.parse(value);return JSON.stringify({...p,apiKey:isAdmin?(p.apiKey?"••••••••":""):""});}if(key==="supabaseSettings"){const p=JSON.parse(value);return JSON.stringify({...p,serviceRoleKey:""});}}catch{}return value;}
+
+function normalizeOrderRow(order){
+  return {
+    id:String(order.id),
+    customerName:order.customer_name||"Cliente",
+    customerEmail:order.customer_email||"",
+    items:Array.isArray(order.items)?order.items:[],
+    subtotal:Number(order.subtotal||0),
+    shipping:Number(order.shipping||0),
+    total:Number(order.total||0),
+    paymentMethod:order.payment_method||"manual",
+    deliveryMethod:order.delivery_method||"envio",
+    status:order.status||"pending",
+    date:order.created_at||order.updated_at||new Date().toISOString(),
+    metadata:order.metadata||{},
+    stripePaymentIntentId:order.stripe_payment_intent_id||null,
+    trackingEstado:order.tracking_estado||null,
+    trackingTiempo:order.tracking_tiempo||null,
+    facturaUrl:order.factura_url||null,
+    entregaEstimada:order.entrega_estimada||null,
+  };
+}
 async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
 async function bodyJson(req){const chunks=[];for await(const c of req)chunks.push(c);if(!chunks.length)return {};return JSON.parse(Buffer.concat(chunks).toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});res.writeHead(r.status,Object.fromEntries(r.headers.entries()));if(r.body){for await(const c of r.body)res.write(c);}res.end();}
@@ -44,6 +67,25 @@ const server=http.createServer(async(req,res)=>{try{
   if(path==="/api/settings/public"&&req.method==="GET"){
     const keys=["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent"];
     const rows=await readNeonStorageValues(keys);const settings={};for(const row of rows){const safe=sanitize(row.key,row.value,false);try{settings[row.key]=JSON.parse(safe);}catch{settings[row.key]=safe;}}return json(res,200,{settings,source:"neon"});
+  }
+
+  if(path==="/api/orders"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const orders=(await listNeonOrders({limit:2000})).map(normalizeOrderRow);
+    return json(res,200,{orders,source:"neon"});
+  }
+
+  const orderStatusMatch=path.match(/^\/api\/orders\/([^/]+)\/status$/);
+  if(orderStatusMatch&&req.method==="PATCH"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const status=String(body?.status||"").trim();
+    if(!status)return json(res,400,{error:"Estado obligatorio"});
+    const allowed=new Set(["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed","preparing","processing","ready","delivered","completed","cancelled","refunded","payment_error","payment_canceled"]);
+    if(!allowed.has(status))return json(res,400,{error:"Estado no válido"});
+    const updated=await patchNeonOrder(decodeURIComponent(orderStatusMatch[1]),{status});
+    if(!updated)return json(res,404,{error:"Pedido no encontrado"});
+    return json(res,200,{order:normalizeOrderRow(updated),source:"neon"});
   }
 
   if(path==="/api/commerce/collections"&&req.method==="GET"){

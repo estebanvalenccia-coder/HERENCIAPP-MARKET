@@ -335,7 +335,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
             <div>
               <p className="font-black">Este panel no está leyendo pedidos reales ahora mismo.</p>
               <p className="mt-1">
-                Revisa que Vercel tenga <strong>VITE_API_URL</strong> apuntando al backend, que Railway tenga Supabase configurado y que la sesión admin esté activa.
+                Revisa que Vercel tenga <strong>VITE_API_URL</strong> apuntando al backend, que Railway tenga Neon/DATABASE_URL disponible y que la sesión admin esté activa.
               </p>
               {errorMessage && <p className="mt-2 text-xs opacity-80">Detalle técnico: {errorMessage}</p>}
             </div>
