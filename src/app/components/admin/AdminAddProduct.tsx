@@ -13,6 +13,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     salePrice: "",
     sku: "",
     stock: "0",
+    trackInventory: true,
     iva: "21",
     category: "flores",
     featured: false,
@@ -81,6 +82,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         salePrice: formData.onSale && formData.salePrice ? parseFloat(formData.salePrice) : undefined,
         sku: formData.sku.trim() || `HER-${formData.category.slice(0,4).toUpperCase()}-${String(Date.now()).slice(-6)}`,
         stock: Math.max(0, Math.floor(parseFloat(formData.stock) || 0)),
+        trackInventory: formData.trackInventory,
         taxRate: Math.max(0, parseFloat(formData.iva) || 21),
         category,
         type: collection === "dulce" ? "food" : collection === "moda" ? "fashion" : "plant",
@@ -112,7 +114,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       window.dispatchEvent(new Event("backend-storage"));
       toast.success(`✅ Producto "${formData.name.trim()}" añadido y publicado`);
       setFormData({
-        name: "", description: "", price: "", salePrice: "", sku: "", stock: "0", iva: "21",
+        name: "", description: "", price: "", salePrice: "", sku: "", stock: "0", trackInventory: true, iva: "21",
         category: "flores", featured: false, onSale: false, environment: "interior", light: "indirecta",
         size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "",
         occasion: "", allowDedication: true, variantsText: "", seoTitle: "", seoDescription: "",
@@ -167,7 +169,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   Click para subir imagen
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  PNG, JPG hasta 10MB
+                  PNG, JPG, WEBP o GIF hasta 6 MB
                 </p>
                 <input
                   type="file"
@@ -260,15 +262,26 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Stock real *</label>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                {formData.trackInventory ? "Stock real *" : "Stock no controlado"}
+              </label>
               <input
                 type="number"
                 min="0"
                 step="1"
                 value={formData.stock}
+                disabled={!formData.trackInventory}
                 onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
               />
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={formData.trackInventory}
+                  onChange={(e) => setFormData({ ...formData, trackInventory: e.target.checked })}
+                />
+                Controlar inventario y bloquear venta al llegar a 0
+              </label>
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">IVA (%) *</label>
