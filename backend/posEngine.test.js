@@ -82,6 +82,16 @@ test("no permite vender por encima del stock", () => {
   );
 });
 
+test("producto sin control de inventario se vende con stock 0 y no descuenta", () => {
+  const unlimited = [
+    { id: 3, name: "Servicio floral", price: 35, iva: 21, stock: 0, trackInventory: false, active: true, sku: "SER-1", category: "Servicios" },
+  ];
+  const result = validateAndApplyStock(unlimited, [{ id: 3, quantity: 2 }]);
+  assert.equal(result.items[0].trackInventory, false);
+  assert.equal(result.updatedProducts[0].stock, 0);
+  assert.equal(result.totals.total, 70);
+});
+
 test("efectivo calcula cambio real", () => {
   const totals = calculatePosTotals([{ price: 12, iva: 21, quantity: 2 }], 30);
   assert.equal(totals.total, 24);
