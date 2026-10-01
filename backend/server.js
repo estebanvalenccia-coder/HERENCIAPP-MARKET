@@ -2388,13 +2388,11 @@ app.post("/api/experience/reviews", async (req, res) => {
       return res.status(400).json({ error: "Completa nombre, email, valoración y comentario" });
     }
 
-    const { data: purchasedRows, error: purchasedError } = await supabase
-      .from("orders")
-      .select("id,items,status,customer_email")
-      .eq("customer_email", email)
-      .in("status", ["paid", "confirmed", "preparing", "ready", "delivered", "completed"]);
-
-    if (purchasedError) throw purchasedError;
+    const purchasedRows = await listOrdersPrimary({
+      email,
+      statuses: ["paid", "confirmed", "preparing", "ready", "delivered", "completed"],
+      limit: 500,
+    });
 
     const verifiedPurchase = (purchasedRows || []).some((order) =>
       (Array.isArray(order.items) ? order.items : []).some((item) => String(item?.id) === productId)
@@ -6599,10 +6597,8 @@ app.post("/api/neural-bridge/suppliers", requireNeuralBridge, async (req, res) =
 app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (req, res) => {
   const actionId = requireNeuralActionId(req, res);
   if (!actionId) return;
-  if (!requireSupabase(res)) return;
   try {
-    const { data: order, error } = await supabase.from("orders").select("*").eq("id", req.params.id).maybeSingle();
-    if (error) throw error;
+    const order = await getOrderPrimary(req.params.id);
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
     if (!["paid","confirmed","preparing","processing","ready","delivered","completed"].includes(order.status)) {
       return res.status(409).json({ error: "Solo se puede emitir factura para un pedido cobrado o confirmado" });
@@ -6634,13 +6630,11 @@ app.post("/api/neural-bridge/orders/:id/invoice", requireNeuralBridge, async (re
       customerPhone: customer.phone,
       fiscalSnapshot: bootstrap.fiscalSettings || {},
     };
-    const { data: updated, error: updateError } = await supabase
-      .from("orders")
-      .update({ customer_email: customer.email || null, customer_name: customer.name, metadata: nextMetadata, updated_at: now })
-      .eq("id", order.id)
-      .select("*")
-      .single();
-    if (updateError) throw updateError;
+    const updated = await patchOrderPrimary(order.id, {
+      customer_email: customer.email || null,
+      customer_name: customer.name,
+      metadata: nextMetadata,
+    });
     void emitNeuralBusinessEvent("invoice.issued", { actionId, orderId: order.id, invoiceNumber, total: Number(updated.total || 0) });
     res.status(201).json({
       ok: true,
