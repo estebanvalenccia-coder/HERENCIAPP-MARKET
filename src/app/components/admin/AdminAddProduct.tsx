@@ -48,20 +48,29 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imagePreview) return toast.error("Por favor sube una imagen del producto");
     if (!formData.name.trim()) return toast.error("Por favor ingresa el nombre del producto");
     if (!formData.price || parseFloat(formData.price) <= 0) return toast.error("Por favor ingresa un precio válido");
     if (formData.onSale && (!formData.salePrice || parseFloat(formData.salePrice) <= 0)) return toast.error("Por favor ingresa un precio de oferta válido");
 
     try {
       setSaving(true);
-      let imageUrl = imagePreview;
+      let imageUrl = imagePreview && !imagePreview.startsWith("data:image/") ? imagePreview : "";
       if (imagePreview.startsWith("data:image/")) {
-        const uploaded = await backendApi.uploadSiteMedia({
-          dataUrl: imagePreview,
-          filename: `${formData.name.trim().replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
-        });
-        imageUrl = uploaded.media.url;
+        try {
+          const uploaded = await backendApi.uploadSiteMedia({
+            dataUrl: imagePreview,
+            filename: `${formData.name.trim().replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
+          });
+          imageUrl = uploaded.media.url;
+        } catch (mediaError: any) {
+          // Media can be temporarily unavailable (for example while R2 is not
+          // configured and legacy Supabase Storage is restricted). Product
+          // creation must remain operational and the image can be added later.
+          imageUrl = "";
+          toast.warning(mediaError?.message
+            ? `Producto se guardará sin imagen: ${mediaError.message}`
+            : "Producto se guardará sin imagen; podrás añadirla después.");
+        }
       }
 
       const category = formData.category;
@@ -87,8 +96,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         category,
         type: collection === "dulce" ? "food" : collection === "moda" ? "fashion" : "plant",
         collections: [collection],
-        image: imageUrl,
-        images: [imageUrl],
+        image: imageUrl || undefined,
+        images: imageUrl ? [imageUrl] : [],
         featured: formData.featured,
         status: "active",
         environment: formData.environment,
@@ -145,7 +154,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           {/* Image Upload */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-3">
-              Imagen del Producto *
+              Imagen del producto (opcional)
             </label>
             {imagePreview ? (
               <div className="relative w-full h-64 rounded-xl overflow-hidden bg-muted">
