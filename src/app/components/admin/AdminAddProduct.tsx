@@ -5,6 +5,18 @@ import { toast } from "sonner";
 import { categories } from "../../data/products";
 import { backendApi } from "../../lib/backendStorage";
 
+const commerceCollections = [
+  { id: "plantas", name: "Plantas" },
+  { id: "semillas", name: "Semillas" },
+  { id: "jardineria", name: "Jardinería" },
+  { id: "sustratos", name: "Tierra y sustratos" },
+  { id: "decoracion", name: "Decoración" },
+  { id: "dulce", name: "Dulce" },
+  { id: "moda", name: "Moda" },
+  { id: "servicios", name: "Servicios" },
+];
+
+
 export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -16,6 +28,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     trackInventory: true,
     iva: "21",
     category: "flores",
+    collection: "plantas",
     featured: false,
     onSale: false,
     environment: "interior",
@@ -74,14 +87,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       }
 
       const category = formData.category;
-      const collection =
-        /dulce|postre|tarta|pastel|reposter/i.test(category) ? "dulce" :
-        /moda|textil|ropa|delantal|camisa/i.test(category) ? "moda" :
-        /semilla/i.test(category) ? "semillas" :
-        /sustrato|tierra/i.test(category) ? "sustratos" :
-        /jardin/i.test(category) ? "jardineria" :
-        /decor/i.test(category) ? "decoracion" :
-        /servicio/i.test(category) ? "servicios" : "plantas";
+      const collection = formData.collection;
 
       await backendApi.createCommerceProduct({
         name: formData.name.trim(),
@@ -94,7 +100,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         trackInventory: formData.trackInventory,
         taxRate: Math.max(0, parseFloat(formData.iva) || 21),
         category,
-        type: collection === "dulce" ? "food" : collection === "moda" ? "fashion" : "plant",
+        type: collection === "dulce" ? "food" : collection === "moda" ? "fashion" : collection === "servicios" ? "service" : "plant",
         collections: [collection],
         image: imageUrl || undefined,
         images: imageUrl ? [imageUrl] : [],
@@ -124,7 +130,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       toast.success(`✅ Producto "${formData.name.trim()}" añadido y publicado`);
       setFormData({
         name: "", description: "", price: "", salePrice: "", sku: "", stock: "0", trackInventory: true, iva: "21",
-        category: "flores", featured: false, onSale: false, environment: "interior", light: "indirecta",
+        category: "flores", collection: "plantas", featured: false, onSale: false, environment: "interior", light: "indirecta",
         size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "",
         occasion: "", allowDedication: true, variantsText: "", seoTitle: "", seoDescription: "",
       });
@@ -220,7 +226,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* Price and Category Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 Precio Normal *
@@ -243,7 +249,24 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Categoría
+                Colección de tienda *
+              </label>
+              <select
+                value={formData.collection}
+                onChange={(e) => setFormData({ ...formData, collection: e.target.value })}
+                className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                required
+              >
+                {commerceCollections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>{collection.name}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Decide exactamente en qué sección del frontend aparecerá.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Categoría interna
               </label>
               <select
                 value={formData.category}
