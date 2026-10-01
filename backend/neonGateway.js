@@ -7,6 +7,13 @@ import {
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, archiveNeonCommerceProduct
 } from "./neonDb.js";
+import {
+  hasR2,
+  r2ConfigStatus,
+  listR2Media,
+  uploadR2Media,
+  deleteR2Media,
+} from "./r2Media.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -54,6 +61,30 @@ const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
   if(path==="/api/ready"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}if(neon)return json(res,200,{ok:true,database:true,databasePrimary:"neon",legacySupabase:true,stripe:Boolean(process.env.STRIPE_SECRET_KEY)});}
+  if(path==="/api/admin/media/status"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    return json(res,200,{provider:hasR2?"cloudflare_r2":"legacy_supabase",...r2ConfigStatus()});
+  }
+
+  if(path==="/api/admin/media"&&hasR2){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(req.method==="GET"){
+      const media=await listR2Media({limit:100});
+      return json(res,200,{media,source:"cloudflare_r2"});
+    }
+    if(req.method==="POST"){
+      const body=await bodyJson(req);
+      const media=await uploadR2Media({dataUrl:body?.dataUrl,filename:body?.filename});
+      return json(res,200,{media,source:"cloudflare_r2"});
+    }
+    if(req.method==="DELETE"){
+      const body=await bodyJson(req);
+      await deleteR2Media(body?.path);
+      return json(res,200,{ok:true,source:"cloudflare_r2"});
+    }
+    return json(res,405,{error:"Método no permitido"});
+  }
+
   if(path==="/api/storage"&&req.method==="GET"){
     const isAdmin=await adminSession(req);const keys=[...publicKeys];if(isAdmin)keys.push(...adminOnly);const id=visitorId(req,res);keys.push(`visitor:${id}:cart`,`visitor:${id}:user`);
     const rows=await readNeonStorageValues(keys);const data={};for(const row of rows){let key=row.key;if(key.startsWith(`visitor:${id}:`))key=key.split(":").pop();data[key]=sanitize(key,row.value,isAdmin);}return json(res,200,{data,source:"neon"});
