@@ -2,21 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Sparkles, Wand2, Plus, Image as ImageIcon, RefreshCw, Save, Flower2, Euro, Palette, Ruler, Inbox, Eye, CheckCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { products as initialProducts } from "../../data/products";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
-
-interface Product {
-  id: number;
-  name: string;
-  category: string;
-  price: number;
-  image: string;
-  description: string;
-  featured?: boolean;
-  active?: boolean;
-  onSale?: boolean;
-  salePrice?: number;
-}
 
 interface AIBouquetProposal {
   name: string;
@@ -123,10 +109,6 @@ async function generateBouquetFromBackend(payload: {
   color: string;
   size: string;
 }) {
-  if (!backendApi.baseUrl) {
-    throw new Error("Falta VITE_API_URL para conectar con el backend");
-  }
-
   const data = await backendApi.generateBouquet(payload);
 
   if (!data?.image) {
@@ -236,38 +218,48 @@ export function AdminAIBouquetDesigner() {
     }
   };
 
-  const saveAsProduct = () => {
+  const saveAsProduct = async () => {
     if (!generatedImage) {
       toast.error("Primero genera o abre una imagen del ramo");
       return;
     }
 
-    const saved = backendStorage.getItem("adminProducts");
-    const currentProducts: Product[] = saved
-      ? JSON.parse(saved)
-      : initialProducts.map((p) => ({ ...p, active: true }));
+    try {
+      const { product } = await backendApi.createCommerceProduct({
+        name: productName,
+        type: "bouquet",
+        category: "flores",
+        description: productDescription,
+        price: Number(budget) || 0,
+        images: [generatedImage],
+        image: generatedImage,
+        featured: true,
+        active: true,
+        status: "active",
+        stock: 0,
+        trackInventory: false,
+        allowDedication: true,
+        metadata: {
+          createdFrom: "ai_bouquet_designer",
+          style,
+          color,
+          size,
+          imageGeneratedByAi,
+          sellingTip: proposal?.sellingTip || proposal?.sellingTips || "",
+          recommendedFlowers: proposal?.recommendedFlowers || [],
+        },
+      });
 
-    const nextId = Math.max(0, ...currentProducts.map((p) => Number(p.id) || 0)) + 1;
+      await backendStorage.refresh().catch(() => null);
 
-    const newProduct: Product = {
-      id: nextId,
-      name: productName,
-      category: "flores",
-      price: Number(budget) || 0,
-      image: generatedImage,
-      description: productDescription,
-      featured: true,
-      active: true,
-      onSale: false,
-    };
+      if (selectedRequestId) {
+        await markRequestAsProcessed(selectedRequestId);
+      }
 
-    backendStorage.setItem("adminProducts", JSON.stringify([newProduct, ...currentProducts]));
-
-    if (selectedRequestId) {
-      markRequestAsProcessed(selectedRequestId);
+      toast.success(`Ramo guardado en el catálogo: ${product?.name || productName} ✨`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el ramo en el catálogo");
     }
-
-    toast.success("Ramo guardado como producto del catálogo ✨");
   };
 
   const recommendedFlowers = proposal?.recommendedFlowers?.length
