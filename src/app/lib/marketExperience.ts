@@ -85,7 +85,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     kicker: "PLANTAS · HOGAR · NATURALEZA",
     title: "Haz de tu hogar un espacio con vida",
     description: "Plantas, decoración, productos, servicios y detalles únicos para crear espacios que te hagan bien.",
-    heroImageUrl: "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88",
+    heroImageUrl: "/herencia-portada.avif",
     categoriesTitle: "Todo para un estilo de vida más verde",
     categories: [
       {
@@ -232,6 +232,11 @@ export const defaultMarketExperience: MarketExperienceContent = {
   },
 };
 
+const LEGACY_HOME_HERO_URLS = new Set([
+  "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88",
+  "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86",
+]);
+
 function mergeObject<T extends Record<string, any>>(base: T, incoming: unknown): T {
   if (!incoming || typeof incoming !== "object") return JSON.parse(JSON.stringify(base));
   return { ...base, ...(incoming as Partial<T>) } as T;
@@ -249,6 +254,11 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const modaIncoming = incoming.moda || {};
   const aboutIncoming = incoming.about || {};
   const salesIncoming = incoming.sales || {};
+  const savedHeroImageUrl = String((homeIncoming as any).heroImageUrl || "").trim();
+  const resolvedHeroImageUrl =
+    !savedHeroImageUrl || LEGACY_HOME_HERO_URLS.has(savedHeroImageUrl)
+      ? defaultMarketExperience.home.heroImageUrl
+      : savedHeroImageUrl;
 
   return {
     ...defaultMarketExperience,
@@ -259,6 +269,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     home: {
       ...defaultMarketExperience.home,
       ...homeIncoming,
+      heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
       services: mergeList(defaultMarketExperience.home.services, homeIncoming.services),
       trust: mergeList(defaultMarketExperience.home.trust, homeIncoming.trust),
