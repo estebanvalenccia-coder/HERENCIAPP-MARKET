@@ -1,6 +1,12 @@
 import express from "express";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import {
+  hasNeon,
+  readNeonStorageValue,
+  upsertNeonStorageValue,
+  listNeonOrders,
+} from "./neonDb.js";
 
 const originalListen = express.application.listen;
 const RESET_KEY = "customerPasswordResetTokens";
@@ -20,12 +26,23 @@ function client() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 }
 async function readStorage(db, key, fallback = []) {
+  if (hasNeon()) {
+    const value = await readNeonStorageValue(key);
+    if (!value) return fallback;
+    try { return JSON.parse(value); } catch { return fallback; }
+  }
+  if (!db) return fallback;
   const { data, error } = await db.from("app_storage").select("value").eq("key", key).maybeSingle();
   if (error) throw error;
   if (!data?.value) return fallback;
   try { return JSON.parse(data.value); } catch { return fallback; }
 }
 async function writeStorage(db, key, value) {
+  if (hasNeon()) {
+    await upsertNeonStorageValue(key, JSON.stringify(value));
+    return;
+  }
+  if (!db) throw new Error("Base de datos no configurada");
   const { error } = await db.from("app_storage").upsert({ key, value: JSON.stringify(value), updated_at: new Date().toISOString() });
   if (error) throw error;
 }
@@ -75,22 +92,28 @@ async function sendResetEmail(to, resetUrl) {
 function installRoutes(app) {
   app.post("/api/herencia-ia/customer-status", async (req, res) => {
     const db = client();
-    if (!db) return res.status(503).json({ error: "Base de datos no configurada" });
+    if (!hasNeon() && !db) return res.status(503).json({ error: "Base de datos no configurada" });
     try {
       const email = normalizeEmail(req.body?.email);
       if (!validEmail(email)) return res.status(400).json({ error: "Email no válido" });
       const accounts = await readStorage(db, ACCOUNTS_KEY, []);
       const registered = accounts.some((item) => normalizeEmail(item.email) === email);
-      const { data, error } = await db.from("orders").select("total,status").eq("customer_email", email).in("status", PAID_STATUSES);
-      if (error) throw error;
-      const totalPaid = Number((data || []).reduce((sum, order) => sum + Number(order.total || 0), 0).toFixed(2));
+      let paidOrders;
+      if (hasNeon()) {
+        paidOrders = await listNeonOrders({ email, statuses: PAID_STATUSES, limit: 2000 });
+      } else {
+        const { data, error } = await db.from("orders").select("total,status").eq("customer_email", email).in("status", PAID_STATUSES);
+        if (error) throw error;
+        paidOrders = data || [];
+      }
+      const totalPaid = Number((paidOrders || []).reduce((sum, order) => sum + Number(order.total || 0), 0).toFixed(2));
       res.json({ registered, totalPaid, isVip: totalPaid >= 50 });
     } catch (error) { res.status(500).json({ error: error.message || "No se pudo comprobar el cliente" }); }
   });
 
   app.post("/api/customer/password/forgot", async (req, res) => {
     const db = client();
-    if (!db) return res.status(503).json({ error: "Base de datos no configurada" });
+    if (!hasNeon() && !db) return res.status(503).json({ error: "Base de datos no configurada" });
     const generic = { ok: true, message: "Si existe una cuenta con ese correo, recibirás un enlace para recuperar la contraseña." };
     try {
       const email = normalizeEmail(req.body?.email);
@@ -113,7 +136,7 @@ function installRoutes(app) {
 
   app.post("/api/customer/password/reset", async (req, res) => {
     const db = client();
-    if (!db) return res.status(503).json({ error: "Base de datos no configurada" });
+    if (!hasNeon() && !db) return res.status(503).json({ error: "Base de datos no configurada" });
     try {
       const token = String(req.body?.token || "");
       const password = String(req.body?.password || "");
