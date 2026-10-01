@@ -1,0 +1,1 @@
+Next stage after production validation: move order reads/writes and Stripe event persistence to Neon, then switch media upload/list/delete to Cloudflare R2 once its credentials are present. No manual database toggle is required.
