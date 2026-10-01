@@ -7,7 +7,15 @@ import crypto from "crypto";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
-import { hasNeon, readNeonStorageValue, upsertNeonStorageValue } from "./neonDb.js";
+import {
+  hasNeon,
+  readNeonStorageValue,
+  upsertNeonStorageValue,
+  listNeonOrders,
+  getNeonOrder,
+  insertNeonOrder,
+  patchNeonOrder,
+} from "./neonDb.js";
 import {
   calculatePosTotals,
   nextPosDocumentNumber,
@@ -769,19 +777,14 @@ async function sendOrderConfirmationEmails(order, reason = "order_created") {
     results.admin = { skipped: true, reason: "missing_ADMIN_ORDER_EMAIL" };
   }
 
-  if (supabase) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...metadata,
-          confirmationEmailSentAt: new Date().toISOString(),
-          confirmationEmailReason: reason,
-          confirmationEmailResults: results,
-        },
-      })
-      .eq("id", normalized.id);
-  }
+  await patchOrderPrimary(normalized.id, {
+    metadata: {
+      ...metadata,
+      confirmationEmailSentAt: new Date().toISOString(),
+      confirmationEmailReason: reason,
+      confirmationEmailResults: results,
+    },
+  }).catch((error) => console.warn("No se pudo guardar estado de email del pedido:", error?.message || error));
 
   return results;
 }
@@ -811,22 +814,17 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
     replyTo: adminEmail,
   });
 
-  if (supabase) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...metadata,
-          lastStatusEmailSentAt: new Date().toISOString(),
-          lastStatusEmailReason: reason,
-          statusEmailHistory: {
-            ...(metadata.statusEmailHistory || {}),
-            [normalized.status]: new Date().toISOString(),
-          },
-        },
-      })
-      .eq("id", normalized.id);
-  }
+  await patchOrderPrimary(normalized.id, {
+    metadata: {
+      ...metadata,
+      lastStatusEmailSentAt: new Date().toISOString(),
+      lastStatusEmailReason: reason,
+      statusEmailHistory: {
+        ...(metadata.statusEmailHistory || {}),
+        [normalized.status]: new Date().toISOString(),
+      },
+    },
+  }).catch((error) => console.warn("No se pudo guardar historial de email:", error?.message || error));
 
   return result;
 }
@@ -870,6 +868,46 @@ async function upsertStorageValue(key, value) {
   if (error) throw error;
 }
 
+async function listOrdersPrimary({ email = null, statuses = null, requestedDate = null, limit = 2000 } = {}) {
+  if (hasNeon()) {
+    return listNeonOrders({ email, statuses, requestedDate, limit });
+  }
+  if (!supabase) return [];
+
+  let query = supabase.from("orders").select("*").order("created_at", { ascending: false });
+  if (email) query = query.eq("customer_email", email);
+  if (Array.isArray(statuses) && statuses.length) query = query.in("status", statuses);
+  if (requestedDate) query = query.contains("metadata", { requestedDate });
+  query = query.limit(Math.max(1, Math.min(Number(limit) || 2000, 2000)));
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function getOrderPrimary(id) {
+  if (hasNeon()) return getNeonOrder(id);
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("orders").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function insertOrderPrimary(row) {
+  if (hasNeon()) return insertNeonOrder(row);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { data, error } = await supabase.from("orders").insert(row).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+async function patchOrderPrimary(id, patch) {
+  if (hasNeon()) return patchNeonOrder(id, patch);
+  if (!supabase) throw new Error("No hay base de datos configurada");
+  const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
 const ACTIVE_DELIVERY_STATUSES = new Set([
   "payment_pending",
   "pending",
@@ -892,12 +930,7 @@ async function deliveryAvailabilityForDate(requestedDate, suite = {}) {
   });
   const rules = schedule.rules;
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("status,metadata")
-    .contains("metadata", { requestedDate: schedule.requestedDate });
-
-  if (error) throw error;
+  const data = await listOrdersPrimary({ requestedDate: schedule.requestedDate, limit: 2000 });
 
   const counts = new Map(DELIVERY_SLOTS.map((slot) => [slot, 0]));
   for (const order of data || []) {
@@ -969,6 +1002,15 @@ async function reserveCommerceStock(cartToken, items) {
     quantity: Math.max(0, Math.floor(Number(item?.quantity || item?.qty || 0))),
   }));
 
+  if (hasNeon()) {
+    return {
+      active: false,
+      mode: "neon_validation_then_commit",
+      reason: "neon_primary_inventory",
+      reservedItems: payload.filter((item) => item.productId && item.quantity > 0).length,
+    };
+  }
+
   const { data, error } = await supabase.rpc("reserve_commerce_stock", {
     p_cart_token: String(cartToken),
     p_items: payload,
@@ -998,6 +1040,7 @@ async function reserveCommerceStock(cartToken, items) {
 }
 
 async function consumeCommerceStockReservation(cartToken) {
+  if (hasNeon()) return { skipped: true, reason: "neon_inventory_commit_handles_stock" };
   const { data, error } = await supabase.rpc("consume_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1009,6 +1052,7 @@ async function consumeCommerceStockReservation(cartToken) {
 }
 
 async function releaseCommerceStockReservation(cartToken) {
+  if (hasNeon()) return { skipped: true, reason: "no_neon_reservation_to_release" };
   const { data, error } = await supabase.rpc("release_commerce_stock_reservation", {
     p_cart_token: String(cartToken),
   });
@@ -1020,6 +1064,7 @@ async function releaseCommerceStockReservation(cartToken) {
 }
 
 async function restockCommerceCoreStock(items) {
+  if (hasNeon()) return { skipped: true, reason: "neon_storage_restock_is_authoritative" };
   const payload = (Array.isArray(items) ? items : []).map((item) => ({
     productId: String(item?.id || ""),
     variantName: String(item?.selectedVariant || ""),
@@ -1062,19 +1107,20 @@ app.post(
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
 
-      if (orderId && supabase) {
-        const { data: updatedOrder, error } = await supabase
-          .from("orders")
-          .update({
+      if (orderId) {
+        let updatedOrder = null;
+        let orderUpdateError = null;
+        try {
+          updatedOrder = await patchOrderPrimary(orderId, {
             status: "paid",
             stripe_payment_intent_id: paymentIntent.id,
-          })
-          .eq("id", orderId)
-          .select("*")
-          .single();
+          });
+        } catch (error) {
+          orderUpdateError = error;
+        }
 
-        if (error) {
-          console.error("Error actualizando pedido pagado:", error.message);
+        if (orderUpdateError || !updatedOrder) {
+          console.error("Error actualizando pedido pagado:", orderUpdateError?.message || "Pedido no encontrado");
         } else {
           let inventoryOrder = updatedOrder;
           try {
@@ -1108,18 +1154,16 @@ app.post(
     if (["payment_intent.payment_failed", "payment_intent.canceled"].includes(event.type)) {
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
-      if (orderId && supabase) {
+      if (orderId) {
         await releaseCommerceStockReservation(orderId).catch((error) =>
           console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
         );
-        await supabase
-          .from("orders")
-          .update({
-            status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
-            stripe_payment_intent_id: paymentIntent.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", orderId);
+        await patchOrderPrimary(orderId, {
+          status: event.type === "payment_intent.canceled" ? "payment_canceled" : "payment_error",
+          stripe_payment_intent_id: paymentIntent.id,
+        }).catch((error) =>
+          console.warn("No se pudo actualizar el pedido fallido en Neon:", error?.message || error)
+        );
       }
     }
 
@@ -2784,14 +2828,12 @@ app.get("/api/admin/abandoned-carts", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/orders", requireAdmin, async (_req, res) => {
-  if (!requireSupabase(res)) return;
-
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(500).json({ error: error.message });
+  let data;
+  try {
+    data = await listOrdersPrimary({ limit: 2000 });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   const orders = (data || []).map((order) => ({
     id: order.id,
@@ -2852,8 +2894,6 @@ async function validateCommerceOrderPayload(order = {}) {
 }
 
 app.post("/api/orders", async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   let order = req.body;
   const id = order.id || crypto.randomUUID();
   try {
@@ -2863,9 +2903,9 @@ app.post("/api/orders", async (req, res) => {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
 
-  const { data, error } = await supabase
-    .from("orders")
-    .insert({
+  let data;
+  try {
+    data = await insertOrderPrimary({
       id,
       customer_email: order.customerEmail || order.email || null,
       customer_name: order.customerName || order.name || null,
@@ -2877,11 +2917,10 @@ app.post("/api/orders", async (req, res) => {
       total: order.total || 0,
       items: order.items || [],
       metadata: order.metadata || {},
-    })
-    .select("*")
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   broadcastAdminOrderEvent(data, "order_created");
   void evaluateDelayedOrders().catch((error) => console.warn("Automations order check:", error?.message || error));
@@ -2897,18 +2936,13 @@ app.post("/api/orders", async (req, res) => {
 });
 
 app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   const { status } = req.body;
 
-  const { data: previousOrder, error: previousOrderError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", req.params.id)
-    .maybeSingle();
-
-  if (previousOrderError) {
-    return res.status(500).json({ error: previousOrderError.message });
+  let previousOrder;
+  try {
+    previousOrder = await getOrderPrimary(req.params.id);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 
   if (!previousOrder) {
@@ -2987,14 +3021,12 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     }
   }
 
-  const { data, error } = await supabase
-    .from("orders")
-    .update({ status, metadata: nextMetadata })
-    .eq("id", req.params.id)
-    .select("*")
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
+  let data;
+  try {
+    data = await patchOrderPrimary(req.params.id, { status, metadata: nextMetadata });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   // Pedidos online no-Stripe (transferencia / confirmación manual) comprometen
   // inventario al ser confirmados por el administrador. Stripe lo hace al
@@ -5613,7 +5645,6 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 });
 
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
-  if (!requireSupabase(res)) return;
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
   try {
@@ -5741,20 +5772,21 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         : null,
     };
 
-    const { error: orderError } = await supabase.from("orders").insert({
-      id: orderId,
-      customer_email: customerEmail || null,
-      customer_name: customerName || null,
-      payment_method: selectedPaymentMethod,
-      delivery_method: deliveryMethod,
-      status: "payment_pending",
-      subtotal: authoritativeSubtotal,
-      shipping: authoritativeShipping,
-      total: authoritativeTotal,
-      items: authoritativeItems,
-      metadata: secureMetadata,
-    });
-    if (orderError) {
+    try {
+      await insertOrderPrimary({
+        id: orderId,
+        customer_email: customerEmail || null,
+        customer_name: customerName || null,
+        payment_method: selectedPaymentMethod,
+        delivery_method: deliveryMethod,
+        status: "payment_pending",
+        subtotal: authoritativeSubtotal,
+        shipping: authoritativeShipping,
+        total: authoritativeTotal,
+        items: authoritativeItems,
+        metadata: secureMetadata,
+      });
+    } catch (orderError) {
       if (stockReservation.active) {
         await releaseCommerceStockReservation(orderId).catch(() => null);
       }
@@ -5770,7 +5802,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         payment_method_types: selectedPaymentMethod === "bizum" ? ["bizum"] : ["card"],
       };
       const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
-      await supabase.from("orders").update({ stripe_payment_intent_id: paymentIntent.id }).eq("id", orderId);
+      await patchOrderPrimary(orderId, { stripe_payment_intent_id: paymentIntent.id });
       res.json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
@@ -5786,10 +5818,10 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       if (stockReservation.active) {
         await releaseCommerceStockReservation(orderId).catch(() => null);
       }
-      await supabase.from("orders").update({
+      await patchOrderPrimary(orderId, {
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
-      }).eq("id", orderId);
+      }).catch(() => null);
       res.status(error.statusCode || 500).json({
         error: error.message || "Error al crear el pago en Stripe",
         code: error.code || "stripe_error",
@@ -5806,12 +5838,7 @@ async function commitOnlineOrderInventory(order) {
     return { skipped: true, reason: "not_frontend_checkout", order };
   }
 
-  const { data: freshOrder, error: freshError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", order.id)
-    .maybeSingle();
-  if (freshError) throw freshError;
+  const freshOrder = await getOrderPrimary(order.id);
   if (!freshOrder) throw new Error("Pedido no encontrado al confirmar inventario");
   if (freshOrder?.metadata?.inventoryCommittedAt) {
     return { skipped: true, reason: "already_committed", order: freshOrder };
@@ -5892,13 +5919,7 @@ async function commitOnlineOrderInventory(order) {
   };
 
   // Mark the order first to make repeated Stripe confirmations idempotent in normal retry flows.
-  const { data: markedOrder, error: markError } = await supabase
-    .from("orders")
-    .update({ metadata: nextMetadata, updated_at: committedAt })
-    .eq("id", freshOrder.id)
-    .select("*")
-    .single();
-  if (markError) throw markError;
+  const markedOrder = await patchOrderPrimary(freshOrder.id, { metadata: nextMetadata });
 
   try {
     await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
@@ -5906,16 +5927,13 @@ async function commitOnlineOrderInventory(order) {
       console.warn("Automations post-sale stock check:", error?.message || error)
     );
   } catch (error) {
-    await supabase
-      .from("orders")
-      .update({
-        metadata: {
-          ...(freshOrder.metadata || {}),
-          inventoryCommitError: error?.message || String(error),
-          inventoryCommitFailedAt: new Date().toISOString(),
-        },
-      })
-      .eq("id", freshOrder.id);
+    await patchOrderPrimary(freshOrder.id, {
+      metadata: {
+        ...(freshOrder.metadata || {}),
+        inventoryCommitError: error?.message || String(error),
+        inventoryCommitFailedAt: new Date().toISOString(),
+      },
+    }).catch(() => null);
     throw error;
   }
 
@@ -5970,8 +5988,6 @@ async function restockOnlineOrderInventory(order) {
 }
 
 app.post("/api/stripe/confirm-order", async (req, res) => {
-  if (!requireSupabase(res)) return;
-
   if (!stripe) {
     return res
       .status(503)
@@ -6005,13 +6021,10 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     });
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (orderError) {
+  let order;
+  try {
+    order = await getOrderPrimary(orderId);
+  } catch (orderError) {
     return res.status(500).json({ error: orderError.message });
   }
 
@@ -6047,19 +6060,14 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     nextMetadata.stripeConfirmationError = `Stripe devolviÃ³ estado: ${paymentIntent.status}`;
   }
 
-  const { data: updatedOrder, error: updateError } = await supabase
-    .from("orders")
-    .update({
+  let updatedOrder;
+  try {
+    updatedOrder = await patchOrderPrimary(orderId, {
       status: nextStatus,
       stripe_payment_intent_id: paymentIntent.id,
       metadata: nextMetadata,
-      updated_at: now,
-    })
-    .eq("id", orderId)
-    .select("*")
-    .single();
-
-  if (updateError) {
+    });
+  } catch (updateError) {
     return res.status(500).json({ error: updateError.message });
   }
 

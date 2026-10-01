@@ -57,22 +57,74 @@ export async function deleteNeonStorageValue(key) {
   await neonPool.query("delete from app_storage where key = $1", [String(key)]);
 }
 
-export async function listNeonOrders({ email = null, limit = 500 } = {}) {
+export async function listNeonOrders({ email = null, statuses = null, requestedDate = null, limit = 500 } = {}) {
   if (!neonPool) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
+  const where = [];
+  const values = [];
+
   if (email) {
-    const result = await neonPool.query(
-      `select * from orders where lower(customer_email) = lower($1)
-       order by created_at desc limit $2`,
-      [String(email), safeLimit]
-    );
-    return result.rows || [];
+    values.push(String(email));
+    where.push(`lower(customer_email) = lower(${values.length})`);
   }
-  const result = await neonPool.query(
-    "select * from orders order by created_at desc limit $1",
-    [safeLimit]
-  );
+  if (Array.isArray(statuses) && statuses.length) {
+    values.push(statuses.map(String));
+    where.push(`status = any(${values.length}::text[])`);
+  }
+  if (requestedDate) {
+    values.push(String(requestedDate));
+    where.push(`metadata->>'requestedDate' = ${values.length}`);
+  }
+
+  values.push(safeLimit);
+  const sql = `select * from orders${where.length ? " where " + where.join(" and ") : ""}
+               order by created_at desc limit ${values.length}`;
+  const result = await neonPool.query(sql, values);
   return result.rows || [];
+}
+
+export async function getNeonOrder(id) {
+  if (!neonPool) return null;
+  const result = await neonPool.query(
+    "select * from orders where id::text = $1 limit 1",
+    [String(id)]
+  );
+  return result.rows?.[0] || null;
+}
+
+export async function insertNeonOrder(order = {}) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const result = await neonPool.query(
+    `insert into orders (
+      id, customer_email, customer_name, payment_method, delivery_method,
+      status, subtotal, shipping, total, items, metadata, stripe_payment_intent_id,
+      tracking_estado, tracking_tiempo, factura_url, entrega_estimada, created_at, updated_at
+    ) values (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+      coalesce($17::timestamptz, now()), now()
+    )
+    returning *`,
+    [
+      String(order.id),
+      order.customer_email ?? null,
+      order.customer_name ?? null,
+      order.payment_method || "manual",
+      order.delivery_method || "envio",
+      order.status || "pending",
+      Number(order.subtotal || 0),
+      Number(order.shipping || 0),
+      Number(order.total || 0),
+      order.items || [],
+      order.metadata || {},
+      order.stripe_payment_intent_id ?? null,
+      order.tracking_estado ?? "pendiente",
+      order.tracking_tiempo ?? null,
+      order.factura_url ?? null,
+      order.entrega_estimada ?? null,
+      order.created_at ?? null,
+    ]
+  );
+  return result.rows?.[0] || null;
 }
 
 export async function patchNeonOrder(id, patch = {}) {
