@@ -1,0 +1,1 @@
+Initial data migration scope is `app_storage` content required by the storefront/admin editor. Secrets are not copied through source control. Existing Supabase remains the source of truth for legacy routes until each route family is explicitly moved and verified.
