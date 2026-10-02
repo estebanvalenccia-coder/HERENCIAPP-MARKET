@@ -255,8 +255,9 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const aboutIncoming = incoming.about || {};
   const salesIncoming = incoming.sales || {};
   const savedHeroImageUrl = String((homeIncoming as any).heroImageUrl || "").trim();
+  const invalidDataUrl = savedHeroImageUrl.startsWith("data:") && !savedHeroImageUrl.startsWith("data:image/");
   const resolvedHeroImageUrl =
-    !savedHeroImageUrl || LEGACY_HOME_HERO_URLS.has(savedHeroImageUrl)
+    !savedHeroImageUrl || invalidDataUrl || LEGACY_HOME_HERO_URLS.has(savedHeroImageUrl)
       ? defaultMarketExperience.home.heroImageUrl
       : savedHeroImageUrl;
 
