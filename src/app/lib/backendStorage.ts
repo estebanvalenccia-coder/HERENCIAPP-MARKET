@@ -137,10 +137,6 @@ async function generateBouquetImageInBrowser(_prompt: string) {
   throw new Error("La generación de imágenes IA se ejecuta únicamente en el backend seguro");
 }
 
-function isAiImage(image: string) {
-  return image.startsWith("data:image/") || image.includes("generativelanguage") || image.includes("nananobanana");
-}
-
 let preloadPromise: Promise<void> | null = null;
 let lastBackendConsoleSignature = "";
 let lastBackendConsoleAt = 0;
