@@ -159,7 +159,7 @@ async function callGroq(messages, { temperature = 0.35 } = {}) {
 }
 
 async function generateGeminiImage(prompt) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -232,7 +232,7 @@ async function imageReferenceFromUrl(value) {
 }
 
 async function generateGeminiSpacePreview({ roomData, roomMimeType, product }) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -288,7 +288,7 @@ REGLAS OBLIGATORIAS:
 }
 
 async function identifyWithGemini({ data, mimeType, catalog }) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
   const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
