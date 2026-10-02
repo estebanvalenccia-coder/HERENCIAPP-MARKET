@@ -23,6 +23,7 @@ import {
   consumeNeonCommerceStockReservation,
   releaseNeonCommerceStockReservation,
   syncNeonCommerceInventory,
+  listNeonCommerceProducts,
 } from "./neonDb.js";
 import {
   calculatePosTotals,
@@ -902,6 +903,26 @@ async function deleteStorageValue(key) {
   if (!supabase) throw new Error("No hay base de datos configurada");
   const { error } = await supabase.from("app_storage").delete().eq("key", key);
   if (error) throw error;
+}
+
+async function readCommerceProductsPrimary({ includeArchived = true } = {}) {
+  if (hasNeon()) {
+    return listNeonCommerceProducts({ includeArchived });
+  }
+  return parseStoredJson(await readStorageValue("adminProducts"), []);
+}
+
+async function writeCommerceInventoryPrimary(products = []) {
+  const rows = Array.isArray(products) ? products : [];
+  if (hasNeon()) {
+    await syncNeonCommerceInventory(rows);
+    const fresh = await listNeonCommerceProducts({ includeArchived: true });
+    // Compatibilidad temporal para módulos antiguos que todavía consultan app_storage.
+    await upsertNeonStorageValue("adminProducts", JSON.stringify(fresh));
+    return fresh;
+  }
+  await upsertStorageValue("adminProducts", JSON.stringify(rows));
+  return rows;
 }
 
 async function listOrdersPrimary({ email = null, statuses = null, requestedDate = null, limit = 2000 } = {}) {
@@ -2861,7 +2882,7 @@ app.get("/api/orders", requireAdmin, async (_req, res) => {
 });
 
 async function validateCommerceOrderPayload(order = {}) {
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await readCommerceProductsPrimary({ includeArchived: true });
   const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
   let subtotal = 0;
   const normalizedItems = [];
@@ -5573,7 +5594,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
-    const catalog = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const catalog = await readCommerceProductsPrimary({ includeArchived: true });
     const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
     const authoritativeItems = [];
     const requestedByProduct = new Map();
@@ -5753,7 +5774,7 @@ async function commitOnlineOrderInventory(order) {
     return { skipped: true, reason: "already_committed", order: freshOrder };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await readCommerceProductsPrimary({ includeArchived: true });
   const byId = new Map((Array.isArray(products) ? products : []).map((product) => [String(product?.id ?? ""), product]));
   const requirements = new Map();
 
@@ -5833,8 +5854,8 @@ async function commitOnlineOrderInventory(order) {
   const markedOrder = await patchOrderPrimary(freshOrder.id, { metadata: nextMetadata });
 
   try {
-    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
-    void evaluateInventoryAutomations(updatedProducts).catch((error) =>
+    const freshProducts = await writeCommerceInventoryPrimary(updatedProducts);
+    void evaluateInventoryAutomations(freshProducts).catch((error) =>
       console.warn("Automations post-sale stock check:", error?.message || error)
     );
   } catch (error) {
@@ -5848,7 +5869,7 @@ async function commitOnlineOrderInventory(order) {
     throw error;
   }
 
-  return { committed: true, products: updatedProducts, order: markedOrder };
+  return { committed: true, products: await readCommerceProductsPrimary({ includeArchived: true }), order: markedOrder };
 }
 
 async function restockOnlineOrderInventory(order) {
@@ -5861,7 +5882,7 @@ async function restockOnlineOrderInventory(order) {
     return { skipped: true };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await readCommerceProductsPrimary({ includeArchived: true });
   const quantities = new Map();
 
   for (const item of Array.isArray(order.items) ? order.items : []) {
@@ -5895,8 +5916,8 @@ async function restockOnlineOrderInventory(order) {
     return next;
   });
 
-  await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
-  return { restored: true, products: restoredProducts };
+  const freshProducts = await writeCommerceInventoryPrimary(restoredProducts);
+  return { restored: true, products: freshProducts };
 }
 
 app.post("/api/stripe/confirm-order", async (req, res) => {
