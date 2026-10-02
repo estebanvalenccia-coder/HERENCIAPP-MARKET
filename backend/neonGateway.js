@@ -83,7 +83,19 @@ const server=http.createServer(async(req,res)=>{try{
   }
   if(path==="/api/analytics/visit"&&req.method==="POST"){
     const body=await bodyJson(req);
-    const allowedEvents=new Set(["pageview","space_preview"]);
+    const allowedEvents=new Set([
+      "pageview",
+      "space_preview",
+      "sales_open",
+      "sales_message",
+      "sales_recommendation",
+      "sales_photo_search",
+      "sales_bouquet_generated",
+      "sales_add_to_cart",
+      "sales_buy_now",
+      "sales_handoff",
+      "sales_purchase"
+    ]);
     const eventType=String(body?.eventType||"pageview");
     if(!allowedEvents.has(eventType))return json(res,400,{error:"Evento de analítica no válido"});
     const id=visitorId(req,res);
@@ -93,6 +105,10 @@ const server=http.createServer(async(req,res)=>{try{
       visitorId:id,
       sessionId:String(body?.sessionId||"").slice(0,120),
       eventType,
+      eventLabel:String(body?.eventLabel||"").slice(0,240),
+      productId:String(body?.productId||"").slice(0,180),
+      amount:Math.max(0,Number(body?.amount||0)),
+      metadata:body?.metadata&&typeof body.metadata==="object"?body.metadata:{},
       path:String(body?.path||"/").slice(0,500),
       referrer,
       referrerHost:referrerHost(referrer),
@@ -111,6 +127,28 @@ const server=http.createServer(async(req,res)=>{try{
     const url=new URL(req.url,"http://localhost");
     const summary=await getNeonAnalyticsSummary(url.searchParams.get("days")||30);
     return json(res,200,{...summary,source:"neon"});
+  }
+  if(path==="/api/admin/sales/health"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    await bootstrapNeonCommerceFromLegacy();
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    const active=products.filter((product)=>product?.active!==false&&!product?.deletedAt&&String(product?.status||"active")!=="archived");
+    const sellable=active.filter((product)=>product?.trackInventory===false||Number(product?.stock||0)>0||(Array.isArray(product?.variants)&&product.variants.some((variant)=>Number(variant?.stock||0)>0)));
+    let flowers=[];try{const raw=await readNeonStorageValue("bouquetCatalog");flowers=JSON.parse(raw||"[]");if(!Array.isArray(flowers))flowers=[];}catch{}
+    return json(res,200,{
+      ok:Boolean(process.env.GROQ_API_KEY)&&Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY),
+      chat:{configured:Boolean(process.env.GROQ_API_KEY),model:process.env.GROQ_MODEL||"openai/gpt-oss-120b"},
+      vision:{configured:Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY),textModel:process.env.GEMINI_TEXT_MODEL||"gemini-2.5-flash",imageModel:process.env.GEMINI_IMAGE_MODEL||"gemini-2.5-flash-image"},
+      media:{r2Configured:hasR2},
+      limits:{
+        chatPerMinute:Math.max(3,Number(process.env.SALES_AI_CHAT_LIMIT_PER_MINUTE||30)),
+        imagePerMinute:Math.max(3,Number(process.env.SALES_AI_IMAGE_LIMIT_PER_MINUTE||12)),
+        timeoutMs:Math.max(5000,Number(process.env.SALES_AI_TIMEOUT_MS||30000))
+      },
+      catalog:{total:products.length,active:active.length,sellable:sellable.length,outOfStock:Math.max(0,active.length-sellable.length)},
+      flowers:{total:flowers.length,active:flowers.filter((flower)=>flower?.active!==false).length},
+      source:"neon"
+    });
   }
 
   if(path==="/api/admin/media/status"&&req.method==="GET"){
