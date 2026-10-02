@@ -20,6 +20,7 @@ import {
   getCommerceCollection,
   isPlantCareProduct,
   primaryCollectionOf,
+  productBelongsToCollection,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
 
@@ -138,6 +139,9 @@ const emptyEdit = {
 
 export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [commerceCollections, setCommerceCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyEdit });
@@ -153,9 +157,16 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   async function loadProducts() {
     try {
       setLoading(true);
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections({ includeArchived: true }),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collectionRows = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections.filter((item: any) => item.status !== "archived")
+        : [];
       setProducts(rows);
+      if (collectionRows.length) setCommerceCollections(collectionRows);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch (error) {
       try {
@@ -180,7 +191,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     return products.filter((product) => {
       const archived = product.status === "archived" || Boolean(product.deletedAt);
       if (showTrash !== archived) return false;
-      if (collectionFilter !== "todos" && primaryCollectionOf(product) !== collectionFilter) return false;
+      if (collectionFilter !== "todos" && !productBelongsToCollection(product, collectionFilter)) return false;
       if (!query) return true;
       return [product.name, product.description, product.sku, product.category, primaryCollectionOf(product)]
         .filter(Boolean)
@@ -560,7 +571,14 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
         collection: editForm.collection,
-        collections: [editForm.collection],
+        collections: [
+          editForm.collection,
+          ...((editingProduct.collections || []).filter(
+            (collectionId) =>
+              collectionId !== primaryCollectionOf(editingProduct) &&
+              collectionId !== editForm.collection
+          )),
+        ],
         category: editForm.category,
         type: productTypeForCollection(editForm.collection),
         status: editForm.status,
@@ -679,7 +697,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           className="rounded-xl border border-border bg-background px-4 py-3 font-bold"
         >
           <option value="todos">Todas las colecciones</option>
-          {COMMERCE_COLLECTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          {commerceCollections.map((item) => <option key={String(item.id)} value={String(item.id)}>{item.name}</option>)}
         </select>
       </div>
 
