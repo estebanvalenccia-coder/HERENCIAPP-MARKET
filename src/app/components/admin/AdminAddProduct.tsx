@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
+import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
-  isPlantLikeCollection,
+  isPlantCareProduct,
   isServiceCollection,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
@@ -89,7 +90,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     () => getCommerceCollection(formData.collection),
     [formData.collection]
   );
-  const plantLike = isPlantLikeCollection(formData.collection);
+  const plantLike = isPlantCareProduct({ collection: formData.collection, category: formData.category });
   const service = isServiceCollection(formData.collection);
   const food = formData.collection === "dulce";
   const fashion = formData.collection === "moda";
@@ -162,7 +163,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         (value, index, rows) => value && rows.indexOf(value) === index
       );
 
-      await backendApi.createCommerceProduct({
+      const productPayload: any = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         type: productTypeForCollection(formData.collection),
@@ -193,7 +194,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         images: imageUrl ? [imageUrl] : [],
         allowDedication: formData.allowDedication,
 
-        scientificName: formData.scientificName.trim(),
+        scientificName: plantLike ? formData.scientificName.trim() : "",
         environment: plantLike ? formData.environment : "",
         light: plantLike ? formData.light : "",
         size: plantLike ? formData.size.trim() : "",
@@ -230,7 +231,30 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
             ? Math.max(0, Number(formData.leadTimeDays))
             : null,
         },
-      });
+      };
+
+      let finalPayload = productPayload;
+      if (formData.status === "active") {
+        try {
+          const aiPatch = await buildPlantProfilePublishPatch(productPayload);
+          finalPayload = {
+            ...productPayload,
+            ...aiPatch,
+            metadata: {
+              ...(productPayload.metadata || {}),
+              ...(aiPatch as any).metadata,
+            },
+          };
+        } catch (error: any) {
+          throw new Error(
+            error?.message
+              ? `No se pudo publicar la planta: ${error.message}. Guárdala como borrador y vuelve a intentarlo.`
+              : "No se pudo generar la ficha IA de la planta. Guárdala como borrador y vuelve a intentarlo."
+          );
+        }
+      }
+
+      await backendApi.createCommerceProduct(finalPayload);
 
       window.dispatchEvent(new Event("backend-storage"));
       toast.success(
