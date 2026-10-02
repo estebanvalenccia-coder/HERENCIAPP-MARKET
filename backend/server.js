@@ -3010,7 +3010,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
         };
       });
 
-      await upsertStorageValue("adminProducts", JSON.stringify(restockedProducts));
+      await writeCommerceInventoryPrimary(restockedProducts);
       nextMetadata = {
         ...nextMetadata,
         inventoryRestockedAt: new Date().toISOString(),
@@ -3213,8 +3213,8 @@ function normalizePosCustomer(customer = {}) {
 }
 
 async function loadPosBootstrap() {
-  const [productsRaw, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
-    readStorageValue("adminProducts"),
+  const [products, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
+    readCommerceProductsPrimary({ includeArchived: false }),
     readStorageValue("posCustomers"),
     readStorageValue("posFiscalSettings"),
     readStorageValue("stripeSettings"),
@@ -3231,7 +3231,7 @@ async function loadPosBootstrap() {
     ).trim();
 
   return {
-    products: parseStoredJson(productsRaw, []),
+    products,
     customers: parseStoredJson(customersRaw, []),
     fiscalSettings: parseStoredJson(fiscalRaw, {}),
     stripeSettings: {
@@ -4089,8 +4089,8 @@ app.post("/api/pos/purchases", requireAdmin, async (req, res) => {
       const qty = quantities.get(String(product?.id || "")) || 0;
       return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
     });
-    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
-    void notifyWaitlistForRestockedProducts(bootstrap.products, updatedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
+    const freshPurchasedProducts = await writeCommerceInventoryPrimary(updatedProducts);
+    void notifyWaitlistForRestockedProducts(bootstrap.products, freshPurchasedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
     void evaluateInventoryAutomations(updatedProducts).catch((error) => console.warn("Automations purchase stock check:", error?.message || error));
 
     const purchase = {
@@ -4315,8 +4315,8 @@ app.post("/api/pos/inventory-adjustments", requireAdmin, async (req, res) => {
     const updatedProducts = bootstrap.products.map((item) =>
       String(item?.id) === productId ? { ...item, stock: after } : item
     );
-    await upsertStorageValue("adminProducts", JSON.stringify(updatedProducts));
-    void notifyWaitlistForRestockedProducts(bootstrap.products, updatedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
+    const freshAdjustedProducts = await writeCommerceInventoryPrimary(updatedProducts);
+    void notifyWaitlistForRestockedProducts(bootstrap.products, freshAdjustedProducts).catch((error) => console.warn("Waitlist restock notify:", error?.message || error));
     void evaluateInventoryAutomations(updatedProducts).catch((error) => console.warn("Automations stock check:", error?.message || error));
 
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {}, quotes: [], inventoryAdjustments: [] };
@@ -4509,7 +4509,7 @@ app.post("/api/pos/refund", requireAdmin, async (req, res) => {
       return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
     });
 
-    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+    await writeCommerceInventoryPrimary(restoredProducts);
 
     const refundNumber = `REF-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`;
     const refundedAt = new Date().toISOString();
@@ -4835,7 +4835,7 @@ app.post("/api/pos/refund-partial", requireAdmin, async (req, res) => {
       const qty = Number(stockRestoreById.get(String(product?.id || "")) || 0);
       return qty ? { ...product, stock: Math.max(0, Number(product.stock || 0)) + qty } : product;
     });
-    await upsertStorageValue("adminProducts", JSON.stringify(restoredProducts));
+    await writeCommerceInventoryPrimary(restoredProducts);
 
     if (giftRefunds.length) {
       const giftByCode = new Map();
@@ -5261,7 +5261,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
       inventoryCommittedAt: now,
     };
 
-    await upsertStorageValue("adminProducts", JSON.stringify(prepared.updatedProducts));
+    await writeCommerceInventoryPrimary(prepared.updatedProducts);
     stockWasWritten = true;
 
     let savedOrder;
@@ -5379,7 +5379,7 @@ app.post("/api/pos/complete-sale", requireAdmin, async (req, res) => {
 
     if (stockWasWritten && originalProducts) {
       try {
-        await upsertStorageValue("adminProducts", JSON.stringify(originalProducts));
+        await writeCommerceInventoryPrimary(originalProducts);
       } catch (rollbackError) {
         console.error("No se pudo revertir stock tras fallo TPV:", rollbackError.message);
       }
