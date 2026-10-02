@@ -171,6 +171,15 @@ export function isPlantLikeCollection(id: unknown) {
   return ["plantas", "semillas"].includes(String(id || ""));
 }
 
+export function isPlantCareProduct(product: any) {
+  const declaredCollection = String(product?.collection || "").trim().toLowerCase();
+  const collection = COMMERCE_COLLECTIONS.some((item) => item.id === declaredCollection)
+    ? declaredCollection
+    : primaryCollectionOf(product);
+  const category = String(product?.category || "").trim().toLowerCase();
+  return collection === "plantas" && category !== "flores";
+}
+
 export function isServiceCollection(id: unknown) {
   return String(id || "") === "servicios";
 }
