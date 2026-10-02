@@ -52,6 +52,7 @@ function normalizeCatalog(input) {
     category: clampText(item?.category, 80),
     price: Number(item?.price || 0),
     description: clampText(item?.description, 220),
+    image: clampText(item?.image || item?.imageUrl || "", 1200),
   })).filter((item) => Number.isFinite(item.id) && item.name);
 }
 
@@ -124,6 +125,100 @@ async function generateGeminiImage(prompt) {
   const imagePart = parts.find((part) => part?.inlineData?.data || part?.inline_data?.data);
   const inlineData = imagePart?.inlineData || imagePart?.inline_data;
   if (!inlineData?.data) throw new Error("Gemini no devolvió una imagen");
+
+  return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
+}
+
+async function imageReferenceFromUrl(value) {
+  const url = String(value || "").trim();
+  if (!url) return null;
+
+  if (url.startsWith("data:image/")) {
+    const match = url.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    return { mimeType: match[1], data: match[2] };
+  }
+
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") throw new Error("La imagen del producto debe usar HTTPS");
+  const host = parsed.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) {
+    throw new Error("URL de imagen no permitida");
+  }
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
+    redirect: "follow",
+    headers: { Accept: "image/*" },
+  });
+  if (!response.ok) throw new Error(`No se pudo leer la imagen del producto (${response.status})`);
+  const mimeType = String(response.headers.get("content-type") || "image/jpeg").split(";")[0];
+  if (!mimeType.startsWith("image/")) throw new Error("La referencia del producto no es una imagen");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > 8 * 1024 * 1024) throw new Error("La imagen del producto es demasiado grande");
+  return { mimeType, data: buffer.toString("base64") };
+}
+
+async function generateGeminiSpacePreview({ roomData, roomMimeType, product }) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
+  if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
+
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  let productReference = null;
+  try {
+    productReference = await imageReferenceFromUrl(product?.image);
+  } catch (error) {
+    console.warn("[HERENCIA SALES] referencia visual producto:", error?.message || error);
+  }
+
+  const prompt = `Edita la PRIMERA imagen, que es la fotografía real del espacio del cliente.
+Inserta de forma fotorealista el producto de Herencia Market llamado "${clampText(product?.name, 140)}".
+Categoría: ${clampText(product?.category, 80)}.
+Descripción del producto: ${clampText(product?.description, 300)}.
+
+REGLAS OBLIGATORIAS:
+- Conserva exactamente la habitación, terraza, jardín u oficina original: arquitectura, muebles, suelo, paredes, ventanas, iluminación y encuadre.
+- Añade únicamente el producto solicitado en un lugar físicamente plausible, sin eliminar ni sustituir objetos existentes salvo una oclusión natural.
+- Respeta perspectiva, escala, sombras, reflejos y dirección de la luz.
+- Si se aporta una SEGUNDA imagen, úsala como referencia visual del producto y conserva su aspecto, maceta, forma y color tanto como sea posible.
+- No añadas texto, logos, personas ni productos adicionales.
+- El resultado debe parecer una fotografía real tomada después de colocar el producto en ese espacio.
+- Genera UNA sola imagen final.`;
+
+  const parts = [
+    { text: prompt },
+    { inlineData: { mimeType: roomMimeType || "image/jpeg", data: roomData } },
+  ];
+  if (productReference) parts.push({ inlineData: productReference });
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000) + 30000),
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({ contents: [{ parts }] }),
+    }
+  );
+
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Gemini Image respondió ${response.status}: ${text}`);
+  const json = safeJson(text, {});
+  const resultParts = json?.candidates?.[0]?.content?.parts || [];
+  const imagePart = resultParts.find((part) => part?.inlineData?.data || part?.inline_data?.data);
+  const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+  if (!inlineData?.data) throw new Error("Gemini no devolvió la visualización del espacio");
 
   return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
 }
@@ -383,6 +478,40 @@ async function salesIdentifyHandler(req, res) {
   }
 }
 
+async function salesSpacePreviewHandler(req, res) {
+  if (!commercialRateLimit(req, res)) return;
+
+  const body = req.body || {};
+  const roomData = String(body.data || "");
+  const roomMimeType = String(body.mimeType || "image/jpeg");
+  const productId = Number(body.productId);
+  const catalog = normalizeCatalog(body.catalog);
+  const product = catalog.find((item) => item.id === productId);
+
+  if (!roomData || roomData.length > 12_000_000) {
+    return res.status(400).json({ error: "La foto del espacio es demasiado grande o está vacía." });
+  }
+  if (!product) {
+    return res.status(400).json({ error: "Selecciona un producto real del catálogo de Herencia." });
+  }
+
+  try {
+    const image = await generateGeminiSpacePreview({ roomData, roomMimeType, product });
+    res.json({
+      image,
+      productId: product.id,
+      productName: product.name,
+      productImage: product.image || "",
+      price: Number(product.price || 0),
+      currency: "EUR",
+      disclaimer: "Visualización orientativa generada por IA. El tamaño, la forma y el color reales pueden variar ligeramente.",
+    });
+  } catch (error) {
+    console.error("[HERENCIA SALES] space preview:", error);
+    res.status(502).json({ error: error?.message || "No se pudo generar la visualización en tu espacio." });
+  }
+}
+
 const originalPost = express.application.post;
 
 express.application.post = function patchedSalesPost(path, ...handlers) {
@@ -396,6 +525,10 @@ express.application.post = function patchedSalesPost(path, ...handlers) {
 
   if (path === "/api/ai/sales-identify") {
     return originalPost.call(this, path, express.json({ limit: "10mb" }), salesIdentifyHandler);
+  }
+
+  if (path === "/api/ai/sales-space-preview") {
+    return originalPost.call(this, path, express.json({ limit: "14mb" }), salesSpacePreviewHandler);
   }
 
   return originalPost.call(this, path, ...handlers);
@@ -412,8 +545,9 @@ express.application.listen = function patchedListen(...args) {
   if (!paths.has("/api/ai/sales-chat")) app.post("/api/ai/sales-chat", express.json({ limit: "1mb" }), salesChatHandler);
   if (!paths.has("/api/ai/sales-bouquet")) app.post("/api/ai/sales-bouquet", express.json({ limit: "1mb" }), salesBouquetHandler);
   if (!paths.has("/api/ai/sales-identify")) app.post("/api/ai/sales-identify", express.json({ limit: "10mb" }), salesIdentifyHandler);
+  if (!paths.has("/api/ai/sales-space-preview")) app.post("/api/ai/sales-space-preview", express.json({ limit: "14mb" }), salesSpacePreviewHandler);
 
   return originalListen.apply(this, args);
 };
 
-console.log("HERENCIA SALES AI preparada: chat comercial, búsqueda visual y diseñador de ramos.");
+console.log("HERENCIA SALES AI preparada: chat comercial, búsqueda visual, visualizador en espacios y diseñador de ramos.");
