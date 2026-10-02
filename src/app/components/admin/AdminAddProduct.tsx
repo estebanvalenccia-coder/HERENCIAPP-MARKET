@@ -5,7 +5,7 @@ import { backendApi } from "../../lib/backendStorage";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
-  isPlantLikeCollection,
+  isPlantCareProduct,
   isServiceCollection,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
@@ -106,7 +106,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     () => getCommerceCollection(formData.collection),
     [formData.collection]
   );
-  const plantLike = isPlantLikeCollection(formData.collection);
+  const plantLike = isPlantCareProduct({ collection: formData.collection, category: formData.category });
   const service = isServiceCollection(formData.collection);
   const food = formData.collection === "dulce";
   const fashion = formData.collection === "moda";
@@ -249,10 +249,10 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           });
           aiPlantInfo = generated?.result || null;
         } catch (error: any) {
-          toast.warning(
+          throw new Error(
             error?.message
-              ? `El producto se publicará, pero la ficha IA no pudo completarse: ${error.message}`
-              : "El producto se publicará, pero la ficha IA no pudo completarse"
+              ? `No se pudo publicar la planta: ${error.message}. Guárdala como borrador y vuelve a intentarlo.`
+              : "No se pudo generar la ficha IA de la planta. Guárdala como borrador y vuelve a intentarlo."
           );
         }
       }
@@ -365,6 +365,32 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           benefits: plantLike && Array.isArray(aiPlantInfo?.benefits) ? aiPlantInfo.benefits.slice(0, 8) : [],
           aiGeneratedAt: aiPlantInfo ? new Date().toISOString() : null,
           aiGeneratedBy: aiPlantInfo ? "server" : null,
+          plantProfile: aiPlantInfo
+            ? {
+                description: generatedDescription,
+                care: {
+                  water: formData.water.trim() || String(aiPlantInfo?.water || aiPlantInfo?.care?.water || "").trim(),
+                  light: generatedLight,
+                  temperature: formData.temperature.trim() || String(aiPlantInfo?.temperature || aiPlantInfo?.care?.temperature || "").trim(),
+                  fertilizer: String(aiPlantInfo?.fertilizer || aiPlantInfo?.care?.fertilizer || "").trim(),
+                },
+                benefits: Array.isArray(aiPlantInfo?.benefits) ? aiPlantInfo.benefits.slice(0, 8) : [],
+                tips: String(aiPlantInfo?.tips || aiPlantInfo?.careNotes || "").trim(),
+                scientificName: formData.scientificName.trim() || String(aiPlantInfo?.scientificName || "").trim(),
+                environment: generatedEnvironment,
+                difficulty: generatedDifficulty,
+                petSafe: typeof aiPlantInfo?.petSafe === "boolean" ? aiPlantInfo.petSafe : formData.petSafe,
+                toxicity: formData.toxicity.trim() || String(aiPlantInfo?.toxicity || "").trim(),
+                humidity: String(aiPlantInfo?.humidity || "").trim(),
+                growth: String(aiPlantInfo?.growth || "").trim(),
+                origin: String(aiPlantInfo?.origin || "").trim(),
+                generatedAt: new Date().toISOString(),
+                version: 1,
+                source: "publish-ai",
+              }
+            : null,
+          aiPlantProfileGenerated: Boolean(aiPlantInfo),
+          aiPlantProfileGeneratedAt: aiPlantInfo ? new Date().toISOString() : null,
         },
       });
 
