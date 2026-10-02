@@ -2096,6 +2096,246 @@ function DesignEditor({
   );
 }
 
+function previewPrice(product: any) {
+  return Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
+}
+
+function ProductsPreview({
+  site,
+  products,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const rows = products.slice(0, 8);
+  const columns = Math.max(2, Math.min(5, Number(site.productsPage.columns || 4)));
+  const gridClass =
+    columns <= 2 ? "grid-cols-2"
+      : columns === 3 ? "grid-cols-2 md:grid-cols-3"
+      : columns >= 5 ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
+      : "grid-cols-2 md:grid-cols-4";
+  const imageClass =
+    site.productsPage.imageAspect === "portrait"
+      ? "h-44"
+      : site.productsPage.imageAspect === "landscape"
+        ? "h-28"
+        : "h-36";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+    >
+      <div className="border-b border-slate-200 bg-[#f4f1e8] px-8 py-9">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">HERENCIA MARKET</p>
+        <h1 className="mt-2 text-3xl font-black text-[#173126]">{site.productsPage.title}</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-500">{site.productsPage.subtitle}</p>
+      </div>
+
+      <div className="space-y-5 p-6">
+        {site.productsPage.showCollectionTabs !== false && (
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-emerald-800 px-3 py-1.5 text-[11px] font-black text-white">Todo</span>
+            {COMMERCE_COLLECTIONS.slice(0, 7).map((item) => (
+              <span key={item.id} className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-bold">{item.name}</span>
+            ))}
+          </div>
+        )}
+
+        {site.productsPage.showFilters !== false && (
+          <div className="flex gap-2">
+            <div className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-400">Buscar productos…</div>
+            <div className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold">Filtros</div>
+          </div>
+        )}
+
+        {rows.length ? (
+          <div className={`grid gap-3 ${gridClass}`}>
+            {rows.map((product) => (
+              <div
+                key={String(product.id)}
+                className="overflow-hidden border border-slate-200 bg-white"
+                style={{ borderRadius: `${Math.max(0, Math.min(40, Number(site.productsPage.cardRadius ?? 24)))}px` }}
+              >
+                <div className={`${imageClass} bg-slate-100`}>
+                  {product.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : null}
+                </div>
+                <div className="p-3">
+                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
+                    {getCommerceCollection(primaryCollectionOf(product)).name}
+                  </span>
+                  <p className="mt-2 truncate text-sm font-black">{product.name}</p>
+                  <p className="mt-1 text-sm font-black text-emerald-800">€{previewPrice(product).toFixed(2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+            Aún no hay artículos publicados en el catálogo.
+          </div>
+        )}
+
+        <p className="text-xs text-slate-400">{products.length} artículos reales cargados desde Commerce/Neon.</p>
+      </div>
+    </button>
+  );
+}
+
+function ServicesPreview({
+  site,
+  products,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const rows = products.filter((product) => productBelongsToCollection(product, "servicios")).slice(0, 6);
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="bg-[#173d2a] px-8 py-10 text-white">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">SERVICIOS HERENCIA</p>
+        <h1 className="mt-2 text-4xl font-black">{site.servicesPage.title}</h1>
+        <p className="mt-3 max-w-2xl text-sm text-white/70">{site.servicesPage.subtitle}</p>
+      </div>
+      <div className="grid gap-4 p-6 md:grid-cols-3">
+        {rows.length ? rows.map((service) => (
+          <div key={String(service.id)} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="h-36 bg-slate-100">
+              {service.image ? <img src={service.image} alt="" className="h-full w-full object-cover" /> : null}
+            </div>
+            <div className="p-4">
+              <p className="font-black">{service.name}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-500">{service.description}</p>
+              <p className="mt-3 font-black text-emerald-800">€{previewPrice(service).toFixed(2)}</p>
+            </div>
+          </div>
+        )) : (
+          <>
+            {[site.servicesPage.gardeningHeading, site.servicesPage.deliveryHeading, site.servicesPage.advisoryHeading].map((title) => (
+              <div key={title} className="rounded-2xl border border-slate-200 bg-white p-5">
+                <p className="font-black">{title}</p>
+                <p className="mt-2 text-xs text-slate-500">Añade servicios vendibles desde Catálogo para verlos aquí.</p>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function CollectionPreview({
+  site,
+  products,
+  kind,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  kind: "dulce" | "moda";
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const market = getMarketExperience(site);
+  const page = market[kind];
+  const rows = products.filter((product) => productBelongsToCollection(product, kind)).slice(0, 4);
+
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="relative min-h-72 overflow-hidden bg-slate-800">
+        {page.imageUrl ? <img src={page.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
+        <div className="relative p-8 text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">{page.kicker}</p>
+          <h1 className="mt-3 text-4xl font-black">{page.pageTitle}</h1>
+          <p className="mt-3 max-w-xl text-sm text-white/80">{page.pageSubtitle}</p>
+        </div>
+      </div>
+      <div className="p-6">
+        <h2 className="text-2xl font-black">{page.title}</h2>
+        <p className="mt-1 text-sm text-slate-500">{page.subtitle}</p>
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {rows.map((product) => (
+            <div key={String(product.id)} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="h-28 bg-slate-100">{product.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : null}</div>
+              <div className="p-3"><p className="truncate text-xs font-black">{product.name}</p><p className="mt-1 text-xs font-black text-emerald-800">€{previewPrice(product).toFixed(2)}</p></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function AboutPreview({
+  site,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const about = getMarketExperience(site).about;
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="grid min-h-80 md:grid-cols-2">
+        <div className="bg-[#173d2a] p-8 text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">{about.kicker}</p>
+          <h1 className="mt-3 text-4xl font-black">{about.title}</h1>
+          <p className="mt-4 text-sm leading-6 text-white/75">{about.description}</p>
+        </div>
+        <div className="bg-slate-100">{about.imageUrl ? <img src={about.imageUrl} alt="" className="h-full w-full object-cover" /> : null}</div>
+      </div>
+      <div className="grid gap-3 p-6 md:grid-cols-3">
+        {about.values.map((value, index) => (
+          <div key={index} className="rounded-2xl border border-slate-200 p-4">
+            <p className="font-black">{value.title}</p>
+            <p className="mt-2 text-xs text-slate-500">{value.description}</p>
+          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function HerenciaPreview({
+  site,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const sales = getMarketExperience(site).sales;
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="bg-gradient-to-br from-[#173d2a] to-[#315b42] p-10 text-white">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#e7d7a8]">HERENC(IA) · SALES</p>
+        <h1 className="mt-3 text-4xl font-black">{sales.title}</h1>
+        <p className="mt-3 max-w-2xl text-sm text-white/75">{sales.helperText}</p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          {sales.quickActions.map((action) => (
+            <span key={action.id} className="rounded-full border border-white/25 bg-white/10 px-3 py-2 text-xs font-black">{action.label}</span>
+          ))}
+        </div>
+        <span className="mt-7 inline-flex rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]">{sales.buttonLabel}</span>
+      </div>
+    </button>
+  );
+}
+
 function ContactPreview({
   site,
   selected,
