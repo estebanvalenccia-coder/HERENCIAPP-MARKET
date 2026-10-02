@@ -113,6 +113,10 @@ function ImageField({
     if (!file) return;
     setWorking(true);
     try {
+      const status = await backendApi.siteMediaStatus();
+      if (status.provider !== "cloudflare_r2" || !status.configured || status.connection?.ok === false) {
+        throw new Error(status.connection?.error || "Cloudflare R2 no está disponible");
+      }
       const result = await backendApi.uploadSiteMediaFile(file);
       const uploadedUrl = String(result.media?.url || "").trim();
       if (!uploadedUrl) throw new Error("R2 no devolvió una URL pública para la imagen");
@@ -129,21 +133,20 @@ function ImageField({
     <div className="space-y-2">
       <Field label={label} value={value.startsWith("data:image/") ? "" : value} onChange={onChange} />
       <div className="flex flex-wrap gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white">
+        <label className="relative inline-flex cursor-pointer items-center gap-2 overflow-hidden rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white">
           <Upload className="h-4 w-4" />
           {working ? "Subiendo..." : "Subir imagen"}
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
             disabled={working}
-            className="hidden"
-            onClick={(event) => {
-              event.currentTarget.value = "";
-            }}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              void upload(file);
+              const input = event.currentTarget;
+              const file = input.files?.[0];
+              void upload(file).finally(() => {
+                input.value = "";
+              });
             }}
           />
         </label>
