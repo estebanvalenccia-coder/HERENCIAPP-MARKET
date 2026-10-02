@@ -41,9 +41,11 @@ import {
   syncBuilderToLegacy,
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
+import { getMarketExperience } from "../../lib/marketExperience";
+import { COMMERCE_COLLECTIONS, productBelongsToCollection } from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
-type PageMode = "home" | "products" | "services" | "contact";
+type PageMode = "home" | "products" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
 type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
 type EditorTab = "contenido" | "diseno" | "avanzado";
 
