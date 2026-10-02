@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ArrowRight, MessageCircle, Phone, Sparkles } from "lucide-react";
-import { backendStorage } from "../lib/backendStorage";
+import { ArrowRight, MessageCircle, Phone, ShoppingCart, Sparkles } from "lucide-react";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
   defaultSiteContent,
   normalizePhoneForHref,
@@ -15,21 +15,63 @@ const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral"];
 
 export function Services() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [sellableServices, setSellableServices] = useState<any[]>([]);
 
   useEffect(() => {
-    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
+    let cancelled = false;
+    const load = async () => {
+      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      try {
+        const result = await backendApi.listCommerceProducts({ collection: "servicios" });
+        if (!cancelled) {
+          setSellableServices(
+            Array.isArray(result.products)
+              ? result.products.filter((item: any) => item.status === "active" || item.active === true)
+              : []
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          try {
+            const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+            setSellableServices(
+              Array.isArray(cached)
+                ? cached.filter((item: any) => Array.isArray(item.collections) && item.collections.includes("servicios") && (item.status === "active" || item.active !== false))
+                : []
+            );
+          } catch {
+            setSellableServices([]);
+          }
+        }
+      }
+    };
+    void load();
+    const reload = () => void load();
+    window.addEventListener("storage", reload);
+    window.addEventListener("backend-storage", reload);
     return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener("backend-storage", load);
+      cancelled = true;
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("backend-storage", reload);
     };
   }, []);
 
   const market = getMarketExperience(site);
   const whatsapp = normalizeWhatsAppPhone(site.footer.whatsappPhone);
   const phone = normalizePhoneForHref(site.footer.callPhone);
+
+  function addServiceToCart(service: any) {
+    try {
+      const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+      const existing = cart.find((item: any) => String(item.id) === String(service.id));
+      if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
+      else cart.push({ ...service, quantity: 1, trackInventory: false });
+      void backendStorage.setItem("cart", JSON.stringify(cart));
+      window.dispatchEvent(new Event("storage"));
+    } catch {
+      return;
+    }
+  }
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
@@ -131,6 +173,49 @@ export function Services() {
           </article>
         </div>
       </section>
+
+      {sellableServices.length > 0 && (
+        <section className="border-t border-[#ded9cd] bg-white">
+          <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">Contratación online</p>
+                <h2 className="mt-2 text-3xl font-medium">Servicios con precio publicado</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
+                  Estos servicios se crean desde Administración → Catálogo y pueden añadirse al carrito como cualquier otro artículo.
+                </p>
+              </div>
+              <Link to="/productos?coleccion=servicios" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
+                Ver todos <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {sellableServices.map((service) => (
+                <article key={String(service.id)} className="overflow-hidden rounded-[2rem] border border-[#e0dcd2] bg-[#fbfaf6]">
+                  <Link to={`/producto/${service.id}`} className="block h-52 overflow-hidden bg-[#efede6]">
+                    {service.image ? <img src={service.image} alt={service.name} className="h-full w-full object-cover transition duration-500 hover:scale-105" /> : <div className="flex h-full items-center justify-center text-sm text-[#718076]">Sin imagen</div>}
+                  </Link>
+                  <div className="p-5">
+                    <Link to={`/producto/${service.id}`} className="text-xl font-black">{service.name}</Link>
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#6c786f]">{service.description}</p>
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <span className="text-xl font-black text-[#315b42]">€{Number(service.onSale && service.salePrice ? service.salePrice : service.price || 0).toFixed(2)}</span>
+                      <button
+                        type="button"
+                        onClick={() => addServiceToCart(service)}
+                        className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-4 py-2.5 text-sm font-black text-white"
+                      >
+                        <ShoppingCart className="h-4 w-4" /> Contratar
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
