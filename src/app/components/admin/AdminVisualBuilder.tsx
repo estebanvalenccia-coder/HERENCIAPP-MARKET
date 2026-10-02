@@ -51,7 +51,7 @@ import {
 } from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
-type PageMode = "home" | "products" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
+type PageMode = "home" | "products" | "product-detail" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
 type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
 type EditorTab = "contenido" | "diseno" | "avanzado";
 
@@ -894,6 +894,7 @@ export function AdminVisualBuilder({
               {([
                 ["home", "Inicio"],
                 ["products", "Productos"],
+                ["product-detail", "Ficha producto"],
                 ["services", "Servicios"],
                 ["dulce", "Dulce"],
                 ["moda", "Moda"],
@@ -1011,6 +1012,7 @@ export function AdminVisualBuilder({
                 <div>
                   <p className="text-sm font-black">
                     {pageMode === "products" ? "Página de Productos"
+                      : pageMode === "product-detail" ? "Ficha de producto"
                       : pageMode === "services" ? "Página de Servicios"
                       : pageMode === "dulce" ? "Página Dulce"
                       : pageMode === "moda" ? "Página Moda"
@@ -1020,6 +1022,7 @@ export function AdminVisualBuilder({
                   </p>
                   <p className="text-xs text-slate-500">
                     {pageMode === "products" ? "Catálogo, filtros y presentación"
+                      : pageMode === "product-detail" ? "Galería, compra, módulos y contenido"
                       : pageMode === "services" ? "Servicios y contratación"
                       : pageMode === "dulce" || pageMode === "moda" ? "Portada y colección"
                       : pageMode === "about" ? "Historia, imagen y valores"
@@ -1060,7 +1063,7 @@ export function AdminVisualBuilder({
               onChange={(event) => {
                 const value = event.target.value;
                 setSelected(value);
-                if (["products","services","dulce","moda","about","contact","herencia"].includes(value)) {
+                if (["products","product-detail","services","dulce","moda","about","contact","herencia"].includes(value)) {
                   setPageMode(value as PageMode);
                 } else if (pageMode !== "home") {
                   setPageMode("home");
@@ -1076,6 +1079,7 @@ export function AdminVisualBuilder({
               ))}
               <option value="footer">Footer</option>
               <option value="products">Productos</option>
+              <option value="product-detail">Ficha de producto</option>
               <option value="services">Servicios</option>
               <option value="dulce">Dulce</option>
               <option value="moda">Moda</option>
@@ -1186,6 +1190,13 @@ export function AdminVisualBuilder({
                 onAddProduct={onAddProduct}
                 onManageCollections={onManageCollections}
               />
+            ) : pageMode === "product-detail" ? (
+              <ProductDetailTemplatePreview
+                site={site}
+                product={catalogPreview[0] || null}
+                selected={selected === "product-detail"}
+                onSelect={() => setSelected("product-detail")}
+              />
             ) : pageMode === "services" ? (
               <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
             ) : pageMode === "dulce" || pageMode === "moda" ? (
@@ -1225,6 +1236,7 @@ export function AdminVisualBuilder({
                     selected === "header" ? "Header"
                       : selected === "footer" ? "Footer"
                       : selected === "products" ? "Productos"
+                      : selected === "product-detail" ? "Ficha de producto"
                       : selected === "services" ? "Servicios"
                       : selected === "dulce" ? "Dulce"
                       : selected === "moda" ? "Moda"
@@ -1298,6 +1310,7 @@ export function AdminVisualBuilder({
                 onManageCollections={onManageCollections}
               />
             )}
+            {selected === "product-detail" && <ProductDetailPageEditor site={site} updateSite={updateSite} />}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
             {selected === "dulce" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="dulce" />}
             {selected === "moda" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="moda" />}
