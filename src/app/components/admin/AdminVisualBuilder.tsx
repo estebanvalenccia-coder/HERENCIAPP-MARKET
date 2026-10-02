@@ -448,11 +448,14 @@ export function AdminVisualBuilder({
   onPublished,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   onClose: () => void;
   onPublished?: () => void;
   onManageProducts?: () => void;
   onAddProduct?: () => void;
+  onManageCollections?: () => void;
+  onManageCollections?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
     const draft = backendStorage.getItem("siteContentDraft");
@@ -497,6 +500,9 @@ export function AdminVisualBuilder({
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
   const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
+  const [catalogCollections, setCatalogCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [catalogPreviewCollection, setCatalogPreviewCollection] = useState("todos");
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
@@ -534,9 +540,16 @@ export function AdminVisualBuilder({
 
   async function loadCatalogPreview() {
     try {
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections(),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collectionRows = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections.filter((item: any) => item.status === "active")
+        : [];
       setCatalogPreview(rows.filter((product: any) => product.status !== "archived" && !product.deletedAt));
+      if (collectionRows.length) setCatalogCollections(collectionRows);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch {
       try {
@@ -556,8 +569,10 @@ export function AdminVisualBuilder({
     void loadCatalogPreview();
     const reload = () => void loadCatalogPreview();
     window.addEventListener("commerce-products-changed", reload);
+    window.addEventListener("commerce-collections-changed", reload);
     return () => {
       window.removeEventListener("commerce-products-changed", reload);
+      window.removeEventListener("commerce-collections-changed", reload);
     };
   }, []);
 
@@ -1158,6 +1173,7 @@ export function AdminVisualBuilder({
               <ProductsPreview
                 site={site}
                 products={catalogPreview}
+                collections={catalogCollections}
                 selected={selected === "products"}
                 selectedProductId={selectedCatalogProduct ? String(selectedCatalogProduct.id) : ""}
                 activeCollection={catalogPreviewCollection}
@@ -1168,6 +1184,7 @@ export function AdminVisualBuilder({
                 onSearchChange={setCatalogPreviewSearch}
                 onManageProducts={onManageProducts}
                 onAddProduct={onAddProduct}
+                onManageCollections={onManageCollections}
               />
             ) : pageMode === "services" ? (
               <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
@@ -1278,6 +1295,7 @@ export function AdminVisualBuilder({
                 updateSite={updateSite}
                 onManageProducts={onManageProducts}
                 onAddProduct={onAddProduct}
+                onManageCollections={onManageCollections}
               />
             )}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
@@ -1895,17 +1913,20 @@ function ProductsPageEditor({
   updateSite,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   site: SiteContent;
   updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
   onManageProducts?: () => void;
   onAddProduct?: () => void;
+  onManageCollections?: () => void;
 }) {
   const patch = (value: Partial<SiteContent["productsPage"]>) => updateSite((current) => ({ ...current, productsPage: { ...current.productsPage, ...value } }));
   return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-2">
-      <button type="button" onClick={onAddProduct} disabled={!onAddProduct} className="rounded-xl bg-emerald-700 px-3 py-3 text-xs font-black text-white disabled:opacity-40">+ Crear producto</button>
-      <button type="button" onClick={onManageProducts} disabled={!onManageProducts} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Gestionar catálogo</button>
+    <div className="grid grid-cols-3 gap-2">
+      <button type="button" onClick={onAddProduct} disabled={!onAddProduct} className="rounded-xl bg-emerald-700 px-3 py-3 text-xs font-black text-white disabled:opacity-40">+ Crear</button>
+      <button type="button" onClick={onManageProducts} disabled={!onManageProducts} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Catálogo</button>
+      <button type="button" onClick={onManageCollections} disabled={!onManageCollections} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Colecciones</button>
     </div>
 
     <div className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
@@ -2392,6 +2413,7 @@ function previewPrice(product: any) {
 function ProductsPreview({
   site,
   products,
+  collections,
   selected,
   selectedProductId,
   activeCollection,
@@ -2402,9 +2424,11 @@ function ProductsPreview({
   onSearchChange,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   site: SiteContent;
   products: any[];
+  collections: any[];
   selected: boolean;
   selectedProductId: string;
   activeCollection: string;
@@ -2482,7 +2506,7 @@ function ProductsPreview({
             >
               Todo
             </button>
-            {COMMERCE_COLLECTIONS.map((item) => (
+            {collections.map((item) => (
               <button
                 key={item.id}
                 type="button"
