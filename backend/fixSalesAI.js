@@ -271,6 +271,19 @@ async function salesBouquetHandler(req, res) {
   if (!commercialRateLimit(req, res)) return;
 
   const body = req.body || {};
+  const exactFlowers = Array.isArray(body.exactFlowers)
+    ? body.exactFlowers
+        .slice(0, 20)
+        .map((flower) => ({
+          id: clampText(flower?.id, 80),
+          name: clampText(flower?.name, 120),
+          quantity: Math.max(1, Math.min(50, Number(flower?.quantity || 1))),
+        }))
+        .filter((flower) => flower.name)
+    : [];
+  const exactComposition = exactFlowers
+    .map((flower) => `${flower.quantity} x ${flower.name}`)
+    .join(", ");
   const budget = Number(body.budget || 0);
   const size = ["S","M","L","XL"].includes(String(body.size || "").toUpperCase())
     ? String(body.size).toUpperCase()
@@ -310,15 +323,21 @@ No incluyas consejos ni cuidados.`;
       };
     }
 
-    const imagePrompt = clampText(proposal.imagePrompt, 1800) ||
-      `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}`;
+    const imagePrompt = exactFlowers.length
+      ? `Fotografía de producto hiperrealista de un ramo físicamente realizable. Composición OBLIGATORIA: ${exactComposition}. No añadas ningún otro tipo de flor que no aparezca en esa lista. Respeta aproximadamente las cantidades relativas indicadas. Estilo ${clampText(body.style, 80) || "Elegante"}, tamaño ${size}. Mantén los colores naturales de cada variedad. Ramo completo, centrado, fondo limpio y claro, iluminación natural premium.`
+      : clampText(proposal.imagePrompt, 1800) ||
+        `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}`;
     const image = await generateGeminiImage(imagePrompt);
 
     res.json({
       proposal: {
         name: clampText(proposal.name, 120) || "Ramo personalizado Herencia",
         description: clampText(proposal.description, 500),
-        recommendedFlowers: Array.isArray(proposal.recommendedFlowers) ? proposal.recommendedFlowers.slice(0, 8) : [],
+        recommendedFlowers: exactFlowers.length
+          ? exactFlowers.map((flower) => flower.name)
+          : Array.isArray(proposal.recommendedFlowers)
+            ? proposal.recommendedFlowers.slice(0, 8)
+            : [],
         imagePrompt,
       },
       image,
