@@ -6082,7 +6082,7 @@ function requireNeuralActionId(req, res) {
 }
 
 async function readNeuralProducts() {
-  return parseStoredJson(await readStorageValue("adminProducts"), []);
+  return readCommerceProductsPrimary({ includeArchived: true });
 }
 
 async function writeNeuralProducts(products) {
