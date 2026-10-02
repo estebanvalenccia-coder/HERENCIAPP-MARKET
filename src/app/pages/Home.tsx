@@ -104,7 +104,16 @@ export function Home() {
           className="absolute inset-0 h-full w-full object-cover"
           style={{ objectPosition: "center 15%" }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#173d2a]/62 to-transparent" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(90deg,
+              rgba(16, 43, 32, ${Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100}) 0%,
+              rgba(23, 61, 42, ${(Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100) * 0.69}) ${Math.round(Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72))) * 0.58)}%,
+              rgba(23, 61, 42, 0) ${Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72)))}%
+            )`,
+          }}
+        />
         <div className="relative mx-auto flex min-h-[620px] max-w-7xl items-center px-5 py-16 sm:px-8 lg:px-10">
           <div className="max-w-2xl text-white">
             <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
