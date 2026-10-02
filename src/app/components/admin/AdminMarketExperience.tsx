@@ -61,34 +61,41 @@ async function compressImage(file: File, maxWidth = 1800, targetBytes = 1_500_00
     img.src = source;
   });
 
-  let width = Math.max(1, Math.round(image.width * Math.min(1, maxWidth / Math.max(1, image.width))));
-  let height = Math.max(1, Math.round(image.height * (width / Math.max(1, image.width))));
-  let quality = 0.86;
-  let dataUrl = "";
+  const naturalWidth = Math.max(1, image.naturalWidth || image.width || 1);
+  const naturalHeight = Math.max(1, image.naturalHeight || image.height || 1);
+  const maxHeight = 1800;
+  const maxPixels = 3_000_000;
+  const pixelScale = Math.sqrt(maxPixels / Math.max(1, naturalWidth * naturalHeight));
+  const scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight, pixelScale);
 
+  let width = Math.max(1, Math.round(naturalWidth * scale));
+  let height = Math.max(1, Math.round(naturalHeight * scale));
+  let quality = 0.86;
+
+  const validDataUrl = (value: string) => /^data:image\/jpeg;base64,.+/i.test(value);
   const dataUrlBytes = (value: string) => {
+    if (!validDataUrl(value)) return Number.POSITIVE_INFINITY;
     const payload = value.slice(value.indexOf(",") + 1);
     return Math.ceil((payload.length * 3) / 4);
   };
 
-  for (let attempt = 0; attempt < 7; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("El navegador no puede procesar imágenes");
     ctx.drawImage(image, 0, 0, width, height);
-    dataUrl = canvas.toDataURL("image/jpeg", quality);
 
-    if (dataUrlBytes(dataUrl) <= targetBytes) return dataUrl;
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (validDataUrl(dataUrl) && dataUrlBytes(dataUrl) <= targetBytes) return dataUrl;
 
-    width = Math.max(640, Math.round(width * 0.85));
-    height = Math.max(1, Math.round(image.height * (width / Math.max(1, image.width))));
-    quality = Math.max(0.54, quality - 0.06);
+    width = Math.max(480, Math.round(width * 0.82));
+    height = Math.max(1, Math.round(naturalHeight * (width / naturalWidth)));
+    quality = Math.max(0.5, quality - 0.06);
   }
 
-  if (dataUrl && dataUrlBytes(dataUrl) <= 2_000_000) return dataUrl;
-  throw new Error("La imagen sigue siendo demasiado pesada después de comprimirla");
+  throw new Error("Safari no pudo convertir la imagen a un formato válido. Prueba otra imagen o una versión más pequeña.");
 }
 
 function ImageField({
