@@ -632,7 +632,7 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
     "humidity","growth","origin","potDiameter","height","careNotes","tags","barcode","supplierId",
     "material","color","dimensions","weight","allergens","portions","flavor",
     "requiresRefrigeration","madeToOrder","durationMinutes","serviceArea","bookingRequired","leadTimeDays",
-    "sortOrder","vendor","customFields"
+    "sortOrder","vendor","customFields","plantProfile","aiPlantProfileGenerated","aiPlantProfileGeneratedAt"
   ]){
     if(input[key]!==undefined) metadata[key]=input[key];
   }
