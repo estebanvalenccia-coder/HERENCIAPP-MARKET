@@ -866,7 +866,12 @@ export function AdminDashboard() {
 
           {currentSection === "flower-costs" && <AdminFlowerCosts />}
 
-          {currentSection === "content" && <AdminContent />}
+          {currentSection === "content" && (
+            <AdminContent
+              onManageProducts={() => setCurrentSection("products")}
+              onAddProduct={() => setCurrentSection("add-product")}
+            />
+          )}
 
           {currentSection === "delivery" && <AdminDeliveryPanel />}
 
