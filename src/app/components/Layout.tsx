@@ -402,6 +402,7 @@ export function Layout() {
               <p className="font-black">Privacidad y cookies</p>
               <p className="mt-1 text-sm text-[#6d776f]">
                 Herencia usa almacenamiento esencial para carrito, sesión y funcionamiento de la tienda.
+                Si aceptas, también podremos medir visitas y uso de forma agregada para mejorar la tienda.
                 Puedes aceptar o mantener solo lo esencial.
               </p>
             </div>
