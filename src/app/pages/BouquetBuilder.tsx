@@ -100,6 +100,9 @@ export function BouquetBuilder() {
   const [previewImage, setPreviewImage] = useState(defaultPreviewImage);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [finalProposalImage, setFinalProposalImage] = useState("");
+  const [finalGenerating, setFinalGenerating] = useState(false);
+  const [customerComment, setCustomerComment] = useState("");
   const previewRequestRef = useRef(0);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
 
@@ -121,6 +124,11 @@ export function BouquetBuilder() {
       }),
     [selectedFlowers, size, style]
   );
+
+  useEffect(() => {
+    setFinalProposalImage("");
+    setSent(false);
+  }, [previewKey]);
 
   useEffect(() => {
     const requestId = ++previewRequestRef.current;
@@ -202,16 +210,57 @@ export function BouquetBuilder() {
     return false;
   };
 
-  const bouquet = () => ({
+  const bouquet = (image = finalProposalImage || previewImage) => ({
     id: Date.now(),
     name: `Ramo personalizado ${style}`,
     price: total,
-    image: previewImage,
+    image,
     quantity: 1,
     description,
     customBouquet: true,
     bouquetDetails: { style, size, flowers: selectedFlowers.map((item) => ({ name: item.name, quantity: item.quantity, unitPrice: item.price })) },
   });
+
+  const generateFinalProposal = async () => {
+    if (!hasFlowers()) return "";
+
+    setFinalGenerating(true);
+    try {
+      const selectedSummary = selectedFlowers
+        .map((flower) => `${flower.quantity} x ${flower.name}`)
+        .join(", ");
+      const response = await fetch("/api/ai/sales-bouquet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: `PROPUESTA FINAL. Genera el ramo completo usando exactamente todas estas flores y cantidades: ${selectedSummary}. No omitas variedades y no añadas otras flores.`,
+          budget: total,
+          style,
+          color: "Respetar los colores naturales de todas las flores seleccionadas",
+          size,
+          exactFlowers: selectedFlowers.map((flower) => ({
+            id: flower.id,
+            name: flower.name,
+            quantity: flower.quantity,
+          })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.image) {
+        throw new Error(data?.error || "No se pudo generar la propuesta final");
+      }
+      setFinalProposalImage(data.image);
+      setPreviewImage(data.image);
+      setPreviewError("");
+      toast.success("Propuesta final generada con todas las flores seleccionadas 🌸");
+      return String(data.image);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar la propuesta final");
+      return "";
+    } finally {
+      setFinalGenerating(false);
+    }
+  };
 
   const addToCart = () => {
     if (!hasFlowers()) return;
@@ -224,7 +273,13 @@ export function BouquetBuilder() {
     if (!hasFlowers()) return;
     setSending(true);
     try {
-      const item = bouquet();
+      let proposalImage = finalProposalImage;
+      if (!proposalImage) {
+        proposalImage = await generateFinalProposal();
+        if (!proposalImage) return;
+      }
+
+      const item = bouquet(proposalImage);
       const selectedSummary = selectedFlowers.map((flower) => `${flower.quantity} x ${flower.name}`).join(", ");
       await backendApi.createOrder({
         id: `flores-${Date.now()}`,
@@ -240,6 +295,7 @@ export function BouquetBuilder() {
           source: "FLORES_TABLET",
           type: "flower_admin_request",
           idea: description,
+          customerComment: customerComment.trim() || null,
           selectedSummary,
           budget: total,
           style,
@@ -251,9 +307,11 @@ export function BouquetBuilder() {
             shortDescription: `Solicitud FLORES ${size} - ${selectedSummary}`,
             description,
             recommendedFlowers: selectedFlowers.map((flower) => flower.name),
-            sellingTip: "Solicitud enviada desde la tablet FLORES. Revisar antes de publicar.",
+            sellingTip: customerComment.trim()
+              ? `Comentario del cliente: ${customerComment.trim()}`
+              : "Solicitud enviada desde la tablet FLORES. Revisar antes de publicar.",
           },
-          image: { imageUrl: previewImage },
+          image: { imageUrl: proposalImage },
         },
       });
       setSent(true);
@@ -306,8 +364,45 @@ export function BouquetBuilder() {
               <div className="space-y-3 max-h-64 overflow-auto pr-1">{selectedFlowers.length === 0 && <p className="text-sm text-muted-foreground">Aún no has elegido flores.</p>}{selectedFlowers.map((item) => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.name} x{item.quantity}</span><span>{(item.price * item.quantity).toFixed(2)} €</span></div>)}</div>
               <div className="border-t border-border mt-5 pt-5 space-y-2"><div className="flex justify-between"><span>Flores</span><span>{flowersSubtotal.toFixed(2)} €</span></div><div className="flex justify-between"><span>Montaje {size}</span><span>{laborCost.toFixed(2)} €</span></div><div className="flex justify-between text-xl font-bold pt-2"><span>Total</span><span>{total.toFixed(2)} €</span></div></div>
               <p className="text-sm text-muted-foreground mt-4">{description}</p>
-              {sent && <div className="mt-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 px-4 py-3 text-sm font-medium">Solicitud enviada al admin. Pulsa Actualizar FLORES en el panel.</div>}
-              <button onClick={sendToAdmin} disabled={sending} className="w-full mt-6 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"><Send className="w-5 h-5" /> {sending ? "Enviando al panel..." : "Enviar solicitud a floristería"}</button>
+
+              <div className="mt-5 rounded-2xl border border-border bg-muted/30 p-4">
+                <h3 className="font-bold">Propuesta final</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cuando termines de elegir, genera una imagen definitiva usando todas las flores y cantidades seleccionadas.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void generateFinalProposal()}
+                  disabled={finalGenerating || !selectedFlowers.length}
+                  className="w-full mt-3 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {finalGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  {finalGenerating ? "Generando ramo final..." : finalProposalImage ? "Regenerar propuesta final" : "Generar propuesta final"}
+                </button>
+                {finalProposalImage && (
+                  <p className="mt-2 text-xs font-medium text-green-700">
+                    ✓ Propuesta final lista con la selección completa.
+                  </p>
+                )}
+              </div>
+
+              <label className="block mt-4">
+                <span className="text-sm font-semibold">Comentario para la floristería (opcional)</span>
+                <textarea
+                  value={customerComment}
+                  onChange={(event) => setCustomerComment(event.target.value)}
+                  maxLength={600}
+                  rows={3}
+                  placeholder="Ej.: envolver en papel kraft, es para un cumpleaños, prefiero que quede más abierto..."
+                  className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none focus:border-primary"
+                />
+                <span className="mt-1 block text-right text-[11px] text-muted-foreground">
+                  {customerComment.length}/600
+                </span>
+              </label>
+
+              {sent && <div className="mt-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 px-4 py-3 text-sm font-medium">Propuesta enviada al panel con su composición, imagen final y comentario.</div>}
+              <button onClick={sendToAdmin} disabled={sending || finalGenerating} className="w-full mt-6 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"><Send className="w-5 h-5" /> {sending ? "Enviando propuesta..." : "Enviar propuesta a floristería"}</button>
               <button onClick={addToCart} className="w-full mt-3 flex items-center justify-center gap-2 bg-background border border-border py-4 rounded-xl font-bold hover:bg-muted transition-colors"><ShoppingCart className="w-5 h-5" /> Añadir al carrito</button>
             </div>
           </aside>
