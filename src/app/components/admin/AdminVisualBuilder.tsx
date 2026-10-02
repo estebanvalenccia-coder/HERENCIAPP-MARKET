@@ -861,27 +861,31 @@ export function AdminVisualBuilder({
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_350px]">
         <aside className="hidden overflow-y-auto border-r border-slate-200 bg-white lg:block">
           <div className="border-b border-slate-200 p-3">
-            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("home");
-                  if (selected === "contact") setSelected("header");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "home" ? "bg-white shadow-sm" : ""}`}
-              >
-                Inicio
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("contact");
-                  setSelected("contact");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "contact" ? "bg-white shadow-sm" : ""}`}
-              >
-                Contacto
-              </button>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+              {([
+                ["home", "Inicio"],
+                ["products", "Productos"],
+                ["services", "Servicios"],
+                ["dulce", "Dulce"],
+                ["moda", "Moda"],
+                ["about", "Nosotros"],
+                ["contact", "Contacto"],
+                ["herencia", "Herenc(IA)"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setPageMode(mode);
+                    if (mode === "home") setSelected("header");
+                    else setSelected(mode);
+                    setTab("contenido");
+                  }}
+                  className={`rounded-lg px-2 py-2 text-xs font-black ${pageMode === mode ? "bg-white shadow-sm" : ""}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
