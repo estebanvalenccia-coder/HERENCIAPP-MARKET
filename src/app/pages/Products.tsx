@@ -49,6 +49,22 @@ export function Products() {
   const [petSafe, setPetSafe] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
 
+  const gridClass =
+    Number(site.productsPage.columns || 4) <= 2
+      ? "grid-cols-1 sm:grid-cols-2"
+      : Number(site.productsPage.columns || 4) === 3
+        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+        : Number(site.productsPage.columns || 4) >= 5
+          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+          : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+
+  const imageClass =
+    site.productsPage.imageAspect === "portrait"
+      ? "h-80"
+      : site.productsPage.imageAspect === "landscape"
+        ? "h-52"
+        : "h-64";
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const collection = params.get("coleccion") || params.get("collection");
@@ -58,6 +74,10 @@ export function Products() {
     if (category) setSelectedCategory(category);
     if (search !== null) setSearchQuery(search);
   }, [location.search]);
+
+  useEffect(() => {
+    if (site.productsPage.defaultSort) setSort(site.productsPage.defaultSort);
+  }, [site.productsPage.defaultSort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,24 +350,28 @@ export function Products() {
               <option value="stock">Disponibilidad</option>
             </select>
 
-            <button onClick={() => setShowFilters((value) => !value)} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3 hover:bg-accent">
-              <SlidersHorizontal className="h-5 w-5" /> Filtros
-            </button>
+            {site.productsPage.showFilters !== false && (
+              <button onClick={() => setShowFilters((value) => !value)} className="flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3 hover:bg-accent">
+                <SlidersHorizontal className="h-5 w-5" /> {site.productsPage.filtersLabel || "Filtros"}
+              </button>
+            )}
           </div>
 
-          <div>
-            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Colecciones</p>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setSelectedCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
-              {COMMERCE_COLLECTIONS.map((item) => (
-                <button key={item.id} onClick={() => setSelectedCollection(item.id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === item.id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
-                  {item.name}
-                </button>
-              ))}
+          {site.productsPage.showCollectionTabs !== false && (
+            <div>
+              <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Colecciones</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setSelectedCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
+                {COMMERCE_COLLECTIONS.map((item) => (
+                  <button key={item.id} onClick={() => setSelectedCollection(item.id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === item.id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
+                    {item.name}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {selectedDefinition && (
+          {selectedDefinition && site.productsPage.showSubcategories !== false && (
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Subcategorías</p>
               <div className="flex flex-wrap gap-2">
@@ -361,7 +385,7 @@ export function Products() {
             </div>
           )}
 
-          {showFilters && (
+          {showFilters && site.productsPage.showFilters !== false && (
             <div className={`grid gap-4 rounded-2xl border border-border bg-card p-5 ${plantFilters ? "md:grid-cols-2 lg:grid-cols-5" : "md:grid-cols-3"}`}>
               <label className="text-sm font-medium">
                 Disponibilidad
@@ -401,7 +425,7 @@ export function Products() {
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>{filteredProducts.length} artículos</span>
-            <span>{favorites.length} favoritos</span>
+            {site.productsPage.showFavorites !== false && <span>{favorites.length} favoritos</span>}
           </div>
         </div>
 
@@ -412,7 +436,7 @@ export function Products() {
             <button onClick={resetFilters} className="mt-4 font-semibold text-primary">Quitar filtros</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={`grid gap-6 ${gridClass}`}>
             {filteredProducts.map((product, index) => {
               const collection = getCommerceCollection(primaryCollectionOf(product));
               const tracked = product.trackInventory !== false;
@@ -426,9 +450,10 @@ export function Products() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                  className="group overflow-hidden rounded-3xl border border-border bg-card transition-all hover:shadow-lg"
+                  className="group overflow-hidden border border-border bg-card transition-all hover:shadow-lg"
+                  style={{ borderRadius: `${Math.max(0, Math.min(40, Number(site.productsPage.cardRadius ?? 24)))}px` }}
                 >
-                  <Link to={`/producto/${product.id}`} className="relative block h-64 overflow-hidden bg-muted">
+                  <Link to={`/producto/${product.id}`} className={`relative block overflow-hidden bg-muted ${imageClass}`}>
                     {product.image ? (
                       <img src={product.image} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
@@ -436,9 +461,11 @@ export function Products() {
                     )}
                     <span className="absolute bottom-3 left-3 rounded-full bg-background/90 px-3 py-1 text-[11px] font-black backdrop-blur">{collection.name}</span>
                     {product.featured && <div className="absolute right-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">{site.productsPage.featuredLabel}</div>}
-                    <button onClick={(event) => { event.preventDefault(); void toggleFavorite(product.id); }} className={`absolute left-3 top-3 rounded-full p-2 backdrop-blur-sm ${favorite ? "bg-primary text-primary-foreground" : "bg-background/85 text-foreground"}`}>
-                      <Heart className={`h-5 w-5 ${favorite ? "fill-current" : ""}`} />
-                    </button>
+                    {site.productsPage.showFavorites !== false && (
+                      <button onClick={(event) => { event.preventDefault(); void toggleFavorite(product.id); }} className={`absolute left-3 top-3 rounded-full p-2 backdrop-blur-sm ${favorite ? "bg-primary text-primary-foreground" : "bg-background/85 text-foreground"}`}>
+                        <Heart className={`h-5 w-5 ${favorite ? "fill-current" : ""}`} />
+                      </button>
+                    )}
                   </Link>
 
                   <div className="p-5">
