@@ -658,3 +658,134 @@ export async function archiveNeonCommerceProduct(id, { permanent = false } = {})
 export async function closeNeon() {
   if (neonPool) await neonPool.end();
 }
+
+
+let analyticsSchemaReady = false;
+
+async function ensureNeonAnalyticsSchema() {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  if (analyticsSchemaReady) return;
+
+  await neonPool.query(`
+    create table if not exists visitor_analytics (
+      id bigserial primary key,
+      visitor_id text not null,
+      session_id text,
+      event_type text not null default 'pageview',
+      path text,
+      referrer text,
+      referrer_host text,
+      country text,
+      region text,
+      city text,
+      timezone text,
+      language text,
+      device text,
+      browser text,
+      created_at timestamptz not null default now()
+    )
+  `);
+  await neonPool.query("create index if not exists visitor_analytics_created_at_idx on visitor_analytics(created_at desc)");
+  await neonPool.query("create index if not exists visitor_analytics_visitor_idx on visitor_analytics(visitor_id, created_at desc)");
+  await neonPool.query("create index if not exists visitor_analytics_event_idx on visitor_analytics(event_type, created_at desc)");
+  analyticsSchemaReady = true;
+}
+
+export async function recordNeonAnalyticsEvent(input = {}) {
+  await ensureNeonAnalyticsSchema();
+  const clean = (value, max = 500) => String(value || "").trim().slice(0, max) || null;
+  await neonPool.query(
+    `insert into visitor_analytics (
+      visitor_id, session_id, event_type, path, referrer, referrer_host,
+      country, region, city, timezone, language, device, browser, created_at
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())`,
+    [
+      clean(input.visitorId, 120) || "anonymous",
+      clean(input.sessionId, 120),
+      clean(input.eventType, 80) || "pageview",
+      clean(input.path, 500),
+      clean(input.referrer, 700),
+      clean(input.referrerHost, 220),
+      clean(input.country, 120),
+      clean(input.region, 160),
+      clean(input.city, 160),
+      clean(input.timezone, 120),
+      clean(input.language, 80),
+      clean(input.device, 80),
+      clean(input.browser, 120),
+    ]
+  );
+  return { ok: true };
+}
+
+export async function getNeonAnalyticsSummary(days = 30) {
+  await ensureNeonAnalyticsSchema();
+  const safeDays = Math.max(1, Math.min(365, Math.floor(Number(days) || 30)));
+  const params = [safeDays];
+
+  const [totals, daily, pages, locations, sources, devices, browsers] = await Promise.all([
+    neonPool.query(`
+      select
+        count(*) filter (where event_type='pageview')::int as pageviews,
+        count(distinct visitor_id) filter (where event_type='pageview')::int as visitors,
+        count(distinct visitor_id) filter (where event_type='pageview' and created_at >= date_trunc('day', now()))::int as visitors_today,
+        count(*) filter (where event_type='space_preview')::int as space_previews
+      from visitor_analytics
+      where created_at >= now() - ($1::int * interval '1 day')
+    `, params),
+    neonPool.query(`
+      select to_char(date_trunc('day', created_at), 'YYYY-MM-DD') as day,
+             count(*) filter (where event_type='pageview')::int as pageviews,
+             count(distinct visitor_id) filter (where event_type='pageview')::int as visitors
+      from visitor_analytics
+      where created_at >= now() - ($1::int * interval '1 day')
+      group by 1 order by 1 asc
+    `, params),
+    neonPool.query(`
+      select coalesce(nullif(path,''), '/') as label, count(*)::int as value
+      from visitor_analytics
+      where event_type='pageview' and created_at >= now() - ($1::int * interval '1 day')
+      group by 1 order by value desc limit 12
+    `, params),
+    neonPool.query(`
+      select trim(concat_ws(', ', nullif(city,''), nullif(region,''), nullif(country,''))) as label,
+             count(distinct visitor_id)::int as value
+      from visitor_analytics
+      where event_type='pageview'
+        and created_at >= now() - ($1::int * interval '1 day')
+        and coalesce(city,region,country,'') <> ''
+      group by 1 order by value desc limit 12
+    `, params),
+    neonPool.query(`
+      select coalesce(nullif(referrer_host,''), 'Directo / desconocido') as label,
+             count(*)::int as value
+      from visitor_analytics
+      where event_type='pageview' and created_at >= now() - ($1::int * interval '1 day')
+      group by 1 order by value desc limit 12
+    `, params),
+    neonPool.query(`
+      select coalesce(nullif(device,''), 'Desconocido') as label, count(*)::int as value
+      from visitor_analytics
+      where event_type='pageview' and created_at >= now() - ($1::int * interval '1 day')
+      group by 1 order by value desc limit 8
+    `, params),
+    neonPool.query(`
+      select coalesce(nullif(browser,''), 'Desconocido') as label, count(*)::int as value
+      from visitor_analytics
+      where event_type='pageview' and created_at >= now() - ($1::int * interval '1 day')
+      group by 1 order by value desc limit 8
+    `, params),
+  ]);
+
+  return {
+    days: safeDays,
+    totals: totals.rows?.[0] || { pageviews: 0, visitors: 0, visitors_today: 0, space_previews: 0 },
+    daily: daily.rows || [],
+    pages: pages.rows || [],
+    locations: locations.rows || [],
+    sources: sources.rows || [],
+    devices: devices.rows || [],
+    browsers: browsers.rows || [],
+    generatedAt: new Date().toISOString(),
+  };
+}
