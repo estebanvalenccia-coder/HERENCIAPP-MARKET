@@ -5623,6 +5623,101 @@ No inventes una identificación exacta si el nombre es ambiguo: indícalo de for
   res.json({ result: JSON.parse(cleanContent) });
 });
 
+app.post("/api/ai/product-image", requireAdmin, async (req, res) => {
+  const prompt = String(req.body?.prompt || "").trim();
+  if (!prompt) return res.status(400).json({ error: "Falta el prompt de imagen" });
+
+  const warnings = [];
+  const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
+  const geminiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    "";
+
+  if (geminiKey) {
+    try {
+      const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          signal: AbortSignal.timeout(timeoutMs),
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": geminiKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `${prompt}\n\nGenera una imagen fotorealista cuadrada de producto para ecommerce. Sin texto, logotipos, marcas de agua ni personas.`,
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+      const text = await response.text().catch(() => "");
+      if (!response.ok) throw new Error(`Gemini respondió ${response.status}: ${text}`);
+      const data = text ? JSON.parse(text) : {};
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const part = parts.find((item) => item.inlineData?.data || item.inline_data?.data);
+      const inlineData = part?.inlineData || part?.inline_data;
+      if (!inlineData?.data) throw new Error("Gemini respondió sin imagen");
+      return res.json({
+        image: `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`,
+        source: "gemini",
+        warnings,
+      });
+    } catch (error) {
+      warnings.push(error?.message || String(error));
+    }
+  }
+
+  if (process.env.NANO_BANANA_API_KEY) {
+    try {
+      const response = await fetch("https://www.nananobanana.com/api/v1/generate", {
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.NANO_BANANA_API_KEY}`,
+        },
+        body: JSON.stringify({
+          prompt,
+          selectedModel: process.env.NANO_BANANA_MODEL || "nano-banana",
+          aspectRatio: "1:1",
+          mode: "sync",
+        }),
+      });
+      const text = await response.text().catch(() => "");
+      if (!response.ok) throw new Error(`Nano Banana respondió ${response.status}: ${text}`);
+      const data = text ? JSON.parse(text) : {};
+      const image =
+        data?.data?.outputImageUrls?.[0] ||
+        data?.outputImageUrls?.[0] ||
+        data?.data?.imageUrl ||
+        data?.imageUrl ||
+        data?.url ||
+        data?.data?.url ||
+        "";
+      if (!image) throw new Error("Nano Banana respondió sin URL de imagen");
+      return res.json({ image, source: "nano-banana", warnings });
+    } catch (error) {
+      warnings.push(error?.message || String(error));
+    }
+  }
+
+  return res.status(503).json({
+    error: "No hay proveedor de generación de imágenes disponible",
+    warnings,
+  });
+});
+
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
