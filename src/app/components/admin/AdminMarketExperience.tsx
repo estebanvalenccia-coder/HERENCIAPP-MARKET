@@ -138,7 +138,14 @@ function ImageField({
             accept="image/*"
             disabled={working}
             className="hidden"
-            onChange={(event) => void upload(event.target.files?.[0])}
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              void upload(file);
+            }}
           />
         </label>
         {value ? (
