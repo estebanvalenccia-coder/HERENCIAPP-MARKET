@@ -1630,7 +1630,51 @@ function ProductsPageEditor({ site, updateSite }: { site: SiteContent; updateSit
     <TextField label="Destacado" value={site.productsPage.featuredLabel} onChange={(featuredLabel) => patch({ featuredLabel })} />
     <TextField label="Botón añadir" value={site.productsPage.addButtonLabel} onChange={(addButtonLabel) => patch({ addButtonLabel })} />
     <TextField label="Agotado" value={site.productsPage.outOfStockText} onChange={(outOfStockText) => patch({ outOfStockText })} />
-    <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Productos, precios, fotos y stock se gestionan desde el módulo Productos.</p>
+
+    <div className="rounded-xl border border-slate-200 p-3">
+      <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Diseño del catálogo</p>
+      <RangeField label="Columnas" value={Number(site.productsPage.columns || 4)} min={2} max={5} onChange={(columns) => patch({ columns })} />
+      <RangeField label="Redondeado de tarjetas" value={Number(site.productsPage.cardRadius ?? 24)} min={0} max={40} suffix="px" onChange={(cardRadius) => patch({ cardRadius })} />
+
+      <label className="mt-3 block text-xs font-bold text-slate-700">
+        Proporción de imagen
+        <select value={site.productsPage.imageAspect || "square"} onChange={(event) => patch({ imageAspect: event.target.value as SiteContent["productsPage"]["imageAspect"] })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5">
+          <option value="square">Cuadrada</option>
+          <option value="portrait">Vertical</option>
+          <option value="landscape">Horizontal</option>
+        </select>
+      </label>
+
+      <label className="mt-3 block text-xs font-bold text-slate-700">
+        Orden inicial
+        <select value={site.productsPage.defaultSort || "relevance"} onChange={(event) => patch({ defaultSort: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5">
+          <option value="relevance">Relevancia</option>
+          <option value="featured">Destacados</option>
+          <option value="newest">Novedades</option>
+          <option value="price-asc">Precio menor a mayor</option>
+          <option value="price-desc">Precio mayor a menor</option>
+          <option value="stock">Disponibilidad</option>
+        </select>
+      </label>
+
+      <div className="mt-4 space-y-2">
+        {([
+          ["showFilters", "Mostrar filtros"],
+          ["showFavorites", "Mostrar favoritos"],
+          ["showCollectionTabs", "Mostrar colecciones"],
+          ["showSubcategories", "Mostrar subcategorías"],
+        ] as const).map(([key, label]) => (
+          <label key={key} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">
+            {label}
+            <input type="checkbox" checked={site.productsPage[key] !== false} onChange={(event) => patch({ [key]: event.target.checked } as Partial<SiteContent["productsPage"]>)} />
+          </label>
+        ))}
+      </div>
+    </div>
+
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+      Aquí controlas cómo se presenta el catálogo. Precios, stock, variantes, imágenes y productos reales se gestionan desde Catálogo para mantener una sola fuente de datos en Neon.
+    </p>
   </div>;
 }
 
@@ -1653,6 +1697,80 @@ function ServicesPageEditor({ site, updateSite }: { site: SiteContent; updateSit
     <TextField label="Botón WhatsApp" value={p.whatsappButtonLabel} onChange={(whatsappButtonLabel)=>patch({whatsappButtonLabel})}/>
     <TextField label="Botón llamar" value={p.callButtonLabel} onChange={(callButtonLabel)=>patch({callButtonLabel})}/>
     <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Los botones de servicios usan el WhatsApp y teléfono reales configurados en el Footer.</p>
+  </div>;
+}
+
+function MarketExperiencePageEditor({
+  site,
+  updateSite,
+  section,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+  section: "dulce" | "moda" | "about" | "sales";
+}) {
+  const market = getMarketExperience(site);
+
+  function patch(value: Record<string, any>) {
+    updateSite((current) => {
+      const currentMarket = getMarketExperience(current);
+      return {
+        ...current,
+        marketExperience: {
+          ...currentMarket,
+          [section]: {
+            ...(currentMarket as any)[section],
+            ...value,
+          },
+        },
+      } as SiteContent;
+    });
+  }
+
+  if (section === "dulce" || section === "moda") {
+    const page = market[section];
+    return <div className="space-y-4">
+      <TextField label="Texto pequeño" value={page.kicker} onChange={(kicker) => patch({ kicker })} />
+      <TextField label="Título de página" value={page.pageTitle} onChange={(pageTitle) => patch({ pageTitle })} />
+      <TextField label="Subtítulo" value={page.pageSubtitle} onChange={(pageSubtitle) => patch({ pageSubtitle })} multiline />
+      <TextField label="Título de colección" value={page.title} onChange={(title) => patch({ title })} />
+      <TextField label="Descripción de colección" value={page.subtitle} onChange={(subtitle) => patch({ subtitle })} multiline />
+      <ImageFields label="Imagen de portada" value={page.imageUrl} onChange={(imageUrl) => patch({ imageUrl })} />
+      <LinkFields label="Botón principal" value={{ label: page.buttonLabel, href: page.href }} onChange={(link) => patch({ buttonLabel: link.label, href: link.href })} />
+      <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">Los artículos que aparecen debajo vienen de la colección real {section === "dulce" ? "Dulce" : "Moda"} de Neon.</p>
+    </div>;
+  }
+
+  if (section === "about") {
+    const page = market.about;
+    return <div className="space-y-4">
+      <TextField label="Texto pequeño" value={page.kicker} onChange={(kicker) => patch({ kicker })} />
+      <TextField label="Título" value={page.title} onChange={(title) => patch({ title })} />
+      <TextField label="Descripción" value={page.description} onChange={(description) => patch({ description })} multiline />
+      <ImageFields label="Imagen" value={page.imageUrl} onChange={(imageUrl) => patch({ imageUrl })} />
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Valores</p>
+        {page.values.map((value, index) => (
+          <div key={index} className="mb-3 rounded-lg bg-slate-50 p-3">
+            <TextField label={`Título ${index + 1}`} value={value.title} onChange={(title) => patch({ values: page.values.map((item, i) => i === index ? { ...item, title } : item) })} />
+            <TextField label="Descripción" value={value.description} onChange={(description) => patch({ values: page.values.map((item, i) => i === index ? { ...item, description } : item) })} multiline />
+          </div>
+        ))}
+      </div>
+    </div>;
+  }
+
+  const sales = market.sales;
+  return <div className="space-y-4">
+    <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-bold">
+      Asistente de ventas activado
+      <input type="checkbox" checked={sales.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
+    </label>
+    <TextField label="Texto del botón" value={sales.buttonLabel} onChange={(buttonLabel) => patch({ buttonLabel })} />
+    <TextField label="Título" value={sales.title} onChange={(title) => patch({ title })} />
+    <TextField label="Prompt principal" value={sales.prompt} onChange={(prompt) => patch({ prompt })} multiline />
+    <TextField label="Texto de ayuda" value={sales.helperText} onChange={(helperText) => patch({ helperText })} multiline />
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">La lógica de IA sigue separada; aquí editas presentación, mensaje y disponibilidad del asistente de ventas.</p>
   </div>;
 }
 
