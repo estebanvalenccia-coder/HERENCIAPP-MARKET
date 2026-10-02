@@ -694,13 +694,20 @@ export function SalesChatWidget() {
           </div>
 
           <div className="border-t border-[#dfdbd1] bg-[#fffdf9] p-3">
-            <div className="mb-2 flex gap-2">
+            <div className="mb-2 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"
               >
                 <Camera className="h-4 w-4" /> Buscar por foto
+              </button>
+              <button
+                type="button"
+                onClick={openSpacePicker}
+                className="flex items-center gap-2 rounded-full border border-[#315b42]/30 bg-[#eef2eb] px-3 py-2 text-xs font-bold text-[#315b42]"
+              >
+                <ImageIcon className="h-4 w-4" /> Ver en mi espacio
               </button>
               <a
                 href="/crear-ramo"
