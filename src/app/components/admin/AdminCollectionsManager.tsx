@@ -230,7 +230,7 @@ export function AdminCollectionsManager() {
         sortOrder: Math.max(0, Math.floor(Number(draft.sortOrder || 0))),
         metadata: {
           ...(selectedCollection?.metadata || {}),
-          categories,
+          ...(!CORE_COLLECTIONS.has(id) || categories.length > 0 ? { categories } : {}),
         },
       });
 
