@@ -36,6 +36,7 @@ import {
   Warehouse,
   ScanLine,
   BarChart3,
+  Bot,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -72,10 +73,12 @@ import { AdminActivityLog } from "../components/admin/AdminActivityLog";
 import { AdminInventoryLocations } from "../components/admin/AdminInventoryLocations";
 import { AdminInventoryLots } from "../components/admin/AdminInventoryLots";
 import { AdminAnalytics } from "../components/admin/AdminAnalytics";
+import { AdminHerenciaSales } from "../components/admin/AdminHerenciaSales";
 
 type AdminSection =
   | "dashboard"
   | "analytics"
+  | "herencia-sales"
   | "products"
   | "add-product"
   | "bulk-product-import"
@@ -342,6 +345,7 @@ export function AdminDashboard() {
   const menuItems = [
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
     { id: "analytics" as AdminSection, label: "Analítica / Visitas", icon: BarChart3, badge: "LIVE" },
+    { id: "herencia-sales" as AdminSection, label: "HERENCIA SALES", icon: Bot, badge: "PRO" },
     {
       id: "pos" as AdminSection,
       label: "TPV / Caja",
@@ -846,6 +850,8 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "analytics" && <AdminAnalytics />}
+
+          {currentSection === "herencia-sales" && <AdminHerenciaSales onNavigate={(section) => setCurrentSection(section as AdminSection)} />}
 
           {currentSection === "products" && (
             <AdminProducts onAddNew={() => setCurrentSection("add-product")} />

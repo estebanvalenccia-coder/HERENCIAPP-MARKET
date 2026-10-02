@@ -251,32 +251,6 @@ function guessFromFileName(fileName: string): TaxonomyOption {
   );
 }
 
-function extractJson(text: string) {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    return null;
-  }
-}
-
-function dataUrlToGeminiImage(image: string) {
-  const [header, data] = image.split(",");
-  const mimeType = header.match(/data:(.*?);base64/)?.[1] || "image/jpeg";
-  return { mimeType, data };
-}
-
-function getGeminiApiKey() {
-  return (
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    import.meta.env.VITE_GOOGLE_API_KEY ||
-    import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ||
-    ""
-  );
-}
-
 function normalizeAiTaxonomy(result: any, fallback: TaxonomyOption) {
   const family = String(result?.family || result?.subcategory || fallback.family);
   const matching = taxonomy.find((item) => item.family.toLowerCase() === family.toLowerCase());
@@ -284,60 +258,20 @@ function normalizeAiTaxonomy(result: any, fallback: TaxonomyOption) {
 }
 
 async function classifyWithGemini(draft: ProductDraft): Promise<Partial<ProductDraft>> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error("Falta VITE_GEMINI_API_KEY para clasificar con IA");
-
-  const image = dataUrlToGeminiImage(draft.image);
   const allowedFamilies = taxonomy
     .map((item) => `${item.department} > ${item.area} > ${item.family} (${item.category})`)
     .join("\n");
 
-  const prompt = `Eres una IA experta en catálogo de floristería y garden center en Barcelona.
-Analiza esta imagen. Puede ser UNA planta individual o UN ramo de flores.
-Responde SOLO JSON válido. No inventes precios.
-Usa una de estas rutas:
-${allowedFamilies}
+  const response = await fetch("/api/admin/ai/classify-product-image", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: draft.image, allowedFamilies }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || "La IA no pudo clasificar la imagen");
 
-Formato obligatorio:
-{
-  "name": "Nombre comercial en español",
-  "department": "Ramos de flores/Plantas",
-  "area": "Área exacta de la lista",
-  "family": "Familia exacta de la lista",
-  "category": "flores/plantas-interior/plantas-exterior/orquideas/cactus/suculentas",
-  "description": "Descripción breve para tienda online, máximo 18 palabras",
-  "confidence": 0.0
-}`;
-
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: image.mimeType, data: image.data } },
-            ],
-          },
-        ],
-      }),
-    }
-  );
-
-  const text = await response.text();
-  if (!response.ok) throw new Error(text || "La IA no pudo clasificar la imagen");
-
-  const parsed = JSON.parse(text);
-  const output = parsed?.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("\n") || "";
-  const json = extractJson(output);
-  if (!json) throw new Error("La IA respondió sin JSON válido");
-
+  const json = data?.result || {};
   const fallback = guessFromFileName(draft.fileName);
   const selected = normalizeAiTaxonomy(json, fallback);
 

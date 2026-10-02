@@ -1002,7 +1002,7 @@ async function deliveryAvailabilityForDate(requestedDate, suite = {}) {
 
 async function assertDeliveryAvailability({ deliveryMethod, metadata = {}, suite = {} }) {
   const normalizedMethod = String(deliveryMethod || "").toLowerCase();
-  if (["recoger", "recogida", "mostrador"].includes(normalizedMethod)) return { skipped: true };
+  if (["recoger", "recogida", "mostrador", "consulta-floristeria"].includes(normalizedMethod)) return { skipped: true };
 
   const requestedDate = String(metadata?.requestedDate || "").trim();
   const requestedTimeSlot = String(metadata?.requestedTimeSlot || "").trim();
@@ -1364,6 +1364,104 @@ app.post("/api/admin/logout", (_req, res) => {
 
 app.get("/api/admin/session", (req, res) => {
   res.json({ authenticated: isAdmin(req) });
+});
+
+function serverGeminiKey() {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    ""
+  );
+}
+
+app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
+  try {
+    const apiKey = serverGeminiKey();
+    if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
+    const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
+    if (!prompt) return res.status(400).json({ error: "Prompt obligatorio" });
+
+    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000)),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${prompt}\n\nGenera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }] }],
+        }),
+      }
+    );
+
+    const text = await response.text();
+    if (!response.ok) throw new Error(`Gemini respondió ${response.status}: ${text}`);
+    const data = text ? JSON.parse(text) : {};
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((part) => part?.inlineData?.data || part?.inline_data?.data);
+    const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+    if (!inlineData?.data) throw new Error("Gemini no devolvió una imagen");
+
+    res.json({
+      image: `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`,
+      model,
+    });
+  } catch (error) {
+    res.status(502).json({ error: error?.message || "No se pudo generar la imagen" });
+  }
+});
+
+app.post("/api/admin/ai/classify-product-image", requireAdmin, async (req, res) => {
+  try {
+    const apiKey = serverGeminiKey();
+    if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
+
+    const dataUrl = String(req.body?.image || "");
+    const allowedFamilies = String(req.body?.allowedFamilies || "").slice(0, 16000);
+    const { mimeType, buffer } = parseImageDataUrl(dataUrl);
+    const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
+    const prompt = `Eres una IA experta en catálogo de floristería y garden center en Barcelona.
+Analiza esta imagen. Puede ser UNA planta individual o UN ramo de flores.
+Responde SOLO JSON válido. No inventes precios.
+Usa una de estas rutas:
+${allowedFamilies}
+
+Formato obligatorio:
+{
+  "name": "Nombre comercial en español",
+  "department": "Ramos de flores/Plantas",
+  "area": "Área exacta de la lista",
+  "family": "Familia exacta de la lista",
+  "category": "categoría exacta de la ruta",
+  "description": "Descripción breve para tienda online, máximo 18 palabras",
+  "confidence": 0.0
+}`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000)),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType, data: buffer.toString("base64") } }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      }
+    );
+
+    const text = await response.text();
+    if (!response.ok) throw new Error(`Gemini respondió ${response.status}: ${text}`);
+    const data = text ? JSON.parse(text) : {};
+    const output = data?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("") || "{}";
+    let result = {};
+    try { result = JSON.parse(String(output).replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim()); } catch {}
+    res.json({ result, model });
+  } catch (error) {
+    res.status(502).json({ error: error?.message || "No se pudo clasificar la imagen" });
+  }
 });
 const SITE_MEDIA_BUCKET = process.env.SITE_MEDIA_BUCKET || "site-media";
 
@@ -2860,6 +2958,76 @@ app.get("/api/orders", requireAdmin, async (_req, res) => {
   res.json({ orders });
 });
 
+const DEFAULT_BOUQUET_CATALOG_SERVER = [
+  { id: "rosa-roja", name: "Rosa Roja", price: 1.8, active: true },
+  { id: "rosa-blanca", name: "Rosa Blanca", price: 1.8, active: true },
+  { id: "rosa-rosa", name: "Rosa Rosa", price: 1.8, active: true },
+  { id: "tulipan", name: "Tulipán", price: 1.5, active: true },
+  { id: "lirio", name: "Lirio Blanco", price: 2.2, active: true },
+  { id: "girasol", name: "Girasol", price: 2.0, active: true },
+  { id: "paniculata", name: "Paniculata", price: 0.6, active: true },
+  { id: "eucalipto", name: "Eucalipto", price: 1.2, active: true },
+];
+
+async function authoritativeCustomBouquetItem(raw = {}) {
+  if (raw?.customBouquet !== true) return null;
+
+  const details = raw?.bouquetDetails && typeof raw.bouquetDetails === "object" ? raw.bouquetDetails : {};
+  const size = ["S", "M", "L", "XL"].includes(String(details.size || "").toUpperCase())
+    ? String(details.size).toUpperCase()
+    : "M";
+  const quantity = Math.max(1, Math.min(20, Math.floor(Number(raw?.quantity || 1))));
+  const source = String(details.source || "MANUAL_BOUQUET");
+  let unitPrice = 0;
+
+  if (source === "HERENCIA_SALES_AI") {
+    unitPrice = ({ S: 39.9, M: 54.9, L: 74.9, XL: 99.9 })[size] || 54.9;
+  } else {
+    let flowerCatalog = parseStoredJson(await readStorageValue("bouquetCatalog"), []);
+    if (!Array.isArray(flowerCatalog) || !flowerCatalog.length) flowerCatalog = DEFAULT_BOUQUET_CATALOG_SERVER;
+    const activeFlowers = flowerCatalog.filter((flower) => flower?.active !== false);
+    const byId = new Map(activeFlowers.map((flower) => [String(flower?.id || ""), flower]));
+    const byName = new Map(activeFlowers.map((flower) => [String(flower?.name || "").trim().toLowerCase(), flower]));
+    const lines = Array.isArray(details.flowers) ? details.flowers : [];
+    if (!lines.length) throw new Error("El ramo personalizado no contiene una composición verificable");
+
+    let flowerSubtotal = 0;
+    for (const line of lines) {
+      const flower =
+        byId.get(String(line?.id || "")) ||
+        byName.get(String(line?.name || "").trim().toLowerCase());
+      if (!flower) throw new Error(`Flor no disponible en el creador: ${String(line?.name || line?.id || "referencia")}`);
+      const qty = Math.max(1, Math.min(100, Math.floor(Number(line?.quantity || 1))));
+      flowerSubtotal += Math.max(0, Number(flower?.price || 0)) * qty;
+    }
+
+    const finish = ({ S: 8, M: 12, L: 18, XL: 25 })[size] || 12;
+    unitPrice = normalizeMoney(flowerSubtotal + finish);
+  }
+
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+    throw new Error("El precio del ramo personalizado no es válido");
+  }
+
+  return {
+    id: String(raw?.id || `custom-bouquet-${crypto.randomUUID()}`),
+    name: String(raw?.name || "Ramo personalizado Herencia").slice(0, 180),
+    price: normalizeMoney(unitPrice),
+    quantity,
+    image: /^https:\/\//i.test(String(raw?.image || "")) ? String(raw.image).slice(0, 1600) : undefined,
+    description: String(raw?.description || "").slice(0, 800),
+    customBouquet: true,
+    trackInventory: false,
+    salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
+    salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
+    bouquetDetails: {
+      ...details,
+      source,
+      size,
+    },
+  };
+}
+
 async function validateCommerceOrderPayload(order = {}) {
   const products = parseStoredJson(await readStorageValue("adminProducts"), []);
   const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
@@ -2867,6 +3035,13 @@ async function validateCommerceOrderPayload(order = {}) {
   const normalizedItems = [];
 
   for (const item of Array.isArray(order.items) ? order.items : []) {
+    const customBouquet = await authoritativeCustomBouquetItem(item);
+    if (customBouquet) {
+      subtotal += customBouquet.price * customBouquet.quantity;
+      normalizedItems.push(customBouquet);
+      continue;
+    }
+
     const product = byId.get(String(item?.id ?? ""));
     if (!product || product.deletedAt || product.active === false) throw new Error("Uno de los productos ya no está disponible");
     const variantName = String(item?.selectedVariant || "");
@@ -5579,6 +5754,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const requestedByProduct = new Map();
 
     for (const raw of items) {
+      const customBouquet = await authoritativeCustomBouquetItem(raw);
+      if (customBouquet) {
+        authoritativeItems.push(customBouquet);
+        continue;
+      }
+
       const id = String(raw?.id ?? "").trim();
       const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
       if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
@@ -5629,10 +5810,31 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
+        salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
+        salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
       });
     }
 
     const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
+    let authoritativeDiscount = 0;
+    const couponCode = String(metadata?.coupon || "").trim().toUpperCase();
+    if (couponCode) {
+      const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
+      const rule = (Array.isArray(rules) ? rules : []).find(
+        (entry) =>
+          String(entry?.code || "").trim().toUpperCase() === couponCode &&
+          entry?.active !== false &&
+          (!entry?.expiresAt || new Date(entry.expiresAt) >= new Date())
+      );
+      if (!rule) return res.status(409).json({ error: "El cupón ya no es válido" });
+      authoritativeDiscount = rule.type === "fixed"
+        ? Number(rule.value || 0)
+        : authoritativeSubtotal * Number(rule.value || 0) / 100;
+      authoritativeDiscount = normalizeMoney(
+        Math.min(authoritativeSubtotal, Math.max(0, authoritativeDiscount))
+      );
+    }
+
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
     await assertDeliveryAvailability({ deliveryMethod, metadata, suite });
     const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
@@ -5656,7 +5858,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       }
     }
 
-    const authoritativeTotal = Number((authoritativeSubtotal + authoritativeShipping).toFixed(2));
+    const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
     const totalCents = Math.round(authoritativeTotal * 100);
     if (!Number.isFinite(totalCents) || totalCents < 50) {
       return res.status(400).json({ error: "Importe inválido para Stripe" });
@@ -5669,7 +5871,9 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       source: "frontend_checkout",
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
-      pricingSource: "backend_catalog_and_maps",
+      pricingSource: "backend_catalog_coupons_and_maps",
+      discount: authoritativeDiscount,
+      coupon: couponCode || null,
       inventoryReservation: stockReservation,
       shippingDistance: shippingQuote
         ? {
@@ -5718,6 +5922,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         orderId,
         totals: {
           subtotal: authoritativeSubtotal,
+          discount: authoritativeDiscount,
           shipping: authoritativeShipping,
           total: authoritativeTotal,
         },

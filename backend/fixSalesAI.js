@@ -1,6 +1,17 @@
 import express from "express";
+import { hasR2, uploadR2Media } from "./r2Media.js";
 
 const requestBuckets = new Map();
+const generatedImageCache = new Map();
+
+function rememberGeneratedImage(key, value) {
+  if (!key || !value) return;
+  generatedImageCache.set(key, value);
+  while (generatedImageCache.size > 24) {
+    const firstKey = generatedImageCache.keys().next().value;
+    generatedImageCache.delete(firstKey);
+  }
+}
 
 function cleanJson(value = "{}") {
   return String(value)
@@ -22,22 +33,32 @@ function clampText(value, max = 1800) {
 }
 
 function commercialRateLimit(req, res) {
-  const key = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")
+  const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")
     .split(",")[0]
     .trim();
+  const path = String(req.path || req.url || "sales");
+  const imageRequest = /sales-(bouquet|identify|space-preview)/.test(path);
+  const limit = Math.max(
+    3,
+    Number(imageRequest ? process.env.SALES_AI_IMAGE_LIMIT_PER_MINUTE || 12 : process.env.SALES_AI_CHAT_LIMIT_PER_MINUTE || 30)
+  );
+  const bucketKey = `${ip}:${imageRequest ? "image" : "chat"}`;
   const now = Date.now();
   const windowMs = 60_000;
-  const limit = 30;
-  const current = requestBuckets.get(key);
+  const current = requestBuckets.get(bucketKey);
 
   if (!current || now - current.startedAt > windowMs) {
-    requestBuckets.set(key, { startedAt: now, count: 1 });
+    requestBuckets.set(bucketKey, { startedAt: now, count: 1 });
     return true;
   }
 
   current.count += 1;
   if (current.count > limit) {
-    res.status(429).json({ error: "Demasiadas solicitudes. Inténtalo de nuevo en un momento." });
+    res.status(429).json({
+      error: imageRequest
+        ? "Has generado muchas imágenes seguidas. Inténtalo de nuevo en un minuto."
+        : "Demasiadas solicitudes. Inténtalo de nuevo en un momento.",
+    });
     return false;
   }
 
@@ -46,14 +67,57 @@ function commercialRateLimit(req, res) {
 
 function normalizeCatalog(input) {
   if (!Array.isArray(input)) return [];
-  return input.slice(0, 80).map((item) => ({
-    id: Number(item?.id),
-    name: clampText(item?.name, 120),
-    category: clampText(item?.category, 80),
-    price: Number(item?.price || 0),
-    description: clampText(item?.description, 220),
-    image: clampText(item?.image || item?.imageUrl || "", 1200),
-  })).filter((item) => Number.isFinite(item.id) && item.name);
+  return input.slice(0, 120).map((item) => {
+    const variants = Array.isArray(item?.variants)
+      ? item.variants.slice(0, 20).map((variant) => ({
+          id: clampText(variant?.id, 120),
+          name: clampText(typeof variant === "string" ? variant : variant?.name, 120),
+          price: variant?.price == null ? null : Math.max(0, Number(variant.price || 0)),
+          stock: variant?.stock == null ? null : Math.max(0, Math.floor(Number(variant.stock || 0))),
+        })).filter((variant) => variant.name)
+      : [];
+    const trackInventory = item?.trackInventory !== false;
+    const stock = Math.max(0, Math.floor(Number(item?.stock || 0)));
+    const variantAvailable = variants.some((variant) => variant.stock == null || Number(variant.stock) > 0);
+    return {
+      id: clampText(item?.id, 160),
+      name: clampText(item?.name, 120),
+      category: clampText(item?.category, 80),
+      type: clampText(item?.type, 80),
+      collections: Array.isArray(item?.collections) ? item.collections.slice(0, 12).map((value) => clampText(value, 80)).filter(Boolean) : [],
+      price: Math.max(0, Number(item?.price || 0)),
+      salePrice: item?.salePrice == null ? null : Math.max(0, Number(item.salePrice || 0)),
+      onSale: Boolean(item?.onSale),
+      stock,
+      trackInventory,
+      available: item?.active !== false && String(item?.status || "active") !== "archived" && (!trackInventory || stock > 0 || variantAvailable),
+      description: clampText(item?.description, 320),
+      image: clampText(item?.image || item?.imageUrl || "", 1200),
+      variants,
+    };
+  }).filter((item) => item.id && item.name && item.available);
+}
+
+function normalizeFlowerCatalog(input) {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 60).map((flower) => ({
+    id: clampText(flower?.id, 120),
+    name: clampText(flower?.name, 120),
+    category: clampText(flower?.category, 100),
+    price: Math.max(0, Number(flower?.price || 0)),
+  })).filter((flower) => flower.id && flower.name);
+}
+
+async function persistGeneratedImage(dataUrl, filename = "herencia-sales") {
+  if (!hasR2 || !String(dataUrl || "").startsWith("data:image/")) return dataUrl;
+
+  try {
+    const media = await uploadR2Media({ dataUrl, filename });
+    return media.url;
+  } catch (error) {
+    console.warn("[HERENCIA SALES] no se pudo persistir imagen IA en R2:", error?.message || error);
+    return dataUrl;
+  }
 }
 
 function sizeFromBudget(budget) {
@@ -239,9 +303,9 @@ Devuelve SOLO JSON:
   "reply": "respuesta comercial breve",
   "identifiedName": "nombre probable",
   "confidence": "alta|media|baja",
-  "productIds": [1,2]
+  "productIds": ["id-real-1","id-real-2"]
 }
-Usa únicamente IDs que existan en el catálogo. Si no hay coincidencia, productIds debe ser [].`;
+Los IDs pueden ser texto. Usa únicamente IDs exactos que existan en el catálogo. Si no hay coincidencia, productIds debe ser [].`;
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -290,7 +354,12 @@ Si alguien pide asesoría o cuidados, responde en una sola frase que este chat e
 CATÁLOGO REAL DISPONIBLE:
 ${JSON.stringify(catalog)}
 
-Solo puedes recomendar IDs del catálogo anterior.
+REGLAS DE VENTA:
+- Solo puedes recomendar IDs exactos del catálogo anterior.
+- No recomiendes productos con available=false ni agotados.
+- Si hay variantes, menciona brevemente que debe elegir una variante antes de comprar.
+- Respeta price, salePrice y promociones del catálogo; nunca inventes descuentos.
+- Prioriza cerrar la compra: una pregunta breve cuando falte un dato y una propuesta concreta cuando ya tengas suficiente información.
 
 Para ramos personalizados, recoge progresivamente presupuesto, ocasión, estilo y colores. No hagas interrogatorios. Cuando haya información suficiente marca readyToGenerate=true.
 
@@ -338,9 +407,9 @@ async function salesChatHandler(req, res) {
     ]);
 
     const result = safeJson(content, {});
-    const validIds = new Set(catalog.map((item) => item.id));
+    const validIds = new Set(catalog.map((item) => String(item.id)));
     result.productIds = Array.isArray(result.productIds)
-      ? result.productIds.map(Number).filter((id) => validIds.has(id)).slice(0, 4)
+      ? result.productIds.map((id) => String(id)).filter((id) => validIds.has(id)).slice(0, 4)
       : [];
 
     if (result.bouquet) {
@@ -366,6 +435,7 @@ async function salesBouquetHandler(req, res) {
   if (!commercialRateLimit(req, res)) return;
 
   const body = req.body || {};
+  const flowerCatalog = normalizeFlowerCatalog(body.flowerCatalog);
   const exactFlowers = Array.isArray(body.exactFlowers)
     ? body.exactFlowers
         .slice(0, 20)
@@ -391,14 +461,16 @@ Estilo: ${clampText(body.style, 80) || "Elegante"}
 Color: ${clampText(body.color, 100) || "Mix"}
 Tamaño comercial: ${size}
 Precio oficial del tamaño: ${price.toFixed(2)} EUR.
+Catálogo floral ACTIVO permitido: ${JSON.stringify(flowerCatalog)}
 Devuelve solo JSON:
 {
  "name":"nombre comercial corto",
  "description":"descripción vendedora de máximo 2 frases",
- "recommendedFlowers":["flor"],
+ "recommendedFlowerIds":["id-flor"],
+ "recommendedFlowers":["nombre flor"],
  "imagePrompt":"descripción visual precisa del ramo para generar fotografía realista"
 }
-No incluyas consejos ni cuidados.`;
+Si existe catálogo floral, utiliza únicamente flores y verdes de ese catálogo. No incluyas consejos ni cuidados.`;
 
   try {
     let proposal = {};
@@ -418,21 +490,46 @@ No incluyas consejos ni cuidados.`;
       };
     }
 
+    const flowerById = new Map(flowerCatalog.map((flower) => [flower.id, flower]));
+    const flowerByName = new Map(flowerCatalog.map((flower) => [flower.name.toLowerCase(), flower]));
+    const recommendedFromIds = Array.isArray(proposal.recommendedFlowerIds)
+      ? proposal.recommendedFlowerIds.map((id) => flowerById.get(String(id))).filter(Boolean)
+      : [];
+    const recommendedFromNames = Array.isArray(proposal.recommendedFlowers)
+      ? proposal.recommendedFlowers.map((name) => flowerByName.get(String(name).toLowerCase())).filter(Boolean)
+      : [];
+    const validatedRecommended = flowerCatalog.length
+      ? [...new Map([...recommendedFromIds, ...recommendedFromNames].map((flower) => [flower.id, flower])).values()].slice(0, 8)
+      : [];
+
+    const recommendedNames = exactFlowers.length
+      ? exactFlowers.map((flower) => flower.name)
+      : validatedRecommended.length
+        ? validatedRecommended.map((flower) => flower.name)
+        : Array.isArray(proposal.recommendedFlowers)
+          ? proposal.recommendedFlowers.slice(0, 8).map((name) => clampText(name, 120))
+          : [];
+
     const imagePrompt = exactFlowers.length
       ? `Fotografía de producto hiperrealista de un ramo físicamente realizable. Composición OBLIGATORIA: ${exactComposition}. No añadas ningún otro tipo de flor que no aparezca en esa lista. Respeta aproximadamente las cantidades relativas indicadas. Estilo ${clampText(body.style, 80) || "Elegante"}, tamaño ${size}. Mantén los colores naturales de cada variedad. Ramo completo, centrado, fondo limpio y claro, iluminación natural premium.`
-      : clampText(proposal.imagePrompt, 1800) ||
-        `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}`;
-    const image = await generateGeminiImage(imagePrompt);
+      : recommendedNames.length
+        ? `Fotografía de producto hiperrealista de un ramo físicamente realizable compuesto únicamente por estas variedades disponibles: ${recommendedNames.join(", ")}. Estilo ${clampText(body.style, 80) || "Elegante"}, tonos ${clampText(body.color, 100) || "naturales"}, tamaño ${size}. No añadas variedades fuera de la lista. Ramo completo, centrado, fondo limpio y claro, iluminación natural premium.`
+        : clampText(proposal.imagePrompt, 1800) ||
+          `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}`;
+
+    const cacheKey = `bouquet:${imagePrompt}`;
+    let image = generatedImageCache.get(cacheKey);
+    if (!image) {
+      const rawImage = await generateGeminiImage(imagePrompt);
+      image = await persistGeneratedImage(rawImage, `herencia-sales-ramo-${size.toLowerCase()}`);
+      rememberGeneratedImage(cacheKey, image);
+    }
 
     res.json({
       proposal: {
         name: clampText(proposal.name, 120) || "Ramo personalizado Herencia",
         description: clampText(proposal.description, 500),
-        recommendedFlowers: exactFlowers.length
-          ? exactFlowers.map((flower) => flower.name)
-          : Array.isArray(proposal.recommendedFlowers)
-            ? proposal.recommendedFlowers.slice(0, 8)
-            : [],
+        recommendedFlowers: recommendedNames,
         imagePrompt,
       },
       image,
@@ -461,9 +558,9 @@ async function salesIdentifyHandler(req, res) {
 
   try {
     const result = await identifyWithGemini({ data, mimeType, catalog });
-    const validIds = new Set(catalog.map((item) => item.id));
+    const validIds = new Set(catalog.map((item) => String(item.id)));
     const productIds = Array.isArray(result.productIds)
-      ? result.productIds.map(Number).filter((id) => validIds.has(id)).slice(0, 4)
+      ? result.productIds.map((id) => String(id)).filter((id) => validIds.has(id)).slice(0, 4)
       : [];
 
     res.json({
@@ -484,9 +581,9 @@ async function salesSpacePreviewHandler(req, res) {
   const body = req.body || {};
   const roomData = String(body.data || "");
   const roomMimeType = String(body.mimeType || "image/jpeg");
-  const productId = Number(body.productId);
+  const productId = String(body.productId || "");
   const catalog = normalizeCatalog(body.catalog);
-  const product = catalog.find((item) => item.id === productId);
+  const product = catalog.find((item) => String(item.id) === productId);
 
   if (!roomData || roomData.length > 12_000_000) {
     return res.status(400).json({ error: "La foto del espacio es demasiado grande o está vacía." });
@@ -550,4 +647,4 @@ express.application.listen = function patchedListen(...args) {
   return originalListen.apply(this, args);
 };
 
-console.log("HERENCIA SALES AI preparada: chat comercial, búsqueda visual, visualizador en espacios y diseñador de ramos.");
+console.log("HERENCIA SALES AI PRO preparada: catálogo real, stock/variantes, búsqueda visual, visualizador, ramos y límites de coste.");

@@ -65,12 +65,6 @@ type Product = {
   [key: string]: any;
 };
 
-const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
-
-function getGeminiApiKey() {
-  return import.meta.env.VITE_GEMINI_API_KEY || "";
-}
-
 function buildProductImagePrompt(product: Product, customPrompt: string) {
   const idea = customPrompt.trim() || `${product.name}. ${product.description || ""}`;
   const collection = getCommerceCollection(primaryCollectionOf(product)).name;
@@ -81,26 +75,17 @@ Colección: ${collection}.
 Estilo: ecommerce elegante, natural, contemporáneo, iluminación cuidada, producto protagonista, fondo limpio y coherente con la categoría, alta calidad, sin texto, sin logos y sin marcas de agua.`;
 }
 
-async function generateProductImageWithGemini(prompt: string) {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error("Falta configurar VITE_GEMINI_API_KEY");
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    }
-  );
-
-  if (!response.ok) throw new Error((await response.text()) || "No se pudo generar la imagen");
+async function generateProductImageWithGemini(product: Product, customPrompt: string) {
+  const response = await fetch("/api/admin/ai/product-image", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: buildProductImagePrompt(product, customPrompt) }),
+  });
   const data = await response.json();
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find((part: any) => part.inlineData || part.inline_data);
-  const inlineData = imagePart?.inlineData || imagePart?.inline_data;
-  if (!inlineData?.data) throw new Error("La IA no devolvió una imagen");
-  return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
+  if (!response.ok) throw new Error(data?.error || "No se pudo generar la imagen");
+  if (!data?.image) throw new Error("La IA no devolvió una imagen");
+  return String(data.image);
 }
 
 const emptyEdit = {
