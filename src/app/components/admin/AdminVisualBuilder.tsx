@@ -1921,6 +1921,94 @@ function ProductQuickEditor({
   );
 }
 
+function ProductDetailPageEditor({
+  site,
+  updateSite,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+}) {
+  const patch = (value: Partial<SiteContent["productDetailPage"]>) =>
+    updateSite((current) => ({
+      ...current,
+      productDetailPage: {
+        ...current.productDetailPage,
+        ...value,
+      },
+    }));
+
+  const toggles = [
+    ["showGalleryThumbnails", "Miniaturas de galería"],
+    ["showDescription", "Descripción junto al título"],
+    ["showDetails", "Características / atributos"],
+    ["showVariants", "Selector de variantes"],
+    ["showDedication", "Dedicatoria / personalización"],
+    ["showQuantity", "Selector de cantidad"],
+    ["showFavorite", "Botón de favoritos"],
+    ["showStock", "Estado de stock"],
+    ["showWaitlist", "Aviso cuando vuelva a estar disponible"],
+    ["showCare", "Cuidados / pasaporte de plantas"],
+    ["showRelated", "Completa tu compra"],
+    ["showReviews", "Reseñas"],
+    ["showQuestions", "Preguntas y respuestas"],
+  ] as const;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+        Esta plantilla se aplica a todas las fichas de producto. Los datos concretos de cada artículo siguen viniendo de Commerce/Neon.
+      </div>
+
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Galería</p>
+        <RangeField
+          label="Redondeado de imagen"
+          value={Number(site.productDetailPage.galleryRadius ?? 24)}
+          min={0}
+          max={48}
+          suffix="px"
+          onChange={(galleryRadius) => patch({ galleryRadius })}
+        />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Módulos visibles</p>
+        <div className="space-y-2">
+          {toggles.map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-bold">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                checked={site.productDetailPage[key] !== false}
+                onChange={(event) =>
+                  patch({ [key]: event.target.checked } as Partial<SiteContent["productDetailPage"]>)
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {site.productDetailPage.showRelated !== false && (
+        <div className="rounded-xl border border-slate-200 p-3">
+          <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Venta cruzada</p>
+          <TextField
+            label="Título"
+            value={site.productDetailPage.relatedTitle}
+            onChange={(relatedTitle) => patch({ relatedTitle })}
+          />
+          <TextField
+            label="Subtítulo"
+            value={site.productDetailPage.relatedSubtitle}
+            onChange={(relatedSubtitle) => patch({ relatedSubtitle })}
+            multiline
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductsPageEditor({
   site,
   updateSite,
@@ -2421,6 +2509,152 @@ function DesignEditor({
 
 function previewPrice(product: any) {
   return Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
+}
+
+function ProductDetailTemplatePreview({
+  site,
+  product,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  product: any | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const config = site.productDetailPage;
+  const sample = product || {
+    id: "preview",
+    name: "Producto Herencia",
+    description: "Descripción del producto y sus características principales.",
+    price: 29.9,
+    image: "",
+    images: [],
+    stock: 5,
+    trackInventory: true,
+    variants: [
+      { name: "Pequeño", price: 24.9 },
+      { name: "Grande", price: 34.9 },
+    ],
+    category: "plantas-interior",
+    collections: ["plantas"],
+  };
+
+  const images = Array.from(new Set(
+    [
+      sample.image,
+      ...(Array.isArray(sample.images)
+        ? sample.images.map((image: any) => typeof image === "string" ? image : image?.url)
+        : []),
+    ].map((value) => String(value || "")).filter(Boolean)
+  ));
+  const collection = getCommerceCollection(primaryCollectionOf(sample));
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+    >
+      <div className="grid gap-7 p-7 lg:grid-cols-2">
+        <div>
+          <div
+            className="aspect-square overflow-hidden bg-slate-100"
+            style={{ borderRadius: `${Math.max(0, Math.min(48, Number(config.galleryRadius ?? 24)))}px` }}
+          >
+            {images[0] ? (
+              <img src={images[0]} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="grid h-full place-items-center text-sm text-slate-400">Imagen principal</div>
+            )}
+          </div>
+          {config.showGalleryThumbnails !== false && (
+            <div className="mt-3 grid grid-cols-5 gap-2">
+              {(images.length ? images.slice(0, 5) : ["", "", ""]).map((url, index) => (
+                <div key={index} className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                  {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900">{sample.name}</h1>
+            {config.showDescription !== false && (
+              <p className="mt-2 text-sm leading-6 text-slate-500">{sample.description}</p>
+            )}
+          </div>
+          <p className="text-3xl font-black text-emerald-800">€{Number(sample.salePrice || sample.price || 0).toFixed(2)}</p>
+          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-800">{collection.name}</span>
+
+          {config.showDetails !== false && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Stock</p><p className="mt-1 text-sm font-bold">{sample.stock ?? "—"}</p></div>
+              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Categoría</p><p className="mt-1 text-sm font-bold">{sample.category || "—"}</p></div>
+            </div>
+          )}
+
+          {config.showVariants !== false && Array.isArray(sample.variants) && sample.variants.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-black">Variantes</p>
+              <div className="flex flex-wrap gap-2">
+                {sample.variants.slice(0, 4).map((variant: any, index: number) => (
+                  <span key={index} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">
+                    {variant.name || `Variante ${index + 1}`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {config.showDedication !== false && (
+            <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-400">Dedicatoria / personalización</div>
+          )}
+
+          {config.showQuantity !== false && (
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg bg-slate-100 px-3 py-2 font-black">−</span>
+              <span className="font-black">1</span>
+              <span className="rounded-lg bg-slate-100 px-3 py-2 font-black">+</span>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <span className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-center text-sm font-black text-white">Añadir al carrito</span>
+            {config.showFavorite !== false && <span className="rounded-xl bg-slate-100 px-4 py-3">♡</span>}
+          </div>
+
+          {config.showStock !== false && (
+            <div className="rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Disponible · {sample.stock ?? 0} en stock</div>
+          )}
+        </div>
+      </div>
+
+      {config.showRelated !== false && (
+        <div className="border-t border-slate-200 p-6">
+          <h2 className="text-2xl font-black">{config.relatedTitle}</h2>
+          <p className="mt-1 text-xs text-slate-500">{config.relatedSubtitle}</p>
+          <div className="mt-4 grid grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((item) => (
+              <div key={item} className="rounded-xl border border-slate-200 p-3">
+                <div className="h-16 rounded-lg bg-slate-100" />
+                <div className="mt-2 h-2 w-2/3 rounded bg-slate-200" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(config.showReviews !== false || config.showQuestions !== false) && (
+        <div className="grid gap-3 border-t border-slate-200 p-6 md:grid-cols-2">
+          {config.showReviews !== false && <div className="rounded-xl border border-slate-200 p-4 text-sm font-black">Reseñas de clientes</div>}
+          {config.showQuestions !== false && <div className="rounded-xl border border-slate-200 p-4 text-sm font-black">Preguntas y respuestas</div>}
+        </div>
+      )}
+    </button>
+  );
 }
 
 function ProductsPreview({
