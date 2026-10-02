@@ -33,7 +33,7 @@ async function generateBouquetWithAI(payload) {
       Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.LLAMA_MODEL || "llama-3.3-70b-versatile",
+      model: process.env.LLAMA_MODEL || "openai/gpt-oss-120b",
       temperature: 0.7,
       stream: false,
       messages: [
