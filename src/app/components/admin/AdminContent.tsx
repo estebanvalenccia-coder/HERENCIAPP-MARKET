@@ -146,7 +146,20 @@ function ImageEditor({
       <div className="flex flex-wrap gap-2">
         <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground">
           <Upload className="h-4 w-4" /> {working ? "Procesando..." : "Subir foto"}
-          <input type="file" accept="image/*" className="hidden" disabled={working} onChange={(e) => void upload(e.target.files?.[0])} />
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            disabled={working}
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              void upload(file);
+            }}
+          />
         </label>
         {value && <button type="button" onClick={() => onChange("")} className="rounded-xl border border-border px-4 py-2 font-bold">Quitar foto</button>}
       </div>
