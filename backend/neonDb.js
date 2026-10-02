@@ -448,12 +448,16 @@ async function hydrateNeonProductRows(rows = []) {
     const vars=vb.get(String(row.id))||[];
     const cols=(cb.get(String(row.id))||[]).map(x=>x.collection_id);
     const primary=imgs.find(x=>x.is_primary)||imgs[0];
+    const saleActive=Boolean(row.compare_at_price && num(row.compare_at_price)>num(row.price));
+    const regularPrice=saleActive?num(row.compare_at_price):num(row.price);
+    const currentPrice=num(row.price);
     return {
       id:String(row.id), name:row.name, scientificName:row.scientific_name||"", description:row.description||"",
-      category:row.category||"plantas", type:row.type||"plant", price:num(row.price),
-      originalPrice:row.compare_at_price==null?undefined:num(row.compare_at_price),
-      compareAtPrice:row.compare_at_price==null?undefined:num(row.compare_at_price),
-      onSale:Boolean(row.compare_at_price && num(row.compare_at_price)>num(row.price)),
+      category:row.category||"plantas", type:row.type||"plant", price:regularPrice,
+      salePrice:saleActive?currentPrice:undefined,
+      originalPrice:saleActive?regularPrice:undefined,
+      compareAtPrice:saleActive?regularPrice:undefined,
+      onSale:saleActive,
       cost:row.cost==null?undefined:num(row.cost), iva:num(row.tax_rate,21), taxRate:num(row.tax_rate,21),
       sku:row.sku||"", stock:int(row.stock), trackInventory:row.track_inventory!==false, active:row.status==="active",
       deletedAt:row.status==="archived"?row.updated_at:undefined, status:row.status, featured:Boolean(row.featured),
