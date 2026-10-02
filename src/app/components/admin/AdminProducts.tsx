@@ -134,6 +134,7 @@ const emptyEdit = {
   temperature: "",
   allowDedication: true,
   tags: "",
+  relatedProductIds: [] as string[],
   seoTitle: "",
   seoDescription: "",
 };
@@ -544,6 +545,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       temperature: product.temperature || "",
       allowDedication: product.allowDedication !== false,
       tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
+      relatedProductIds: Array.isArray(product.relatedProductIds)
+        ? product.relatedProductIds.map(String)
+        : [],
       seoTitle: product.seoTitle || product.name || "",
       seoDescription: product.seoDescription || product.description || "",
     });
@@ -720,6 +724,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         metadata: {
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          relatedProductIds: editForm.relatedProductIds,
         },
       
         ...(plantLike
@@ -1157,6 +1162,57 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                 <label className="block text-sm font-bold">Etiquetas
                   <input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="regalo, verano, premium" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="mb-3">
+                    <p className="font-black">Completa tu compra</p>
+                    <p className="text-xs text-muted-foreground">Elige hasta 8 productos que quieras recomendar manualmente junto a este artículo.</p>
+                  </div>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {products
+                      .filter((item) =>
+                        String(item.id) !== String(editingProduct.id) &&
+                        item.status !== "archived" &&
+                        !item.deletedAt
+                      )
+                      .map((item) => {
+                        const id = String(item.id);
+                        const checked = editForm.relatedProductIds.includes(id);
+                        return (
+                          <label
+                            key={id}
+                            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${
+                              checked ? "border-primary bg-primary/5" : "border-border"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!checked && editForm.relatedProductIds.length >= 8}
+                              onChange={() =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  relatedProductIds: current.relatedProductIds.includes(id)
+                                    ? current.relatedProductIds.filter((value) => value !== id)
+                                    : [...current.relatedProductIds, id].slice(0, 8),
+                                }))
+                              }
+                            />
+                            <div className="h-11 w-11 overflow-hidden rounded-lg bg-muted">
+                              {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" /> : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-black">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">€{Number(item.salePrice || item.price || 0).toFixed(2)}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  <p className="mt-3 text-xs font-bold text-muted-foreground">
+                    {editForm.relatedProductIds.length}/8 seleccionados
+                  </p>
+                </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <label className="text-sm font-bold">Título SEO
