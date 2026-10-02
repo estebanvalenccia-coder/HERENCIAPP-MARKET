@@ -18,7 +18,7 @@ backendApi.preload().finally(() => {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
+    navigator.serviceWorker.register("/sw.js?v=3").catch((error) => {
       console.warn("No se pudo registrar el service worker de Herencia", error);
     });
   });

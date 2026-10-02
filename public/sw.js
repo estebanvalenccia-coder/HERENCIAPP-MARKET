@@ -1,5 +1,5 @@
-const CACHE_NAME = "herencia-pwa-v2";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/app-icon.svg"];
+const CACHE_NAME = "herencia-pwa-v3";
+const APP_SHELL = ["/manifest.webmanifest", "/app-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => null));
@@ -18,6 +18,13 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+
+  // HTML, JS y CSS deben venir siempre de red para no dejar el admin atrapado
+  // en un bundle antiguo después de un despliegue.
+  if (request.mode === "navigate" || ["script", "style"].includes(request.destination)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   event.respondWith(
     fetch(request)
