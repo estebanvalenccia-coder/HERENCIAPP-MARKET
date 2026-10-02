@@ -5561,19 +5561,26 @@ app.post("/api/ai/plant-description", requireAdmin, async (req, res) => {
       ? groqModel(settings.model)
       : "gpt-4o-mini";
 
-  const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
+  const systemPrompt = `Eres un experto en botánica y fichas de producto para una tienda de plantas. Genera información útil, prudente y comercial en español. Responde SOLO JSON válido con esta estructura exacta:
 {
-  "description": "descripción completa de la planta",
-  "care": {
-    "water": "instrucciones de riego",
-    "light": "requisitos de luz",
-    "temperature": "temperatura ideal",
-    "fertilizer": "guía de fertilización"
-  },
-  "benefits": ["beneficio", "beneficio", "beneficio", "beneficio"],
-  "tips": "consejos adicionales del experto"
+  "scientificName": "nombre científico más probable",
+  "description": "descripción completa y comercial de la planta",
+  "environment": "interior|exterior|ambos",
+  "light": "baja|indirecta|sol",
+  "difficulty": "Fácil|Media|Avanzada",
+  "petSafe": false,
+  "toxicity": "toxicidad para mascotas/personas o 'No conocida'",
+  "water": "instrucciones de riego",
+  "temperature": "rango de temperatura recomendado",
+  "humidity": "humedad recomendada",
+  "growth": "ritmo y hábito de crecimiento",
+  "origin": "origen geográfico",
+  "fertilizer": "guía breve de fertilización",
+  "careNotes": "resumen breve de cuidados",
+  "benefits": ["beneficio", "beneficio", "beneficio"],
+  "tips": "consejos adicionales"
 }
-Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
+No inventes una identificación exacta si el nombre es ambiguo: indícalo de forma prudente en description. Responde ÚNICAMENTE con JSON.`;
 
   const aiResponse = await fetch(endpoint, {
     method: "POST",
@@ -5592,7 +5599,8 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
           }`,
         },
       ],
-      temperature: 0.7,
+      temperature: 0.35,
+      response_format: { type: "json_object" },
     }),
   });
 
