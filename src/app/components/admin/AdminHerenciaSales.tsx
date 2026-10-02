@@ -20,7 +20,7 @@ import { backendApi } from "../../lib/backendStorage";
 type SalesHealth = {
   ok: boolean;
   chat?: { configured?: boolean; model?: string };
-  vision?: { configured?: boolean; textModel?: string; imageModel?: string };
+  vision?: { configured?: boolean; legacyEnv?: boolean; textModel?: string; imageModel?: string };
   media?: { r2Configured?: boolean };
   limits?: { chatPerMinute?: number; imagePerMinute?: number; timeoutMs?: number };
   catalog?: { total?: number; active?: number; sellable?: number; outOfStock?: number };
@@ -71,6 +71,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: string) => void }) {
   const [health, setHealth] = useState<SalesHealth>(emptyHealth);
   const [analytics, setAnalytics] = useState<Analytics>({});
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState("");
@@ -78,9 +79,10 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [healthResponse, analyticsResponse] = await Promise.all([
+      const [healthResponse, analyticsResponse, orderResponse] = await Promise.all([
         fetch("/api/admin/sales/health", { credentials: "include", headers: { Accept: "application/json" } }),
         fetch("/api/admin/analytics?days=30", { credentials: "include", headers: { Accept: "application/json" } }),
+        backendApi.listOrders(),
       ]);
       const healthJson = await healthResponse.json();
       const analyticsJson = await analyticsResponse.json();
@@ -88,6 +90,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
       if (!analyticsResponse.ok) throw new Error(analyticsJson?.error || "No se pudo cargar el embudo");
       setHealth({ ...emptyHealth, ...healthJson });
       setAnalytics(analyticsJson || {});
+      setOrders(Array.isArray(orderResponse.orders) ? orderResponse.orders : []);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo cargar HERENCIA SALES");
     } finally {
@@ -107,7 +110,24 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
   const opens = Number(totals.sales_opens || eventMap.get("sales_open")?.value || 0);
   const purchases = Number(totals.sales_purchases || eventMap.get("sales_purchase")?.value || 0);
   const conversion = opens > 0 ? (purchases / opens) * 100 : 0;
-  const revenue = Number(totals.sales_revenue || eventMap.get("sales_purchase")?.amount || 0);
+  const attributedOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) =>
+          order?.metadata?.herenciaSales === true ||
+          String(order?.metadata?.source || "") === "HERENCIA_SALES_HANDOFF" ||
+          (Array.isArray(order?.items) && order.items.some((item: any) => String(item?.salesSource || "") === "HERENCIA_SALES"))
+      ),
+    [orders]
+  );
+  const purchasedOrders = attributedOrders.filter((order) =>
+    ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(String(order?.status || ""))
+  );
+  const realRevenue = purchasedOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0);
+  const handoffs = attributedOrders.filter((order) => String(order?.metadata?.source || "") === "HERENCIA_SALES_HANDOFF").length;
+  const purchases = purchasedOrders.length || Number(totals.sales_purchases || eventMap.get("sales_purchase")?.value || 0);
+  const conversion = opens > 0 ? (purchases / opens) * 100 : 0;
+  const revenue = realRevenue || Number(totals.sales_revenue || eventMap.get("sales_purchase")?.amount || 0);
 
   const runTest = async () => {
     setTesting(true);
@@ -171,7 +191,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusPill ok={Boolean(health.chat?.configured)} label="Groq" />
-            <StatusPill ok={Boolean(health.vision?.configured)} label="Gemini" />
+            <StatusPill ok={Boolean(health.vision?.configured)} label={health.vision?.legacyEnv ? "Gemini · migrar clave" : "Gemini"} />
             <StatusPill ok={Boolean(health.media?.r2Configured)} label="R2" />
             <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/20 disabled:opacity-60">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Actualizar
@@ -203,7 +223,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
               ["Añadidos al carrito", totals.sales_add_to_cart || 0],
               ["Comprar ahora", totals.sales_buy_now || 0],
               ["Visualizaciones espacio", totals.space_previews || 0],
-              ["Traspasos a floristería", totals.sales_handoffs || 0],
+              ["Traspasos a floristería", Math.max(Number(totals.sales_handoffs || 0), handoffs)],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-2xl bg-muted/45 p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -218,6 +238,11 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
             <Gauge className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-black">Motor y límites</h2>
           </div>
+          {health.vision?.legacyEnv ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+              Gemini funciona con la variable legacy de Railway. HERENCIA SALES ya no expone la clave desde su frontend, pero conviene migrarla a GEMINI_API_KEY cuando tengas acceso al valor.
+            </div>
+          ) : null}
           <div className="space-y-3 text-sm">
             <div className="rounded-xl bg-muted/40 p-3"><b>Chat:</b> {health.chat?.model || "—"}</div>
             <div className="rounded-xl bg-muted/40 p-3"><b>Visión:</b> {health.vision?.textModel || "—"}</div>
