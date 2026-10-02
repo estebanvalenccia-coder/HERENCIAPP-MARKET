@@ -2,38 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
+import { productBelongsToCollection } from "../lib/commerceCatalog";
 import { products as fallbackProducts } from "../data/products";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
 type Kind = "dulce" | "moda";
 
-function normalize(value: unknown) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
 function matchesKind(product: any, kind: Kind) {
-  const text = normalize([
-    product?.name,
-    product?.category,
-    product?.description,
-    product?.tags,
-    product?.collection,
-  ].filter(Boolean).join(" "));
-
-  if (kind === "dulce") {
-    return ["dulce", "postre", "tarta", "pastel", "desayuno", "reposteria", "brownie", "galleta"].some((term) =>
-      text.includes(term)
-    );
-  }
-
-  return ["moda", "camisa", "delantal", "guante", "ropa", "textil", "uniforme"].some((term) =>
-    text.includes(term)
-  );
+  return productBelongsToCollection(product, kind);
 }
 
 function money(value: unknown) {
@@ -62,23 +40,38 @@ function CollectionPage({ kind }: { kind: Kind }) {
   const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
 
   useEffect(() => {
-    const load = () => {
+    let cancelled = false;
+    const load = async () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       try {
-        const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-        setCatalog(Array.isArray(rows) && rows.length ? rows.filter((item: any) => item.active !== false) : fallbackProducts);
+        const result = await backendApi.listCommerceProducts({ collection: kind });
+        if (cancelled) return;
+        const rows = Array.isArray(result.products)
+          ? result.products.filter((item: any) => item.status === "active" || item.active === true)
+          : [];
+        setCatalog(rows);
       } catch {
-        setCatalog(fallbackProducts);
+        if (cancelled) return;
+        try {
+          const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+          setCatalog(Array.isArray(rows) && rows.length
+            ? rows.filter((item: any) => (item.status === "active" || item.active !== false) && matchesKind(item, kind))
+            : fallbackProducts.filter((item: any) => matchesKind(item, kind)));
+        } catch {
+          setCatalog([]);
+        }
       }
     };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
+    void load();
+    const reload = () => void load();
+    window.addEventListener("storage", reload);
+    window.addEventListener("backend-storage", reload);
     return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener("backend-storage", load);
+      cancelled = true;
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("backend-storage", reload);
     };
-  }, []);
+  }, [kind]);
 
   const market = getMarketExperience(site);
   const content = market[kind];
