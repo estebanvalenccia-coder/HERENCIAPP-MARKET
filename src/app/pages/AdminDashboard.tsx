@@ -35,6 +35,7 @@ import {
   History,
   Warehouse,
   ScanLine,
+  BarChart3,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -70,9 +71,11 @@ import { AdminOperationsBoard } from "../components/admin/AdminOperationsBoard";
 import { AdminActivityLog } from "../components/admin/AdminActivityLog";
 import { AdminInventoryLocations } from "../components/admin/AdminInventoryLocations";
 import { AdminInventoryLots } from "../components/admin/AdminInventoryLots";
+import { AdminAnalytics } from "../components/admin/AdminAnalytics";
 
 type AdminSection =
   | "dashboard"
+  | "analytics"
   | "products"
   | "add-product"
   | "bulk-product-import"
@@ -338,6 +341,7 @@ export function AdminDashboard() {
 
   const menuItems = [
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
+    { id: "analytics" as AdminSection, label: "Analítica / Visitas", icon: BarChart3, badge: "LIVE" },
     {
       id: "pos" as AdminSection,
       label: "TPV / Caja",
@@ -840,6 +844,8 @@ export function AdminDashboard() {
           {currentSection === "dashboard" && (
             <AdminDashboardHome onNavigate={(section) => setCurrentSection(section as AdminSection)} />
           )}
+
+          {currentSection === "analytics" && <AdminAnalytics />}
 
           {currentSection === "products" && (
             <AdminProducts onAddNew={() => setCurrentSection("add-product")} />
