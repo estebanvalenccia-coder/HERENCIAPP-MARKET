@@ -68,6 +68,7 @@ create table if not exists public.commerce_collections (
   image_url text,
   status text not null default 'active' check (status in ('draft','active','archived')),
   sort_order integer not null default 0,
+  metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
