@@ -87,6 +87,19 @@ function Heading({
   );
 }
 
+function overlayRgb(hex: string) {
+  const normalized = String(hex || "").trim().replace("#", "");
+  const full = normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return { r: 16, g: 43, b: 32 };
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16),
+  };
+}
+
 export function StorefrontBlock({
   block,
   site,
@@ -111,6 +124,7 @@ export function StorefrontBlock({
     const overlay = Math.max(0, Math.min(100, Number(block.design.overlay || 0))) / 100;
     const overlayWidth = Math.max(25, Math.min(100, Number(block.design.overlayWidth ?? 72)));
     const overlayMid = Math.round(overlayWidth * 0.58);
+    const overlayColor = overlayRgb(block.design.overlayColor || "#102b20");
     return (
       <section
         className={`relative overflow-hidden ${hiddenMobileClass}`}
@@ -134,9 +148,9 @@ export function StorefrontBlock({
           className="absolute inset-0"
           style={{
             background: `linear-gradient(90deg,
-              rgba(16, 43, 32, ${overlay}) 0%,
-              rgba(23, 61, 42, ${overlay * 0.69}) ${overlayMid}%,
-              rgba(23, 61, 42, 0) ${overlayWidth}%
+              rgba(${overlayColor.r}, ${overlayColor.g}, ${overlayColor.b}, ${overlay}) 0%,
+              rgba(${overlayColor.r}, ${overlayColor.g}, ${overlayColor.b}, ${overlay * 0.69}) ${overlayMid}%,
+              rgba(${overlayColor.r}, ${overlayColor.g}, ${overlayColor.b}, 0) ${overlayWidth}%
             )`,
           }}
         />

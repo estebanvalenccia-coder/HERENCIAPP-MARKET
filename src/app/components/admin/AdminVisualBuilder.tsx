@@ -1825,8 +1825,42 @@ function DesignEditor({
       )}
       {["hero", "cta"].includes(block.type) && (
         <>
+          {block.type === "hero" && (
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs font-black text-slate-700">
+                <span>Color</span>
+                <span className="font-mono">{design.overlayColor || "#102b20"}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {["#102b20", "#000000", "#4a2f24", "#8b4a35", "#20364f", "#6a5a43", "#6b2448", "#5b5b5b"].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    title={color}
+                    aria-label={`Usar color ${color}`}
+                    onClick={() => update({ overlayColor: color })}
+                    className="h-8 w-8 rounded-full border-2 shadow-sm"
+                    style={{
+                      backgroundColor: color,
+                      borderColor: (design.overlayColor || "#102b20").toLowerCase() === color.toLowerCase() ? "#16a34a" : "#ffffff",
+                      outline: (design.overlayColor || "#102b20").toLowerCase() === color.toLowerCase() ? "2px solid #16a34a" : "1px solid #cbd5e1",
+                    }}
+                  />
+                ))}
+                <label className="flex h-8 items-center gap-2 rounded-lg border border-slate-200 px-2 text-xs font-bold">
+                  Otro
+                  <input
+                    type="color"
+                    value={design.overlayColor || "#102b20"}
+                    onChange={(event) => update({ overlayColor: event.target.value })}
+                    className="h-5 w-7 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
           <RangeField
-            label={block.type === "hero" ? "Intensidad del verde" : "Oscurecer imagen"}
+            label={block.type === "hero" ? "Intensidad del color" : "Oscurecer imagen"}
             value={design.overlay}
             min={0}
             max={100}
@@ -1835,7 +1869,7 @@ function DesignEditor({
           />
           {block.type === "hero" && (
             <RangeField
-              label="Extensión del verde"
+              label="Extensión del color"
               value={design.overlayWidth ?? 72}
               min={25}
               max={100}
