@@ -393,9 +393,8 @@ export function Checkout() {
               },
             }}
             onCancel={() => setShowStripe(false)}
-            onSuccess={() => {
-              toast.success("Pago realizado correctamente 🌿");
-              navigate("/");
+            onSuccess={({ orderId, status }) => {
+              navigate(`/pedido-confirmado?orderId=${encodeURIComponent(orderId)}&status=${encodeURIComponent(status)}`);
             }}
           />
         )}
