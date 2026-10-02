@@ -42,7 +42,12 @@ import {
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
 import { getMarketExperience } from "../../lib/marketExperience";
-import { COMMERCE_COLLECTIONS, productBelongsToCollection } from "../../lib/commerceCatalog";
+import {
+  COMMERCE_COLLECTIONS,
+  getCommerceCollection,
+  primaryCollectionOf,
+  productBelongsToCollection,
+} from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
 type PageMode = "home" | "products" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
