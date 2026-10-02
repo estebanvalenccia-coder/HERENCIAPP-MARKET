@@ -486,6 +486,7 @@ export function AdminVisualBuilder({
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
+  const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
   const hydratedRef = useRef(false);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
@@ -513,6 +514,38 @@ export function AdminVisualBuilder({
       JSON.stringify({ menuIcons, herenciaSettings })
     );
   }, [menuIcons, herenciaSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCatalog = async () => {
+      try {
+        const result = await backendApi.listCommerceProducts();
+        if (!cancelled) {
+          setCatalogPreview(
+            Array.isArray(result.products)
+              ? result.products.filter((product: any) => product.status === "active" || product.active === true)
+              : []
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          try {
+            const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+            setCatalogPreview(Array.isArray(cached) ? cached.filter((product: any) => product.status === "active" || product.active !== false) : []);
+          } catch {
+            setCatalogPreview([]);
+          }
+        }
+      }
+    };
+    void loadCatalog();
+    const reload = () => void loadCatalog();
+    window.addEventListener("backend-storage", reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("backend-storage", reload);
+    };
+  }, []);
 
   function commit(next: SiteContent) {
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
