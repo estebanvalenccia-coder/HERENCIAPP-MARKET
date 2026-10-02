@@ -685,6 +685,10 @@ async function ensureNeonAnalyticsSchema() {
       created_at timestamptz not null default now()
     )
   `);
+  await neonPool.query("alter table visitor_analytics add column if not exists event_label text");
+  await neonPool.query("alter table visitor_analytics add column if not exists product_id text");
+  await neonPool.query("alter table visitor_analytics add column if not exists amount numeric(12,2)");
+  await neonPool.query("alter table visitor_analytics add column if not exists metadata jsonb not null default '{}'::jsonb");
   await neonPool.query("create index if not exists visitor_analytics_created_at_idx on visitor_analytics(created_at desc)");
   await neonPool.query("create index if not exists visitor_analytics_visitor_idx on visitor_analytics(visitor_id, created_at desc)");
   await neonPool.query("create index if not exists visitor_analytics_event_idx on visitor_analytics(event_type, created_at desc)");
@@ -696,13 +700,17 @@ export async function recordNeonAnalyticsEvent(input = {}) {
   const clean = (value, max = 500) => String(value || "").trim().slice(0, max) || null;
   await neonPool.query(
     `insert into visitor_analytics (
-      visitor_id, session_id, event_type, path, referrer, referrer_host,
-      country, region, city, timezone, language, device, browser, created_at
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())`,
+      visitor_id, session_id, event_type, event_label, product_id, amount, metadata,
+      path, referrer, referrer_host, country, region, city, timezone, language, device, browser, created_at
+    ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now())`,
     [
       clean(input.visitorId, 120) || "anonymous",
       clean(input.sessionId, 120),
       clean(input.eventType, 80) || "pageview",
+      clean(input.eventLabel, 240),
+      clean(input.productId, 180),
+      Number.isFinite(Number(input.amount)) ? Math.max(0, Number(input.amount)) : 0,
+      JSON.stringify(input.metadata && typeof input.metadata === "object" ? input.metadata : {}),
       clean(input.path, 500),
       clean(input.referrer, 700),
       clean(input.referrerHost, 220),
@@ -723,13 +731,23 @@ export async function getNeonAnalyticsSummary(days = 30) {
   const safeDays = Math.max(1, Math.min(365, Math.floor(Number(days) || 30)));
   const params = [safeDays];
 
-  const [totals, daily, pages, locations, sources, devices, browsers] = await Promise.all([
+  const [totals, daily, pages, locations, sources, devices, browsers, salesEvents] = await Promise.all([
     neonPool.query(`
       select
         count(*) filter (where event_type='pageview')::int as pageviews,
         count(distinct visitor_id) filter (where event_type='pageview')::int as visitors,
         count(distinct visitor_id) filter (where event_type='pageview' and created_at >= date_trunc('day', now()))::int as visitors_today,
-        count(*) filter (where event_type='space_preview')::int as space_previews
+        count(*) filter (where event_type='space_preview')::int as space_previews,
+        count(*) filter (where event_type='sales_open')::int as sales_opens,
+        count(*) filter (where event_type='sales_message')::int as sales_messages,
+        count(*) filter (where event_type='sales_recommendation')::int as sales_recommendations,
+        count(*) filter (where event_type='sales_photo_search')::int as sales_photo_searches,
+        count(*) filter (where event_type='sales_bouquet_generated')::int as sales_bouquets,
+        count(*) filter (where event_type='sales_add_to_cart')::int as sales_add_to_cart,
+        count(*) filter (where event_type='sales_buy_now')::int as sales_buy_now,
+        count(*) filter (where event_type='sales_handoff')::int as sales_handoffs,
+        count(*) filter (where event_type='sales_purchase')::int as sales_purchases,
+        coalesce(sum(amount) filter (where event_type='sales_purchase'),0)::float8 as sales_revenue
       from visitor_analytics
       where created_at >= now() - ($1::int * interval '1 day')
     `, params),
@@ -775,6 +793,16 @@ export async function getNeonAnalyticsSummary(days = 30) {
       where event_type='pageview' and created_at >= now() - ($1::int * interval '1 day')
       group by 1 order by value desc limit 8
     `, params),
+    neonPool.query(`
+      select event_type as label,
+             count(*)::int as value,
+             coalesce(sum(amount),0)::float8 as amount
+      from visitor_analytics
+      where (event_type like 'sales_%' or event_type='space_preview')
+        and created_at >= now() - ($1::int * interval '1 day')
+      group by event_type
+      order by value desc
+    `, params),
   ]);
 
   return {
@@ -786,6 +814,7 @@ export async function getNeonAnalyticsSummary(days = 30) {
     sources: sources.rows || [],
     devices: devices.rows || [],
     browsers: browsers.rows || [],
+    salesEvents: salesEvents.rows || [],
     generatedAt: new Date().toISOString(),
   };
 }
