@@ -472,11 +472,17 @@ async function hydrateNeonProductRows(rows = []) {
   });
 }
 
-export async function listNeonCommerceCollections() {
+export async function listNeonCommerceCollections({ includeArchived = false } = {}) {
   if (!neonPool) return [];
   await ensureNeonCommerceDefaults();
-  const r=await neonPool.query("select * from commerce_collections where status <> 'archived' order by sort_order,name");
-  return r.rows||[];
+  const where = includeArchived ? "" : " where status <> 'archived'";
+  const r=await neonPool.query(`select * from commerce_collections${where} order by sort_order,name`);
+  return (r.rows||[]).map((row)=>({
+    ...row,
+    imageUrl: row.image_url || "",
+    sortOrder: int(row.sort_order, 0),
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+  }));
 }
 
 export async function saveNeonCommerceCollection(input = {}) {
@@ -498,10 +504,11 @@ export async function saveNeonCommerceCollection(input = {}) {
     ? String(input.status || "active")
     : "active";
   const sortOrder = int(input.sortOrder ?? input.sort_order, 0);
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata : {};
 
   await neonPool.query(
-    `insert into commerce_collections(id,slug,name,description,image_url,status,sort_order,created_at,updated_at)
-     values($1,$2,$3,$4,$5,$6,$7,now(),now())
+    `insert into commerce_collections(id,slug,name,description,image_url,status,sort_order,metadata,created_at,updated_at)
+     values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,now(),now())
      on conflict(id) do update set
        slug=excluded.slug,
        name=excluded.name,
@@ -509,11 +516,63 @@ export async function saveNeonCommerceCollection(input = {}) {
        image_url=excluded.image_url,
        status=excluded.status,
        sort_order=excluded.sort_order,
+       metadata=excluded.metadata,
        updated_at=now()`,
-    [id, slug, name, description, imageUrl, status, sortOrder]
+    [id, slug, name, description, imageUrl, status, sortOrder, JSON.stringify(metadata)]
   );
 
-  return listNeonCommerceCollections();
+  return listNeonCommerceCollections({ includeArchived: true });
+}
+
+export async function setNeonCommerceCollectionProducts(collectionId, productIds = []) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const id = String(collectionId || "").trim();
+  if (!id) {
+    const error = new Error("Colección obligatoria");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const exists = await neonPool.query("select id from commerce_collections where id=$1 limit 1", [id]);
+  if (!exists.rowCount) {
+    const error = new Error("Colección no encontrada");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const cleanIds = [...new Set(
+    (Array.isArray(productIds) ? productIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+
+  const client = await neonPool.connect();
+  try {
+    await client.query("begin");
+    await client.query("delete from commerce_product_collections where collection_id=$1", [id]);
+
+    for (let index = 0; index < cleanIds.length; index += 1) {
+      const productId = cleanIds[index];
+      const productExists = await client.query(
+        "select id from commerce_products where id=$1 and status <> 'archived' limit 1",
+        [productId]
+      );
+      if (!productExists.rowCount) continue;
+      await client.query(
+        "insert into commerce_product_collections(product_id,collection_id,position) values($1,$2,$3) on conflict(product_id,collection_id) do update set position=excluded.position",
+        [productId, id, index]
+      );
+    }
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return listNeonCommerceProducts({ collection: id, includeArchived: false });
 }
 
 export async function listNeonCommerceProducts({ collection = "", includeArchived = false } = {}) {
