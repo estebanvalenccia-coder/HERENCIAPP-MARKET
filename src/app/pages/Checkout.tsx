@@ -414,6 +414,9 @@ export function Checkout() {
             shipping={shipping}
             metadata={{
               source: "frontend_checkout",
+              herenciaSales: salesAttribution.enabled,
+              salesConversationId: salesAttribution.conversationId || null,
+              salesAttributedItems: salesAttribution.itemCount,
               discount,
               coupon: coupon || null,
               requestedPaymentMethod: paymentMethod,
