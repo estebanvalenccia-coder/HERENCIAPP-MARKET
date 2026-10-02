@@ -133,15 +133,6 @@ function removeLocalStorage(key: string) {
   }
 }
 
-function getBrowserGeminiApiKey() {
-  return (
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    import.meta.env.VITE_GOOGLE_API_KEY ||
-    import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ||
-    ""
-  );
-}
-
 function normalizeBouquetText(value: unknown, fallback = "") {
   const text = String(value || "").trim();
   return text || fallback;
@@ -186,69 +177,6 @@ function createLocalBouquetProposal(payload: BouquetPayload) {
     imagePrompt: `Fotografía profesional, realista y premium de ecommerce de UN RAMO COMPLETO de flores frescas, estilo ${style.toLowerCase()}, color principal ${color.toLowerCase()}, presupuesto ${budget.toFixed(2)} €, tamaño ${size}. Idea del cliente: ${description}. El ramo debe verse entero, centrado, con envoltorio elegante de floristería, composición abundante y bonita, luz cálida natural, fondo limpio, sin texto, sin logos, sin marcas de agua, sin personas, sin manos, sin jarrón si no se pide.`,
     sellingTip: "Ideal para vender como ramo premium personalizado.",
   };
-}
-
-async function generateBouquetImageInBrowser(prompt: string) {
-  const apiKey = getBrowserGeminiApiKey();
-
-  if (!apiKey) {
-    throw new Error("Falta VITE_GEMINI_API_KEY en Vercel para generar imágenes IA en el navegador");
-  }
-
-  const models = [
-    import.meta.env.VITE_GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image-preview",
-    "gemini-2.5-flash-image",
-  ].filter(Boolean);
-
-  let lastError = "";
-
-  for (const model of models) {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `${prompt}\n\nGenera SOLO una imagen fotorealista cuadrada de producto para catálogo online. El ramo debe verse completo, bonito, vendible y profesional. Sin texto ni personas.`,
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
-
-    const text = await response.text().catch(() => "");
-
-    if (!response.ok) {
-      lastError = text || `Gemini respondió ${response.status}`;
-      continue;
-    }
-
-    const data = text ? JSON.parse(text) : {};
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((part: any) => part.inlineData?.data || part.inline_data?.data);
-    const inlineData = imagePart?.inlineData || imagePart?.inline_data;
-
-    if (inlineData?.data) {
-      return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
-    }
-
-    lastError = "Gemini respondió sin imagen";
-  }
-
-  throw new Error(lastError || "Gemini no devolvió imagen");
-}
-
-function isAiImage(image: string) {
-  return image.startsWith("data:image/") || image.includes("generativelanguage") || image.includes("nananobanana");
 }
 
 let preloadPromise: Promise<void> | null = null;
@@ -401,8 +329,14 @@ export const backendApi = {
       ok: boolean;
       database: boolean;
       databaseProvider?: string;
+      databasePrimary?: string;
       stripe?: boolean;
+      stripeWebhook?: boolean;
       email?: boolean;
+      r2Configured?: boolean;
+      maps?: boolean;
+      salesAi?: boolean;
+      imageAi?: boolean;
       commerceCore?: boolean;
     }>("/api/ready");
   },
