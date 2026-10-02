@@ -113,8 +113,7 @@ function ImageField({
     if (!file) return;
     setWorking(true);
     try {
-      const dataUrl = await compressImage(file);
-      const result = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
+      const result = await backendApi.uploadSiteMediaFile(file);
       const uploadedUrl = String(result.media?.url || "").trim();
       if (!uploadedUrl) throw new Error("R2 no devolvió una URL pública para la imagen");
       onChange(uploadedUrl);
