@@ -25,6 +25,7 @@ export type BuilderBlockDesign = {
   radius: number;
   overlay: number;
   overlayWidth: number;
+  overlayColor: string;
   alignment: BuilderAlignment;
   imagePosition: string;
   imageZoom: number;
@@ -388,6 +389,7 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
     radius: 16,
     overlay: 42,
     overlayWidth: 72,
+    overlayColor: "#102b20",
     alignment: "left",
     imagePosition: "center",
     imageZoom: 100,
@@ -611,6 +613,7 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
 
     const marketExperience = (next as SiteContent & { marketExperience?: any }).marketExperience;
     if (marketExperience?.home) {
+      marketExperience.home.heroOverlayColor = String(hero.design?.overlayColor || "#102b20");
       marketExperience.home.heroOverlayOpacity = Math.max(0, Math.min(100, Number(hero.design?.overlay ?? 90)));
       marketExperience.home.heroOverlayWidth = Math.max(25, Math.min(100, Number(hero.design?.overlayWidth ?? 72)));
     }
