@@ -89,6 +89,59 @@ export function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (cookieConsent !== "accepted") return;
+
+    let sessionId = "";
+    try {
+      sessionId = sessionStorage.getItem("herencia_analytics_session") || "";
+      if (!sessionId) {
+        sessionId =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem("herencia_analytics_session", sessionId);
+      }
+    } catch {
+      sessionId = `session-${Date.now()}`;
+    }
+
+    const ua = navigator.userAgent || "";
+    const browser = /Edg\//.test(ua)
+      ? "Edge"
+      : /OPR\//.test(ua)
+        ? "Opera"
+        : /Chrome\//.test(ua)
+          ? "Chrome"
+          : /Safari\//.test(ua) && !/Chrome\//.test(ua)
+            ? "Safari"
+            : /Firefox\//.test(ua)
+              ? "Firefox"
+              : "Otro";
+    const device = /ipad|tablet/i.test(ua)
+      ? "Tablet"
+      : /mobi|android|iphone/i.test(ua)
+        ? "Móvil"
+        : "Ordenador";
+
+    fetch("/api/analytics/visit", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventType: "pageview",
+        path: `${location.pathname}${location.search}`,
+        referrer: document.referrer || "",
+        sessionId,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        language: navigator.language || "",
+        device,
+        browser,
+      }),
+    }).catch(() => null);
+  }, [location.pathname, location.search, cookieConsent]);
+
+  useEffect(() => {
     if (location.pathname !== "/productos") return;
     const params = new URLSearchParams(location.search);
     setSearch(params.get("buscar") || "");
