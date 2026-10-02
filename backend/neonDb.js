@@ -393,11 +393,13 @@ const COMMERCE_COLLECTION_ALIASES = new Map([
   ["servicio", "servicios"], ["servicios", "servicios"],
 ]);
 
-function normalizeCommerceCollectionId(value) {
+function normalizeCommerceCollectionId(value, { allowCustom = true } = {}) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return "";
   const normalized = COMMERCE_COLLECTION_ALIASES.get(raw) || raw;
-  return COMMERCE_COLLECTION_IDS.has(normalized) ? normalized : "";
+  if (COMMERCE_COLLECTION_IDS.has(normalized)) return normalized;
+  if (!allowCustom) return "";
+  return slugify(normalized);
 }
 
 function inferCollections(product = {}) {
@@ -405,13 +407,14 @@ function inferCollections(product = {}) {
     ...(Array.isArray(product.collections) ? product.collections : []),
     ...(product.collection ? [product.collection] : []),
   ]
-    .map(normalizeCommerceCollectionId)
+    .map((value) => normalizeCommerceCollectionId(value, { allowCustom: true }))
     .filter(Boolean);
   if (explicit.length) return [...new Set(explicit)];
 
-  // Compatibilidad para productos históricos: solo equivalencias exactas.
-  // Nunca se decide la colección leyendo nombre, descripción o etiquetas.
-  const categoryCollection = normalizeCommerceCollectionId(product.category);
+  // Compatibilidad para productos históricos: solo las ocho colecciones base
+  // se infieren desde category. Las colecciones personalizadas se asignan
+  // explícitamente y nunca por texto/nombre.
+  const categoryCollection = normalizeCommerceCollectionId(product.category, { allowCustom: false });
   return [categoryCollection || "plantas"];
 }
 
