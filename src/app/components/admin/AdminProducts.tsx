@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   Copy,
   Edit,
   Eye,
@@ -144,6 +146,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function loadProducts() {
     try {
@@ -184,6 +187,95 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         .includes(query);
     });
   }, [products, showTrash, collectionFilter, search]);
+
+  const selectedProducts = useMemo(
+    () => products.filter((product) => selectedIds.includes(String(product.id))),
+    [products, selectedIds]
+  );
+
+  function toggleSelected(id: string | number) {
+    const key = String(id);
+    setSelectedIds((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    );
+  }
+
+  function selectVisible() {
+    const ids = visibleProducts.map((product) => String(product.id));
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
+    setSelectedIds((current) =>
+      allSelected
+        ? current.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...current, ...ids]))
+    );
+  }
+
+  async function bulkUpdate(payload: any, message: string) {
+    if (!selectedProducts.length) return;
+    try {
+      setLoading(true);
+      await Promise.all(
+        selectedProducts.map((product) => backendApi.updateCommerceProduct(product.id, payload))
+      );
+      setSelectedIds([]);
+      await loadProducts();
+      toast.success(message);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los artículos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function bulkArchive() {
+    if (!selectedProducts.length) return;
+    if (!confirm(`¿Mover ${selectedProducts.length} artículos a la papelera?`)) return;
+    try {
+      setLoading(true);
+      await Promise.all(
+        selectedProducts.map((product) => backendApi.deleteCommerceProduct(product.id, false))
+      );
+      setSelectedIds([]);
+      await loadProducts();
+      toast.success("Artículos movidos a la papelera");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron archivar los artículos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function moveProduct(product: Product, direction: -1 | 1) {
+    const collection = primaryCollectionOf(product);
+    const rows = products.filter(
+      (item) =>
+        primaryCollectionOf(item) === collection &&
+        item.status !== "archived" &&
+        !item.deletedAt
+    );
+    const index = rows.findIndex((item) => String(item.id) === String(product.id));
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= rows.length) return;
+
+    const target = rows[targetIndex];
+    const productOrder = Number.isFinite(Number(product.sortOrder))
+      ? Number(product.sortOrder)
+      : index * 10;
+    const targetOrder = Number.isFinite(Number(target.sortOrder))
+      ? Number(target.sortOrder)
+      : targetIndex * 10;
+
+    try {
+      await Promise.all([
+        backendApi.updateCommerceProduct(product.id, { sortOrder: targetOrder }),
+        backendApi.updateCommerceProduct(target.id, { sortOrder: productOrder }),
+      ]);
+      await loadProducts();
+      toast.success("Orden actualizado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cambiar el orden");
+    }
+  }
 
   async function updateProduct(product: Product, payload: any, message?: string) {
     try {
@@ -479,6 +571,31 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         </select>
       </div>
 
+      {!showTrash && visibleProducts.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between">
+          <label className="flex items-center gap-3 text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={visibleProducts.every((product) => selectedIds.includes(String(product.id)))}
+              onChange={selectVisible}
+            />
+            Seleccionar visibles ({visibleProducts.length})
+          </label>
+
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-sm font-black">{selectedIds.length} seleccionados</span>
+              <button type="button" onClick={() => void bulkUpdate({ status: "active", active: true }, "Artículos publicados")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Publicar</button>
+              <button type="button" onClick={() => void bulkUpdate({ status: "draft", active: false }, "Artículos pasados a borrador")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Borrador</button>
+              <button type="button" onClick={() => void bulkUpdate({ featured: true }, "Artículos destacados")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Destacar</button>
+              <button type="button" onClick={() => void bulkUpdate({ featured: false }, "Destacado retirado")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Quitar destacado</button>
+              <button type="button" onClick={() => void bulkArchive()} className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-black text-destructive">Papelera</button>
+              <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg px-3 py-2 text-xs font-black text-muted-foreground">Limpiar</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Cargando catálogo de Neon…</div>
       ) : visibleProducts.length === 0 ? (
@@ -504,7 +621,17 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   </div>
                   <div className="p-5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        {!showTrash && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(String(product.id))}
+                            onChange={() => toggleSelected(product.id)}
+                            className="mt-1"
+                            aria-label={`Seleccionar ${product.name}`}
+                          />
+                        )}
+                        <div className="min-w-0">
                         <div className="mb-2 flex flex-wrap gap-2">
                           <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-black text-primary">{collection.name}</span>
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${published ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
@@ -514,6 +641,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                         </div>
                         <h3 className="text-xl font-black">{product.name}</h3>
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{product.description}</p>
+                        </div>
                       </div>
                       <button onClick={() => printLabel(product)} className="rounded-lg border border-border p-2" title="Imprimir etiqueta"><Printer className="h-4 w-4" /></button>
                     </div>
@@ -539,6 +667,16 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                       <button onClick={() => void duplicateProduct(product)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-bold">
                         <Copy className="h-4 w-4" /> Duplicar
                       </button>
+                      {!showTrash && (
+                        <>
+                          <button onClick={() => void moveProduct(product, -1)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-sm font-bold" title="Subir en su colección">
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => void moveProduct(product, 1)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-sm font-bold" title="Bajar en su colección">
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
                       {showTrash ? (
                         <>
                           <button onClick={() => void restoreProduct(product)} className="rounded-lg border border-border px-3 py-2 text-sm font-bold">Restaurar</button>
