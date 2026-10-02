@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Camera,
   Flower2,
   Gift,
@@ -102,6 +103,21 @@ export function SalesChatWidget() {
 
   const market = useMemo(() => getMarketExperience(site), [site]);
   const sales = market.sales;
+
+  const goBack = () => {
+    setInput("");
+    if (messages.length > 1) {
+      setMessages([
+        {
+          id: "welcome",
+          role: "assistant",
+          content: sales.prompt,
+        },
+      ]);
+      return;
+    }
+    setOpen(false);
+  };
 
   useEffect(() => {
     setMessages((current) => {
@@ -312,6 +328,15 @@ export function SalesChatWidget() {
           <header className="border-b border-white/10 bg-[#173d2a] px-5 pb-5 pt-4 text-white">
             <div className="flex items-start justify-between gap-4">
               <div>
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20"
+                  aria-label="Volver al inicio de HERENCIA SALES"
+                  title="Atrás"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Atrás
+                </button>
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/65">
                   <Sparkles className="h-4 w-4 text-[#e7d7a8]" />
                   Asistente comercial
