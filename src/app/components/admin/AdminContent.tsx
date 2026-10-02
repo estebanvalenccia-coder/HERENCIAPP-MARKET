@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Image as ImageIcon, Monitor, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
@@ -18,7 +18,7 @@ function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   }
 }
 
-async function compressImage(file: File, maxWidth = 1920) {
+async function compressImage(file: File, maxWidth = 1800) {
   if (!file.type.startsWith("image/")) throw new Error("El archivo debe ser una imagen");
   if (file.size > 8 * 1024 * 1024) throw new Error("La imagen supera 8 MB");
 
@@ -36,14 +36,36 @@ async function compressImage(file: File, maxWidth = 1920) {
     img.src = source;
   });
 
-  const scale = Math.min(1, maxWidth / Math.max(1, image.width));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("El navegador no puede procesar imágenes");
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.86);
+  const naturalWidth = Math.max(1, image.naturalWidth || image.width || 1);
+  const naturalHeight = Math.max(1, image.naturalHeight || image.height || 1);
+  const maxPixels = 3_000_000;
+  const scale = Math.min(
+    1,
+    maxWidth / naturalWidth,
+    1800 / naturalHeight,
+    Math.sqrt(maxPixels / Math.max(1, naturalWidth * naturalHeight)),
+  );
+
+  let width = Math.max(1, Math.round(naturalWidth * scale));
+  let height = Math.max(1, Math.round(naturalHeight * scale));
+  let quality = 0.86;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("El navegador no puede procesar imágenes");
+    ctx.drawImage(image, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (/^data:image\/jpeg;base64,.+/i.test(dataUrl)) return dataUrl;
+
+    width = Math.max(480, Math.round(width * 0.82));
+    height = Math.max(1, Math.round(naturalHeight * (width / naturalWidth)));
+    quality = Math.max(0.5, quality - 0.06);
+  }
+
+  throw new Error("Safari no pudo convertir la imagen a un formato válido");
 }
 
 function Field({
@@ -105,8 +127,12 @@ function ImageEditor({
     if (!file) return;
     setWorking(true);
     try {
-      onChange(await compressImage(file, maxWidth));
-      toast.success(`${label} actualizada`);
+      const dataUrl = await compressImage(file, maxWidth);
+      const uploaded = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
+      const uploadedUrl = String(uploaded.media?.url || "").trim();
+      if (!uploadedUrl) throw new Error("Cloudflare R2 no devolvió una URL pública");
+      onChange(uploadedUrl);
+      toast.success(`${label} subida a Cloudflare R2`);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo cargar la imagen");
     } finally {
@@ -160,6 +186,10 @@ export function AdminContent() {
 
       // Si el editor conserva una imagen embebida en base64, publícala primero
       // en Cloudflare R2 y persiste únicamente la URL pública devuelta.
+      if (heroImageUrl.startsWith("data:") && !heroImageUrl.startsWith("data:image/")) {
+        throw new Error("La portada guardada está dañada. Vuelve a seleccionar la imagen para subirla a Cloudflare R2.");
+      }
+
       if (heroImageUrl.startsWith("data:image/")) {
         const uploaded = await backendApi.uploadSiteMedia({
           dataUrl: heroImageUrl,
