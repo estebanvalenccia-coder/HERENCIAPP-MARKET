@@ -41,6 +41,16 @@ type BouquetResult = {
   disclaimer: string;
 };
 
+type SpacePreviewResult = {
+  image: string;
+  productId: number;
+  productName: string;
+  productImage?: string;
+  price: number;
+  currency: string;
+  disclaimer: string;
+};
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -48,15 +58,17 @@ type ChatMessage = {
   productIds?: number[];
   bouquetDraft?: BouquetDraft | null;
   bouquetResult?: BouquetResult | null;
+  spacePreview?: SpacePreviewResult | null;
 };
 
 function apiCatalog() {
-  return products.map(({ id, name, category, price, description }) => ({
+  return products.map(({ id, name, category, price, description, image }) => ({
     id,
     name,
     category,
     price,
     description,
+    image,
   }));
 }
 
@@ -88,7 +100,10 @@ export function SalesChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [spaceLoading, setSpaceLoading] = useState(false);
+  const [spaceTargetProduct, setSpaceTargetProduct] = useState<Product | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const spaceFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
@@ -134,6 +149,14 @@ export function SalesChatWidget() {
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
+    []
+  );
+
+  const spaceProducts = useMemo(
+    () =>
+      products
+        .filter((product) => /planta|orqu/i.test(`${product.category} ${product.name}`))
+        .slice(0, 8),
     []
   );
 
@@ -249,6 +272,102 @@ export function SalesChatWidget() {
     toast.success("Ramo personalizado añadido al carrito");
   };
 
+  const openSpacePicker = () => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        role: "assistant",
+        content:
+          "📐 Ver en mi espacio: elige una planta y después sube o toma una foto de tu salón, habitación, terraza, oficina o jardín. Te mostraré cómo podría quedar allí.",
+        productIds: spaceProducts.map((product) => product.id),
+      },
+    ]);
+    setOpen(true);
+  };
+
+  const chooseSpaceProduct = (product: Product) => {
+    setSpaceTargetProduct(product);
+    window.setTimeout(() => spaceFileRef.current?.click(), 0);
+  };
+
+  const generateSpacePreview = async (file?: File) => {
+    const product = spaceTargetProduct;
+    if (!file || !product || spaceLoading) return;
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La foto del espacio debe pesar menos de 8 MB");
+      return;
+    }
+
+    setSpaceLoading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("No se pudo leer la foto del espacio"));
+        reader.readAsDataURL(file);
+      });
+      const base64 = dataUrl.split(",")[1] || "";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: "user",
+          content: `📷 Quiero ver ${product.name} colocado en este espacio.`,
+        },
+      ]);
+
+      const response = await fetch("/api/ai/sales-space-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: base64,
+          mimeType: file.type || "image/jpeg",
+          productId: product.id,
+          catalog: apiCatalog(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "No se pudo generar la visualización");
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: "assistant",
+          content: `Así podría quedar ${product.name} en tu espacio. Puedes comprarla o probar otra planta.`,
+          spacePreview: data,
+        },
+      ]);
+
+      try {
+        if (localStorage.getItem("herencia_cookie_consent") === "accepted") {
+          void fetch("/api/analytics/visit", {
+            method: "POST",
+            credentials: "include",
+            keepalive: true,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventType: "space_preview",
+              path: window.location.pathname + window.location.search,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+              language: navigator.language || "",
+            }),
+          });
+        }
+      } catch {
+        // La analítica nunca debe bloquear la compra ni la generación.
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar la visualización");
+    } finally {
+      setSpaceLoading(false);
+      setSpaceTargetProduct(null);
+      if (spaceFileRef.current) spaceFileRef.current.value = "";
+    }
+  };
+
   const identifyImage = async (file?: File) => {
     if (!file || loading) return;
     if (file.size > 6 * 1024 * 1024) {
@@ -308,6 +427,13 @@ export function SalesChatWidget() {
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(event) => void identifyImage(event.target.files?.[0])}
+      />
+      <input
+        ref={spaceFileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(event) => void generateSpacePreview(event.target.files?.[0])}
       />
 
       {!open ? (
@@ -402,6 +528,16 @@ export function SalesChatWidget() {
                               >
                                 <ShoppingCart className="h-3.5 w-3.5" /> Añadir
                               </button>
+                              {/planta|orqu/i.test(`${product.category} ${product.name}`) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => chooseSpaceProduct(product)}
+                                  disabled={spaceLoading}
+                                  className="flex items-center gap-1 rounded-lg border border-[#315b42]/30 bg-[#eef2eb] px-2.5 py-1.5 text-xs font-bold text-[#315b42] disabled:opacity-50"
+                                >
+                                  <ImageIcon className="h-3.5 w-3.5" /> Ver en mi espacio
+                                </button>
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -424,6 +560,49 @@ export function SalesChatWidget() {
                     )}
                     {imageLoading ? "Creando propuesta..." : "Ver cómo quedaría"}
                   </button>
+                ) : null}
+
+                {message.spacePreview ? (
+                  <div className="mt-2 overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white shadow-sm">
+                    <div className="relative">
+                      <img
+                        src={message.spacePreview.image}
+                        alt={`${message.spacePreview.productName} en el espacio del cliente`}
+                        className="aspect-square w-full object-cover"
+                      />
+                      <span className="absolute left-3 top-3 rounded-full bg-[#173d2a]/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white">
+                        Vista IA en tu espacio
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <p className="font-black">{message.spacePreview.productName}</p>
+                      <p className="mt-1 text-xl font-black text-[#315b42]">
+                        {Number(message.spacePreview.price).toFixed(2)} €
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const product = productMap.get(message.spacePreview!.productId);
+                            if (product) addProduct(product);
+                          }}
+                          className="flex items-center gap-2 rounded-xl bg-[#315b42] px-4 py-2.5 text-sm font-black text-white"
+                        >
+                          <ShoppingCart className="h-4 w-4" /> Comprar esta planta
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openSpacePicker}
+                          className="flex items-center gap-2 rounded-xl border border-[#ded9cd] px-4 py-2.5 text-sm font-black"
+                        >
+                          <Sparkles className="h-4 w-4" /> Probar otra
+                        </button>
+                      </div>
+                      <p className="mt-3 text-[11px] leading-relaxed text-[#6d776f]">
+                        {message.spacePreview.disclaimer}
+                      </p>
+                    </div>
+                  </div>
                 ) : null}
 
                 {message.bouquetResult ? (
@@ -486,6 +665,19 @@ export function SalesChatWidget() {
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={openSpacePicker}
+                  className="flex w-full items-center justify-between gap-4 rounded-2xl border border-[#315b42]/25 bg-[#eef2eb] px-4 py-3 text-left text-sm font-black shadow-sm transition hover:border-[#315b42]/50"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#315b42]">
+                      <ImageIcon className="h-4 w-4" />
+                    </span>
+                    Ver una planta en mi espacio
+                  </span>
+                  <span className="text-[#879287]">›</span>
+                </button>
               </div>
             ) : null}
 
@@ -494,16 +686,28 @@ export function SalesChatWidget() {
                 <Loader2 className="h-4 w-4 animate-spin" /> Buscando la mejor opción…
               </div>
             ) : null}
+            {spaceLoading ? (
+              <div className="mr-10 flex items-center gap-2 rounded-2xl border border-[#cfd9cf] bg-[#eef2eb] px-4 py-3 text-sm font-bold text-[#315b42]">
+                <Loader2 className="h-4 w-4 animate-spin" /> Generando en tu espacio…
+              </div>
+            ) : null}
           </div>
 
           <div className="border-t border-[#dfdbd1] bg-[#fffdf9] p-3">
-            <div className="mb-2 flex gap-2">
+            <div className="mb-2 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"
               >
                 <Camera className="h-4 w-4" /> Buscar por foto
+              </button>
+              <button
+                type="button"
+                onClick={openSpacePicker}
+                className="flex items-center gap-2 rounded-full border border-[#315b42]/30 bg-[#eef2eb] px-3 py-2 text-xs font-bold text-[#315b42]"
+              >
+                <ImageIcon className="h-4 w-4" /> Ver en mi espacio
               </button>
               <a
                 href="/crear-ramo"
