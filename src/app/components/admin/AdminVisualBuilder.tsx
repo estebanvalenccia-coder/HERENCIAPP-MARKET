@@ -1031,10 +1031,11 @@ export function AdminVisualBuilder({
               onChange={(event) => {
                 const value = event.target.value;
                 setSelected(value);
-                if (value === "contact") setPageMode("contact");
-                else if (value === "products") setPageMode("products");
-                else if (value === "services") setPageMode("services");
-                else if (pageMode !== "home") setPageMode("home");
+                if (["products","services","dulce","moda","about","contact","herencia"].includes(value)) {
+                  setPageMode(value as PageMode);
+                } else if (pageMode !== "home") {
+                  setPageMode("home");
+                }
               }}
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold"
             >
@@ -1047,7 +1048,11 @@ export function AdminVisualBuilder({
               <option value="footer">Footer</option>
               <option value="products">Productos</option>
               <option value="services">Servicios</option>
+              <option value="dulce">Dulce</option>
+              <option value="moda">Moda</option>
+              <option value="about">Nosotros</option>
               <option value="contact">Contacto</option>
+              <option value="herencia">Herenc(IA)</option>
             </select>
             <div className="flex rounded-lg bg-slate-100 p-1">
               {([
@@ -1135,6 +1140,16 @@ export function AdminVisualBuilder({
                   <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
                 </div>
               ))
+            ) : pageMode === "products" ? (
+              <ProductsPreview site={site} products={catalogPreview} selected={selected === "products"} onSelect={() => setSelected("products")} />
+            ) : pageMode === "services" ? (
+              <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
+            ) : pageMode === "dulce" || pageMode === "moda" ? (
+              <CollectionPreview site={site} products={catalogPreview} kind={pageMode} selected={selected === pageMode} onSelect={() => setSelected(pageMode)} />
+            ) : pageMode === "about" ? (
+              <AboutPreview site={site} selected={selected === "about"} onSelect={() => setSelected("about")} />
+            ) : pageMode === "herencia" ? (
+              <HerenciaPreview site={site} selected={selected === "herencia"} onSelect={() => setSelected("herencia")} />
             ) : (
               <ContactPreview site={site} selected={selected === "contact"} onSelect={() => setSelected("contact")} />
             )}
@@ -1162,7 +1177,17 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedBlock?.name || (selected === "header" ? "Header" : selected === "footer" ? "Footer" : "Contacto")}
+                  {selectedBlock?.name || (
+                    selected === "header" ? "Header"
+                      : selected === "footer" ? "Footer"
+                      : selected === "products" ? "Productos"
+                      : selected === "services" ? "Servicios"
+                      : selected === "dulce" ? "Dulce"
+                      : selected === "moda" ? "Moda"
+                      : selected === "about" ? "Nosotros"
+                      : selected === "herencia" ? "Herenc(IA)"
+                      : "Contacto"
+                  )}
                 </h2>
               </div>
               {selectedBlock && (
@@ -1215,6 +1240,10 @@ export function AdminVisualBuilder({
 
             {selected === "products" && <ProductsPageEditor site={site} updateSite={updateSite} />}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
+            {selected === "dulce" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="dulce" />}
+            {selected === "moda" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="moda" />}
+            {selected === "about" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="about" />}
+            {selected === "herencia" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="sales" />}
             {selected === "contact" && <ContactEditor site={site} updateSite={updateSite} />}
 
             {selectedBlock && tab === "contenido" && (
