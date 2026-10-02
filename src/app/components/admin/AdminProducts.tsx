@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
-  isPlantLikeCollection,
+  isPlantCareProduct,
   primaryCollectionOf,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
@@ -146,6 +147,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function loadProducts() {
@@ -214,14 +216,38 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     if (!selectedProducts.length) return;
     try {
       setLoading(true);
+      const publishing = payload?.status === "active" || payload?.active === true;
+      const prepared = await Promise.all(
+        selectedProducts.map(async (product) => {
+          if (!publishing) return { product, payload };
+          const aiPatch = await buildPlantProfilePublishPatch({ ...product, ...payload });
+          return {
+            product,
+            payload: {
+              ...payload,
+              ...aiPatch,
+              metadata: {
+                ...(payload?.metadata || {}),
+                ...((aiPatch as any).metadata || {}),
+              },
+            },
+          };
+        })
+      );
       await Promise.all(
-        selectedProducts.map((product) => backendApi.updateCommerceProduct(product.id, payload))
+        prepared.map(({ product, payload: nextPayload }) =>
+          backendApi.updateCommerceProduct(product.id, nextPayload)
+        )
       );
       setSelectedIds([]);
       await loadProducts();
       toast.success(message);
     } catch (error: any) {
-      toast.error(error?.message || "No se pudieron actualizar los artículos");
+      toast.error(
+        error?.message
+          ? `No se pudieron publicar/actualizar los artículos: ${error.message}`
+          : "No se pudieron actualizar los artículos"
+      );
     } finally {
       setLoading(false);
     }
@@ -289,11 +315,52 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
   async function toggleActive(product: Product) {
     const active = product.status === "active" || product.active === true;
-    await updateProduct(
-      product,
-      { status: active ? "draft" : "active", active: !active },
-      active ? "Artículo pasado a borrador" : "Artículo publicado"
-    );
+    if (active) {
+      await updateProduct(
+        product,
+        { status: "draft", active: false },
+        "Artículo pasado a borrador"
+      );
+      return;
+    }
+
+    try {
+      const basePatch = { status: "active", active: true };
+      const aiPatch = await buildPlantProfilePublishPatch({ ...product, ...basePatch });
+      await updateProduct(
+        product,
+        {
+          ...basePatch,
+          ...aiPatch,
+          metadata: {
+            ...((aiPatch as any).metadata || {}),
+          },
+        },
+        "Artículo publicado"
+      );
+    } catch (error: any) {
+      toast.error(
+        error?.message
+          ? `No se pudo publicar la planta: ${error.message}`
+          : "No se pudo generar la ficha IA de la planta"
+      );
+    }
+  }
+
+  async function regeneratePlantProfile(product: Product) {
+    if (!isPlantCareProduct(product)) return;
+    const key = String(product.id);
+    try {
+      setProfileGenerating(key);
+      const aiPatch = await buildPlantProfilePublishPatch(product, { force: true });
+      await backendApi.updateCommerceProduct(product.id, aiPatch);
+      await loadProducts();
+      toast.success("Ficha de planta regenerada y guardada en Neon");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo regenerar la ficha IA de la planta");
+    } finally {
+      setProfileGenerating(null);
+    }
   }
 
   async function toggleSale(product: Product) {
@@ -454,7 +521,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         imageUrl = String(uploaded.media?.url || "");
       }
 
-      const plantLike = isPlantLikeCollection(editForm.collection);
+      const plantLike = isPlantCareProduct({ collection: editForm.collection, category: editForm.category });
       const variants = editForm.variantsText
         .split("\n")
         .map((line) => line.trim())
@@ -470,7 +537,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         })
         .filter((variant) => variant.name);
 
-      await backendApi.updateCommerceProduct(editingProduct.id, {
+      const basePayload: any = {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
         collection: editForm.collection,
@@ -509,7 +576,33 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
         },
-      });
+      
+        ...(plantLike
+          ? {}
+          : {
+              plantProfile: null,
+              aiPlantProfileGenerated: false,
+              aiPlantProfileGeneratedAt: null,
+            }),
+      };
+
+      let finalPayload = basePayload;
+      if (editForm.status === "active") {
+        const aiPatch = await buildPlantProfilePublishPatch({
+          ...editingProduct,
+          ...basePayload,
+        });
+        finalPayload = {
+          ...basePayload,
+          ...aiPatch,
+          metadata: {
+            ...(basePayload.metadata || {}),
+            ...((aiPatch as any).metadata || {}),
+          },
+        };
+      }
+
+      await backendApi.updateCommerceProduct(editingProduct.id, finalPayload);
 
       await loadProducts();
       toast.success("Artículo actualizado en Neon");
@@ -664,6 +757,20 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                       <button onClick={() => startEdit(product)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground">
                         <Edit className="h-4 w-4" /> Editar
                       </button>
+                      {isPlantCareProduct(product) && (
+                        <button
+                          onClick={() => void regeneratePlantProfile(product)}
+                          disabled={profileGenerating === String(product.id)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-bold text-primary disabled:opacity-50"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          {profileGenerating === String(product.id)
+                            ? "Generando ficha…"
+                            : product.plantProfile
+                              ? "Regenerar ficha IA"
+                              : "Generar ficha IA"}
+                        </button>
+                      )}
                       <button onClick={() => void duplicateProduct(product)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-bold">
                         <Copy className="h-4 w-4" /> Duplicar
                       </button>
@@ -793,7 +900,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   </label>
                 </div>
 
-                {isPlantLikeCollection(editForm.collection) && (
+                {isPlantCareProduct({ collection: editForm.collection, category: editForm.category }) && (
                   <div className="rounded-2xl border border-border bg-muted/20 p-4">
                     <h4 className="font-black">Cuidados / ficha de planta</h4>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
