@@ -1365,6 +1365,104 @@ app.post("/api/admin/logout", (_req, res) => {
 app.get("/api/admin/session", (req, res) => {
   res.json({ authenticated: isAdmin(req) });
 });
+
+function serverGeminiKey() {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    ""
+  );
+}
+
+app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
+  try {
+    const apiKey = serverGeminiKey();
+    if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
+    const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
+    if (!prompt) return res.status(400).json({ error: "Prompt obligatorio" });
+
+    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000)),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${prompt}\n\nGenera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }] }],
+        }),
+      }
+    );
+
+    const text = await response.text();
+    if (!response.ok) throw new Error(`Gemini respondió ${response.status}: ${text}`);
+    const data = text ? JSON.parse(text) : {};
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((part) => part?.inlineData?.data || part?.inline_data?.data);
+    const inlineData = imagePart?.inlineData || imagePart?.inline_data;
+    if (!inlineData?.data) throw new Error("Gemini no devolvió una imagen");
+
+    res.json({
+      image: `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`,
+      model,
+    });
+  } catch (error) {
+    res.status(502).json({ error: error?.message || "No se pudo generar la imagen" });
+  }
+});
+
+app.post("/api/admin/ai/classify-product-image", requireAdmin, async (req, res) => {
+  try {
+    const apiKey = serverGeminiKey();
+    if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
+
+    const dataUrl = String(req.body?.image || "");
+    const allowedFamilies = String(req.body?.allowedFamilies || "").slice(0, 16000);
+    const { mimeType, buffer } = parseImageDataUrl(dataUrl);
+    const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
+    const prompt = `Eres una IA experta en catálogo de floristería y garden center en Barcelona.
+Analiza esta imagen. Puede ser UNA planta individual o UN ramo de flores.
+Responde SOLO JSON válido. No inventes precios.
+Usa una de estas rutas:
+${allowedFamilies}
+
+Formato obligatorio:
+{
+  "name": "Nombre comercial en español",
+  "department": "Ramos de flores/Plantas",
+  "area": "Área exacta de la lista",
+  "family": "Familia exacta de la lista",
+  "category": "categoría exacta de la ruta",
+  "description": "Descripción breve para tienda online, máximo 18 palabras",
+  "confidence": 0.0
+}`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000)),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType, data: buffer.toString("base64") } }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      }
+    );
+
+    const text = await response.text();
+    if (!response.ok) throw new Error(`Gemini respondió ${response.status}: ${text}`);
+    const data = text ? JSON.parse(text) : {};
+    const output = data?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("") || "{}";
+    let result = {};
+    try { result = JSON.parse(String(output).replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim()); } catch {}
+    res.json({ result, model });
+  } catch (error) {
+    res.status(502).json({ error: error?.message || "No se pudo clasificar la imagen" });
+  }
+});
 const SITE_MEDIA_BUCKET = process.env.SITE_MEDIA_BUCKET || "site-media";
 
 async function ensureSiteMediaBucket() {
