@@ -34,6 +34,7 @@ export type MarketExperienceContent = {
     title: string;
     description: string;
     heroImageUrl: string;
+    heroOverlayColor: string;
     heroOverlayOpacity: number;
     heroOverlayWidth: number;
     categoriesTitle: string;
@@ -88,6 +89,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     title: "Haz de tu hogar un espacio con vida",
     description: "Plantas, decoración, productos, servicios y detalles únicos para crear espacios que te hagan bien.",
     heroImageUrl: "/herencia-portada.avif",
+    heroOverlayColor: "#102b20",
     heroOverlayOpacity: 90,
     heroOverlayWidth: 72,
     categoriesTitle: "Todo para un estilo de vida más verde",
