@@ -5390,7 +5390,7 @@ function cleanAiJson(content) {
 function groqModel(model) {
   const configured = String(model || "").trim();
   if (configured && !configured.includes("llama-3.1-70b")) return configured;
-  return process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  return process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 }
 
 async function getAiSettings() {
