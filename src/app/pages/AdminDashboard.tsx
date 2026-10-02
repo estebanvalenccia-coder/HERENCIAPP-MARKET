@@ -886,6 +886,7 @@ export function AdminDashboard() {
             <AdminContent
               onManageProducts={() => setCurrentSection("products")}
               onAddProduct={() => setCurrentSection("add-product")}
+              onManageCollections={() => setCurrentSection("collections")}
             />
           )}
 
