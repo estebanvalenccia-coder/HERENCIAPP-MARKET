@@ -5816,6 +5816,25 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
+    let authoritativeDiscount = 0;
+    const couponCode = String(metadata?.coupon || "").trim().toUpperCase();
+    if (couponCode) {
+      const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
+      const rule = (Array.isArray(rules) ? rules : []).find(
+        (entry) =>
+          String(entry?.code || "").trim().toUpperCase() === couponCode &&
+          entry?.active !== false &&
+          (!entry?.expiresAt || new Date(entry.expiresAt) >= new Date())
+      );
+      if (!rule) return res.status(409).json({ error: "El cupón ya no es válido" });
+      authoritativeDiscount = rule.type === "fixed"
+        ? Number(rule.value || 0)
+        : authoritativeSubtotal * Number(rule.value || 0) / 100;
+      authoritativeDiscount = normalizeMoney(
+        Math.min(authoritativeSubtotal, Math.max(0, authoritativeDiscount))
+      );
+    }
+
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
     await assertDeliveryAvailability({ deliveryMethod, metadata, suite });
     const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
@@ -5839,7 +5858,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       }
     }
 
-    const authoritativeTotal = Number((authoritativeSubtotal + authoritativeShipping).toFixed(2));
+    const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
     const totalCents = Math.round(authoritativeTotal * 100);
     if (!Number.isFinite(totalCents) || totalCents < 50) {
       return res.status(400).json({ error: "Importe inválido para Stripe" });
@@ -5852,7 +5871,9 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       source: "frontend_checkout",
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
-      pricingSource: "backend_catalog_and_maps",
+      pricingSource: "backend_catalog_coupons_and_maps",
+      discount: authoritativeDiscount,
+      coupon: couponCode || null,
       inventoryReservation: stockReservation,
       shippingDistance: shippingQuote
         ? {
@@ -5901,6 +5922,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         orderId,
         totals: {
           subtotal: authoritativeSubtotal,
+          discount: authoritativeDiscount,
           shipping: authoritativeShipping,
           total: authoritativeTotal,
         },
