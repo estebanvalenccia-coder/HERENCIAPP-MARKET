@@ -172,7 +172,10 @@ export function isPlantLikeCollection(id: unknown) {
 }
 
 export function isPlantCareProduct(product: any) {
-  const collection = primaryCollectionOf(product);
+  const declaredCollection = String(product?.collection || "").trim().toLowerCase();
+  const collection = COMMERCE_COLLECTIONS.some((item) => item.id === declaredCollection)
+    ? declaredCollection
+    : primaryCollectionOf(product);
   const category = String(product?.category || "").trim().toLowerCase();
   return collection === "plantas" && category !== "flores";
 }
