@@ -568,11 +568,44 @@ export function AdminMarketExperience({
               />
 
               <div className="rounded-2xl border border-border bg-[#fbfaf6] p-4">
-                <p className="mb-4 font-black">Sombra de la portada</p>
+                <p className="mb-4 font-black">Color de la portada</p>
+
+                <div className="mb-5">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold">
+                    <span>Color</span>
+                    <span className="font-mono text-xs">{market.home.heroOverlayColor || "#102b20"}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {["#102b20", "#000000", "#4a2f24", "#8b4a35", "#20364f", "#6a5a43", "#6b2448", "#5b5b5b"].map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`Usar color ${color}`}
+                        title={color}
+                        onClick={() => patchHome({ heroOverlayColor: color })}
+                        className="h-9 w-9 rounded-full border-2 shadow-sm"
+                        style={{
+                          backgroundColor: color,
+                          borderColor: (market.home.heroOverlayColor || "#102b20").toLowerCase() === color.toLowerCase() ? "#16a34a" : "#ffffff",
+                          outline: (market.home.heroOverlayColor || "#102b20").toLowerCase() === color.toLowerCase() ? "2px solid #16a34a" : "1px solid #d1d5db",
+                        }}
+                      />
+                    ))}
+                    <label className="flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-2 text-xs font-bold">
+                      Personalizado
+                      <input
+                        type="color"
+                        value={market.home.heroOverlayColor || "#102b20"}
+                        onChange={(event) => patchHome({ heroOverlayColor: event.target.value })}
+                        className="h-6 w-8 cursor-pointer border-0 bg-transparent p-0"
+                      />
+                    </label>
+                  </div>
+                </div>
 
                 <label className="block">
                   <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold">
-                    <span>Oscuridad</span>
+                    <span>Intensidad del color</span>
                     <span>{Math.round(Number(market.home.heroOverlayOpacity ?? 90))}%</span>
                   </div>
                   <input
@@ -589,7 +622,7 @@ export function AdminMarketExperience({
 
                 <label className="mt-5 block">
                   <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold">
-                    <span>Extensión de la sombra</span>
+                    <span>Extensión del color</span>
                     <span>{Math.round(Number(market.home.heroOverlayWidth ?? 72))}%</span>
                   </div>
                   <input
@@ -601,7 +634,7 @@ export function AdminMarketExperience({
                     onChange={(event) => patchHome({ heroOverlayWidth: Number(event.target.value) })}
                     className="w-full"
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Bájala para mostrar más foto · súbela para llevar la sombra más hacia la derecha</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Bájala para mostrar más foto · súbela para llevar el color más hacia la derecha</p>
                 </label>
               </div>
             </div>
