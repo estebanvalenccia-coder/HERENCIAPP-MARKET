@@ -111,12 +111,33 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [NEON_RESERVATION_LOCK]);
 
-    const [productsResult, reservationsResult] = await Promise.all([
-      client.query("select value from app_storage where key=$1 limit 1 for update", ["adminProducts"]),
+    const productIds = [...new Set(requested.map((item) => item.productId))];
+    const [productsResult, variantsResult, reservationsResult] = await Promise.all([
+      client.query(
+        "select id,name,status,stock,track_inventory from commerce_products where id = any($1::text[]) for update",
+        [productIds]
+      ),
+      client.query(
+        "select product_id,name,stock from commerce_product_variants where product_id = any($1::text[]) for update",
+        [productIds]
+      ),
       client.query("select value from app_storage where key=$1 limit 1 for update", [NEON_RESERVATIONS_KEY]),
     ]);
 
-    const products = parseArrayJson(productsResult.rows?.[0]?.value);
+    const products = (productsResult.rows || []).map((row) => ({
+      id: String(row.id),
+      name: row.name || "",
+      active: row.status === "active",
+      deletedAt: row.status === "archived" ? "archived" : null,
+      stock: int(row.stock),
+      trackInventory: row.track_inventory !== false,
+      variants: (variantsResult.rows || [])
+        .filter((variant) => String(variant.product_id) === String(row.id))
+        .map((variant) => ({
+          name: variant.name,
+          stock: int(variant.stock),
+        })),
+    }));
     const now = Date.now();
     const active = parseArrayJson(reservationsResult.rows?.[0]?.value)
       .filter((row) =>
