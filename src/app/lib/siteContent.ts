@@ -122,6 +122,14 @@ export type SiteContent = {
     featuredLabel: string;
     addButtonLabel: string;
     outOfStockText: string;
+    showFilters: boolean;
+    showFavorites: boolean;
+    showCollectionTabs: boolean;
+    showSubcategories: boolean;
+    columns: number;
+    cardRadius: number;
+    imageAspect: "square" | "portrait" | "landscape";
+    defaultSort: string;
   };
   servicesPage: {
     title: string;
@@ -291,6 +299,14 @@ export const defaultSiteContent: SiteContent = {
     featuredLabel: "Destacado",
     addButtonLabel: "Añadir",
     outOfStockText: "Agotado",
+    showFilters: true,
+    showFavorites: true,
+    showCollectionTabs: true,
+    showSubcategories: true,
+    columns: 4,
+    cardRadius: 24,
+    imageAspect: "square",
+    defaultSort: "relevance",
   },
   servicesPage: {
     title: "Nuestros Servicios",
