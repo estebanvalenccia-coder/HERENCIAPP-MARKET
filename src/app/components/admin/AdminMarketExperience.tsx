@@ -43,7 +43,7 @@ function Field({
   );
 }
 
-async function compressImage(file: File, maxWidth = 1800) {
+async function compressImage(file: File, maxWidth = 1800, targetBytes = 1_500_000) {
   if (!file.type.startsWith("image/")) throw new Error("El archivo debe ser una imagen");
   if (file.size > 8 * 1024 * 1024) throw new Error("La imagen supera 8 MB");
 
@@ -61,14 +61,34 @@ async function compressImage(file: File, maxWidth = 1800) {
     img.src = source;
   });
 
-  const scale = Math.min(1, maxWidth / Math.max(1, image.width));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.width * scale));
-  canvas.height = Math.max(1, Math.round(image.height * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("El navegador no puede procesar imágenes");
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.86);
+  let width = Math.max(1, Math.round(image.width * Math.min(1, maxWidth / Math.max(1, image.width))));
+  let height = Math.max(1, Math.round(image.height * (width / Math.max(1, image.width))));
+  let quality = 0.86;
+  let dataUrl = "";
+
+  const dataUrlBytes = (value: string) => {
+    const payload = value.slice(value.indexOf(",") + 1);
+    return Math.ceil((payload.length * 3) / 4);
+  };
+
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("El navegador no puede procesar imágenes");
+    ctx.drawImage(image, 0, 0, width, height);
+    dataUrl = canvas.toDataURL("image/jpeg", quality);
+
+    if (dataUrlBytes(dataUrl) <= targetBytes) return dataUrl;
+
+    width = Math.max(640, Math.round(width * 0.85));
+    height = Math.max(1, Math.round(image.height * (width / Math.max(1, image.width))));
+    quality = Math.max(0.54, quality - 0.06);
+  }
+
+  if (dataUrl && dataUrlBytes(dataUrl) <= 2_000_000) return dataUrl;
+  throw new Error("La imagen sigue siendo demasiado pesada después de comprimirla");
 }
 
 function ImageField({
@@ -87,15 +107,13 @@ function ImageField({
     setWorking(true);
     try {
       const dataUrl = await compressImage(file);
-      try {
-        const result = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
-        onChange(result.media?.url || dataUrl);
-      } catch {
-        onChange(dataUrl);
-      }
-      toast.success("Imagen preparada. Pulsa Guardar y publicar.");
+      const result = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
+      const uploadedUrl = String(result.media?.url || "").trim();
+      if (!uploadedUrl) throw new Error("R2 no devolvió una URL pública para la imagen");
+      onChange(uploadedUrl);
+      toast.success("Imagen subida a Cloudflare R2. Pulsa Guardar y publicar.");
     } catch (error: any) {
-      toast.error(error?.message || "No se pudo cargar la imagen");
+      toast.error(error?.message || "No se pudo subir la imagen a Cloudflare R2");
     } finally {
       setWorking(false);
     }
