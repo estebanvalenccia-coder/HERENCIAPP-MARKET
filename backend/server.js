@@ -5444,11 +5444,27 @@ function groqModel(model) {
 }
 
 async function getAiSettings() {
+  let stored = {};
   try {
-    return parseStoredJson(await readStorageValue("aiSettings"), {});
+    stored = parseStoredJson(await readStorageValue("aiSettings"), {});
   } catch {
-    return {};
+    stored = {};
   }
+
+  // Las credenciales reales viven en Railway. La configuración guardada desde
+  // Administración solo puede ajustar preferencias, nunca es requisito para
+  // que la IA funcione en producción.
+  if (process.env.GROQ_API_KEY) {
+    return {
+      ...stored,
+      enabled: true,
+      provider: "groq",
+      apiKey: process.env.GROQ_API_KEY,
+      model: stored.model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+    };
+  }
+
+  return stored;
 }
 
 app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
@@ -5522,7 +5538,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/api/ai/plant-description", async (req, res) => {
+app.post("/api/ai/plant-description", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
 
   const { plantName, baseDescription = "" } = req.body;
