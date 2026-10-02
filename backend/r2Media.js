@@ -71,8 +71,17 @@ export function createMediaObjectName(filename = "imagen", extension = "jpg") {
   return `builder/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${base}.${extension}`;
 }
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+
+function extensionForMimeType(mimeType) {
+  return mimeType === "image/png" ? "png" :
+    mimeType === "image/webp" ? "webp" :
+    mimeType === "image/gif" ? "gif" :
+    mimeType === "image/avif" ? "avif" : "jpg";
+}
+
 export function parseR2ImageDataUrl(dataUrl) {
-  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/i);
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|png|webp|gif|avif));base64,(.+)$/i);
   if (!match) throw new Error("Formato de imagen no válido");
 
   const mimeType = match[1].toLowerCase();
@@ -82,23 +91,27 @@ export function parseR2ImageDataUrl(dataUrl) {
     throw new Error("La imagen supera 6 MB después de procesarla");
   }
 
-  const extension =
-    mimeType === "image/png" ? "png" :
-    mimeType === "image/webp" ? "webp" :
-    mimeType === "image/gif" ? "gif" : "jpg";
+  const extension = extensionForMimeType(mimeType);
 
   return { mimeType, buffer, extension };
 }
 
-export async function uploadR2Media({ dataUrl, filename = "imagen" } = {}) {
-  const { mimeType, buffer, extension } = parseR2ImageDataUrl(dataUrl);
-  const path = createMediaObjectName(filename, extension);
+export async function uploadR2MediaBuffer({ buffer, mimeType, filename = "imagen" } = {}) {
+  const normalizedMimeType = String(mimeType || "").toLowerCase();
+  const body = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || "");
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(normalizedMimeType)) {
+    throw new Error("Formato de imagen no válido");
+  }
+  if (!body.length) throw new Error("La imagen está vacía");
+  if (body.length > 8 * 1024 * 1024) throw new Error("La imagen supera 8 MB");
 
+  const extension = extensionForMimeType(normalizedMimeType);
+  const path = createMediaObjectName(filename, extension);
   await r2Client().send(new PutObjectCommand({
     Bucket: bucketName(),
     Key: path,
-    Body: buffer,
-    ContentType: mimeType,
+    Body: body,
+    ContentType: normalizedMimeType,
     CacheControl: "public, max-age=31536000, immutable",
   }));
 
@@ -106,9 +119,14 @@ export async function uploadR2Media({ dataUrl, filename = "imagen" } = {}) {
     name: path.split("/").pop(),
     path,
     url: publicUrlForKey(path),
-    size: buffer.length,
+    size: body.length,
     createdAt: new Date().toISOString(),
   };
+}
+
+export async function uploadR2Media({ dataUrl, filename = "imagen" } = {}) {
+  const { mimeType, buffer } = parseR2ImageDataUrl(dataUrl);
+  return uploadR2MediaBuffer({ buffer, mimeType, filename });
 }
 
 export async function listR2Media({ prefix = "builder/", limit = 100 } = {}) {
@@ -146,25 +164,45 @@ export async function deleteR2Media(path) {
 }
 
 
-export async function checkR2Connection() {
+export async function checkR2Connection({ verifyWrite = false } = {}) {
   if (!hasR2) {
     return { ok: false, configured: false, error: "Cloudflare R2 no está configurado" };
   }
 
+  let probeKey = null;
   try {
     await r2Client().send(new HeadBucketCommand({ Bucket: bucketName() }));
+
+    if (verifyWrite) {
+      probeKey = `_health/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.txt`;
+      await r2Client().send(new PutObjectCommand({
+        Bucket: bucketName(),
+        Key: probeKey,
+        Body: Buffer.from("ok"),
+        ContentType: "text/plain",
+        CacheControl: "no-store",
+      }));
+      await r2Client().send(new DeleteObjectCommand({ Bucket: bucketName(), Key: probeKey }));
+      probeKey = null;
+    }
+
     return {
       ok: true,
       configured: true,
       bucket: bucketName(),
       publicUrl: publicBaseUrl(),
+      writeVerified: Boolean(verifyWrite),
     };
   } catch (error) {
+    if (probeKey) {
+      try { await r2Client().send(new DeleteObjectCommand({ Bucket: bucketName(), Key: probeKey })); } catch {}
+    }
     return {
       ok: false,
       configured: true,
       bucket: bucketName(),
       publicUrl: publicBaseUrl(),
+      writeVerified: false,
       error: error?.message || String(error),
       code: error?.name || null,
     };

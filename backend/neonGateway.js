@@ -12,6 +12,7 @@ import {
   r2ConfigStatus,
   listR2Media,
   uploadR2Media,
+  uploadR2MediaBuffer,
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
@@ -52,7 +53,8 @@ function normalizeOrderRow(order){
   };
 }
 async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
-async function bodyJson(req){const chunks=[];for await(const c of req)chunks.push(c);if(!chunks.length)return {};return JSON.parse(Buffer.concat(chunks).toString("utf8"));}
+async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>maxBytes){const error=new Error("Payload demasiado grande");error.statusCode=413;throw error;}chunks.push(c);}return Buffer.concat(chunks);}
+async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});res.writeHead(r.status,Object.fromEntries(r.headers.entries()));if(r.body){for await(const c of r.body)res.write(c);}res.end();}
 
 const child=spawn(process.execPath,["--import","./commerceCore.js","--import","./customerAccessRoutes.js","--import","./fixCors.js","--import","./fixAdminEmail.js","--import","./fixAIBouquet.js","--import","./fixSalesAI.js","--import","./fixTTS.js","--import","./fixMapsShipping.js","server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
@@ -88,6 +90,14 @@ const server=http.createServer(async(req,res)=>{try{
       return json(res,200,{media,source:"cloudflare_r2"});
     }
     if(req.method==="POST"){
+      const contentType=String(req.headers["content-type"]||"").split(";")[0].trim().toLowerCase();
+      if(contentType.startsWith("image/") || contentType==="application/octet-stream"){
+        const raw=await bodyBuffer(req);
+        const filename=decodeURIComponent(String(req.headers["x-herencia-filename"]||"imagen"));
+        const effectiveMime=contentType==="application/octet-stream"?"image/jpeg":contentType;
+        const media=await uploadR2MediaBuffer({buffer:raw,mimeType:effectiveMime,filename});
+        return json(res,200,{media,source:"cloudflare_r2"});
+      }
       const body=await bodyJson(req);
       const media=await uploadR2Media({dataUrl:body?.dataUrl,filename:body?.filename});
       return json(res,200,{media,source:"cloudflare_r2"});
@@ -214,9 +224,9 @@ const server=http.createServer(async(req,res)=>{try{
 server.listen(publicPort,"0.0.0.0",async()=>{
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
   if(hasR2){
-    const status=await checkR2Connection();
-    if(status.ok) console.log(`[r2] connection OK bucket=${status.bucket}`);
-    else console.error(`[r2] connection FAILED code=${status.code||"unknown"} error=${status.error||"unknown"}`);
+    const status=await checkR2Connection({verifyWrite:true});
+    if(status.ok) console.log(`[r2] read/write OK bucket=${status.bucket}`);
+    else console.error(`[r2] read/write FAILED code=${status.code||"unknown"} error=${status.error||"unknown"}`);
   }else{
     console.warn("[r2] not configured");
   }

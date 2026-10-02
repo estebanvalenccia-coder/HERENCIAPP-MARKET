@@ -127,8 +127,7 @@ function ImageEditor({
     if (!file) return;
     setWorking(true);
     try {
-      const dataUrl = await compressImage(file, maxWidth);
-      const uploaded = await backendApi.uploadSiteMedia({ dataUrl, filename: file.name });
+      const uploaded = await backendApi.uploadSiteMediaFile(file);
       const uploadedUrl = String(uploaded.media?.url || "").trim();
       if (!uploadedUrl) throw new Error("Cloudflare R2 no devolvió una URL pública");
       onChange(uploadedUrl);
