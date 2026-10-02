@@ -47,6 +47,7 @@ import {
   getCommerceCollection,
   primaryCollectionOf,
   productBelongsToCollection,
+  productTypeForCollection,
 } from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
@@ -1154,7 +1155,20 @@ export function AdminVisualBuilder({
                 </div>
               ))
             ) : pageMode === "products" ? (
-              <ProductsPreview site={site} products={catalogPreview} selected={selected === "products"} onSelect={() => setSelected("products")} />
+              <ProductsPreview
+                site={site}
+                products={catalogPreview}
+                selected={selected === "products"}
+                selectedProductId={selectedCatalogProduct ? String(selectedCatalogProduct.id) : ""}
+                activeCollection={catalogPreviewCollection}
+                search={catalogPreviewSearch}
+                onSelect={() => setSelected("products")}
+                onSelectProduct={(product) => setSelected(`product:${product.id}`)}
+                onCollectionChange={setCatalogPreviewCollection}
+                onSearchChange={setCatalogPreviewSearch}
+                onManageProducts={onManageProducts}
+                onAddProduct={onAddProduct}
+              />
             ) : pageMode === "services" ? (
               <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
             ) : pageMode === "dulce" || pageMode === "moda" ? (
@@ -1190,7 +1204,7 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedBlock?.name || (
+                  {selectedCatalogProduct?.name || selectedBlock?.name || (
                     selected === "header" ? "Header"
                       : selected === "footer" ? "Footer"
                       : selected === "products" ? "Productos"
@@ -1251,7 +1265,22 @@ export function AdminVisualBuilder({
               </div>
             )}
 
-            {selected === "products" && <ProductsPageEditor site={site} updateSite={updateSite} />}
+            {selectedCatalogProduct && (
+              <ProductQuickEditor
+                product={selectedCatalogProduct}
+                onSaved={loadCatalogPreview}
+                onBack={() => setSelected("products")}
+                onManageProducts={onManageProducts}
+              />
+            )}
+            {selected === "products" && (
+              <ProductsPageEditor
+                site={site}
+                updateSite={updateSite}
+                onManageProducts={onManageProducts}
+                onAddProduct={onAddProduct}
+              />
+            )}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
             {selected === "dulce" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="dulce" />}
             {selected === "moda" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="moda" />}
