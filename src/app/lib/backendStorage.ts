@@ -1348,7 +1348,7 @@ export const backendApi = {
 
       warnings.push(...(backendResult.warnings || []));
 
-      if (backendResult.imageGeneratedByAi && backendResult.image && isAiImage(backendResult.image)) {
+      if (backendResult.imageGeneratedByAi && backendResult.image) {
         return {
           ...backendResult,
           proposal,
