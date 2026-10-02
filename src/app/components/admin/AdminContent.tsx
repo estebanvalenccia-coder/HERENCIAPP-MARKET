@@ -156,7 +156,22 @@ export function AdminContent() {
       // Mantener ambos modelos sincronizados evita que el editor legacy y el
       // editor de HERENCIA MARKET se sobrescriban entre sí al publicar.
       const market = (site as any).marketExperience;
-      const heroImageUrl = String(market?.home?.heroImageUrl || site.hero.imageUrl || "");
+      let heroImageUrl = String(market?.home?.heroImageUrl || site.hero.imageUrl || "").trim();
+
+      // Si el editor conserva una imagen embebida en base64, publícala primero
+      // en Cloudflare R2 y persiste únicamente la URL pública devuelta.
+      if (heroImageUrl.startsWith("data:image/")) {
+        const uploaded = await backendApi.uploadSiteMedia({
+          dataUrl: heroImageUrl,
+          filename: "herencia-portada.jpg",
+        });
+        const uploadedUrl = String(uploaded.media?.url || "").trim();
+        if (!uploadedUrl) {
+          throw new Error("Cloudflare R2 no devolvió una URL pública para la portada");
+        }
+        heroImageUrl = uploadedUrl;
+      }
+
       const synchronizedSite = {
         ...(site as any),
         hero: { ...site.hero, imageUrl: heroImageUrl },
