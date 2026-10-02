@@ -41,10 +41,10 @@ export async function buildPlantProfilePublishPatch(
 
   const care = result?.care && typeof result.care === "object" ? result.care : {};
   const description = String(result?.description || product?.description || "").trim();
-  const water = String(care.water || product?.water || "").trim();
-  const light = String(care.light || product?.light || "").trim();
-  const temperature = String(care.temperature || product?.temperature || "").trim();
-  const fertilizer = String(care.fertilizer || "").trim();
+  const water = String(result?.water || care.water || product?.water || "").trim();
+  const light = String(result?.light || care.light || product?.light || "").trim();
+  const temperature = String(result?.temperature || care.temperature || product?.temperature || "").trim();
+  const fertilizer = String(result?.fertilizer || care.fertilizer || "").trim();
   const benefits = Array.isArray(result?.benefits)
     ? result.benefits.map((item: unknown) => String(item || "").trim()).filter(Boolean).slice(0, 8)
     : [];
@@ -65,7 +65,7 @@ export async function buildPlantProfilePublishPatch(
     source: "publish-ai",
   };
 
-  return {
+  const patch: any = {
     description,
     water,
     light,
@@ -73,9 +73,29 @@ export async function buildPlantProfilePublishPatch(
     seoDescription: String(product?.seoDescription || "").trim() || description,
     metadata: {
       ...(product?.metadata || {}),
-      plantProfile,
+      plantProfile: {
+        ...plantProfile,
+        scientificName: String(result?.scientificName || product?.scientificName || "").trim(),
+        environment: String(result?.environment || product?.environment || "").trim(),
+        difficulty: String(result?.difficulty || product?.difficulty || "").trim(),
+        petSafe: typeof result?.petSafe === "boolean" ? result.petSafe : Boolean(product?.petSafe),
+        toxicity: String(result?.toxicity || product?.toxicity || "").trim(),
+        humidity: String(result?.humidity || "").trim(),
+        growth: String(result?.growth || "").trim(),
+        origin: String(result?.origin || "").trim(),
+        careNotes: String(result?.careNotes || tips || "").trim(),
+      },
       aiPlantProfileGenerated: true,
       aiPlantProfileGeneratedAt: generatedAt,
     },
   };
+
+  if (String(result?.scientificName || "").trim()) patch.scientificName = String(result.scientificName).trim();
+  if (["interior", "exterior", "ambos"].includes(String(result?.environment || "").toLowerCase())) patch.environment = String(result.environment).toLowerCase();
+  if (["baja", "indirecta", "sol"].includes(String(result?.light || "").toLowerCase())) patch.light = String(result.light).toLowerCase();
+  if (["Fácil", "Media", "Avanzada"].includes(String(result?.difficulty || ""))) patch.difficulty = String(result.difficulty);
+  if (typeof result?.petSafe === "boolean") patch.petSafe = result.petSafe;
+  if (String(result?.toxicity || "").trim()) patch.toxicity = String(result.toxicity).trim();
+
+  return patch;
 }
