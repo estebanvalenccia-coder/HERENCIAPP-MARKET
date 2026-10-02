@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 
 export const hasR2 = Boolean(
@@ -142,4 +143,30 @@ export async function deleteR2Media(path) {
   }));
 
   return true;
+}
+
+
+export async function checkR2Connection() {
+  if (!hasR2) {
+    return { ok: false, configured: false, error: "Cloudflare R2 no está configurado" };
+  }
+
+  try {
+    await r2Client().send(new HeadBucketCommand({ Bucket: bucketName() }));
+    return {
+      ok: true,
+      configured: true,
+      bucket: bucketName(),
+      publicUrl: publicBaseUrl(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      configured: true,
+      bucket: bucketName(),
+      publicUrl: publicBaseUrl(),
+      error: error?.message || String(error),
+      code: error?.name || null,
+    };
+  }
 }
