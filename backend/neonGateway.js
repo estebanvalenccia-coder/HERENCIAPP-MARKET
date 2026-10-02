@@ -6,7 +6,7 @@ import {
   listNeonOrders, patchNeonOrder,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
-  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, archiveNeonCommerceProduct
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct
 } from "./neonDb.js";
 import {
   hasR2,
@@ -182,7 +182,9 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   if(path==="/api/commerce/collections"&&req.method==="GET"){
-    const collections=await listNeonCommerceCollections();
+    const url=new URL(req.url,"http://localhost");
+    const includeArchived=url.searchParams.get("includeArchived")==="1" && await adminSession(req);
+    const collections=await listNeonCommerceCollections({includeArchived});
     return json(res,200,{collections,source:"neon"});
   }
 
@@ -227,6 +229,17 @@ const server=http.createServer(async(req,res)=>{try{
     if(!String(body?.name||"").trim())return json(res,400,{error:"Nombre obligatorio"});
     const collections=await saveNeonCommerceCollection(body);
     return json(res,200,{collections,source:"neon"});
+  }
+
+  const commerceCollectionProductsMatch=path.match(/^\/api\/admin\/commerce\/collections\/([^/]+)\/products$/);
+  if(commerceCollectionProductsMatch&&req.method==="PUT"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const products=await setNeonCommerceCollectionProducts(
+      decodeURIComponent(commerceCollectionProductsMatch[1]),
+      Array.isArray(body?.productIds)?body.productIds:[]
+    );
+    return json(res,200,{products,source:"neon"});
   }
 
   if(path==="/api/admin/commerce/products"&&req.method==="POST"){
