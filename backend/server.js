@@ -1002,7 +1002,7 @@ async function deliveryAvailabilityForDate(requestedDate, suite = {}) {
 
 async function assertDeliveryAvailability({ deliveryMethod, metadata = {}, suite = {} }) {
   const normalizedMethod = String(deliveryMethod || "").toLowerCase();
-  if (["recoger", "recogida", "mostrador"].includes(normalizedMethod)) return { skipped: true };
+  if (["recoger", "recogida", "mostrador", "consulta-floristeria"].includes(normalizedMethod)) return { skipped: true };
 
   const requestedDate = String(metadata?.requestedDate || "").trim();
   const requestedTimeSlot = String(metadata?.requestedTimeSlot || "").trim();
