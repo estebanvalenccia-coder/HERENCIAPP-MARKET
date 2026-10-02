@@ -7,6 +7,30 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
 const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
+function trackSalesPurchase(amount: number, conversationId = "") {
+  try {
+    if (localStorage.getItem("herencia_cookie_consent") !== "accepted") return;
+    void fetch("/api/analytics/visit", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventType: "sales_purchase",
+        eventLabel: "Compra atribuida a HERENCIA SALES",
+        amount,
+        sessionId: conversationId,
+        path: window.location.pathname + window.location.search,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        language: navigator.language || "",
+        metadata: { source: "HERENCIA_SALES" },
+      }),
+    });
+  } catch {
+    // La analítica no bloquea el checkout.
+  }
+}
+
 export function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -18,6 +42,16 @@ export function Checkout() {
   const isStripePayment = ["tarjeta", "bizum", "alternativos"].includes(paymentMethod);
 
   const cartItems = useMemo(() => JSON.parse(backendStorage.getItem("cart") || "[]"), []);
+  const salesAttribution = useMemo(() => {
+    const attributed = Array.isArray(cartItems)
+      ? cartItems.filter((item: any) => String(item?.salesSource || "") === "HERENCIA_SALES")
+      : [];
+    return {
+      enabled: attributed.length > 0,
+      conversationId: String(attributed.find((item: any) => item?.salesConversationId)?.salesConversationId || ""),
+      itemCount: attributed.reduce((sum: number, item: any) => sum + Math.max(1, Number(item?.quantity || 1)), 0),
+    };
+  }, [cartItems]);
 
   const [loading, setLoading] = useState(false);
   const [showStripe, setShowStripe] = useState(false);
@@ -227,6 +261,9 @@ export function Checkout() {
         items: cartItems,
         metadata: {
           source: "frontend_checkout",
+          herenciaSales: salesAttribution.enabled,
+          salesConversationId: salesAttribution.conversationId || null,
+          salesAttributedItems: salesAttribution.itemCount,
           discount,
           coupon: coupon || null,
           phone: form.phone,
@@ -244,6 +281,7 @@ export function Checkout() {
         },
       });
 
+      if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
       await clearCart();
       toast.success("Pedido recibido. Queda pendiente de confirmación 🌿");
       navigate("/");
@@ -394,6 +432,7 @@ export function Checkout() {
             }}
             onCancel={() => setShowStripe(false)}
             onSuccess={() => {
+              if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
               toast.success("Pago realizado correctamente 🌿");
               navigate("/");
             }}
