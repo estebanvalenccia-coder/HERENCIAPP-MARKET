@@ -173,9 +173,11 @@ function ImageEditor({
 export function AdminContent({
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   onManageProducts?: () => void;
   onAddProduct?: () => void;
+  onManageCollections?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [saving, setSaving] = useState(false);
@@ -300,6 +302,7 @@ export function AdminContent({
         onPublished={load}
         onManageProducts={onManageProducts}
         onAddProduct={onAddProduct}
+        onManageCollections={onManageCollections}
       />
     );
   }
