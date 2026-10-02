@@ -171,6 +171,12 @@ export function isPlantLikeCollection(id: unknown) {
   return ["plantas", "semillas"].includes(String(id || ""));
 }
 
+export function isPlantCareProduct(product: any) {
+  const collection = primaryCollectionOf(product);
+  const category = String(product?.category || "").trim().toLowerCase();
+  return collection === "plantas" && category !== "flores";
+}
+
 export function isServiceCollection(id: unknown) {
   return String(id || "") === "servicios";
 }
