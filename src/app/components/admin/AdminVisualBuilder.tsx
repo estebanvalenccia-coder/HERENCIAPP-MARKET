@@ -1825,7 +1825,24 @@ function DesignEditor({
       )}
       {["hero", "cta"].includes(block.type) && (
         <>
-          <RangeField label="Oscurecer imagen" value={design.overlay} min={0} max={85} suffix="%" onChange={(overlay) => update({ overlay })} />
+          <RangeField
+            label={block.type === "hero" ? "Intensidad del verde" : "Oscurecer imagen"}
+            value={design.overlay}
+            min={0}
+            max={100}
+            suffix="%"
+            onChange={(overlay) => update({ overlay })}
+          />
+          {block.type === "hero" && (
+            <RangeField
+              label="Extensión del verde"
+              value={design.overlayWidth ?? 72}
+              min={25}
+              max={100}
+              suffix="%"
+              onChange={(overlayWidth) => update({ overlayWidth })}
+            />
+          )}
           <RangeField label="Zoom de imagen" value={design.imageZoom || 100} min={100} max={180} suffix="%" onChange={(imageZoom) => update({ imageZoom })} />
           <RangeField label="Altura de sección" value={design.minHeight || (block.type === "hero" ? 650 : 0)} min={block.type === "hero" ? 360 : 0} max={900} step={10} suffix="px" onChange={(minHeight) => update({ minHeight })} />
           <label className="block text-xs font-bold text-slate-700">

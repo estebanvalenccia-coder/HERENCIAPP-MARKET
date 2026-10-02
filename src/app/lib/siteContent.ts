@@ -24,6 +24,7 @@ export type BuilderBlockDesign = {
   gap: number;
   radius: number;
   overlay: number;
+  overlayWidth: number;
   alignment: BuilderAlignment;
   imagePosition: string;
   imageZoom: number;
@@ -386,6 +387,7 @@ export function defaultBlockDesign(type: BuilderBlockType): BuilderBlockDesign {
     gap: 24,
     radius: 16,
     overlay: 42,
+    overlayWidth: 72,
     alignment: "left",
     imagePosition: "center",
     imageZoom: 100,
@@ -606,6 +608,12 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
       },
       imageUrl: String(hero.data?.imageUrl || ""),
     };
+
+    const marketExperience = (next as SiteContent & { marketExperience?: any }).marketExperience;
+    if (marketExperience?.home) {
+      marketExperience.home.heroOverlayOpacity = Math.max(0, Math.min(100, Number(hero.design?.overlay ?? 90)));
+      marketExperience.home.heroOverlayWidth = Math.max(25, Math.min(100, Number(hero.design?.overlayWidth ?? 72)));
+    }
   }
 
   if (features && Array.isArray(features.data?.items)) {

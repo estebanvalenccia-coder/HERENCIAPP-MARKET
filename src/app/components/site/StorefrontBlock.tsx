@@ -108,7 +108,9 @@ export function StorefrontBlock({
   if (block.type === "hero") {
     const image = block.data?.imageUrl || heroFallback;
     const heading = String(block.data?.heading || "").trim();
-    const overlay = Math.max(0, Math.min(90, Number(block.design.overlay || 0))) / 100;
+    const overlay = Math.max(0, Math.min(100, Number(block.design.overlay || 0))) / 100;
+    const overlayWidth = Math.max(25, Math.min(100, Number(block.design.overlayWidth ?? 72)));
+    const overlayMid = Math.round(overlayWidth * 0.58);
     return (
       <section
         className={`relative overflow-hidden ${hiddenMobileClass}`}
@@ -130,7 +132,13 @@ export function StorefrontBlock({
         )}
         <div
           className="absolute inset-0"
-          style={{ backgroundColor: `rgba(0,0,0,${overlay})` }}
+          style={{
+            background: `linear-gradient(90deg,
+              rgba(16, 43, 32, ${overlay}) 0%,
+              rgba(23, 61, 42, ${overlay * 0.69}) ${overlayMid}%,
+              rgba(23, 61, 42, 0) ${overlayWidth}%
+            )`,
+          }}
         />
         <div
           className={`relative flex flex-col justify-center ${alignClass(
