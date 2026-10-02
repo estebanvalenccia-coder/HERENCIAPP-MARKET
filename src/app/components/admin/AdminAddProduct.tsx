@@ -240,9 +240,38 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         (value, index, rows) => value && rows.indexOf(value) === index
       );
 
+      let aiPlantInfo: any = null;
+      if (formData.status === "active" && plantLike) {
+        try {
+          const generated = await backendApi.generatePlantDescription({
+            plantName: formData.name.trim(),
+            baseDescription: formData.description.trim(),
+          });
+          aiPlantInfo = generated?.result || null;
+        } catch (error: any) {
+          toast.warning(
+            error?.message
+              ? `El producto se publicará, pero la ficha IA no pudo completarse: ${error.message}`
+              : "El producto se publicará, pero la ficha IA no pudo completarse"
+          );
+        }
+      }
+
+      const generatedDescription =
+        formData.description.trim() || String(aiPlantInfo?.description || "").trim();
+      const generatedEnvironment = ["interior", "exterior", "ambos"].includes(String(aiPlantInfo?.environment || "").toLowerCase())
+        ? String(aiPlantInfo.environment).toLowerCase()
+        : formData.environment;
+      const generatedLight = ["baja", "indirecta", "sol"].includes(String(aiPlantInfo?.light || "").toLowerCase())
+        ? String(aiPlantInfo.light).toLowerCase()
+        : formData.light;
+      const generatedDifficulty = ["Fácil", "Media", "Avanzada"].includes(String(aiPlantInfo?.difficulty || ""))
+        ? String(aiPlantInfo.difficulty)
+        : formData.difficulty;
+
       await backendApi.createCommerceProduct({
         name: formData.name.trim(),
-        description: formData.description.trim(),
+        description: generatedDescription,
         type: productTypeForCollection(formData.collection),
         collection: formData.collection,
         collections,
@@ -271,18 +300,28 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         images: imageUrls,
         allowDedication: formData.allowDedication,
 
-        scientificName: formData.scientificName.trim(),
-        environment: plantLike ? formData.environment : "",
-        light: plantLike ? formData.light : "",
+        scientificName: plantLike
+          ? formData.scientificName.trim() || String(aiPlantInfo?.scientificName || "").trim()
+          : "",
+        environment: plantLike ? generatedEnvironment : "",
+        light: plantLike ? generatedLight : "",
         size: plantLike ? formData.size.trim() : "",
-        difficulty: plantLike ? formData.difficulty : "",
-        petSafe: plantLike ? formData.petSafe : false,
-        toxicity: plantLike ? formData.toxicity.trim() : "",
-        water: plantLike ? formData.water.trim() : "",
-        temperature: plantLike ? formData.temperature.trim() : "",
+        difficulty: plantLike ? generatedDifficulty : "",
+        petSafe: plantLike && aiPlantInfo && typeof aiPlantInfo.petSafe === "boolean"
+          ? aiPlantInfo.petSafe
+          : plantLike ? formData.petSafe : false,
+        toxicity: plantLike
+          ? formData.toxicity.trim() || String(aiPlantInfo?.toxicity || "").trim()
+          : "",
+        water: plantLike
+          ? formData.water.trim() || String(aiPlantInfo?.water || aiPlantInfo?.care?.water || "").trim()
+          : "",
+        temperature: plantLike
+          ? formData.temperature.trim() || String(aiPlantInfo?.temperature || aiPlantInfo?.care?.temperature || "").trim()
+          : "",
 
         seoTitle: formData.seoTitle.trim() || formData.name.trim(),
-        seoDescription: formData.seoDescription.trim() || formData.description.trim(),
+        seoDescription: formData.seoDescription.trim() || generatedDescription,
         variants: variants
           .filter((variant) => variant.name.trim())
           .map((variant) => ({
@@ -318,6 +357,14 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           leadTimeDays: formData.leadTimeDays
             ? Math.max(0, Number(formData.leadTimeDays))
             : null,
+          humidity: plantLike ? String(aiPlantInfo?.humidity || "").trim() : "",
+          growth: plantLike ? String(aiPlantInfo?.growth || "").trim() : "",
+          origin: plantLike ? String(aiPlantInfo?.origin || "").trim() : "",
+          fertilizer: plantLike ? String(aiPlantInfo?.fertilizer || aiPlantInfo?.care?.fertilizer || "").trim() : "",
+          careNotes: plantLike ? String(aiPlantInfo?.careNotes || aiPlantInfo?.tips || "").trim() : "",
+          benefits: plantLike && Array.isArray(aiPlantInfo?.benefits) ? aiPlantInfo.benefits.slice(0, 8) : [],
+          aiGeneratedAt: aiPlantInfo ? new Date().toISOString() : null,
+          aiGeneratedBy: aiPlantInfo ? "server" : null,
         },
       });
 
