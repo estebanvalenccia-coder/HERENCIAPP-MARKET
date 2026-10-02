@@ -41,8 +41,12 @@ function CollectionPage({ kind }: { kind: Kind }) {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+
+    const refreshSite = () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    };
+
+    const loadCatalog = async () => {
       try {
         const result = await backendApi.listCommerceProducts({ collection: kind });
         if (cancelled) return;
@@ -62,14 +66,19 @@ function CollectionPage({ kind }: { kind: Kind }) {
         }
       }
     };
-    void load();
-    const reload = () => void load();
-    window.addEventListener("storage", reload);
-    window.addEventListener("backend-storage", reload);
+
+    refreshSite();
+    void loadCatalog();
+
+    const refreshCatalog = () => void loadCatalog();
+    window.addEventListener("storage", refreshSite);
+    window.addEventListener("backend-storage", refreshSite);
+    window.addEventListener("commerce-products-changed", refreshCatalog);
     return () => {
       cancelled = true;
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("backend-storage", reload);
+      window.removeEventListener("storage", refreshSite);
+      window.removeEventListener("backend-storage", refreshSite);
+      window.removeEventListener("commerce-products-changed", refreshCatalog);
     };
   }, [kind]);
 

@@ -260,6 +260,10 @@ const emitChange = () => {
   window.dispatchEvent(new Event("storage"));
 };
 
+const emitCommerceProductsChange = () => {
+  window.dispatchEvent(new Event("commerce-products-changed"));
+};
+
 function emitBackendError(action: string, key: string, error: unknown) {
   const message = getErrorMessage(error);
   lastBackendError = message;
@@ -430,23 +434,29 @@ export const backendApi = {
   },
 
   async createCommerceProduct(payload: any) {
-    return request<{ product: any; source?: string; migrationRequired?: boolean }>("/api/admin/commerce/products", {
+    const result = await request<{ product: any; source?: string; migrationRequired?: boolean }>("/api/admin/commerce/products", {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    emitCommerceProductsChange();
+    return result;
   },
 
   async updateCommerceProduct(id: string | number, payload: any) {
-    return request<{ product: any; source?: string; migrationRequired?: boolean }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}`, {
+    const result = await request<{ product: any; source?: string; migrationRequired?: boolean }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
+    emitCommerceProductsChange();
+    return result;
   },
 
   async deleteCommerceProduct(id: string | number, permanent = false) {
-    return request<{ ok: boolean; source?: string; migrationRequired?: boolean }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}?permanent=${permanent ? "1" : "0"}`, {
+    const result = await request<{ ok: boolean; source?: string; migrationRequired?: boolean }>(`/api/admin/commerce/products/${encodeURIComponent(String(id))}?permanent=${permanent ? "1" : "0"}`, {
       method: "DELETE",
     });
+    emitCommerceProductsChange();
+    return result;
   },
 
   async saveCommerceCollection(payload: any) {
@@ -1504,6 +1514,12 @@ export const backendApi = {
 export const backendStorage = {
   getItem(key: string): StoredValue {
     return cache.get(key) ?? readLocalStorage(key);
+  },
+
+  setCachedItem(key: string, value: string) {
+    const sanitized = sanitizeForClient(key, value);
+    cache.set(key, sanitized);
+    writeLocalStorage(key, sanitized);
   },
 
   async setItem(key: string, value: string): Promise<BackendStorageResult> {

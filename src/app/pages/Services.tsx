@@ -19,8 +19,12 @@ export function Services() {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+
+    const refreshSite = () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    };
+
+    const loadServices = async () => {
       try {
         const result = await backendApi.listCommerceProducts({ collection: "servicios" });
         if (!cancelled) {
@@ -45,14 +49,19 @@ export function Services() {
         }
       }
     };
-    void load();
-    const reload = () => void load();
-    window.addEventListener("storage", reload);
-    window.addEventListener("backend-storage", reload);
+
+    refreshSite();
+    void loadServices();
+
+    const refreshServices = () => void loadServices();
+    window.addEventListener("storage", refreshSite);
+    window.addEventListener("backend-storage", refreshSite);
+    window.addEventListener("commerce-products-changed", refreshServices);
     return () => {
       cancelled = true;
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("backend-storage", reload);
+      window.removeEventListener("storage", refreshSite);
+      window.removeEventListener("backend-storage", refreshSite);
+      window.removeEventListener("commerce-products-changed", refreshServices);
     };
   }, []);
 

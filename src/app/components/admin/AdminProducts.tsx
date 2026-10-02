@@ -154,7 +154,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       const result = await backendApi.listCommerceProducts({ includeArchived: true });
       const rows = Array.isArray(result.products) ? result.products : [];
       setProducts(rows);
-      void backendStorage.setItem("adminProducts", JSON.stringify(rows));
+      backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch (error) {
       try {
         const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");

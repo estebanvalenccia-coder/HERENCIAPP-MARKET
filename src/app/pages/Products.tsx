@@ -92,7 +92,6 @@ export function Products() {
     };
 
     async function loadCatalog() {
-      hydrateLocal();
       try {
         const result = await backendApi.listCommerceProducts();
         if (cancelled) return;
@@ -100,7 +99,7 @@ export function Products() {
           ? result.products.filter((product: any) => product.status === "active" || product.active === true)
           : [];
         setDisplayProducts(rows.length ? rows : fallbackProducts);
-        if (rows.length) void backendStorage.setItem("adminProducts", JSON.stringify(rows));
+        if (rows.length) backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
         if (cancelled) return;
         try {
@@ -113,23 +112,28 @@ export function Products() {
           setDisplayProducts(fallbackProducts);
         }
       }
-
-      backendApi.customerWishlist().then((result) => {
-        if (cancelled) return;
-        const ids = (result.wishlist || []).map(String);
-        setFavorites(ids);
-        void backendStorage.setItem("wishlist", JSON.stringify(ids));
-      }).catch(() => {});
     }
 
+    hydrateLocal();
     void loadCatalog();
-    const reload = () => void loadCatalog();
-    window.addEventListener("storage", reload);
-    window.addEventListener("backend-storage", reload);
+
+    backendApi.customerWishlist().then((result) => {
+      if (cancelled) return;
+      const ids = (result.wishlist || []).map(String);
+      setFavorites(ids);
+      backendStorage.setCachedItem("wishlist", JSON.stringify(ids));
+    }).catch(() => {});
+
+    const refreshLocal = () => hydrateLocal();
+    const refreshCatalog = () => void loadCatalog();
+    window.addEventListener("storage", refreshLocal);
+    window.addEventListener("backend-storage", refreshLocal);
+    window.addEventListener("commerce-products-changed", refreshCatalog);
     return () => {
       cancelled = true;
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("backend-storage", reload);
+      window.removeEventListener("storage", refreshLocal);
+      window.removeEventListener("backend-storage", refreshLocal);
+      window.removeEventListener("commerce-products-changed", refreshCatalog);
     };
   }, []);
 
