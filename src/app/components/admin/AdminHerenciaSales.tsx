@@ -108,8 +108,6 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
     [analytics.salesEvents]
   );
   const opens = Number(totals.sales_opens || eventMap.get("sales_open")?.value || 0);
-  const purchases = Number(totals.sales_purchases || eventMap.get("sales_purchase")?.value || 0);
-  const conversion = opens > 0 ? (purchases / opens) * 100 : 0;
   const attributedOrders = useMemo(
     () =>
       orders.filter(
