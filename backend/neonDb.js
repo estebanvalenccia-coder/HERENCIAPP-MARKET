@@ -530,7 +530,17 @@ export async function listNeonCommerceProducts({ collection = "", includeArchive
   if (where.length) sql+=" where "+where.join(" and ");
   sql+=" order by p.created_at desc";
   const r=await neonPool.query(sql,params);
-  return hydrateNeonProductRows(r.rows||[]);
+  const hydrated=await hydrateNeonProductRows(r.rows||[]);
+  return hydrated.sort((a,b)=>{
+    const aOrder=Number(a?.sortOrder);
+    const bOrder=Number(b?.sortOrder);
+    const aHas=Number.isFinite(aOrder);
+    const bHas=Number.isFinite(bOrder);
+    if(aHas&&bHas&&aOrder!==bOrder)return aOrder-bOrder;
+    if(aHas&&!bHas)return -1;
+    if(!aHas&&bHas)return 1;
+    return 0;
+  });
 }
 
 export async function getNeonCommerceProduct(id, { includeArchived = false } = {}) {
@@ -566,7 +576,12 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
   const productId=String(id||input.id||Date.now());
   const status=String(input.status|| (input.deletedAt?"archived":input.active===false?"draft":"active"));
   const metadata={...(input.metadata||{})};
-  for(const key of ["humidity","growth","origin","potDiameter","height","careNotes","tags","barcode","supplierId"]){
+  for(const key of [
+    "humidity","growth","origin","potDiameter","height","careNotes","tags","barcode","supplierId",
+    "material","color","dimensions","weight","allergens","portions","flavor",
+    "requiresRefrigeration","madeToOrder","durationMinutes","serviceArea","bookingRequired","leadTimeDays",
+    "sortOrder","vendor","customFields"
+  ]){
     if(input[key]!==undefined) metadata[key]=input[key];
   }
   const price=num(input.salePrice ?? input.price,0);
