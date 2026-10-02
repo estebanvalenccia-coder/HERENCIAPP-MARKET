@@ -127,6 +127,10 @@ function ImageEditor({
     if (!file) return;
     setWorking(true);
     try {
+      const status = await backendApi.siteMediaStatus();
+      if (status.provider !== "cloudflare_r2" || !status.configured || status.connection?.ok === false) {
+        throw new Error(status.connection?.error || "Cloudflare R2 no está disponible");
+      }
       const uploaded = await backendApi.uploadSiteMediaFile(file);
       const uploadedUrl = String(uploaded.media?.url || "").trim();
       if (!uploadedUrl) throw new Error("Cloudflare R2 no devolvió una URL pública");
@@ -143,20 +147,19 @@ function ImageEditor({
     <div className="space-y-3">
       <Field label={`${label} · URL`} value={value.startsWith("data:image/") ? "" : value} onChange={onChange} placeholder="https://..." />
       <div className="flex flex-wrap gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground">
+        <label className="relative inline-flex cursor-pointer items-center gap-2 overflow-hidden rounded-xl bg-primary px-4 py-2 font-bold text-primary-foreground">
           <Upload className="h-4 w-4" /> {working ? "Procesando..." : "Subir foto"}
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="hidden"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             disabled={working}
-            onClick={(event) => {
-              event.currentTarget.value = "";
-            }}
             onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              void upload(file);
+              const input = event.currentTarget;
+              const file = input.files?.[0];
+              void upload(file).finally(() => {
+                input.value = "";
+              });
             }}
           />
         </label>

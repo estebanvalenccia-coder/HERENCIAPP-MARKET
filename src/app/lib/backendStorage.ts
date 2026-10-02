@@ -497,6 +497,14 @@ export const backendApi = {
       secretKey?: boolean;
       bucket?: boolean;
       publicUrl?: boolean;
+      connection?: {
+        ok?: boolean;
+        configured?: boolean;
+        bucket?: string;
+        publicUrl?: string;
+        error?: string;
+        code?: string | null;
+      };
     }>("/api/admin/media/status");
   },
 
