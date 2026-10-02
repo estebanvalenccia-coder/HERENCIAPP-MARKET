@@ -1458,55 +1458,23 @@ export const backendApi = {
 
       warnings.push(...(backendResult.warnings || []));
 
-      if (backendResult.imageGeneratedByAi && backendResult.image && isAiImage(backendResult.image)) {
-        return {
-          ...backendResult,
-          proposal,
-          warnings,
-        };
-      }
-
-      try {
-        const image = await generateBouquetImageInBrowser(proposal.imagePrompt || localProposal.imagePrompt);
-        return {
-          proposal,
-          image,
-          imageGeneratedByAi: true,
-          source: "browser-gemini",
-          warnings,
-        };
-      } catch (imageError) {
-        warnings.push(getErrorMessage(imageError));
-        return {
-          proposal,
-          image: backendResult.image || pickFallbackBouquetImage(payload),
-          imageGeneratedByAi: false,
-          source: backendResult.source || "catalog-fallback",
-          warnings,
-        };
-      }
+      return {
+        ...backendResult,
+        proposal,
+        image: backendResult.image || pickFallbackBouquetImage(payload),
+        imageGeneratedByAi: Boolean(backendResult.imageGeneratedByAi),
+        source: backendResult.source || (backendResult.imageGeneratedByAi ? "server-ai" : "catalog-fallback"),
+        warnings,
+      };
     } catch (backendError) {
       warnings.push(getErrorMessage(backendError));
-
-      try {
-        const image = await generateBouquetImageInBrowser(localProposal.imagePrompt);
-        return {
-          proposal: localProposal,
-          image,
-          imageGeneratedByAi: true,
-          source: "browser-gemini-after-backend-error",
-          warnings,
-        };
-      } catch (imageError) {
-        warnings.push(getErrorMessage(imageError));
-        return {
-          proposal: localProposal,
-          image: pickFallbackBouquetImage(payload),
-          imageGeneratedByAi: false,
-          source: "catalog-fallback-after-backend-error",
-          warnings,
-        };
-      }
+      return {
+        proposal: localProposal,
+        image: pickFallbackBouquetImage(payload),
+        imageGeneratedByAi: false,
+        source: "catalog-fallback-after-backend-error",
+        warnings,
+      };
     }
   },
 };
