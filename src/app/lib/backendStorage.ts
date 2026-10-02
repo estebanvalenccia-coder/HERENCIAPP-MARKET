@@ -527,6 +527,53 @@ export const backendApi = {
     });
   },
 
+  async uploadSiteMediaFile(file: File) {
+    if (!file) throw new Error("Selecciona una imagen");
+    if (file.size > 8 * 1024 * 1024) throw new Error("La imagen supera 8 MB");
+    const mimeType = String(file.type || "").toLowerCase();
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+    if (mimeType && !allowed.has(mimeType)) {
+      throw new Error("Formato no compatible. Usa JPG, PNG, WEBP, GIF o AVIF.");
+    }
+
+    let response: Response;
+    try {
+      response = await fetch("/api/admin/media", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": mimeType || "application/octet-stream",
+          "X-Herencia-Filename": encodeURIComponent(file.name || "imagen"),
+        },
+        body: file,
+      });
+    } catch (error) {
+      backendAvailable = false;
+      lastBackendError = getErrorMessage(error);
+      throw error;
+    }
+
+    if (!response.ok) {
+      backendAvailable = false;
+      lastBackendError = await readErrorResponse(response);
+      throw new Error(lastBackendError);
+    }
+
+    backendAvailable = true;
+    lastBackendError = null;
+    const text = await response.text();
+    return (text ? JSON.parse(text) : {}) as {
+      media: {
+        name: string;
+        path: string;
+        url: string;
+        createdAt?: string | null;
+        size?: number | null;
+      };
+      source?: string;
+    };
+  },
+
   async deleteSiteMedia(path: string) {
     return request<{ ok: boolean }>("/api/admin/media", {
       method: "DELETE",
