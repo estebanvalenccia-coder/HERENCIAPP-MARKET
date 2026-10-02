@@ -448,12 +448,16 @@ async function hydrateNeonProductRows(rows = []) {
     const vars=vb.get(String(row.id))||[];
     const cols=(cb.get(String(row.id))||[]).map(x=>x.collection_id);
     const primary=imgs.find(x=>x.is_primary)||imgs[0];
+    const saleActive=Boolean(row.compare_at_price && num(row.compare_at_price)>num(row.price));
+    const regularPrice=saleActive?num(row.compare_at_price):num(row.price);
+    const currentPrice=num(row.price);
     return {
       id:String(row.id), name:row.name, scientificName:row.scientific_name||"", description:row.description||"",
-      category:row.category||"plantas", type:row.type||"plant", price:num(row.price),
-      originalPrice:row.compare_at_price==null?undefined:num(row.compare_at_price),
-      compareAtPrice:row.compare_at_price==null?undefined:num(row.compare_at_price),
-      onSale:Boolean(row.compare_at_price && num(row.compare_at_price)>num(row.price)),
+      category:row.category||"plantas", type:row.type||"plant", price:regularPrice,
+      salePrice:saleActive?currentPrice:undefined,
+      originalPrice:saleActive?regularPrice:undefined,
+      compareAtPrice:saleActive?regularPrice:undefined,
+      onSale:saleActive,
       cost:row.cost==null?undefined:num(row.cost), iva:num(row.tax_rate,21), taxRate:num(row.tax_rate,21),
       sku:row.sku||"", stock:int(row.stock), trackInventory:row.track_inventory!==false, active:row.status==="active",
       deletedAt:row.status==="archived"?row.updated_at:undefined, status:row.status, featured:Boolean(row.featured),
@@ -526,7 +530,17 @@ export async function listNeonCommerceProducts({ collection = "", includeArchive
   if (where.length) sql+=" where "+where.join(" and ");
   sql+=" order by p.created_at desc";
   const r=await neonPool.query(sql,params);
-  return hydrateNeonProductRows(r.rows||[]);
+  const hydrated=await hydrateNeonProductRows(r.rows||[]);
+  return hydrated.sort((a,b)=>{
+    const aOrder=Number(a?.sortOrder);
+    const bOrder=Number(b?.sortOrder);
+    const aHas=Number.isFinite(aOrder);
+    const bHas=Number.isFinite(bOrder);
+    if(aHas&&bHas&&aOrder!==bOrder)return aOrder-bOrder;
+    if(aHas&&!bHas)return -1;
+    if(!aHas&&bHas)return 1;
+    return 0;
+  });
 }
 
 export async function getNeonCommerceProduct(id, { includeArchived = false } = {}) {
@@ -562,7 +576,12 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
   const productId=String(id||input.id||Date.now());
   const status=String(input.status|| (input.deletedAt?"archived":input.active===false?"draft":"active"));
   const metadata={...(input.metadata||{})};
-  for(const key of ["humidity","growth","origin","potDiameter","height","careNotes","tags","barcode","supplierId"]){
+  for(const key of [
+    "humidity","growth","origin","potDiameter","height","careNotes","tags","barcode","supplierId",
+    "material","color","dimensions","weight","allergens","portions","flavor",
+    "requiresRefrigeration","madeToOrder","durationMinutes","serviceArea","bookingRequired","leadTimeDays",
+    "sortOrder","vendor","customFields"
+  ]){
     if(input[key]!==undefined) metadata[key]=input[key];
   }
   const price=num(input.salePrice ?? input.price,0);

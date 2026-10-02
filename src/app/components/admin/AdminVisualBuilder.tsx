@@ -41,9 +41,11 @@ import {
   syncBuilderToLegacy,
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
+import { getMarketExperience } from "../../lib/marketExperience";
+import { COMMERCE_COLLECTIONS, productBelongsToCollection } from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
-type PageMode = "home" | "products" | "services" | "contact";
+type PageMode = "home" | "products" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
 type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
 type EditorTab = "contenido" | "diseno" | "avanzado";
 
@@ -484,6 +486,7 @@ export function AdminVisualBuilder({
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
+  const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
   const hydratedRef = useRef(false);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
@@ -511,6 +514,38 @@ export function AdminVisualBuilder({
       JSON.stringify({ menuIcons, herenciaSettings })
     );
   }, [menuIcons, herenciaSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCatalog = async () => {
+      try {
+        const result = await backendApi.listCommerceProducts();
+        if (!cancelled) {
+          setCatalogPreview(
+            Array.isArray(result.products)
+              ? result.products.filter((product: any) => product.status === "active" || product.active === true)
+              : []
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          try {
+            const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+            setCatalogPreview(Array.isArray(cached) ? cached.filter((product: any) => product.status === "active" || product.active !== false) : []);
+          } catch {
+            setCatalogPreview([]);
+          }
+        }
+      }
+    };
+    void loadCatalog();
+    const reload = () => void loadCatalog();
+    window.addEventListener("backend-storage", reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("backend-storage", reload);
+    };
+  }, []);
 
   function commit(next: SiteContent) {
     setUndoStack((current) => [...current.slice(-29), clone(site)]);
@@ -826,27 +861,31 @@ export function AdminVisualBuilder({
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_350px]">
         <aside className="hidden overflow-y-auto border-r border-slate-200 bg-white lg:block">
           <div className="border-b border-slate-200 p-3">
-            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("home");
-                  if (selected === "contact") setSelected("header");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "home" ? "bg-white shadow-sm" : ""}`}
-              >
-                Inicio
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPageMode("contact");
-                  setSelected("contact");
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-black ${pageMode === "contact" ? "bg-white shadow-sm" : ""}`}
-              >
-                Contacto
-              </button>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+              {([
+                ["home", "Inicio"],
+                ["products", "Productos"],
+                ["services", "Servicios"],
+                ["dulce", "Dulce"],
+                ["moda", "Moda"],
+                ["about", "Nosotros"],
+                ["contact", "Contacto"],
+                ["herencia", "Herenc(IA)"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setPageMode(mode);
+                    if (mode === "home") setSelected("header");
+                    else setSelected(mode);
+                    setTab("contenido");
+                  }}
+                  className={`rounded-lg px-2 py-2 text-xs font-black ${pageMode === mode ? "bg-white shadow-sm" : ""}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -934,15 +973,30 @@ export function AdminVisualBuilder({
               <button
                 type="button"
                 onClick={() => {
-                  setSelected("contact");
+                  setSelected(pageMode);
                   setTab("contenido");
                 }}
-                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === "contact" ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
+                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === pageMode ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
               >
                 <Clock3 className="h-4 w-4 text-emerald-700" />
                 <div>
-                  <p className="text-sm font-black">Página de contacto</p>
-                  <p className="text-xs text-slate-500">Dirección, horario y mapa</p>
+                  <p className="text-sm font-black">
+                    {pageMode === "products" ? "Página de Productos"
+                      : pageMode === "services" ? "Página de Servicios"
+                      : pageMode === "dulce" ? "Página Dulce"
+                      : pageMode === "moda" ? "Página Moda"
+                      : pageMode === "about" ? "Página Nosotros"
+                      : pageMode === "herencia" ? "Página Herenc(IA)"
+                      : "Página de Contacto"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {pageMode === "products" ? "Catálogo, filtros y presentación"
+                      : pageMode === "services" ? "Servicios y contratación"
+                      : pageMode === "dulce" || pageMode === "moda" ? "Portada y colección"
+                      : pageMode === "about" ? "Historia, imagen y valores"
+                      : pageMode === "herencia" ? "Asistente de ventas y acciones"
+                      : "Dirección, horario y mapa"}
+                  </p>
                 </div>
               </button>
             )}
@@ -977,10 +1031,11 @@ export function AdminVisualBuilder({
               onChange={(event) => {
                 const value = event.target.value;
                 setSelected(value);
-                if (value === "contact") setPageMode("contact");
-                else if (value === "products") setPageMode("products");
-                else if (value === "services") setPageMode("services");
-                else if (pageMode !== "home") setPageMode("home");
+                if (["products","services","dulce","moda","about","contact","herencia"].includes(value)) {
+                  setPageMode(value as PageMode);
+                } else if (pageMode !== "home") {
+                  setPageMode("home");
+                }
               }}
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold"
             >
@@ -993,7 +1048,11 @@ export function AdminVisualBuilder({
               <option value="footer">Footer</option>
               <option value="products">Productos</option>
               <option value="services">Servicios</option>
+              <option value="dulce">Dulce</option>
+              <option value="moda">Moda</option>
+              <option value="about">Nosotros</option>
               <option value="contact">Contacto</option>
+              <option value="herencia">Herenc(IA)</option>
             </select>
             <div className="flex rounded-lg bg-slate-100 p-1">
               {([
@@ -1081,6 +1140,16 @@ export function AdminVisualBuilder({
                   <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
                 </div>
               ))
+            ) : pageMode === "products" ? (
+              <ProductsPreview site={site} products={catalogPreview} selected={selected === "products"} onSelect={() => setSelected("products")} />
+            ) : pageMode === "services" ? (
+              <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
+            ) : pageMode === "dulce" || pageMode === "moda" ? (
+              <CollectionPreview site={site} products={catalogPreview} kind={pageMode} selected={selected === pageMode} onSelect={() => setSelected(pageMode)} />
+            ) : pageMode === "about" ? (
+              <AboutPreview site={site} selected={selected === "about"} onSelect={() => setSelected("about")} />
+            ) : pageMode === "herencia" ? (
+              <HerenciaPreview site={site} selected={selected === "herencia"} onSelect={() => setSelected("herencia")} />
             ) : (
               <ContactPreview site={site} selected={selected === "contact"} onSelect={() => setSelected("contact")} />
             )}
@@ -1108,7 +1177,17 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedBlock?.name || (selected === "header" ? "Header" : selected === "footer" ? "Footer" : "Contacto")}
+                  {selectedBlock?.name || (
+                    selected === "header" ? "Header"
+                      : selected === "footer" ? "Footer"
+                      : selected === "products" ? "Productos"
+                      : selected === "services" ? "Servicios"
+                      : selected === "dulce" ? "Dulce"
+                      : selected === "moda" ? "Moda"
+                      : selected === "about" ? "Nosotros"
+                      : selected === "herencia" ? "Herenc(IA)"
+                      : "Contacto"
+                  )}
                 </h2>
               </div>
               {selectedBlock && (
@@ -1161,6 +1240,10 @@ export function AdminVisualBuilder({
 
             {selected === "products" && <ProductsPageEditor site={site} updateSite={updateSite} />}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
+            {selected === "dulce" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="dulce" />}
+            {selected === "moda" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="moda" />}
+            {selected === "about" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="about" />}
+            {selected === "herencia" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="sales" />}
             {selected === "contact" && <ContactEditor site={site} updateSite={updateSite} />}
 
             {selectedBlock && tab === "contenido" && (
@@ -1547,7 +1630,51 @@ function ProductsPageEditor({ site, updateSite }: { site: SiteContent; updateSit
     <TextField label="Destacado" value={site.productsPage.featuredLabel} onChange={(featuredLabel) => patch({ featuredLabel })} />
     <TextField label="Botón añadir" value={site.productsPage.addButtonLabel} onChange={(addButtonLabel) => patch({ addButtonLabel })} />
     <TextField label="Agotado" value={site.productsPage.outOfStockText} onChange={(outOfStockText) => patch({ outOfStockText })} />
-    <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Productos, precios, fotos y stock se gestionan desde el módulo Productos.</p>
+
+    <div className="rounded-xl border border-slate-200 p-3">
+      <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Diseño del catálogo</p>
+      <RangeField label="Columnas" value={Number(site.productsPage.columns || 4)} min={2} max={5} onChange={(columns) => patch({ columns })} />
+      <RangeField label="Redondeado de tarjetas" value={Number(site.productsPage.cardRadius ?? 24)} min={0} max={40} suffix="px" onChange={(cardRadius) => patch({ cardRadius })} />
+
+      <label className="mt-3 block text-xs font-bold text-slate-700">
+        Proporción de imagen
+        <select value={site.productsPage.imageAspect || "square"} onChange={(event) => patch({ imageAspect: event.target.value as SiteContent["productsPage"]["imageAspect"] })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5">
+          <option value="square">Cuadrada</option>
+          <option value="portrait">Vertical</option>
+          <option value="landscape">Horizontal</option>
+        </select>
+      </label>
+
+      <label className="mt-3 block text-xs font-bold text-slate-700">
+        Orden inicial
+        <select value={site.productsPage.defaultSort || "relevance"} onChange={(event) => patch({ defaultSort: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5">
+          <option value="relevance">Relevancia</option>
+          <option value="featured">Destacados</option>
+          <option value="newest">Novedades</option>
+          <option value="price-asc">Precio menor a mayor</option>
+          <option value="price-desc">Precio mayor a menor</option>
+          <option value="stock">Disponibilidad</option>
+        </select>
+      </label>
+
+      <div className="mt-4 space-y-2">
+        {([
+          ["showFilters", "Mostrar filtros"],
+          ["showFavorites", "Mostrar favoritos"],
+          ["showCollectionTabs", "Mostrar colecciones"],
+          ["showSubcategories", "Mostrar subcategorías"],
+        ] as const).map(([key, label]) => (
+          <label key={key} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">
+            {label}
+            <input type="checkbox" checked={site.productsPage[key] !== false} onChange={(event) => patch({ [key]: event.target.checked } as Partial<SiteContent["productsPage"]>)} />
+          </label>
+        ))}
+      </div>
+    </div>
+
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+      Aquí controlas cómo se presenta el catálogo. Precios, stock, variantes, imágenes y productos reales se gestionan desde Catálogo para mantener una sola fuente de datos en Neon.
+    </p>
   </div>;
 }
 
@@ -1570,6 +1697,80 @@ function ServicesPageEditor({ site, updateSite }: { site: SiteContent; updateSit
     <TextField label="Botón WhatsApp" value={p.whatsappButtonLabel} onChange={(whatsappButtonLabel)=>patch({whatsappButtonLabel})}/>
     <TextField label="Botón llamar" value={p.callButtonLabel} onChange={(callButtonLabel)=>patch({callButtonLabel})}/>
     <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Los botones de servicios usan el WhatsApp y teléfono reales configurados en el Footer.</p>
+  </div>;
+}
+
+function MarketExperiencePageEditor({
+  site,
+  updateSite,
+  section,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+  section: "dulce" | "moda" | "about" | "sales";
+}) {
+  const market = getMarketExperience(site);
+
+  function patch(value: Record<string, any>) {
+    updateSite((current) => {
+      const currentMarket = getMarketExperience(current);
+      return {
+        ...current,
+        marketExperience: {
+          ...currentMarket,
+          [section]: {
+            ...(currentMarket as any)[section],
+            ...value,
+          },
+        },
+      } as SiteContent;
+    });
+  }
+
+  if (section === "dulce" || section === "moda") {
+    const page = market[section];
+    return <div className="space-y-4">
+      <TextField label="Texto pequeño" value={page.kicker} onChange={(kicker) => patch({ kicker })} />
+      <TextField label="Título de página" value={page.pageTitle} onChange={(pageTitle) => patch({ pageTitle })} />
+      <TextField label="Subtítulo" value={page.pageSubtitle} onChange={(pageSubtitle) => patch({ pageSubtitle })} multiline />
+      <TextField label="Título de colección" value={page.title} onChange={(title) => patch({ title })} />
+      <TextField label="Descripción de colección" value={page.subtitle} onChange={(subtitle) => patch({ subtitle })} multiline />
+      <ImageFields label="Imagen de portada" value={page.imageUrl} onChange={(imageUrl) => patch({ imageUrl })} />
+      <LinkFields label="Botón principal" value={{ label: page.buttonLabel, href: page.href }} onChange={(link) => patch({ buttonLabel: link.label, href: link.href })} />
+      <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">Los artículos que aparecen debajo vienen de la colección real {section === "dulce" ? "Dulce" : "Moda"} de Neon.</p>
+    </div>;
+  }
+
+  if (section === "about") {
+    const page = market.about;
+    return <div className="space-y-4">
+      <TextField label="Texto pequeño" value={page.kicker} onChange={(kicker) => patch({ kicker })} />
+      <TextField label="Título" value={page.title} onChange={(title) => patch({ title })} />
+      <TextField label="Descripción" value={page.description} onChange={(description) => patch({ description })} multiline />
+      <ImageFields label="Imagen" value={page.imageUrl} onChange={(imageUrl) => patch({ imageUrl })} />
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Valores</p>
+        {page.values.map((value, index) => (
+          <div key={index} className="mb-3 rounded-lg bg-slate-50 p-3">
+            <TextField label={`Título ${index + 1}`} value={value.title} onChange={(title) => patch({ values: page.values.map((item, i) => i === index ? { ...item, title } : item) })} />
+            <TextField label="Descripción" value={value.description} onChange={(description) => patch({ values: page.values.map((item, i) => i === index ? { ...item, description } : item) })} multiline />
+          </div>
+        ))}
+      </div>
+    </div>;
+  }
+
+  const sales = market.sales;
+  return <div className="space-y-4">
+    <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-bold">
+      Asistente de ventas activado
+      <input type="checkbox" checked={sales.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
+    </label>
+    <TextField label="Texto del botón" value={sales.buttonLabel} onChange={(buttonLabel) => patch({ buttonLabel })} />
+    <TextField label="Título" value={sales.title} onChange={(title) => patch({ title })} />
+    <TextField label="Prompt principal" value={sales.prompt} onChange={(prompt) => patch({ prompt })} multiline />
+    <TextField label="Texto de ayuda" value={sales.helperText} onChange={(helperText) => patch({ helperText })} multiline />
+    <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">La lógica de IA sigue separada; aquí editas presentación, mensaje y disponibilidad del asistente de ventas.</p>
   </div>;
 }
 
@@ -1892,6 +2093,246 @@ function DesignEditor({
         </>
       )}
     </div>
+  );
+}
+
+function previewPrice(product: any) {
+  return Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
+}
+
+function ProductsPreview({
+  site,
+  products,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const rows = products.slice(0, 8);
+  const columns = Math.max(2, Math.min(5, Number(site.productsPage.columns || 4)));
+  const gridClass =
+    columns <= 2 ? "grid-cols-2"
+      : columns === 3 ? "grid-cols-2 md:grid-cols-3"
+      : columns >= 5 ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
+      : "grid-cols-2 md:grid-cols-4";
+  const imageClass =
+    site.productsPage.imageAspect === "portrait"
+      ? "h-44"
+      : site.productsPage.imageAspect === "landscape"
+        ? "h-28"
+        : "h-36";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+    >
+      <div className="border-b border-slate-200 bg-[#f4f1e8] px-8 py-9">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">HERENCIA MARKET</p>
+        <h1 className="mt-2 text-3xl font-black text-[#173126]">{site.productsPage.title}</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-500">{site.productsPage.subtitle}</p>
+      </div>
+
+      <div className="space-y-5 p-6">
+        {site.productsPage.showCollectionTabs !== false && (
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-emerald-800 px-3 py-1.5 text-[11px] font-black text-white">Todo</span>
+            {COMMERCE_COLLECTIONS.slice(0, 7).map((item) => (
+              <span key={item.id} className="rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-bold">{item.name}</span>
+            ))}
+          </div>
+        )}
+
+        {site.productsPage.showFilters !== false && (
+          <div className="flex gap-2">
+            <div className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-400">Buscar productos…</div>
+            <div className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold">Filtros</div>
+          </div>
+        )}
+
+        {rows.length ? (
+          <div className={`grid gap-3 ${gridClass}`}>
+            {rows.map((product) => (
+              <div
+                key={String(product.id)}
+                className="overflow-hidden border border-slate-200 bg-white"
+                style={{ borderRadius: `${Math.max(0, Math.min(40, Number(site.productsPage.cardRadius ?? 24)))}px` }}
+              >
+                <div className={`${imageClass} bg-slate-100`}>
+                  {product.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : null}
+                </div>
+                <div className="p-3">
+                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
+                    {getCommerceCollection(primaryCollectionOf(product)).name}
+                  </span>
+                  <p className="mt-2 truncate text-sm font-black">{product.name}</p>
+                  <p className="mt-1 text-sm font-black text-emerald-800">€{previewPrice(product).toFixed(2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+            Aún no hay artículos publicados en el catálogo.
+          </div>
+        )}
+
+        <p className="text-xs text-slate-400">{products.length} artículos reales cargados desde Commerce/Neon.</p>
+      </div>
+    </button>
+  );
+}
+
+function ServicesPreview({
+  site,
+  products,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const rows = products.filter((product) => productBelongsToCollection(product, "servicios")).slice(0, 6);
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="bg-[#173d2a] px-8 py-10 text-white">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">SERVICIOS HERENCIA</p>
+        <h1 className="mt-2 text-4xl font-black">{site.servicesPage.title}</h1>
+        <p className="mt-3 max-w-2xl text-sm text-white/70">{site.servicesPage.subtitle}</p>
+      </div>
+      <div className="grid gap-4 p-6 md:grid-cols-3">
+        {rows.length ? rows.map((service) => (
+          <div key={String(service.id)} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="h-36 bg-slate-100">
+              {service.image ? <img src={service.image} alt="" className="h-full w-full object-cover" /> : null}
+            </div>
+            <div className="p-4">
+              <p className="font-black">{service.name}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-500">{service.description}</p>
+              <p className="mt-3 font-black text-emerald-800">€{previewPrice(service).toFixed(2)}</p>
+            </div>
+          </div>
+        )) : (
+          <>
+            {[site.servicesPage.gardeningHeading, site.servicesPage.deliveryHeading, site.servicesPage.advisoryHeading].map((title) => (
+              <div key={title} className="rounded-2xl border border-slate-200 bg-white p-5">
+                <p className="font-black">{title}</p>
+                <p className="mt-2 text-xs text-slate-500">Añade servicios vendibles desde Catálogo para verlos aquí.</p>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function CollectionPreview({
+  site,
+  products,
+  kind,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  products: any[];
+  kind: "dulce" | "moda";
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const market = getMarketExperience(site);
+  const page = market[kind];
+  const rows = products.filter((product) => productBelongsToCollection(product, kind)).slice(0, 4);
+
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="relative min-h-72 overflow-hidden bg-slate-800">
+        {page.imageUrl ? <img src={page.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : null}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
+        <div className="relative p-8 text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">{page.kicker}</p>
+          <h1 className="mt-3 text-4xl font-black">{page.pageTitle}</h1>
+          <p className="mt-3 max-w-xl text-sm text-white/80">{page.pageSubtitle}</p>
+        </div>
+      </div>
+      <div className="p-6">
+        <h2 className="text-2xl font-black">{page.title}</h2>
+        <p className="mt-1 text-sm text-slate-500">{page.subtitle}</p>
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {rows.map((product) => (
+            <div key={String(product.id)} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="h-28 bg-slate-100">{product.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : null}</div>
+              <div className="p-3"><p className="truncate text-xs font-black">{product.name}</p><p className="mt-1 text-xs font-black text-emerald-800">€{previewPrice(product).toFixed(2)}</p></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function AboutPreview({
+  site,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const about = getMarketExperience(site).about;
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="grid min-h-80 md:grid-cols-2">
+        <div className="bg-[#173d2a] p-8 text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">{about.kicker}</p>
+          <h1 className="mt-3 text-4xl font-black">{about.title}</h1>
+          <p className="mt-4 text-sm leading-6 text-white/75">{about.description}</p>
+        </div>
+        <div className="bg-slate-100">{about.imageUrl ? <img src={about.imageUrl} alt="" className="h-full w-full object-cover" /> : null}</div>
+      </div>
+      <div className="grid gap-3 p-6 md:grid-cols-3">
+        {about.values.map((value, index) => (
+          <div key={index} className="rounded-2xl border border-slate-200 p-4">
+            <p className="font-black">{value.title}</p>
+            <p className="mt-2 text-xs text-slate-500">{value.description}</p>
+          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function HerenciaPreview({
+  site,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const sales = getMarketExperience(site).sales;
+  return (
+    <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
+      <div className="bg-gradient-to-br from-[#173d2a] to-[#315b42] p-10 text-white">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#e7d7a8]">HERENC(IA) · SALES</p>
+        <h1 className="mt-3 text-4xl font-black">{sales.title}</h1>
+        <p className="mt-3 max-w-2xl text-sm text-white/75">{sales.helperText}</p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          {sales.quickActions.map((action) => (
+            <span key={action.id} className="rounded-full border border-white/25 bg-white/10 px-3 py-2 text-xs font-black">{action.label}</span>
+          ))}
+        </div>
+        <span className="mt-7 inline-flex rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]">{sales.buttonLabel}</span>
+      </div>
+    </button>
   );
 }
 

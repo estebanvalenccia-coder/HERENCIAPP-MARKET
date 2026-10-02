@@ -1,24 +1,52 @@
-import { useState, useEffect } from "react";
-import { Edit, Trash2, Eye, EyeOff, Tag as TagIcon, Sparkles, Printer } from "lucide-react";
-import { motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Edit,
+  Eye,
+  EyeOff,
+  Printer,
+  Search,
+  Sparkles,
+  Tag as TagIcon,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
-import { products as initialProducts } from "../../data/products";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
+import {
+  COMMERCE_COLLECTIONS,
+  getCommerceCollection,
+  isPlantLikeCollection,
+  primaryCollectionOf,
+  productTypeForCollection,
+} from "../../lib/commerceCatalog";
 
-interface Product {
-  id: number;
+type Product = {
+  id: string | number;
   name: string;
-  category: string;
-  price: number;
-  image: string;
-  description: string;
-  featured?: boolean;
-  active?: boolean;
-  onSale?: boolean;
+  description?: string;
+  category?: string;
+  collections?: string[];
+  type?: string;
+  price?: number;
   salePrice?: number;
+  compareAtPrice?: number;
+  originalPrice?: number;
+  onSale?: boolean;
+  cost?: number;
+  image?: string;
+  images?: any[];
   sku?: string;
+  barcode?: string;
   stock?: number;
+  trackInventory?: boolean;
   iva?: number;
+  taxRate?: number;
+  status?: string;
+  active?: boolean;
+  featured?: boolean;
+  deletedAt?: string;
   environment?: string;
   light?: string;
   size?: string;
@@ -27,13 +55,14 @@ interface Product {
   toxicity?: string;
   water?: string;
   temperature?: string;
-  occasion?: string;
+  scientificName?: string;
   allowDedication?: boolean;
-  variants?: Array<{ name: string; price?: number; stock?: number }>;
-  deletedAt?: string;
+  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string }>;
   seoTitle?: string;
   seoDescription?: string;
-}
+  tags?: string[] | string;
+  [key: string]: any;
+};
 
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
 
@@ -41,176 +70,330 @@ function getGeminiApiKey() {
   return import.meta.env.VITE_GEMINI_API_KEY || "";
 }
 
-function buildBouquetPrompt(productName: string, description: string, customPrompt: string) {
-  const idea = customPrompt.trim() || `${productName}. ${description}`;
+function buildProductImagePrompt(product: Product, customPrompt: string) {
+  const idea = customPrompt.trim() || `${product.name}. ${product.description || ""}`;
+  const collection = getCommerceCollection(primaryCollectionOf(product)).name;
 
-  return `Crea una imagen fotorealista, premium y comercial para una floristería elegante llamada Herencia Market.
-Producto o ramo: ${idea}
-Estilo: ramo de flores bonito, moderno, colorido, juvenil y elegante, con iluminación natural, fondo limpio tipo estudio, composición centrada, alta calidad, sin texto, sin logos, sin marcas de agua, apta para ecommerce.`;
+  return `Crea una fotografía comercial premium para Herencia Market.
+Artículo: ${idea}
+Colección: ${collection}.
+Estilo: ecommerce elegante, natural, contemporáneo, iluminación cuidada, producto protagonista, fondo limpio y coherente con la categoría, alta calidad, sin texto, sin logos y sin marcas de agua.`;
 }
 
-async function generateBouquetImageWithGemini(prompt: string) {
+async function generateProductImageWithGemini(prompt: string) {
   const apiKey = getGeminiApiKey();
-
-  if (!apiKey) {
-    throw new Error("Falta configurar VITE_GEMINI_API_KEY");
-  }
+  if (!apiKey) throw new Error("Falta configurar VITE_GEMINI_API_KEY");
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
-          },
-        ],
-      }),
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
     }
   );
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || "No se pudo generar la imagen");
-  }
-
+  if (!response.ok) throw new Error((await response.text()) || "No se pudo generar la imagen");
   const data = await response.json();
   const parts = data?.candidates?.[0]?.content?.parts || [];
   const imagePart = parts.find((part: any) => part.inlineData || part.inline_data);
   const inlineData = imagePart?.inlineData || imagePart?.inline_data;
-
-  if (!inlineData?.data) {
-    throw new Error("La IA no devolvió una imagen. Prueba con una descripción más clara.");
-  }
-
+  if (!inlineData?.data) throw new Error("La IA no devolvió una imagen");
   return `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`;
 }
 
+const emptyEdit = {
+  name: "",
+  description: "",
+  collection: "plantas",
+  category: "plantas-interior",
+  image: "",
+  price: 0,
+  salePrice: 0,
+  onSale: false,
+  cost: 0,
+  sku: "",
+  barcode: "",
+  stock: 0,
+  trackInventory: true,
+  iva: 21,
+  status: "active",
+  featured: false,
+  scientificName: "",
+  environment: "interior",
+  light: "indirecta",
+  size: "",
+  difficulty: "Fácil",
+  petSafe: false,
+  toxicity: "",
+  water: "",
+  temperature: "",
+  allowDedication: true,
+  variantsText: "",
+  tags: "",
+  seoTitle: "",
+  seoDescription: "",
+};
+
 export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editForm, setEditForm] = useState({ ...emptyEdit });
+  const [saving, setSaving] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [collectionFilter, setCollectionFilter] = useState("todos");
+  const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
-  const [showTrash, setShowTrash] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    description: "",
-    price: 0,
-    category: "",
-    image: "",
-    sku: "",
-    stock: 0,
-    iva: 21,
-    environment: "interior",
-    light: "indirecta",
-    size: "",
-    difficulty: "Fácil",
-    petSafe: false,
-    toxicity: "",
-    water: "",
-    temperature: "",
-    occasion: "",
-    allowDedication: true,
-    variantsText: "",
-    seoTitle: "",
-    seoDescription: "",
-  });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  async function loadProducts() {
+    try {
+      setLoading(true);
+      const result = await backendApi.listCommerceProducts({ includeArchived: true });
+      const rows = Array.isArray(result.products) ? result.products : [];
+      setProducts(rows);
+      void backendStorage.setItem("adminProducts", JSON.stringify(rows));
+    } catch (error) {
+      try {
+        const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+        setProducts(Array.isArray(cached) ? cached : []);
+      } catch {
+        setProducts([]);
+      }
+      console.error(error);
+      toast.error("No se pudo actualizar el catálogo desde Neon");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    const saved = backendStorage.getItem("adminProducts");
-    if (saved) {
-      setProducts(JSON.parse(saved));
-    } else {
-      const productsWithState = initialProducts.map((p, index) => ({
-        ...p,
-        active: true,
-        onSale: p.featured || false,
-        salePrice: p.featured ? p.price * 0.8 : undefined,
-        sku: `SKU-${String(p.id ?? index + 1).padStart(4, "0")}`,
-        stock: 0,
-        iva: 21,
-      }));
-      setProducts(productsWithState);
-      backendStorage.setItem("adminProducts", JSON.stringify(productsWithState));
-    }
+    void loadProducts();
   }, []);
 
-  const saveProducts = (updatedProducts: Product[]) => {
-    setProducts(updatedProducts);
-    backendStorage.setItem("adminProducts", JSON.stringify(updatedProducts));
-  };
-
-  const toggleActive = (id: number) => {
-    const updated = products.map(p =>
-      p.id === id ? { ...p, active: !p.active } : p
-    );
-    saveProducts(updated);
-    toast.success("Estado actualizado");
-  };
-
-  const toggleSale = (id: number) => {
-    const updated = products.map(p => {
-      if (p.id === id) {
-        const newOnSale = !p.onSale;
-        return {
-          ...p,
-          onSale: newOnSale,
-          salePrice: newOnSale ? p.price * 0.8 : undefined
-        };
-      }
-      return p;
+  const visibleProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return products.filter((product) => {
+      const archived = product.status === "archived" || Boolean(product.deletedAt);
+      if (showTrash !== archived) return false;
+      if (collectionFilter !== "todos" && primaryCollectionOf(product) !== collectionFilter) return false;
+      if (!query) return true;
+      return [product.name, product.description, product.sku, product.category, primaryCollectionOf(product)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
     });
-    saveProducts(updated);
-    toast.success(updated.find(p => p.id === id)?.onSale ? "Oferta activada" : "Oferta desactivada");
-  };
+  }, [products, showTrash, collectionFilter, search]);
 
-  const printLabel = (product: Product) => {
-    const productUrl = `${window.location.origin}/producto/${product.id}`;
-    const careUrl = `${window.location.origin}/cuidados/${product.id}`;
-    const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(careUrl)}`;
-    const popup = window.open("", "_blank", "width=520,height=700");
-    if (!popup) return toast.error("El navegador bloqueó la ventana de impresión");
-    popup.document.write(`<!doctype html><html><head><title>Etiqueta ${product.name}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#24352b}.label{border:2px solid #426047;border-radius:22px;padding:24px;max-width:390px;margin:auto;text-align:center}.brand{font-weight:900;letter-spacing:2px;color:#426047}.name{font-size:25px;font-weight:800;margin:14px 0}.price{font-size:28px;font-weight:900}.meta{font-size:13px;color:#66756c;margin:6px}.qr{width:170px;height:170px;margin:16px auto 6px}@media print{button{display:none}body{padding:0}.label{border:1px solid #999}}</style></head><body><div class="label"><div class="brand">HERENCIA</div><div class="name">${product.name}</div><div class="price">€${Number(product.salePrice||product.price||0).toFixed(2)}</div><div class="meta">SKU: ${product.sku||product.id}</div><img class="qr" src="${qr}" alt="QR"/><div class="meta">Escanea para cuidados y pasaporte</div><div class="meta">${productUrl}</div></div><p style="text-align:center"><button onclick="window.print()">Imprimir etiqueta</button></p></body></html>`);
-    popup.document.close();
-  };
+  const selectedProducts = useMemo(
+    () => products.filter((product) => selectedIds.includes(String(product.id))),
+    [products, selectedIds]
+  );
 
-  const deleteProduct = (id: number) => {
-    if (confirm("¿Mover este producto a la papelera? Podrás restaurarlo después.")) {
-      const updated = products.map(p => p.id === id ? { ...p, active: false, deletedAt: new Date().toISOString() } : p);
-      saveProducts(updated);
-      toast.success("Producto movido a la papelera");
+  function toggleSelected(id: string | number) {
+    const key = String(id);
+    setSelectedIds((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    );
+  }
+
+  function selectVisible() {
+    const ids = visibleProducts.map((product) => String(product.id));
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
+    setSelectedIds((current) =>
+      allSelected
+        ? current.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...current, ...ids]))
+    );
+  }
+
+  async function bulkUpdate(payload: any, message: string) {
+    if (!selectedProducts.length) return;
+    try {
+      setLoading(true);
+      await Promise.all(
+        selectedProducts.map((product) => backendApi.updateCommerceProduct(product.id, payload))
+      );
+      setSelectedIds([]);
+      await loadProducts();
+      toast.success(message);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los artículos");
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  const restoreProduct = (id: number) => {
-    const updated = products.map(p => p.id === id ? { ...p, active: true, deletedAt: undefined } : p);
-    saveProducts(updated);
-    toast.success("Producto restaurado");
-  };
+  async function bulkArchive() {
+    if (!selectedProducts.length) return;
+    if (!confirm(`¿Mover ${selectedProducts.length} artículos a la papelera?`)) return;
+    try {
+      setLoading(true);
+      await Promise.all(
+        selectedProducts.map((product) => backendApi.deleteCommerceProduct(product.id, false))
+      );
+      setSelectedIds([]);
+      await loadProducts();
+      toast.success("Artículos movidos a la papelera");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron archivar los artículos");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const permanentlyDeleteProduct = (id: number) => {
+  async function moveProduct(product: Product, direction: -1 | 1) {
+    const collection = primaryCollectionOf(product);
+    const rows = products.filter(
+      (item) =>
+        primaryCollectionOf(item) === collection &&
+        item.status !== "archived" &&
+        !item.deletedAt
+    );
+    const index = rows.findIndex((item) => String(item.id) === String(product.id));
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= rows.length) return;
+
+    const target = rows[targetIndex];
+    const productOrder = Number.isFinite(Number(product.sortOrder))
+      ? Number(product.sortOrder)
+      : index * 10;
+    const targetOrder = Number.isFinite(Number(target.sortOrder))
+      ? Number(target.sortOrder)
+      : targetIndex * 10;
+
+    try {
+      await Promise.all([
+        backendApi.updateCommerceProduct(product.id, { sortOrder: targetOrder }),
+        backendApi.updateCommerceProduct(target.id, { sortOrder: productOrder }),
+      ]);
+      await loadProducts();
+      toast.success("Orden actualizado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cambiar el orden");
+    }
+  }
+
+  async function updateProduct(product: Product, payload: any, message?: string) {
+    try {
+      await backendApi.updateCommerceProduct(product.id, payload);
+      await loadProducts();
+      if (message) toast.success(message);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el artículo");
+    }
+  }
+
+  async function toggleActive(product: Product) {
+    const active = product.status === "active" || product.active === true;
+    await updateProduct(
+      product,
+      { status: active ? "draft" : "active", active: !active },
+      active ? "Artículo pasado a borrador" : "Artículo publicado"
+    );
+  }
+
+  async function toggleSale(product: Product) {
+    const regular = Number(product.price || 0);
+    if (product.onSale) {
+      await updateProduct(
+        product,
+        {
+          price: regular,
+          salePrice: undefined,
+          compareAtPrice: null,
+          onSale: false,
+        },
+        "Oferta desactivada"
+      );
+      return;
+    }
+
+    const sale = Math.round(regular * 0.8 * 100) / 100;
+    await updateProduct(
+      product,
+      { price: regular, salePrice: sale, compareAtPrice: regular, onSale: true },
+      "Oferta del 20% activada"
+    );
+  }
+
+  async function archiveProduct(product: Product) {
+    if (!confirm("¿Mover este artículo a la papelera?")) return;
+    try {
+      await backendApi.deleteCommerceProduct(product.id, false);
+      await loadProducts();
+      toast.success("Artículo movido a la papelera");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo archivar");
+    }
+  }
+
+  async function restoreProduct(product: Product) {
+    await updateProduct(product, { status: "active", active: true, deletedAt: null }, "Artículo restaurado");
+  }
+
+  async function permanentlyDeleteProduct(product: Product) {
     if (!confirm("Esta acción es definitiva. ¿Eliminar permanentemente?")) return;
-    saveProducts(products.filter(p => p.id !== id));
-    toast.success("Producto eliminado permanentemente");
-  };
+    try {
+      await backendApi.deleteCommerceProduct(product.id, true);
+      await loadProducts();
+      toast.success("Artículo eliminado definitivamente");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar");
+    }
+  }
 
-  const startEdit = (product: Product) => {
+  async function duplicateProduct(product: Product) {
+    try {
+      const primary = primaryCollectionOf(product);
+      const copy = {
+        ...product,
+        id: undefined,
+        name: `${product.name} · copia`,
+        sku: product.sku ? `${product.sku}-COPY` : "",
+        status: "draft",
+        active: false,
+        deletedAt: undefined,
+        collections: Array.isArray(product.collections) && product.collections.length
+          ? product.collections
+          : [primary],
+      };
+      delete copy.id;
+      await backendApi.createCommerceProduct(copy);
+      await loadProducts();
+      toast.success("Copia creada como borrador");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo duplicar");
+    }
+  }
+
+  function startEdit(product: Product) {
+    const collection = primaryCollectionOf(product);
+    const regularPrice = Number(product.price || 0);
+    const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
     setEditingProduct(product);
     setAiPrompt("");
     setEditForm({
-      name: product.name,
-      description: product.description,
-      price: product.price,
-      category: product.category,
-      image: product.image,
+      name: product.name || "",
+      description: product.description || "",
+      collection,
+      category: product.category || getCommerceCollection(collection).categories[0]?.id || collection,
+      image: product.image || "",
+      price: regularPrice,
+      salePrice,
+      onSale: Boolean(product.onSale),
+      cost: Number(product.cost || 0),
       sku: product.sku || "",
+      barcode: product.barcode || "",
       stock: Math.max(0, Number(product.stock || 0)),
-      iva: Number(product.iva || 21),
+      trackInventory: product.trackInventory !== false,
+      iva: Number(product.iva ?? product.taxRate ?? 21),
+      status: product.status === "draft" ? "draft" : "active",
+      featured: Boolean(product.featured),
+      scientificName: product.scientificName || "",
       environment: product.environment || "interior",
       light: product.light || "indirecta",
       size: product.size || "",
@@ -219,428 +402,437 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       toxicity: product.toxicity || "",
       water: product.water || "",
       temperature: product.temperature || "",
-      occasion: product.occasion || "",
       allowDedication: product.allowDedication !== false,
-      variantsText: (product.variants || []).map((v) => `${v.name} | ${v.price ?? ""} | ${v.stock ?? ""}`).join("\n"),
+      variantsText: (product.variants || [])
+        .map((variant) => `${variant.name} | ${variant.price ?? ""} | ${variant.stock ?? ""} | ${variant.sku ?? ""}`)
+        .join("\n"),
+      tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
       seoTitle: product.seoTitle || product.name || "",
       seoDescription: product.seoDescription || product.description || "",
     });
-  };
+  }
 
-  const cancelEdit = () => {
+  function cancelEdit() {
     setEditingProduct(null);
+    setEditForm({ ...emptyEdit });
     setAiPrompt("");
-    setEditForm({ name: "", description: "", price: 0, category: "", image: "", sku: "", stock: 0, iva: 21, environment: "interior", light: "indirecta", size: "", difficulty: "Fácil", petSafe: false, toxicity: "", water: "", temperature: "", occasion: "", allowDedication: true, variantsText: "", seoTitle: "", seoDescription: "" });
-  };
+  }
 
-  const generateAiImage = async () => {
+  async function generateAiImage() {
     if (!editingProduct) return;
-
     try {
       setAiGenerating(true);
-      const prompt = buildBouquetPrompt(editForm.name, editForm.description, aiPrompt);
-      const imageUrl = await generateBouquetImageWithGemini(prompt);
-      setEditForm((prev) => ({ ...prev, image: imageUrl }));
-      toast.success("Imagen generada con Nano Banana 🌸");
+      const imageUrl = await generateProductImageWithGemini(
+        { ...editingProduct, name: editForm.name, description: editForm.description },
+        aiPrompt
+      );
+      setEditForm((current) => ({ ...current, image: imageUrl }));
+      toast.success("Imagen generada");
     } catch (error: any) {
-      console.error(error);
       toast.error(error?.message || "No se pudo generar la imagen");
     } finally {
       setAiGenerating(false);
     }
-  };
+  }
 
-  const saveEdit = () => {
+  async function saveEdit() {
     if (!editingProduct) return;
+    if (!editForm.name.trim()) return toast.error("El nombre es obligatorio");
+    if (editForm.price <= 0) return toast.error("El precio debe ser mayor que 0");
+    if (editForm.onSale && (editForm.salePrice <= 0 || editForm.salePrice >= editForm.price)) {
+      return toast.error("El precio de oferta debe ser menor que el precio normal");
+    }
 
-    const updated = products.map(p =>
-      p.id === editingProduct.id
-        ? {
-            ...p,
-            name: editForm.name,
-            description: editForm.description,
-            price: editForm.price,
-            category: editForm.category,
-            image: editForm.image,
-            sku: editForm.sku.trim() || p.sku || `SKU-${p.id}`,
-            stock: Math.max(0, Math.floor(Number(editForm.stock || 0))),
-            iva: Math.max(0, Number(editForm.iva || 21)),
-            salePrice: p.onSale ? editForm.price * 0.8 : p.salePrice,
-            environment: editForm.environment,
-            light: editForm.light,
-            size: editForm.size.trim(),
-            difficulty: editForm.difficulty,
-            petSafe: editForm.petSafe,
-            toxicity: editForm.toxicity.trim(),
-            water: editForm.water.trim(),
-            temperature: editForm.temperature.trim(),
-            occasion: editForm.occasion.trim(),
-            allowDedication: editForm.allowDedication,
-            seoTitle: editForm.seoTitle.trim() || editForm.name.trim(),
-            seoDescription: editForm.seoDescription.trim() || editForm.description.trim(),
-            variants: editForm.variantsText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
-              const [name, price, stock] = line.split("|").map((part) => part.trim());
-              return { name, price: price ? Math.max(0, Number(price)) : undefined, stock: stock ? Math.max(0, Math.floor(Number(stock))) : undefined };
-            }).filter((variant) => variant.name),
-          }
-        : p
-    );
-    saveProducts(updated);
-    toast.success("Producto actualizado");
-    cancelEdit();
-  };
+    try {
+      setSaving(true);
+      let imageUrl = editForm.image.trim();
+      if (imageUrl.startsWith("data:image/")) {
+        const uploaded = await backendApi.uploadSiteMedia({
+          dataUrl: imageUrl,
+          filename: `${editForm.name.replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
+        });
+        imageUrl = String(uploaded.media?.url || "");
+      }
+
+      const plantLike = isPlantLikeCollection(editForm.collection);
+      const variants = editForm.variantsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [name, price, stock, sku] = line.split("|").map((part) => part.trim());
+          return {
+            name,
+            price: price ? Math.max(0, Number(price)) : undefined,
+            stock: stock ? Math.max(0, Math.floor(Number(stock))) : 0,
+            sku: sku || undefined,
+          };
+        })
+        .filter((variant) => variant.name);
+
+      await backendApi.updateCommerceProduct(editingProduct.id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        collection: editForm.collection,
+        collections: [editForm.collection],
+        category: editForm.category,
+        type: productTypeForCollection(editForm.collection),
+        status: editForm.status,
+        active: editForm.status === "active",
+        featured: editForm.featured,
+        price: editForm.price,
+        salePrice: editForm.onSale ? editForm.salePrice : undefined,
+        compareAtPrice: editForm.onSale ? editForm.price : null,
+        onSale: editForm.onSale,
+        cost: editForm.cost || null,
+        sku: editForm.sku.trim(),
+        barcode: editForm.barcode.trim(),
+        stock: editForm.trackInventory ? editForm.stock : 0,
+        trackInventory: editForm.trackInventory,
+        taxRate: editForm.iva,
+        image: imageUrl || undefined,
+        images: imageUrl ? [imageUrl] : [],
+        scientificName: plantLike ? editForm.scientificName.trim() : "",
+        environment: plantLike ? editForm.environment : "",
+        light: plantLike ? editForm.light : "",
+        size: plantLike ? editForm.size.trim() : "",
+        difficulty: plantLike ? editForm.difficulty : "",
+        petSafe: plantLike ? editForm.petSafe : false,
+        toxicity: plantLike ? editForm.toxicity.trim() : "",
+        water: plantLike ? editForm.water.trim() : "",
+        temperature: plantLike ? editForm.temperature.trim() : "",
+        allowDedication: editForm.allowDedication,
+        variants,
+        seoTitle: editForm.seoTitle.trim() || editForm.name.trim(),
+        seoDescription: editForm.seoDescription.trim() || editForm.description.trim(),
+        metadata: {
+          ...(editingProduct.metadata || {}),
+          tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        },
+      });
+
+      await loadProducts();
+      toast.success("Artículo actualizado en Neon");
+      cancelEdit();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el artículo");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function printLabel(product: Product) {
+    const url = `${window.location.origin}/producto/${product.id}`;
+    const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
+    const popup = window.open("", "_blank", "width=520,height=700");
+    if (!popup) return toast.error("El navegador bloqueó la ventana");
+    const sale = product.onSale && product.salePrice ? product.salePrice : product.price;
+    popup.document.write(`<!doctype html><html><head><title>${product.name}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#24352b}.label{border:2px solid #426047;border-radius:22px;padding:24px;max-width:390px;margin:auto;text-align:center}.brand{font-weight:900;letter-spacing:2px;color:#426047}.name{font-size:25px;font-weight:800;margin:14px 0}.price{font-size:28px;font-weight:900}.meta{font-size:13px;color:#66756c;margin:6px}.qr{width:170px;height:170px;margin:16px auto 6px}@media print{button{display:none}body{padding:0}}</style></head><body><div class="label"><div class="brand">HERENCIA</div><div class="name">${product.name}</div><div class="price">€${Number(sale||0).toFixed(2)}</div><div class="meta">SKU: ${product.sku||product.id}</div><img class="qr" src="${qr}" alt="QR"/><div class="meta">${url}</div></div><p style="text-align:center"><button onclick="window.print()">Imprimir etiqueta</button></p></body></html>`);
+    popup.document.close();
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Gestión de Productos</h2>
-          <p className="text-muted-foreground">{products.filter(p=>!p.deletedAt).length} activos · {products.filter(p=>p.deletedAt).length} en papelera</p>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Commerce · Neon</p>
+          <h2 className="mt-1 text-3xl font-black text-foreground">Catálogo de venta</h2>
+          <p className="mt-1 text-muted-foreground">
+            {products.filter((product) => product.status !== "archived" && !product.deletedAt).length} activos/borradores · {products.filter((product) => product.status === "archived" || product.deletedAt).length} en papelera
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={()=>setShowTrash(!showTrash)} className="px-4 py-3 bg-muted text-foreground rounded-xl hover:bg-accent">{showTrash ? "Ver productos" : "Papelera"}</button>
-          <button onClick={onAddNew} className="px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">+ Añadir Producto</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setShowTrash((value) => !value)} className="rounded-xl bg-muted px-4 py-3 font-bold">
+            {showTrash ? "Volver al catálogo" : "Papelera"}
+          </button>
+          <button onClick={onAddNew} className="rounded-xl bg-primary px-6 py-3 font-black text-primary-foreground">
+            + Crear artículo
+          </button>
         </div>
       </div>
 
-      {/* Products Grid */}
-      <div className="grid grid-cols-1 gap-4">
-        {products.filter((product)=>showTrash ? Boolean(product.deletedAt) : !product.deletedAt).map((product, index) => (
-          <motion.div
-            key={product.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-            className="bg-card border border-border rounded-2xl p-4 sm:p-6"
-          >
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Image */}
-              <div className="w-full sm:w-32 h-32 rounded-xl overflow-hidden bg-muted flex-shrink-0">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+      <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 lg:grid-cols-[1fr_260px]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por nombre, SKU, categoría…"
+            className="w-full rounded-xl border border-border bg-background py-3 pl-11 pr-4"
+          />
+        </div>
+        <select
+          value={collectionFilter}
+          onChange={(event) => setCollectionFilter(event.target.value)}
+          className="rounded-xl border border-border bg-background px-4 py-3 font-bold"
+        >
+          <option value="todos">Todas las colecciones</option>
+          {COMMERCE_COLLECTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </div>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4 mb-2">
-                  <div>
-                    <h3 className="font-semibold text-foreground text-lg mb-1">
-                      {product.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {product.description}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {product.onSale && (
-                      <span className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-                        OFERTA
-                      </span>
-                    )}
-                    {!product.active && (
-                      <span className="px-2 py-1 bg-muted text-muted-foreground text-xs font-medium rounded-full">
-                        OCULTO
-                      </span>
-                    )}
-                  </div>
-                </div>
+      {!showTrash && visibleProducts.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between">
+          <label className="flex items-center gap-3 text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={visibleProducts.every((product) => selectedIds.includes(String(product.id)))}
+              onChange={selectVisible}
+            />
+            Seleccionar visibles ({visibleProducts.length})
+          </label>
 
-                <div className="flex flex-wrap items-center gap-4 mb-4">
-                  <div>
-                    <span className="text-sm text-muted-foreground">Precio: </span>
-                    <span className={`font-bold ${product.onSale ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                      €{(product.price || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  {product.onSale && product.salePrice && (
-                    <div>
-                      <span className="text-sm text-muted-foreground">Oferta: </span>
-                      <span className="font-bold text-primary">
-                        €{(product.salePrice || 0).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-sm text-muted-foreground">Categoría: </span>
-                    <span className="text-foreground capitalize">
-                      {product.category.replace("-", " ")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-muted-foreground">Stock: </span>
-                    <span className="font-bold text-foreground">{Math.max(0, Number(product.stock || 0))}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-muted-foreground">SKU: </span>
-                    <span className="text-foreground">{product.sku || `SKU-${product.id}`}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-muted-foreground">IVA: </span>
-                    <span className="text-foreground">{Number(product.iva || 21)}%</span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => toggleActive(product.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                      product.active
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {product.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    <span className="text-sm">{product.active ? "Visible" : "Oculto"}</span>
-                  </button>
-
-                  <button
-                    onClick={() => toggleSale(product.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                      product.onSale
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-foreground hover:bg-accent"
-                    }`}
-                  >
-                    <TagIcon className="w-4 h-4" />
-                    <span className="text-sm">{product.onSale ? "En oferta" : "Sin oferta"}</span>
-                  </button>
-
-                  <button
-                    onClick={() => startEdit(product)}
-                    className="flex items-center gap-2 px-3 py-2 bg-muted text-foreground rounded-lg hover:bg-accent transition-colors"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span className="text-sm">Editar</span>
-                  </button>
-
-                  {product.deletedAt ? <>
-                    <button onClick={() => restoreProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20"><Eye className="w-4 h-4"/><span className="text-sm">Restaurar</span></button>
-                    <button onClick={() => permanentlyDeleteProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20"><Trash2 className="w-4 h-4"/><span className="text-sm">Eliminar definitivamente</span></button>
-                  </> : <button onClick={() => deleteProduct(product.id)} className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20"><Trash2 className="w-4 h-4"/><span className="text-sm">Papelera</span></button>}
-                </div>
-              </div>
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-sm font-black">{selectedIds.length} seleccionados</span>
+              <button type="button" onClick={() => void bulkUpdate({ status: "active", active: true }, "Artículos publicados")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Publicar</button>
+              <button type="button" onClick={() => void bulkUpdate({ status: "draft", active: false }, "Artículos pasados a borrador")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Borrador</button>
+              <button type="button" onClick={() => void bulkUpdate({ featured: true }, "Artículos destacados")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Destacar</button>
+              <button type="button" onClick={() => void bulkUpdate({ featured: false }, "Destacado retirado")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Quitar destacado</button>
+              <button type="button" onClick={() => void bulkArchive()} className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-black text-destructive">Papelera</button>
+              <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg px-3 py-2 text-xs font-black text-muted-foreground">Limpiar</button>
             </div>
-          </motion.div>
-        ))}
-      </div>
+          )}
+        </div>
+      )}
 
-      {/* Edit Modal */}
+      {loading ? (
+        <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Cargando catálogo de Neon…</div>
+      ) : visibleProducts.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
+          <p className="text-xl font-black">No hay artículos aquí</p>
+          <p className="mt-2 text-sm text-muted-foreground">Crea un producto, servicio, artículo de moda o dulce desde “Crear artículo”.</p>
+        </div>
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-2">
+          {visibleProducts.map((product) => {
+            const collection = getCommerceCollection(primaryCollectionOf(product));
+            const published = product.status === "active" || product.active === true;
+            const salePrice = product.onSale && product.salePrice ? Number(product.salePrice) : null;
+            return (
+              <article key={String(product.id)} className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+                <div className="grid sm:grid-cols-[180px_1fr]">
+                  <div className="h-52 bg-muted sm:h-full">
+                    {product.image ? (
+                      <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full min-h-44 items-center justify-center p-5 text-center text-sm text-muted-foreground">Sin imagen</div>
+                    )}
+                  </div>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        {!showTrash && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(String(product.id))}
+                            onChange={() => toggleSelected(product.id)}
+                            className="mt-1"
+                            aria-label={`Seleccionar ${product.name}`}
+                          />
+                        )}
+                        <div className="min-w-0">
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-black text-primary">{collection.name}</span>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${published ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                            {published ? "Publicado" : "Borrador"}
+                          </span>
+                          {product.featured && <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-black text-violet-800">Destacado</span>}
+                        </div>
+                        <h3 className="text-xl font-black">{product.name}</h3>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{product.description}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => printLabel(product)} className="rounded-lg border border-border p-2" title="Imprimir etiqueta"><Printer className="h-4 w-4" /></button>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                      <div><p className="text-xs text-muted-foreground">Precio</p><p className="font-black">{salePrice ? <><span className="mr-1 text-xs line-through">€{Number(product.price||0).toFixed(2)}</span>€{salePrice.toFixed(2)}</> : `€${Number(product.price||0).toFixed(2)}`}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Stock</p><p className="font-black">{product.trackInventory === false ? "∞" : Math.max(0, Number(product.stock || 0))}</p></div>
+                      <div><p className="text-xs text-muted-foreground">SKU</p><p className="truncate font-bold">{product.sku || "—"}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Tipo</p><p className="font-bold">{product.type || collection.productType}</p></div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button onClick={() => void toggleActive(product)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-bold">
+                        {published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {published ? "Pasar a borrador" : "Publicar"}
+                      </button>
+                      <button onClick={() => void toggleSale(product)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-bold">
+                        <TagIcon className="h-4 w-4" /> {product.onSale ? "Quitar oferta" : "Oferta -20%"}
+                      </button>
+                      <button onClick={() => startEdit(product)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground">
+                        <Edit className="h-4 w-4" /> Editar
+                      </button>
+                      <button onClick={() => void duplicateProduct(product)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-bold">
+                        <Copy className="h-4 w-4" /> Duplicar
+                      </button>
+                      {!showTrash && (
+                        <>
+                          <button onClick={() => void moveProduct(product, -1)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-sm font-bold" title="Subir en su colección">
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => void moveProduct(product, 1)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-sm font-bold" title="Bajar en su colección">
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      {showTrash ? (
+                        <>
+                          <button onClick={() => void restoreProduct(product)} className="rounded-lg border border-border px-3 py-2 text-sm font-bold">Restaurar</button>
+                          <button onClick={() => void permanentlyDeleteProduct(product)} className="inline-flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm font-bold text-destructive"><Trash2 className="h-4 w-4" /> Eliminar</button>
+                        </>
+                      ) : (
+                        <button onClick={() => void archiveProduct(product)} className="inline-flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm font-bold text-destructive"><Trash2 className="h-4 w-4" /> Papelera</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
       {editingProduct && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-card border border-border rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
-          >
-            <h3 className="text-2xl font-bold text-foreground mb-6">
-              Editar Producto
-            </h3>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-3 backdrop-blur-sm">
+          <div className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-border bg-card p-5 shadow-2xl sm:p-7">
+            <div className="mb-6 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Editar artículo real</p>
+                <h3 className="mt-1 text-2xl font-black">{editingProduct.name}</h3>
+                <p className="text-xs text-muted-foreground">Los cambios se guardan directamente en Commerce/Neon.</p>
+              </div>
+              <button onClick={cancelEdit} className="rounded-xl border border-border px-4 py-2 font-bold">Cerrar</button>
+            </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 p-4 bg-muted/40 rounded-2xl border border-border">
-                <div className="h-56 rounded-xl overflow-hidden bg-background border border-border">
-                  {editForm.image ? (
-                    <img src={editForm.image} alt={editForm.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground text-center px-4">
-                      Sin imagen
+            <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+              <div className="space-y-4">
+                <div className="h-72 overflow-hidden rounded-2xl border border-border bg-muted">
+                  {editForm.image ? <img src={editForm.image} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground">Sin imagen</div>}
+                </div>
+                <label className="block text-sm font-bold">URL de imagen
+                  <input value={editForm.image} onChange={(e) => setEditForm({ ...editForm, image: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
+                <label className="block text-sm font-bold">Prompt de imagen IA
+                  <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
+                <button onClick={() => void generateAiImage()} disabled={aiGenerating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-black text-primary-foreground disabled:opacity-60">
+                  <Sparkles className="h-4 w-4" /> {aiGenerating ? "Generando…" : "Generar imagen con IA"}
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="sm:col-span-2 text-sm font-bold">Nombre
+                    <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
+                  </label>
+                  <label className="sm:col-span-2 text-sm font-bold">Descripción
+                    <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
+                  </label>
+
+                  <label className="text-sm font-bold">Colección
+                    <select
+                      value={editForm.collection}
+                      onChange={(e) => {
+                        const next = getCommerceCollection(e.target.value);
+                        setEditForm({ ...editForm, collection: next.id, category: next.categories[0]?.id || next.id, trackInventory: next.inventoryDefault });
+                      }}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                    >
+                      {COMMERCE_COLLECTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm font-bold">Subcategoría
+                    <select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3">
+                      {getCommerceCollection(editForm.collection).categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </label>
+
+                  <label className="text-sm font-bold">Precio normal (€)
+                    <input type="number" min="0" step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value || 0) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
+                  </label>
+                  <label className="text-sm font-bold">Coste (€)
+                    <input type="number" min="0" step="0.01" value={editForm.cost} onChange={(e) => setEditForm({ ...editForm, cost: Number(e.target.value || 0) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setEditForm({ ...editForm, onSale: !editForm.onSale })} className={`rounded-xl border px-4 py-2 text-sm font-bold ${editForm.onSale ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{editForm.onSale ? "✓ En oferta" : "Activar oferta"}</button>
+                  <button type="button" onClick={() => setEditForm({ ...editForm, featured: !editForm.featured })} className={`rounded-xl border px-4 py-2 text-sm font-bold ${editForm.featured ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{editForm.featured ? "✓ Destacado" : "Destacar"}</button>
+                </div>
+
+                {editForm.onSale && <label className="block max-w-xs text-sm font-bold">Precio de oferta (€)
+                  <input type="number" min="0" step="0.01" value={editForm.salePrice} onChange={(e) => setEditForm({ ...editForm, salePrice: Number(e.target.value || 0) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
+                </label>}
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="text-sm font-bold">SKU
+                    <input value={editForm.sku} onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                  </label>
+                  <label className="text-sm font-bold">Código barras
+                    <input value={editForm.barcode} onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                  </label>
+                  <label className="text-sm font-bold">Stock
+                    <input type="number" min="0" disabled={!editForm.trackInventory} value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: Math.max(0, Number(e.target.value || 0)) })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3 disabled:opacity-50" />
+                  </label>
+                  <label className="text-sm font-bold">IVA
+                    <input type="number" min="0" step="0.01" value={editForm.iva} onChange={(e) => setEditForm({ ...editForm, iva: Math.max(0, Number(e.target.value || 0)) })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                  </label>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-bold">Estado
+                    <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3">
+                      <option value="active">Publicado</option><option value="draft">Borrador</option>
+                    </select>
+                  </label>
+                  <label className="mt-7 flex items-center gap-2 text-sm font-bold">
+                    <input type="checkbox" checked={editForm.trackInventory} disabled={editForm.collection === "servicios"} onChange={(e) => setEditForm({ ...editForm, trackInventory: e.target.checked })} />
+                    Controlar inventario
+                  </label>
+                </div>
+
+                {isPlantLikeCollection(editForm.collection) && (
+                  <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                    <h4 className="font-black">Cuidados / ficha de planta</h4>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <input value={editForm.scientificName} onChange={(e) => setEditForm({ ...editForm, scientificName: e.target.value })} placeholder="Nombre científico" className="rounded-xl border border-border bg-background px-3 py-3" />
+                      <select value={editForm.environment} onChange={(e) => setEditForm({ ...editForm, environment: e.target.value })} className="rounded-xl border border-border bg-background px-3 py-3"><option value="interior">Interior</option><option value="exterior">Exterior</option><option value="interior exterior">Interior/exterior</option></select>
+                      <select value={editForm.light} onChange={(e) => setEditForm({ ...editForm, light: e.target.value })} className="rounded-xl border border-border bg-background px-3 py-3"><option value="baja">Poca luz</option><option value="indirecta">Indirecta</option><option value="sol">Sol</option></select>
+                      <input value={editForm.size} onChange={(e) => setEditForm({ ...editForm, size: e.target.value })} placeholder="Tamaño" className="rounded-xl border border-border bg-background px-3 py-3" />
+                      <input value={editForm.water} onChange={(e) => setEditForm({ ...editForm, water: e.target.value })} placeholder="Riego" className="rounded-xl border border-border bg-background px-3 py-3" />
+                      <input value={editForm.temperature} onChange={(e) => setEditForm({ ...editForm, temperature: e.target.value })} placeholder="Temperatura" className="rounded-xl border border-border bg-background px-3 py-3" />
+                      <input value={editForm.toxicity} onChange={(e) => setEditForm({ ...editForm, toxicity: e.target.value })} placeholder="Toxicidad" className="rounded-xl border border-border bg-background px-3 py-3" />
+                      <select value={editForm.difficulty} onChange={(e) => setEditForm({ ...editForm, difficulty: e.target.value })} className="rounded-xl border border-border bg-background px-3 py-3"><option>Fácil</option><option>Media</option><option>Avanzada</option></select>
                     </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Imagen del producto
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.image}
-                      onChange={(e) => setEditForm({ ...editForm, image: e.target.value })}
-                      className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="URL de imagen o imagen generada por IA"
-                    />
+                    <button type="button" onClick={() => setEditForm({ ...editForm, petSafe: !editForm.petSafe })} className={`mt-3 rounded-xl border px-3 py-2 text-sm font-bold ${editForm.petSafe ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>🐾 {editForm.petSafe ? "Apta para mascotas" : "Marcar apta para mascotas"}</button>
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Prompt para Nano Banana
-                    </label>
-                    <textarea
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      rows={3}
-                      className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                      placeholder="Ej: ramo juvenil de rosas rosas, tulipanes blancos y eucalipto, muy colorido y elegante"
-                    />
-                  </div>
-
-                  <button
-                    onClick={generateAiImage}
-                    disabled={aiGenerating}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-60"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    {aiGenerating ? "Generando imagen..." : "Generar imagen con IA"}
-                  </button>
-
-                  <p className="text-xs text-muted-foreground">
-                    Usa Nano Banana / Gemini para crear fotos de ramos y productos directamente desde el admin.
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Nombre del Producto
+                <label className="block text-sm font-bold">Variantes
+                  <textarea value={editForm.variantsText} onChange={(e) => setEditForm({ ...editForm, variantsText: e.target.value })} rows={4} placeholder={"nombre | precio | stock | SKU"} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Ej: Rosa Roja Premium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Descripción
+                <label className="block text-sm font-bold">Etiquetas
+                  <input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="regalo, verano, premium" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                  placeholder="Descripción detallada del producto..."
-                />
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Precio (€)
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <label className="text-sm font-bold">Título SEO
+                    <input value={editForm.seoTitle} onChange={(e) => setEditForm({ ...editForm, seoTitle: e.target.value.slice(0, 70) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editForm.price}
-                    onChange={(e) => setEditForm({ ...editForm, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Categoría
+                  <label className="text-sm font-bold">Meta descripción
+                    <textarea value={editForm.seoDescription} onChange={(e) => setEditForm({ ...editForm, seoDescription: e.target.value.slice(0, 170) })} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
                   </label>
-                  <select
-                    value={editForm.category}
-                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="flores">Flores</option>
-                    <option value="plantas-interior">Plantas de Interior</option>
-                    <option value="plantas-exterior">Plantas de Exterior</option>
-                    <option value="orquideas">Orquídeas</option>
-                    <option value="macetas">Macetas</option>
-                    <option value="sustratos">Sustratos</option>
-                    <option value="fertilizantes">Fertilizantes</option>
-                  </select>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">SKU / Código</label>
-                  <input
-                    type="text"
-                    value={editForm.sku}
-                    onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Stock real</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={editForm.stock}
-                    onChange={(e) => setEditForm({ ...editForm, stock: Math.max(0, Math.floor(Number(e.target.value || 0))) })}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">IVA (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editForm.iva}
-                    onChange={(e) => setEditForm({ ...editForm, iva: Math.max(0, Number(e.target.value || 0)) })}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-4">
-                <h4 className="font-bold">Ficha avanzada</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <select value={editForm.environment} onChange={(e)=>setEditForm({...editForm,environment:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option value="interior">Interior</option><option value="exterior">Exterior</option><option value="interior exterior">Interior / exterior</option></select>
-                  <select value={editForm.light} onChange={(e)=>setEditForm({...editForm,light:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option value="baja">Poca luz</option><option value="indirecta">Luz indirecta</option><option value="sol">Sol</option></select>
-                  <input value={editForm.size} onChange={(e)=>setEditForm({...editForm,size:e.target.value})} placeholder="Tamaño" className="px-3 py-3 bg-background border border-border rounded-xl"/>
-                  <select value={editForm.difficulty} onChange={(e)=>setEditForm({...editForm,difficulty:e.target.value})} className="px-3 py-3 bg-background border border-border rounded-xl"><option>Fácil</option><option>Media</option><option>Avanzada</option></select>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input value={editForm.water} onChange={(e)=>setEditForm({...editForm,water:e.target.value})} placeholder="Riego" className="px-3 py-3 bg-background border border-border rounded-xl"/>
-                  <input value={editForm.temperature} onChange={(e)=>setEditForm({...editForm,temperature:e.target.value})} placeholder="Temperatura" className="px-3 py-3 bg-background border border-border rounded-xl"/>
-                  <input value={editForm.occasion} onChange={(e)=>setEditForm({...editForm,occasion:e.target.value})} placeholder="Ocasión / etiquetas" className="px-3 py-3 bg-background border border-border rounded-xl"/>
-                  <input value={editForm.toxicity} onChange={(e)=>setEditForm({...editForm,toxicity:e.target.value})} placeholder="Toxicidad" className="px-3 py-3 bg-background border border-border rounded-xl"/>
-                </div>
-                <div className="flex gap-2"><button type="button" onClick={()=>setEditForm({...editForm,petSafe:!editForm.petSafe})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.petSafe?"border-primary bg-primary/10 text-primary":"border-border"}`}>🐾 Mascotas</button><button type="button" onClick={()=>setEditForm({...editForm,allowDedication:!editForm.allowDedication})} className={`rounded-xl border px-3 py-2 text-sm ${editForm.allowDedication?"border-primary bg-primary/10 text-primary":"border-border"}`}>💌 Dedicatoria</button></div>
-                <textarea value={editForm.variantsText} onChange={(e)=>setEditForm({...editForm,variantsText:e.target.value})} rows={4} placeholder={"Variantes: nombre | precio | stock"} className="w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
-                <div><h4 className="font-bold">SEO y compartir</h4><p className="text-xs text-muted-foreground">Metadatos de la ficha pública.</p></div>
-                <input value={editForm.seoTitle} onChange={(e)=>setEditForm({...editForm,seoTitle:e.target.value.slice(0,70)})} placeholder="Título SEO" className="w-full px-4 py-3 bg-background border border-border rounded-xl"/>
-                <textarea value={editForm.seoDescription} onChange={(e)=>setEditForm({...editForm,seoDescription:e.target.value.slice(0,170)})} rows={3} placeholder="Meta descripción" className="w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"/>
-              </div>
-
-              {editingProduct.onSale && (
-                <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-                  <p className="text-sm text-foreground">
-                    <span className="font-medium">Precio de oferta automático: </span>
-                    <span className="text-primary font-bold">
-                      €{(editForm.price * 0.8).toFixed(2)}
-                    </span>
-                  </p>
-                </div>
-              )}
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={saveEdit}
-                className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium"
-              >
-                Guardar Cambios
-              </button>
-              <button
-                onClick={cancelEdit}
-                className="px-6 py-3 bg-muted text-foreground rounded-xl hover:bg-accent transition-colors"
-              >
-                Cancelar
-              </button>
+            <div className="sticky bottom-0 mt-7 flex justify-end gap-2 border-t border-border bg-card/95 pt-4 backdrop-blur">
+              <button onClick={cancelEdit} className="rounded-xl border border-border px-5 py-3 font-bold">Cancelar</button>
+              <button onClick={() => void saveEdit()} disabled={saving} className="rounded-xl bg-primary px-6 py-3 font-black text-primary-foreground disabled:opacity-60">{saving ? "Guardando…" : "Guardar cambios"}</button>
             </div>
-          </motion.div>
+          </div>
         </div>
       )}
     </div>
