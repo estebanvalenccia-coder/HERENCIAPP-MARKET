@@ -445,9 +445,13 @@ function blockTypeLabel(type: BuilderBlockType) {
 export function AdminVisualBuilder({
   onClose,
   onPublished,
+  onManageProducts,
+  onAddProduct,
 }: {
   onClose: () => void;
   onPublished?: () => void;
+  onManageProducts?: () => void;
+  onAddProduct?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
     const draft = backendStorage.getItem("siteContentDraft");
@@ -492,10 +496,17 @@ export function AdminVisualBuilder({
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
   const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
+  const [catalogPreviewCollection, setCatalogPreviewCollection] = useState("todos");
+  const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
+  const selectedCatalogProduct = useMemo(() => {
+    if (!String(selected).startsWith("product:")) return null;
+    const id = String(selected).slice("product:".length);
+    return catalogPreview.find((product) => String(product.id) === id) || null;
+  }, [catalogPreview, selected]);
 
   useEffect(() => {
     hydratedRef.current = true;
@@ -520,34 +531,31 @@ export function AdminVisualBuilder({
     );
   }, [menuIcons, herenciaSettings]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadCatalog = async () => {
+  async function loadCatalogPreview() {
+    try {
+      const result = await backendApi.listCommerceProducts({ includeArchived: true });
+      const rows = Array.isArray(result.products) ? result.products : [];
+      setCatalogPreview(rows.filter((product: any) => product.status !== "archived" && !product.deletedAt));
+      void backendStorage.setItem("adminProducts", JSON.stringify(rows));
+    } catch {
       try {
-        const result = await backendApi.listCommerceProducts();
-        if (!cancelled) {
-          setCatalogPreview(
-            Array.isArray(result.products)
-              ? result.products.filter((product: any) => product.status === "active" || product.active === true)
-              : []
-          );
-        }
+        const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+        setCatalogPreview(
+          Array.isArray(cached)
+            ? cached.filter((product: any) => product.status !== "archived" && !product.deletedAt)
+            : []
+        );
       } catch {
-        if (!cancelled) {
-          try {
-            const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-            setCatalogPreview(Array.isArray(cached) ? cached.filter((product: any) => product.status === "active" || product.active !== false) : []);
-          } catch {
-            setCatalogPreview([]);
-          }
-        }
+        setCatalogPreview([]);
       }
-    };
-    void loadCatalog();
-    const reload = () => void loadCatalog();
+    }
+  }
+
+  useEffect(() => {
+    void loadCatalogPreview();
+    const reload = () => void loadCatalogPreview();
     window.addEventListener("backend-storage", reload);
     return () => {
-      cancelled = true;
       window.removeEventListener("backend-storage", reload);
     };
   }, []);
