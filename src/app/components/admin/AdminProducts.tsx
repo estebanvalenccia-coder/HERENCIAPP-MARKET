@@ -399,7 +399,23 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   }
 
   async function restoreProduct(product: Product) {
-    await updateProduct(product, { status: "active", active: true, deletedAt: null }, "Artículo restaurado");
+    try {
+      const basePatch = { status: "active", active: true, deletedAt: null };
+      const aiPatch = await buildPlantProfilePublishPatch({ ...product, ...basePatch });
+      await updateProduct(
+        product,
+        {
+          ...basePatch,
+          ...aiPatch,
+          metadata: {
+            ...((aiPatch as any).metadata || {}),
+          },
+        },
+        "Artículo restaurado"
+      );
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo restaurar/publicar el artículo");
+    }
   }
 
   async function permanentlyDeleteProduct(product: Product) {
@@ -424,6 +440,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         status: "draft",
         active: false,
         deletedAt: undefined,
+        plantProfile: null,
+        aiPlantProfileGenerated: false,
+        aiPlantProfileGeneratedAt: null,
         collections: Array.isArray(product.collections) && product.collections.length
           ? product.collections
           : [primary],
