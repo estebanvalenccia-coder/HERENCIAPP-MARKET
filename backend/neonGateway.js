@@ -211,5 +211,14 @@ const server=http.createServer(async(req,res)=>{try{
   return await proxy(req,res);
 }catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}return json(res,500,{error:"Hybrid gateway error",message:error?.message||String(error)});}});
 
-server.listen(publicPort,"0.0.0.0",()=>console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`));
+server.listen(publicPort,"0.0.0.0",async()=>{
+  console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
+  if(hasR2){
+    const status=await checkR2Connection();
+    if(status.ok) console.log(`[r2] connection OK bucket=${status.bucket}`);
+    else console.error(`[r2] connection FAILED code=${status.code||"unknown"} error=${status.error||"unknown"}`);
+  }else{
+    console.warn("[r2] not configured");
+  }
+});
 process.on("SIGTERM",()=>{child.kill("SIGTERM");server.close(()=>process.exit(0));});
