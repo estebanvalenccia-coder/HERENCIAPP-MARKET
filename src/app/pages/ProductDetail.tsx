@@ -5,15 +5,13 @@ import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sp
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { products as fallbackProducts } from "../data/products";
-import { getCommerceCollection, isPlantLikeCollection, primaryCollectionOf } from "../lib/commerceCatalog";
+import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 
 export function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState<any>(null);
   const [quantity, setQuantity] = useState(1);
-  const [aiDescription, setAiDescription] = useState("");
-  const [loadingAI, setLoadingAI] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
   const [dedication, setDedication] = useState("");
@@ -51,11 +49,6 @@ export function ProductDetail() {
               ? String(found.variants[0]?.name || found.variants[0])
               : ""
           );
-          if (isPlantLikeCollection(primaryCollectionOf(found))) {
-            void generateAIDescription(found.name, found.description || "");
-          } else {
-            setAiDescription("");
-          }
         }
       } catch {
         try {
@@ -67,9 +60,6 @@ export function ProductDetail() {
           setAllProducts(rows);
           const found = rows.find((item: any) => String(item.id) === String(id));
           setProduct(found || null);
-          if (found && isPlantLikeCollection(primaryCollectionOf(found))) {
-            void generateAIDescription(found.name, found.description || "");
-          }
         } catch {
           const found = fallbackProducts.find((item: any) => String(item.id) === String(id));
           setAllProducts(fallbackProducts);
@@ -136,17 +126,6 @@ export function ProductDetail() {
     };
   }, [product]);
 
-  const generateAIDescription = async (plantName: string, baseDescription: string) => {
-    setLoadingAI(true);
-    try {
-      const { result } = await backendApi.generatePlantDescription({ plantName, baseDescription });
-      setAiDescription(JSON.stringify(result));
-    } catch {
-      const fallback = { description: `${plantName} aporta vida y frescura a cualquier espacio. ${baseDescription}`, care: { water: "Riego moderado, evitando encharcar.", light: "Luz adecuada según variedad; evita cambios bruscos.", temperature: "Mantener en una temperatura estable y sin corrientes extremas.", fertilizer: "Fertilizar en temporada de crecimiento siguiendo la dosis del fabricante." }, benefits: ["Aporta naturaleza al espacio", "Decoración viva y duradera", "Cuidados adaptables a distintos hogares"], tips: "Observa hojas y sustrato: la planta suele avisar antes de necesitar un cambio de cuidados." };
-      setAiDescription(JSON.stringify(fallback));
-    } finally { setLoadingAI(false); }
-  };
-
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
   const galleryImages = useMemo(() => {
@@ -168,7 +147,7 @@ export function ProductDetail() {
     : Number.POSITIVE_INFINITY;
   const collectionId = product ? primaryCollectionOf(product) : "plantas";
   const collection = getCommerceCollection(collectionId);
-  const plantLike = isPlantLikeCollection(collectionId);
+  const plantLike = product ? isPlantCareProduct(product) : false;
   const serviceProduct = collectionId === "servicios";
 
   useEffect(() => {
@@ -275,8 +254,26 @@ export function ProductDetail() {
   };
 
   if (!product) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Producto no encontrado o cargando…</p></div>;
-  let aiData: any = null;
-  try { aiData = aiDescription ? JSON.parse(aiDescription) : null; } catch {}
+  const persistedPlantProfile =
+    plantLike && product.plantProfile && typeof product.plantProfile === "object"
+      ? product.plantProfile
+      : null;
+  const hasManualCare = Boolean(product.water || product.light || product.temperature);
+  const aiData: any = persistedPlantProfile || (
+    plantLike && hasManualCare
+      ? {
+          description: product.description || "",
+          care: {
+            water: product.water || "",
+            light: product.light || "",
+            temperature: product.temperature || "",
+            fertilizer: "",
+          },
+          benefits: [],
+          tips: "",
+        }
+      : null
+  );
 
   const details = [
     plantLike && product.size && { icon: Ruler, label: "Tamaño", value: product.size },
@@ -339,15 +336,15 @@ export function ProductDetail() {
           <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>
-          {plantLike && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
+          {plantLike && aiData && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
           {trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
         </motion.div>
       </div>
 
-      {plantLike ? (
+      {plantLike && aiData ? (
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-8">
-          <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados y recomendaciones para conservarla en las mejores condiciones.</p></div>
-          {loadingAI ? <div className="text-center py-16"><span className="text-primary font-medium">Generando información con HerencIA…</span></div> : aiData && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados guardados al publicar la planta; no se regeneran al visitar la ficha.</p></div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-card border border-border rounded-2xl p-7"><div className="flex items-center gap-3 mb-5"><Leaf className="w-6 h-6 text-primary" /><h3 className="text-2xl font-bold">Descripción</h3></div><p className="leading-relaxed">{aiData.description}</p>{Array.isArray(aiData.benefits) && <div className="mt-5 space-y-2">{aiData.benefits.map((b:string)=><p key={b} className="text-sm text-muted-foreground">• {b}</p>)}</div>}</div>
             <div className="grid gap-3">
               <Care icon={Droplets} title="Riego" text={product.water || aiData.care?.water} />
@@ -356,7 +353,7 @@ export function ProductDetail() {
               <Care icon={Leaf} title="Fertilización" text={aiData.care?.fertilizer} />
             </div>
             {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
-          </div>}
+          </div>
         </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-3xl border border-border bg-card p-7">
