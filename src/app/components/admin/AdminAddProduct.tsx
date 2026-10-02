@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
@@ -85,6 +85,25 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [imagePreview, setImagePreview] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [availableCollections, setAvailableCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    backendApi.listCommerceCollections()
+      .then((result) => {
+        if (cancelled) return;
+        const rows = Array.isArray(result.collections)
+          ? result.collections.filter((item: any) => item.status === "active")
+          : [];
+        if (rows.length) setAvailableCollections(rows);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const collection = useMemo(
     () => getCommerceCollection(formData.collection),
@@ -418,13 +437,14 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
               <div>
                 <p className="mb-2 text-sm font-bold">También mostrar en otras colecciones</p>
                 <div className="flex flex-wrap gap-2">
-                  {COMMERCE_COLLECTIONS.filter((item) => item.id !== formData.collection).map((item) => {
-                    const checked = formData.extraCollections.includes(item.id);
+                  {availableCollections.filter((item) => String(item.id) !== formData.collection).map((item) => {
+                    const id = String(item.id);
+                    const checked = formData.extraCollections.includes(id);
                     return (
                       <button
-                        key={item.id}
+                        key={id}
                         type="button"
-                        onClick={() => toggleExtraCollection(item.id)}
+                        onClick={() => toggleExtraCollection(id)}
                         className={`rounded-full border px-3 py-2 text-xs font-bold ${
                           checked ? "border-primary bg-primary/10 text-primary" : "border-border"
                         }`}
