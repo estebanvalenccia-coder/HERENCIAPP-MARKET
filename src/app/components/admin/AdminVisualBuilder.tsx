@@ -537,7 +537,7 @@ export function AdminVisualBuilder({
       const result = await backendApi.listCommerceProducts({ includeArchived: true });
       const rows = Array.isArray(result.products) ? result.products : [];
       setCatalogPreview(rows.filter((product: any) => product.status !== "archived" && !product.deletedAt));
-      void backendStorage.setItem("adminProducts", JSON.stringify(rows));
+      backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch {
       try {
         const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
@@ -555,9 +555,9 @@ export function AdminVisualBuilder({
   useEffect(() => {
     void loadCatalogPreview();
     const reload = () => void loadCatalogPreview();
-    window.addEventListener("backend-storage", reload);
+    window.addEventListener("commerce-products-changed", reload);
     return () => {
-      window.removeEventListener("backend-storage", reload);
+      window.removeEventListener("commerce-products-changed", reload);
     };
   }, []);
 
