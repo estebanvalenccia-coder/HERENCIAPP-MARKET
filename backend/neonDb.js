@@ -2,7 +2,11 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-const connectionString = String(process.env.DATABASE_URL || "").trim();
+const rawConnectionString = String(process.env.DATABASE_URL || "").trim();
+const connectionString = rawConnectionString.replace(
+  /([?&])sslmode=require(?=(&|$))/i,
+  "$1sslmode=verify-full"
+);
 
 export const neonPool = connectionString
   ? new Pool({
@@ -363,6 +367,54 @@ export async function deleteNeonOrder(id) {
   return true;
 }
 
+export async function recordNeonStripeEvent(event = {}) {
+  if (!neonPool) return { recorded: false, reason: "neon_unavailable" };
+  const id = String(event?.id || "").trim();
+  const type = String(event?.type || "unknown").trim();
+  if (!id) return { recorded: false, reason: "missing_event_id" };
+
+  const payload = event?.payload ?? event;
+  const result = await neonPool.query(
+    `insert into stripe_events(id,type,payload,created_at)
+     values($1,$2,$3::jsonb,now())
+     on conflict(id) do update
+       set type=excluded.type, payload=excluded.payload
+     returning id`,
+    [id, type, JSON.stringify(payload || {})]
+  );
+  return { recorded: Boolean(result.rows?.[0]?.id), id };
+}
+
+export async function recordNeonPaymentEvent({
+  provider = "stripe",
+  eventId,
+  eventType = "",
+  orderId = null,
+  payload = {},
+} = {}) {
+  if (!neonPool) return { recorded: false, reason: "neon_unavailable" };
+  const safeEventId = String(eventId || "").trim();
+  if (!safeEventId) return { recorded: false, reason: "missing_event_id" };
+
+  const result = await neonPool.query(
+    `insert into commerce_payment_events(provider,event_id,event_type,order_id,payload,processed_at)
+     values($1,$2,$3,$4::uuid,$5::jsonb,now())
+     on conflict(provider,event_id) do update
+       set event_type=excluded.event_type,
+           order_id=coalesce(excluded.order_id,commerce_payment_events.order_id),
+           payload=excluded.payload,
+           processed_at=now()
+     returning event_id`,
+    [
+      String(provider || "stripe"),
+      safeEventId,
+      String(eventType || ""),
+      orderId ? String(orderId) : null,
+      JSON.stringify(payload || {}),
+    ]
+  );
+  return { recorded: Boolean(result.rows?.[0]?.event_id), eventId: safeEventId };
+}
 
 
 function slugify(value) {
