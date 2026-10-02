@@ -2860,6 +2860,76 @@ app.get("/api/orders", requireAdmin, async (_req, res) => {
   res.json({ orders });
 });
 
+const DEFAULT_BOUQUET_CATALOG_SERVER = [
+  { id: "rosa-roja", name: "Rosa Roja", price: 1.8, active: true },
+  { id: "rosa-blanca", name: "Rosa Blanca", price: 1.8, active: true },
+  { id: "rosa-rosa", name: "Rosa Rosa", price: 1.8, active: true },
+  { id: "tulipan", name: "Tulipán", price: 1.5, active: true },
+  { id: "lirio", name: "Lirio Blanco", price: 2.2, active: true },
+  { id: "girasol", name: "Girasol", price: 2.0, active: true },
+  { id: "paniculata", name: "Paniculata", price: 0.6, active: true },
+  { id: "eucalipto", name: "Eucalipto", price: 1.2, active: true },
+];
+
+async function authoritativeCustomBouquetItem(raw = {}) {
+  if (raw?.customBouquet !== true) return null;
+
+  const details = raw?.bouquetDetails && typeof raw.bouquetDetails === "object" ? raw.bouquetDetails : {};
+  const size = ["S", "M", "L", "XL"].includes(String(details.size || "").toUpperCase())
+    ? String(details.size).toUpperCase()
+    : "M";
+  const quantity = Math.max(1, Math.min(20, Math.floor(Number(raw?.quantity || 1))));
+  const source = String(details.source || "MANUAL_BOUQUET");
+  let unitPrice = 0;
+
+  if (source === "HERENCIA_SALES_AI") {
+    unitPrice = ({ S: 39.9, M: 54.9, L: 74.9, XL: 99.9 })[size] || 54.9;
+  } else {
+    let flowerCatalog = parseStoredJson(await readStorageValue("bouquetCatalog"), []);
+    if (!Array.isArray(flowerCatalog) || !flowerCatalog.length) flowerCatalog = DEFAULT_BOUQUET_CATALOG_SERVER;
+    const activeFlowers = flowerCatalog.filter((flower) => flower?.active !== false);
+    const byId = new Map(activeFlowers.map((flower) => [String(flower?.id || ""), flower]));
+    const byName = new Map(activeFlowers.map((flower) => [String(flower?.name || "").trim().toLowerCase(), flower]));
+    const lines = Array.isArray(details.flowers) ? details.flowers : [];
+    if (!lines.length) throw new Error("El ramo personalizado no contiene una composición verificable");
+
+    let flowerSubtotal = 0;
+    for (const line of lines) {
+      const flower =
+        byId.get(String(line?.id || "")) ||
+        byName.get(String(line?.name || "").trim().toLowerCase());
+      if (!flower) throw new Error(`Flor no disponible en el creador: ${String(line?.name || line?.id || "referencia")}`);
+      const qty = Math.max(1, Math.min(100, Math.floor(Number(line?.quantity || 1))));
+      flowerSubtotal += Math.max(0, Number(flower?.price || 0)) * qty;
+    }
+
+    const finish = ({ S: 8, M: 12, L: 18, XL: 25 })[size] || 12;
+    unitPrice = normalizeMoney(flowerSubtotal + finish);
+  }
+
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+    throw new Error("El precio del ramo personalizado no es válido");
+  }
+
+  return {
+    id: String(raw?.id || `custom-bouquet-${crypto.randomUUID()}`),
+    name: String(raw?.name || "Ramo personalizado Herencia").slice(0, 180),
+    price: normalizeMoney(unitPrice),
+    quantity,
+    image: /^https:\/\//i.test(String(raw?.image || "")) ? String(raw.image).slice(0, 1600) : undefined,
+    description: String(raw?.description || "").slice(0, 800),
+    customBouquet: true,
+    trackInventory: false,
+    salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
+    salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
+    bouquetDetails: {
+      ...details,
+      source,
+      size,
+    },
+  };
+}
+
 async function validateCommerceOrderPayload(order = {}) {
   const products = parseStoredJson(await readStorageValue("adminProducts"), []);
   const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
@@ -2867,6 +2937,13 @@ async function validateCommerceOrderPayload(order = {}) {
   const normalizedItems = [];
 
   for (const item of Array.isArray(order.items) ? order.items : []) {
+    const customBouquet = await authoritativeCustomBouquetItem(item);
+    if (customBouquet) {
+      subtotal += customBouquet.price * customBouquet.quantity;
+      normalizedItems.push(customBouquet);
+      continue;
+    }
+
     const product = byId.get(String(item?.id ?? ""));
     if (!product || product.deletedAt || product.active === false) throw new Error("Uno de los productos ya no está disponible");
     const variantName = String(item?.selectedVariant || "");
@@ -5579,6 +5656,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const requestedByProduct = new Map();
 
     for (const raw of items) {
+      const customBouquet = await authoritativeCustomBouquetItem(raw);
+      if (customBouquet) {
+        authoritativeItems.push(customBouquet);
+        continue;
+      }
+
       const id = String(raw?.id ?? "").trim();
       const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
       if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
@@ -5629,6 +5712,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
+        salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
+        salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
       });
     }
 
