@@ -17,6 +17,19 @@ import { getMarketExperience } from "../lib/marketExperience";
 
 const DEFAULT_HERO = "/herencia-portada.avif";
 
+function hexToRgb(hex: string, fallback = { r: 16, g: 43, b: 32 }) {
+  const normalized = String(hex || "").trim().replace("#", "");
+  const full = normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return fallback;
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16),
+  };
+}
+
 const IMAGE_FALLBACKS = {
   hero: DEFAULT_HERO,
   dulce: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?auto=format&fit=crop&w=1600&q=86",
@@ -104,16 +117,24 @@ export function Home() {
           className="absolute inset-0 h-full w-full object-cover"
           style={{ objectPosition: "center 15%" }}
         />
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(90deg,
-              rgba(16, 43, 32, ${Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100}) 0%,
-              rgba(23, 61, 42, ${(Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100) * 0.69}) ${Math.round(Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72))) * 0.58)}%,
-              rgba(23, 61, 42, 0) ${Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72)))}%
-            )`,
-          }}
-        />
+        {(() => {
+          const overlayOpacity = Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100;
+          const overlayWidth = Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72)));
+          const overlayMid = Math.round(overlayWidth * 0.58);
+          const color = hexToRgb(market.home.heroOverlayColor || "#102b20");
+          return (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(90deg,
+                  rgba(${color.r}, ${color.g}, ${color.b}, ${overlayOpacity}) 0%,
+                  rgba(${color.r}, ${color.g}, ${color.b}, ${overlayOpacity * 0.69}) ${overlayMid}%,
+                  rgba(${color.r}, ${color.g}, ${color.b}, 0) ${overlayWidth}%
+                )`,
+              }}
+            />
+          );
+        })()}
         <div className="relative mx-auto flex min-h-[620px] max-w-7xl items-center px-5 py-16 sm:px-8 lg:px-10">
           <div className="max-w-2xl text-white">
             <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
