@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Flower2, Minus, Plus, Send, ShoppingCart, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Flower2, Loader2, Minus, Plus, Send, ShoppingCart, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 
@@ -14,7 +14,72 @@ const flowers = [
   { id: "eucalipto", name: "Eucalipto", price: 1.2, category: "Verdes y relleno" },
 ];
 
-const previewImage = "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=800&auto=format&fit=crop";
+const defaultPreviewImage = "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=800&auto=format&fit=crop";
+
+const flowerColors: Record<string, string> = {
+  "rosa-roja": "#c92d45",
+  "rosa-blanca": "#f5f1e8",
+  "rosa-rosa": "#ef8ca7",
+  tulipan: "#e9577e",
+  lirio: "#f5f2e9",
+  girasol: "#f2c94c",
+  paniculata: "#f8f5ec",
+  eucalipto: "#668f78",
+};
+
+function fallbackPreviewFor(items: Array<{ id: string; quantity: number }>, size: string) {
+  if (!items.length) return defaultPreviewImage;
+
+  const blooms = items
+    .flatMap((item) =>
+      Array.from({ length: Math.min(Math.max(item.quantity, 1), 8) }, (_, index) => ({
+        id: item.id,
+        index,
+      }))
+    )
+    .slice(0, 30);
+
+  const sizeScale = { S: 0.82, M: 1, L: 1.12, XL: 1.24 }[size] || 1;
+  const petals = blooms.map((bloom, index) => {
+    const angle = index * 2.399963229728653;
+    const radius = (24 + Math.sqrt(index + 1) * 38) * sizeScale;
+    const x = 400 + Math.cos(angle) * radius;
+    const y = 290 + Math.sin(angle) * radius * 0.62;
+    const color = flowerColors[bloom.id] || "#d7b6c7";
+    const core = bloom.id === "girasol" ? "#6f4b27" : bloom.id === "eucalipto" ? "#567763" : "#d9bd83";
+    const bloomRadius = bloom.id === "paniculata" ? 10 : bloom.id === "eucalipto" ? 15 : 24;
+    return `
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${bloomRadius}" fill="${color}" opacity="0.96"/>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(4, bloomRadius * 0.26)}" fill="${core}" opacity="0.9"/>
+    `;
+  }).join("");
+
+  const stems = blooms.map((_, index) => {
+    const angle = index * 2.399963229728653;
+    const radius = (24 + Math.sqrt(index + 1) * 38) * sizeScale;
+    const x = 400 + Math.cos(angle) * radius;
+    const y = 290 + Math.sin(angle) * radius * 0.62;
+    return `<line x1="${x.toFixed(1)}" y1="${(y + 14).toFixed(1)}" x2="400" y2="610" stroke="#52755f" stroke-width="7" stroke-linecap="round" opacity="0.7"/>`;
+  }).join("");
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+      <defs>
+        <radialGradient id="bg" cx="50%" cy="38%" r="68%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f1eee8"/>
+        </radialGradient>
+      </defs>
+      <rect width="800" height="800" fill="url(#bg)"/>
+      <ellipse cx="400" cy="680" rx="180" ry="36" fill="#d8d2c9" opacity="0.45"/>
+      ${stems}
+      <path d="M315 505 Q400 565 485 505 L455 690 Q400 725 345 690 Z" fill="#ece4d7" opacity="0.96"/>
+      ${petals}
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
 const finishPrices: Record<string, number> = { S: 8, M: 12, L: 18, XL: 25 };
 const sizes = ["S", "M", "L", "XL"];
 const styles = ["Romántico", "Elegante", "Colorido", "Natural", "Premium"];
@@ -32,6 +97,14 @@ export function BouquetBuilder() {
   const [size, setSize] = useState("M");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [previewImage, setPreviewImage] = useState(defaultPreviewImage);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [finalProposalImage, setFinalProposalImage] = useState("");
+  const [finalGenerating, setFinalGenerating] = useState(false);
+  const [customerComment, setCustomerComment] = useState("");
+  const previewRequestRef = useRef(0);
+  const previewCacheRef = useRef<Map<string, string>>(new Map());
 
   const filteredFlowers = category === "Todas" ? flowers : flowers.filter((flower) => flower.category === category);
   const selectedFlowers = useMemo(() => flowers.filter((flower) => selected[flower.id] > 0).map((flower) => ({ ...flower, quantity: selected[flower.id] })), [selected]);
@@ -39,6 +112,96 @@ export function BouquetBuilder() {
   const laborCost = finishPrices[size] || finishPrices.M;
   const total = Number((flowersSubtotal + laborCost).toFixed(2));
   const description = descriptionFor(selectedFlowers, style, size);
+  const previewKey = useMemo(
+    () =>
+      JSON.stringify({
+        style,
+        size,
+        flowers: selectedFlowers.map((flower) => ({
+          id: flower.id,
+          quantity: flower.quantity,
+        })),
+      }),
+    [selectedFlowers, size, style]
+  );
+
+  useEffect(() => {
+    setFinalProposalImage("");
+    setSent(false);
+  }, [previewKey]);
+
+  useEffect(() => {
+    const requestId = ++previewRequestRef.current;
+    const fallback = fallbackPreviewFor(selectedFlowers, size);
+
+    if (!selectedFlowers.length) {
+      setPreviewImage(defaultPreviewImage);
+      setPreviewLoading(false);
+      setPreviewError("");
+      return;
+    }
+
+    const cached = previewCacheRef.current.get(previewKey);
+    if (cached) {
+      setPreviewImage(cached);
+      setPreviewLoading(false);
+      setPreviewError("");
+      return;
+    }
+
+    setPreviewImage(fallback);
+    setPreviewLoading(true);
+    setPreviewError("");
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/ai/sales-bouquet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            description: `Ramo compuesto exactamente por ${selectedFlowers
+              .map((flower) => `${flower.quantity} x ${flower.name}`)
+              .join(", ")}. No añadir otros tipos de flores.`,
+            budget: total,
+            style,
+            color: "Respetar los colores naturales de las flores seleccionadas",
+            size,
+            exactFlowers: selectedFlowers.map((flower) => ({
+              id: flower.id,
+              name: flower.name,
+              quantity: flower.quantity,
+            })),
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data?.image) {
+          throw new Error(data?.error || "No se pudo generar la imagen");
+        }
+
+        if (previewRequestRef.current !== requestId) return;
+        previewCacheRef.current.set(previewKey, data.image);
+        setPreviewImage(data.image);
+      } catch (error) {
+        if (controller.signal.aborted || previewRequestRef.current !== requestId) return;
+        setPreviewImage(fallback);
+        setPreviewError(
+          error instanceof Error
+            ? `Vista aproximada: ${error.message}`
+            : "Vista aproximada: no se pudo generar la fotografía"
+        );
+      } finally {
+        if (previewRequestRef.current === requestId) setPreviewLoading(false);
+      }
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [previewKey, selectedFlowers, size, style, total]);
 
   const updateFlower = (id: string, delta: number) => setSelected((prev) => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   const hasFlowers = () => {
@@ -47,16 +210,57 @@ export function BouquetBuilder() {
     return false;
   };
 
-  const bouquet = () => ({
+  const bouquet = (image = finalProposalImage || previewImage) => ({
     id: Date.now(),
     name: `Ramo personalizado ${style}`,
     price: total,
-    image: previewImage,
+    image,
     quantity: 1,
     description,
     customBouquet: true,
     bouquetDetails: { style, size, flowers: selectedFlowers.map((item) => ({ name: item.name, quantity: item.quantity, unitPrice: item.price })) },
   });
+
+  const generateFinalProposal = async () => {
+    if (!hasFlowers()) return "";
+
+    setFinalGenerating(true);
+    try {
+      const selectedSummary = selectedFlowers
+        .map((flower) => `${flower.quantity} x ${flower.name}`)
+        .join(", ");
+      const response = await fetch("/api/ai/sales-bouquet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: `PROPUESTA FINAL. Genera el ramo completo usando exactamente todas estas flores y cantidades: ${selectedSummary}. No omitas variedades y no añadas otras flores.`,
+          budget: total,
+          style,
+          color: "Respetar los colores naturales de todas las flores seleccionadas",
+          size,
+          exactFlowers: selectedFlowers.map((flower) => ({
+            id: flower.id,
+            name: flower.name,
+            quantity: flower.quantity,
+          })),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.image) {
+        throw new Error(data?.error || "No se pudo generar la propuesta final");
+      }
+      setFinalProposalImage(data.image);
+      setPreviewImage(data.image);
+      setPreviewError("");
+      toast.success("Propuesta final generada con todas las flores seleccionadas 🌸");
+      return String(data.image);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo generar la propuesta final");
+      return "";
+    } finally {
+      setFinalGenerating(false);
+    }
+  };
 
   const addToCart = () => {
     if (!hasFlowers()) return;
@@ -69,7 +273,13 @@ export function BouquetBuilder() {
     if (!hasFlowers()) return;
     setSending(true);
     try {
-      const item = bouquet();
+      let proposalImage = finalProposalImage;
+      if (!proposalImage) {
+        proposalImage = await generateFinalProposal();
+        if (!proposalImage) return;
+      }
+
+      const item = bouquet(proposalImage);
       const selectedSummary = selectedFlowers.map((flower) => `${flower.quantity} x ${flower.name}`).join(", ");
       await backendApi.createOrder({
         id: `flores-${Date.now()}`,
@@ -85,6 +295,7 @@ export function BouquetBuilder() {
           source: "FLORES_TABLET",
           type: "flower_admin_request",
           idea: description,
+          customerComment: customerComment.trim() || null,
           selectedSummary,
           budget: total,
           style,
@@ -96,9 +307,11 @@ export function BouquetBuilder() {
             shortDescription: `Solicitud FLORES ${size} - ${selectedSummary}`,
             description,
             recommendedFlowers: selectedFlowers.map((flower) => flower.name),
-            sellingTip: "Solicitud enviada desde la tablet FLORES. Revisar antes de publicar.",
+            sellingTip: customerComment.trim()
+              ? `Comentario del cliente: ${customerComment.trim()}`
+              : "Solicitud enviada desde la tablet FLORES. Revisar antes de publicar.",
           },
-          image: { imageUrl: previewImage },
+          image: { imageUrl: proposalImage },
         },
       });
       setSent(true);
@@ -137,12 +350,59 @@ export function BouquetBuilder() {
           <aside className="space-y-6">
             <div className="bg-card border border-border rounded-2xl p-5 h-fit sticky top-24">
               <h2 className="text-2xl font-bold mb-4">Resumen del ramo</h2>
-              <div className="aspect-square rounded-2xl overflow-hidden bg-muted mb-5"><img src={previewImage} alt="Ramo personalizado" className="w-full h-full object-cover" /></div>
+              <div className="relative aspect-square rounded-2xl overflow-hidden bg-muted mb-5">
+                <img src={previewImage} alt="Previsualización del ramo según las flores seleccionadas" className="w-full h-full object-cover" />
+                {previewLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/55 backdrop-blur-[1px]">
+                    <div className="flex items-center gap-2 rounded-full bg-card/95 border border-border px-4 py-2 text-sm font-semibold shadow-sm">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Actualizando ramo...
+                    </div>
+                  </div>
+                )}
+              </div>
+              {previewError && <p className="mb-4 text-xs text-amber-700">{previewError}</p>}
               <div className="space-y-3 max-h-64 overflow-auto pr-1">{selectedFlowers.length === 0 && <p className="text-sm text-muted-foreground">Aún no has elegido flores.</p>}{selectedFlowers.map((item) => <div key={item.id} className="flex justify-between gap-3 text-sm"><span>{item.name} x{item.quantity}</span><span>{(item.price * item.quantity).toFixed(2)} €</span></div>)}</div>
               <div className="border-t border-border mt-5 pt-5 space-y-2"><div className="flex justify-between"><span>Flores</span><span>{flowersSubtotal.toFixed(2)} €</span></div><div className="flex justify-between"><span>Montaje {size}</span><span>{laborCost.toFixed(2)} €</span></div><div className="flex justify-between text-xl font-bold pt-2"><span>Total</span><span>{total.toFixed(2)} €</span></div></div>
               <p className="text-sm text-muted-foreground mt-4">{description}</p>
-              {sent && <div className="mt-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 px-4 py-3 text-sm font-medium">Solicitud enviada al admin. Pulsa Actualizar FLORES en el panel.</div>}
-              <button onClick={sendToAdmin} disabled={sending} className="w-full mt-6 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"><Send className="w-5 h-5" /> {sending ? "Enviando al panel..." : "Enviar solicitud a floristería"}</button>
+
+              <div className="mt-5 rounded-2xl border border-border bg-muted/30 p-4">
+                <h3 className="font-bold">Propuesta final</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cuando termines de elegir, genera una imagen definitiva usando todas las flores y cantidades seleccionadas.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void generateFinalProposal()}
+                  disabled={finalGenerating || !selectedFlowers.length}
+                  className="w-full mt-3 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {finalGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  {finalGenerating ? "Generando ramo final..." : finalProposalImage ? "Regenerar propuesta final" : "Generar propuesta final"}
+                </button>
+                {finalProposalImage && (
+                  <p className="mt-2 text-xs font-medium text-green-700">
+                    ✓ Propuesta final lista con la selección completa.
+                  </p>
+                )}
+              </div>
+
+              <label className="block mt-4">
+                <span className="text-sm font-semibold">Comentario para la floristería (opcional)</span>
+                <textarea
+                  value={customerComment}
+                  onChange={(event) => setCustomerComment(event.target.value)}
+                  maxLength={600}
+                  rows={3}
+                  placeholder="Ej.: envolver en papel kraft, es para un cumpleaños, prefiero que quede más abierto..."
+                  className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none focus:border-primary"
+                />
+                <span className="mt-1 block text-right text-[11px] text-muted-foreground">
+                  {customerComment.length}/600
+                </span>
+              </label>
+
+              {sent && <div className="mt-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 px-4 py-3 text-sm font-medium">Propuesta enviada al panel con su composición, imagen final y comentario.</div>}
+              <button onClick={sendToAdmin} disabled={sending || finalGenerating} className="w-full mt-6 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-60"><Send className="w-5 h-5" /> {sending ? "Enviando propuesta..." : "Enviar propuesta a floristería"}</button>
               <button onClick={addToCart} className="w-full mt-3 flex items-center justify-center gap-2 bg-background border border-border py-4 rounded-xl font-bold hover:bg-muted transition-colors"><ShoppingCart className="w-5 h-5" /> Añadir al carrito</button>
             </div>
           </aside>
