@@ -109,13 +109,10 @@ function normalizeFlowerCatalog(input) {
 }
 
 async function persistGeneratedImage(dataUrl, filename = "herencia-sales") {
-  const key = clampText(dataUrl, 140);
-  if (generatedImageCache.has(key)) return generatedImageCache.get(key);
   if (!hasR2 || !String(dataUrl || "").startsWith("data:image/")) return dataUrl;
 
   try {
     const media = await uploadR2Media({ dataUrl, filename });
-    rememberGeneratedImage(key, media.url);
     return media.url;
   } catch (error) {
     console.warn("[HERENCIA SALES] no se pudo persistir imagen IA en R2:", error?.message || error);
@@ -520,8 +517,13 @@ Si existe catálogo floral, utiliza únicamente flores y verdes de ese catálogo
         : clampText(proposal.imagePrompt, 1800) ||
           `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}`;
 
-    const rawImage = await generateGeminiImage(imagePrompt);
-    const image = await persistGeneratedImage(rawImage, `herencia-sales-ramo-${size.toLowerCase()}`);
+    const cacheKey = `bouquet:${imagePrompt}`;
+    let image = generatedImageCache.get(cacheKey);
+    if (!image) {
+      const rawImage = await generateGeminiImage(imagePrompt);
+      image = await persistGeneratedImage(rawImage, `herencia-sales-ramo-${size.toLowerCase()}`);
+      rememberGeneratedImage(cacheKey, image);
+    }
 
     res.json({
       proposal: {
