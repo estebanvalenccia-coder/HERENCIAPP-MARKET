@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
   listNeonOrders, patchNeonOrder,
+  recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, archiveNeonCommerceProduct
 } from "./neonDb.js";
@@ -30,6 +31,10 @@ function cookies(req){return String(req.headers.cookie||"");}
 function visitorId(req,res){const match=cookies(req).match(/(?:^|;\s*)visitor_id=([^;]+)/);if(match)return decodeURIComponent(match[1]);const id=crypto.randomUUID();res.setHeader("Set-Cookie",`visitor_id=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=None; Secure`);return id;}
 function storageKey(req,res,key){return key==="cart"||key==="user"?`visitor:${visitorId(req,res)}:${key}`:key;}
 function sanitize(key,value,isAdmin){if(!value)return value;try{if(key==="aiSettings"){const p=JSON.parse(value);return JSON.stringify({...p,apiKey:isAdmin?(p.apiKey?"••••••••":""):""});}if(key==="supabaseSettings"){const p=JSON.parse(value);return JSON.stringify({...p,serviceRoleKey:""});}}catch{}return value;}
+function decodeHeaderValue(value){try{return decodeURIComponent(String(value||"").replace(/\+/g," "));}catch{return String(value||"");}}
+function referrerHost(value){try{return new URL(String(value||"")).hostname.replace(/^www\./,"");}catch{return "";}}
+function deviceFromUserAgent(value){const ua=String(value||"").toLowerCase();if(/ipad|tablet/.test(ua))return "Tablet";if(/mobi|android|iphone/.test(ua))return "Móvil";return "Ordenador";}
+function browserFromUserAgent(value){const ua=String(value||"");if(/Edg\//.test(ua))return "Edge";if(/OPR\//.test(ua))return "Opera";if(/Chrome\//.test(ua)&&!/Edg\//.test(ua))return "Chrome";if(/Safari\//.test(ua)&&!/Chrome\//.test(ua))return "Safari";if(/Firefox\//.test(ua))return "Firefox";return "Otro";}
 
 function normalizeOrderRow(order){
   return {
@@ -76,6 +81,38 @@ const server=http.createServer(async(req,res)=>{try{
     };
     return json(res,neon?200:503,ready);
   }
+  if(path==="/api/analytics/visit"&&req.method==="POST"){
+    const body=await bodyJson(req);
+    const allowedEvents=new Set(["pageview","space_preview"]);
+    const eventType=String(body?.eventType||"pageview");
+    if(!allowedEvents.has(eventType))return json(res,400,{error:"Evento de analítica no válido"});
+    const id=visitorId(req,res);
+    const referrer=String(body?.referrer||"").slice(0,700);
+    const userAgent=String(req.headers["user-agent"]||"");
+    await recordNeonAnalyticsEvent({
+      visitorId:id,
+      sessionId:String(body?.sessionId||"").slice(0,120),
+      eventType,
+      path:String(body?.path||"/").slice(0,500),
+      referrer,
+      referrerHost:referrerHost(referrer),
+      country:decodeHeaderValue(req.headers["x-vercel-ip-country"]||req.headers["cf-ipcountry"]||body?.country||""),
+      region:decodeHeaderValue(req.headers["x-vercel-ip-country-region"]||body?.region||""),
+      city:decodeHeaderValue(req.headers["x-vercel-ip-city"]||body?.city||""),
+      timezone:String(body?.timezone||"").slice(0,120),
+      language:String(body?.language||"").slice(0,80),
+      device:String(body?.device||deviceFromUserAgent(userAgent)).slice(0,80),
+      browser:String(body?.browser||browserFromUserAgent(userAgent)).slice(0,120),
+    });
+    return json(res,202,{ok:true});
+  }
+  if(path==="/api/admin/analytics"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const url=new URL(req.url,"http://localhost");
+    const summary=await getNeonAnalyticsSummary(url.searchParams.get("days")||30);
+    return json(res,200,{...summary,source:"neon"});
+  }
+
   if(path==="/api/admin/media/status"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const config=r2ConfigStatus();
