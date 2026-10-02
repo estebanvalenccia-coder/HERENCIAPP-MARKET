@@ -13,6 +13,7 @@ import {
   listR2Media,
   uploadR2Media,
   deleteR2Media,
+  checkR2Connection,
 } from "./r2Media.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -60,10 +61,24 @@ child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
-  if(path==="/api/ready"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}if(neon)return json(res,200,{ok:true,database:true,databasePrimary:"neon",legacySupabase:true,stripe:Boolean(process.env.STRIPE_SECRET_KEY)});}
+  if(path==="/api/ready"&&req.method==="GET"){
+    let neon=false;try{neon=await neonReady();}catch{}
+    const ready={
+      ok:Boolean(neon),
+      database:Boolean(neon),
+      databasePrimary:"neon",
+      legacySupabase:Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY),
+      stripe:Boolean(process.env.STRIPE_SECRET_KEY),
+      mediaProvider:hasR2?"cloudflare_r2":"legacy_supabase",
+      r2Configured:hasR2,
+    };
+    return json(res,neon?200:503,ready);
+  }
   if(path==="/api/admin/media/status"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
-    return json(res,200,{provider:hasR2?"cloudflare_r2":"legacy_supabase",...r2ConfigStatus()});
+    const config=r2ConfigStatus();
+    const connection=hasR2?await checkR2Connection():{ok:false,configured:false};
+    return json(res,200,{provider:hasR2?"cloudflare_r2":"legacy_supabase",...config,connection});
   }
 
   if(path==="/api/admin/media"&&hasR2){
