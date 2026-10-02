@@ -560,11 +560,51 @@ export function AdminMarketExperience({
                 multiline
               />
             </div>
-            <ImageField
-              label="Foto principal · URL"
-              value={market.home.heroImageUrl}
-              onChange={(heroImageUrl) => patchHome({ heroImageUrl })}
-            />
+            <div className="space-y-4">
+              <ImageField
+                label="Foto principal · URL"
+                value={market.home.heroImageUrl}
+                onChange={(heroImageUrl) => patchHome({ heroImageUrl })}
+              />
+
+              <div className="rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                <p className="mb-4 font-black">Sombra de la portada</p>
+
+                <label className="block">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold">
+                    <span>Oscuridad</span>
+                    <span>{Math.round(Number(market.home.heroOverlayOpacity ?? 90))}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Number(market.home.heroOverlayOpacity ?? 90)}
+                    onChange={(event) => patchHome({ heroOverlayOpacity: Number(event.target.value) })}
+                    className="w-full"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">0% = sin sombra · 100% = muy oscura</p>
+                </label>
+
+                <label className="mt-5 block">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold">
+                    <span>Extensión de la sombra</span>
+                    <span>{Math.round(Number(market.home.heroOverlayWidth ?? 72))}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="25"
+                    max="100"
+                    step="1"
+                    value={Number(market.home.heroOverlayWidth ?? 72)}
+                    onChange={(event) => patchHome({ heroOverlayWidth: Number(event.target.value) })}
+                    className="w-full"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Bájala para mostrar más foto · súbela para llevar la sombra más hacia la derecha</p>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6">
