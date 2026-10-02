@@ -5,6 +5,7 @@ import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sp
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { products as fallbackProducts } from "../data/products";
+import { getCommerceCollection, isPlantLikeCollection, primaryCollectionOf } from "../lib/commerceCatalog";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -27,31 +28,70 @@ export function ProductDetail() {
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
 
   useEffect(() => {
-    const adminProducts = backendStorage.getItem("adminProducts");
-    try {
-      const parsed = adminProducts ? JSON.parse(adminProducts) : [];
-      const rows = Array.isArray(parsed) && parsed.length
-        ? parsed.filter((item: any) => item.active !== false)
-        : fallbackProducts;
-      setAllProducts(rows);
-      const found = rows.find((p: any) => String(p.id) === String(id));
-      if (found) {
-        setProduct(found);
-        setSelectedVariant(Array.isArray(found.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
-        generateAIDescription(found.name, found.description || "");
-      } else {
-        setProduct(null);
+    let cancelled = false;
+
+    async function loadProduct() {
+      try {
+        const [detail, catalog] = await Promise.all([
+          id ? backendApi.getCommerceProduct(String(id)) : Promise.resolve({ product: null } as any),
+          backendApi.listCommerceProducts(),
+        ]);
+        if (cancelled) return;
+
+        const rows = Array.isArray(catalog.products)
+          ? catalog.products.filter((item: any) => item.status === "active" || item.active === true)
+          : [];
+        setAllProducts(rows.length ? rows : fallbackProducts);
+
+        const found = detail.product || rows.find((item: any) => String(item.id) === String(id));
+        setProduct(found || null);
+        if (found) {
+          setSelectedVariant(
+            Array.isArray(found.variants) && found.variants.length
+              ? String(found.variants[0]?.name || found.variants[0])
+              : ""
+          );
+          if (isPlantLikeCollection(primaryCollectionOf(found))) {
+            void generateAIDescription(found.name, found.description || "");
+          } else {
+            setAiDescription("");
+          }
+        }
+      } catch {
+        try {
+          const parsed = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+          const rows = Array.isArray(parsed) && parsed.length
+            ? parsed.filter((item: any) => item.status === "active" || item.active !== false)
+            : fallbackProducts;
+          if (cancelled) return;
+          setAllProducts(rows);
+          const found = rows.find((item: any) => String(item.id) === String(id));
+          setProduct(found || null);
+          if (found && isPlantLikeCollection(primaryCollectionOf(found))) {
+            void generateAIDescription(found.name, found.description || "");
+          }
+        } catch {
+          const found = fallbackProducts.find((item: any) => String(item.id) === String(id));
+          setAllProducts(fallbackProducts);
+          setProduct(found || null);
+        }
       }
-    } catch {
-      const found = fallbackProducts.find((p: any) => String(p.id) === String(id));
-      setAllProducts(fallbackProducts);
-      setProduct(found || null);
-      if (found) generateAIDescription(found.name, found.description || "");
+
+      try {
+        setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id)));
+      } catch {
+        setFavorite(false);
+      }
+
+      backendApi.customerWishlist().then((result)=>setFavorite((result.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
+      if (id) backendApi.listProductReviews(String(id)).then((result) => setReviews(result.reviews || [])).catch(() => setReviews([]));
+      if (id) backendApi.listProductQuestions(String(id)).then((result) => setQuestions(result.questions || [])).catch(() => setQuestions([]));
     }
-    try { setFavorite(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String).includes(String(id))); } catch { setFavorite(false); }
-    backendApi.customerWishlist().then((r)=>setFavorite((r.wishlist||[]).map(String).includes(String(id)))).catch(()=>{});
-    if (id) backendApi.listProductReviews(String(id)).then((r) => setReviews(r.reviews || [])).catch(() => setReviews([]));
-    if (id) backendApi.listProductQuestions(String(id)).then((r) => setQuestions(r.questions || [])).catch(() => setQuestions([]));
+
+    void loadProduct();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -110,7 +150,14 @@ export function ProductDetail() {
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
-  const stock = Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 999)));
+  const trackInventory = product?.trackInventory !== false;
+  const stock = trackInventory
+    ? Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)))
+    : Number.POSITIVE_INFINITY;
+  const collectionId = product ? primaryCollectionOf(product) : "plantas";
+  const collection = getCommerceCollection(collectionId);
+  const plantLike = isPlantLikeCollection(collectionId);
+  const serviceProduct = collectionId === "servicios";
 
   useEffect(() => {
     if (!product) return;
@@ -126,11 +173,11 @@ export function ProductDetail() {
       image: [product.image, ...(product.images || [])].filter(Boolean),
       sku: selected?.sku || product.sku || undefined,
       brand: product.vendor ? {"@type":"Brand",name:product.vendor} : undefined,
-      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:stock>0?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
+      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!trackInventory||stock>0)?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
     });
     document.head.appendChild(script);
     return () => document.getElementById(id)?.remove();
-  }, [product, selectedVariant, effectivePrice, stock]);
+  }, [product, selectedVariant, effectivePrice, stock, trackInventory]);
 
   const toggleFavorite = async () => {
     let list: string[] = [];
@@ -188,16 +235,19 @@ export function ProductDetail() {
   };
 
   const addToCart = () => {
-    if (!product || stock <= 0) return toast.error("Producto agotado");
+    if (!product) return;
+    if (trackInventory && stock <= 0) return toast.error("Producto agotado");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
     const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}`;
     const existingItem = cart.find((item: any) => item.lineKey === lineKey);
-    if (Number(existingItem?.quantity || 0) + quantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
+    if (trackInventory && Number(existingItem?.quantity || 0) + quantity > stock) {
+      return toast.error(`Solo quedan ${stock} unidades disponibles`);
+    }
     if (existingItem) existingItem.quantity += quantity;
     else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined, personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
-    toast.success("Producto añadido al carrito");
+    toast.success(serviceProduct ? "Servicio añadido" : "Producto añadido al carrito");
   };
 
   if (!product) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Producto no encontrado o cargando…</p></div>;
@@ -205,10 +255,20 @@ export function ProductDetail() {
   try { aiData = aiDescription ? JSON.parse(aiDescription) : null; } catch {}
 
   const details = [
-    product.size && { icon: Ruler, label: "Tamaño", value: product.size },
-    product.difficulty && { icon: Leaf, label: "Dificultad", value: product.difficulty },
-    (product.toxicity || product.petSafe !== undefined) && { icon: PawPrint, label: "Mascotas", value: product.petSafe ? "Apta para mascotas" : product.toxicity || "Consultar" },
-    product.environment && { icon: PackageCheck, label: "Ubicación", value: product.environment },
+    plantLike && product.size && { icon: Ruler, label: "Tamaño", value: product.size },
+    plantLike && product.difficulty && { icon: Leaf, label: "Dificultad", value: product.difficulty },
+    plantLike && (product.toxicity || product.petSafe !== undefined) && { icon: PawPrint, label: "Mascotas", value: product.petSafe ? "Apta para mascotas" : product.toxicity || "Consultar" },
+    plantLike && product.environment && { icon: PackageCheck, label: "Ubicación", value: product.environment },
+    !plantLike && product.material && { icon: PackageCheck, label: "Material", value: product.material },
+    !plantLike && product.color && { icon: Sparkles, label: "Color", value: product.color },
+    !plantLike && product.dimensions && { icon: Ruler, label: "Dimensiones", value: product.dimensions },
+    !plantLike && product.weight && { icon: PackageCheck, label: "Peso", value: product.weight },
+    collectionId === "dulce" && product.flavor && { icon: Sparkles, label: "Sabor", value: product.flavor },
+    collectionId === "dulce" && product.portions && { icon: PackageCheck, label: "Porciones", value: product.portions },
+    collectionId === "dulce" && product.allergens && { icon: PackageCheck, label: "Alérgenos", value: product.allergens },
+    serviceProduct && product.durationMinutes && { icon: PackageCheck, label: "Duración", value: `${product.durationMinutes} min` },
+    serviceProduct && product.serviceArea && { icon: PackageCheck, label: "Zona", value: product.serviceArea },
+    serviceProduct && product.leadTimeDays !== null && product.leadTimeDays !== undefined && { icon: PackageCheck, label: "Antelación", value: `${product.leadTimeDays} días` },
   ].filter(Boolean) as any[];
 
   return <div className="min-h-screen bg-background">
@@ -219,36 +279,46 @@ export function ProductDetail() {
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
           <div><h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1><p className="text-muted-foreground text-lg">{product.description}</p></div>
           <div className="text-5xl font-bold text-primary">€{effectivePrice.toFixed(2)}</div>
-          <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium capitalize">{product.category?.replace("-", " ")}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
+          <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
           {variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => setSelectedVariant(name)} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
           {(product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
-          <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(Math.min(stock || 1, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
-          <div className="flex gap-3"><button disabled={stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{stock<=0 ? "Agotado" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado"}</div>
-          <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>
-          {stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
+          <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
+          <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>
+          {plantLike && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
+          {trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
         </motion.div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-8">
-        <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados y recomendaciones para conservarla en las mejores condiciones.</p></div>
-        {loadingAI ? <div className="text-center py-16"><span className="text-primary font-medium">Generando información con HerencIA…</span></div> : aiData && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-card border border-border rounded-2xl p-7"><div className="flex items-center gap-3 mb-5"><Leaf className="w-6 h-6 text-primary" /><h3 className="text-2xl font-bold">Descripción</h3></div><p className="leading-relaxed">{aiData.description}</p>{Array.isArray(aiData.benefits) && <div className="mt-5 space-y-2">{aiData.benefits.map((b:string)=><p key={b} className="text-sm text-muted-foreground">• {b}</p>)}</div>}</div>
-          <div className="grid gap-3">
-            <Care icon={Droplets} title="Riego" text={product.water || aiData.care?.water} />
-            <Care icon={Sun} title="Iluminación" text={product.light || aiData.care?.light} />
-            <Care icon={ThermometerSun} title="Temperatura" text={product.temperature || aiData.care?.temperature} />
-            <Care icon={Leaf} title="Fertilización" text={aiData.care?.fertilizer} />
-          </div>
-          {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
-        </div>}
-      </motion.div>
+      {plantLike ? (
+        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-8">
+          <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados y recomendaciones para conservarla en las mejores condiciones.</p></div>
+          {loadingAI ? <div className="text-center py-16"><span className="text-primary font-medium">Generando información con HerencIA…</span></div> : aiData && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-card border border-border rounded-2xl p-7"><div className="flex items-center gap-3 mb-5"><Leaf className="w-6 h-6 text-primary" /><h3 className="text-2xl font-bold">Descripción</h3></div><p className="leading-relaxed">{aiData.description}</p>{Array.isArray(aiData.benefits) && <div className="mt-5 space-y-2">{aiData.benefits.map((b:string)=><p key={b} className="text-sm text-muted-foreground">• {b}</p>)}</div>}</div>
+            <div className="grid gap-3">
+              <Care icon={Droplets} title="Riego" text={product.water || aiData.care?.water} />
+              <Care icon={Sun} title="Iluminación" text={product.light || aiData.care?.light} />
+              <Care icon={ThermometerSun} title="Temperatura" text={product.temperature || aiData.care?.temperature} />
+              <Care icon={Leaf} title="Fertilización" text={aiData.care?.fertilizer} />
+            </div>
+            {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
+          </div>}
+        </motion.div>
+      ) : (
+        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-3xl border border-border bg-card p-7">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{collection.name}</p>
+          <h2 className="mt-2 text-3xl font-bold">Información del artículo</h2>
+          <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{product.description}</p>
+          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">Este servicio requiere coordinar fecha o cita después de la compra.</div>}
+          {collectionId === "dulce" && product.requiresRefrigeration && <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
+        </motion.div>
+      )}
 
       <section className="mt-14">
         <div className="mb-5"><h2 className="text-3xl font-bold">Completa tu compra</h2><p className="mt-1 text-muted-foreground">Productos relacionados que pueden combinar bien con esta elección.</p></div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {allProducts.filter((p:any)=>p.active!==false&&!p.deletedAt&&String(p.id)!==String(product.id)&&(p.category===product.category||p.featured)).slice(0,4).map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
+          {allProducts.filter((p:any)=>(p.status==="active"||p.active!==false)&&!p.deletedAt&&String(p.id)!==String(product.id)&&(primaryCollectionOf(p)===collectionId||p.featured)).slice(0,4).map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
         </div>
       </section>
 
