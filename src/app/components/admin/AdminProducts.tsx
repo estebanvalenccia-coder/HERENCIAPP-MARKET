@@ -178,6 +178,10 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkPricePercent, setBulkPricePercent] = useState("");
+  const [bulkStock, setBulkStock] = useState("");
+  const [bulkTaxRate, setBulkTaxRate] = useState("");
+  const [bulkCollection, setBulkCollection] = useState("");
 
   async function loadProducts() {
     try {
@@ -284,6 +288,84 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           ? `No se pudieron publicar/actualizar los artículos: ${error.message}`
           : "No se pudieron actualizar los artículos"
       );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyBulkCommerceChanges() {
+    if (!selectedProducts.length) return;
+
+    const hasPrice = bulkPricePercent.trim() !== "";
+    const hasStock = bulkStock.trim() !== "";
+    const hasTax = bulkTaxRate.trim() !== "";
+    const hasCollection = Boolean(bulkCollection);
+
+    if (!hasPrice && !hasStock && !hasTax && !hasCollection) {
+      return toast.error("Elige al menos un cambio masivo");
+    }
+
+    const pricePercent = Number(bulkPricePercent || 0);
+    const stockValue = Math.max(0, Math.floor(Number(bulkStock || 0)));
+    const taxValue = Math.max(0, Number(bulkTaxRate || 0));
+
+    if (hasPrice && !Number.isFinite(pricePercent)) return toast.error("Porcentaje de precio no válido");
+    if (hasStock && !Number.isFinite(stockValue)) return toast.error("Stock no válido");
+    if (hasTax && !Number.isFinite(taxValue)) return toast.error("IVA no válido");
+
+    try {
+      setLoading(true);
+
+      await Promise.all(
+        selectedProducts.map((product) => {
+          const payload: any = {};
+
+          if (hasPrice) {
+            const multiplier = Math.max(0, 1 + pricePercent / 100);
+            const regularPrice = Math.max(0.01, Math.round(Number(product.price || 0) * multiplier * 100) / 100);
+            payload.price = regularPrice;
+
+            if (product.onSale && product.salePrice) {
+              payload.salePrice = Math.max(
+                0.01,
+                Math.round(Number(product.salePrice) * multiplier * 100) / 100
+              );
+              payload.compareAtPrice = regularPrice;
+              payload.onSale = true;
+            }
+          }
+
+          if (hasStock && product.trackInventory !== false && primaryCollectionOf(product) !== "servicios") {
+            payload.stock = stockValue;
+          }
+
+          if (hasTax) {
+            payload.taxRate = taxValue;
+          }
+
+          if (hasCollection) {
+            payload.collections = Array.from(
+              new Set([
+                ...(Array.isArray(product.collections) ? product.collections.map(String) : []),
+                primaryCollectionOf(product),
+                bulkCollection,
+              ].filter(Boolean))
+            );
+          }
+
+          return backendApi.updateCommerceProduct(product.id, payload);
+        })
+      );
+
+      setBulkPricePercent("");
+      setBulkStock("");
+      setBulkTaxRate("");
+      setBulkCollection("");
+      setSelectedIds([]);
+      await loadProducts();
+      toast.success("Cambios masivos aplicados");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron aplicar los cambios masivos");
     } finally {
       setLoading(false);
     }
@@ -815,7 +897,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       </div>
 
       {!showTrash && visibleProducts.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
           <label className="flex items-center gap-3 text-sm font-bold">
             <input
               type="checkbox"
@@ -834,6 +916,66 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
               <button type="button" onClick={() => void bulkUpdate({ featured: false }, "Destacado retirado")} className="rounded-lg border border-border px-3 py-2 text-xs font-black">Quitar destacado</button>
               <button type="button" onClick={() => void bulkArchive()} className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-black text-destructive">Papelera</button>
               <button type="button" onClick={() => setSelectedIds([])} className="rounded-lg px-3 py-2 text-xs font-black text-muted-foreground">Limpiar</button>
+            </div>
+          )}
+
+          {selectedIds.length > 0 && (
+            <div className="grid gap-3 border-t border-border pt-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
+              <label className="text-xs font-black text-muted-foreground">
+                Precio ± %
+                <input
+                  type="number"
+                  step="0.1"
+                  value={bulkPricePercent}
+                  onChange={(event) => setBulkPricePercent(event.target.value)}
+                  placeholder="Ej: 10 o -15"
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs font-black text-muted-foreground">
+                Fijar stock
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={bulkStock}
+                  onChange={(event) => setBulkStock(event.target.value)}
+                  placeholder="Sin cambio"
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs font-black text-muted-foreground">
+                IVA %
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={bulkTaxRate}
+                  onChange={(event) => setBulkTaxRate(event.target.value)}
+                  placeholder="Sin cambio"
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs font-black text-muted-foreground">
+                Añadir a colección
+                <select
+                  value={bulkCollection}
+                  onChange={(event) => setBulkCollection(event.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground"
+                >
+                  <option value="">Sin cambio</option>
+                  {commerceCollections.map((item) => (
+                    <option key={String(item.id)} value={String(item.id)}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void applyBulkCommerceChanges()}
+                className="self-end rounded-xl bg-primary px-4 py-3 text-xs font-black text-primary-foreground"
+              >
+                Aplicar
+              </button>
             </div>
           )}
         </div>
