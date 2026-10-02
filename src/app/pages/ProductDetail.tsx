@@ -292,6 +292,30 @@ export function ProductDetail() {
       : null
   );
 
+  const relatedProducts = useMemo(() => {
+    const manualIds = Array.isArray(product?.relatedProductIds)
+      ? product.relatedProductIds.map(String)
+      : [];
+
+    if (manualIds.length > 0) {
+      const byId = new Map(allProducts.map((item: any) => [String(item.id), item]));
+      return manualIds
+        .map((id: string) => byId.get(id))
+        .filter((item: any) => item && (item.status === "active" || item.active !== false) && !item.deletedAt)
+        .slice(0, 8);
+    }
+
+    return allProducts
+      .filter(
+        (item: any) =>
+          (item.status === "active" || item.active !== false) &&
+          !item.deletedAt &&
+          String(item.id) !== String(product?.id) &&
+          (primaryCollectionOf(item) === collectionId || item.featured)
+      )
+      .slice(0, 8);
+  }, [allProducts, product?.id, product?.relatedProductIds, collectionId]);
+
   const details = [
     plantLike && product.size && { icon: Ruler, label: "Tamaño", value: product.size },
     plantLike && product.difficulty && { icon: Leaf, label: "Dificultad", value: product.difficulty },
@@ -390,7 +414,7 @@ export function ProductDetail() {
       {detailConfig.showRelated && <section className="mt-14">
         <div className="mb-5"><h2 className="text-3xl font-bold">{detailConfig.relatedTitle}</h2><p className="mt-1 text-muted-foreground">{detailConfig.relatedSubtitle}</p></div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {allProducts.filter((p:any)=>(p.status==="active"||p.active!==false)&&!p.deletedAt&&String(p.id)!==String(product.id)&&(primaryCollectionOf(p)===collectionId||p.featured)).slice(0,4).map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
+          {relatedProducts.slice(0,4).map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
         </div>
       </section>}
 
