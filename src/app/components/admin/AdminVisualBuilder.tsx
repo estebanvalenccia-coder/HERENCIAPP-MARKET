@@ -973,15 +973,30 @@ export function AdminVisualBuilder({
               <button
                 type="button"
                 onClick={() => {
-                  setSelected("contact");
+                  setSelected(pageMode);
                   setTab("contenido");
                 }}
-                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === "contact" ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
+                className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected === pageMode ? "border-emerald-600 bg-emerald-50" : "border-slate-200"}`}
               >
                 <Clock3 className="h-4 w-4 text-emerald-700" />
                 <div>
-                  <p className="text-sm font-black">Página de contacto</p>
-                  <p className="text-xs text-slate-500">Dirección, horario y mapa</p>
+                  <p className="text-sm font-black">
+                    {pageMode === "products" ? "Página de Productos"
+                      : pageMode === "services" ? "Página de Servicios"
+                      : pageMode === "dulce" ? "Página Dulce"
+                      : pageMode === "moda" ? "Página Moda"
+                      : pageMode === "about" ? "Página Nosotros"
+                      : pageMode === "herencia" ? "Página Herenc(IA)"
+                      : "Página de Contacto"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {pageMode === "products" ? "Catálogo, filtros y presentación"
+                      : pageMode === "services" ? "Servicios y contratación"
+                      : pageMode === "dulce" || pageMode === "moda" ? "Portada y colección"
+                      : pageMode === "about" ? "Historia, imagen y valores"
+                      : pageMode === "herencia" ? "Asistente de ventas y acciones"
+                      : "Dirección, horario y mapa"}
+                  </p>
                 </div>
               </button>
             )}
