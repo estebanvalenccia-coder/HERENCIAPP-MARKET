@@ -1268,7 +1268,6 @@ export function AdminVisualBuilder({
             {selectedCatalogProduct && (
               <ProductQuickEditor
                 product={selectedCatalogProduct}
-                onSaved={loadCatalogPreview}
                 onBack={() => setSelected("products")}
                 onManageProducts={onManageProducts}
               />
@@ -1663,12 +1662,10 @@ function FooterEditor({
 
 function ProductQuickEditor({
   product,
-  onSaved,
   onBack,
   onManageProducts,
 }: {
   product: any;
-  onSaved: () => Promise<void> | void;
   onBack: () => void;
   onManageProducts?: () => void;
 }) {
@@ -1730,7 +1727,6 @@ function ProductQuickEditor({
         image: form.image || undefined,
         images: form.image ? [form.image] : [],
       });
-      await onSaved();
       toast.success("Producto actualizado en Neon");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo guardar el producto");
@@ -1765,7 +1761,6 @@ function ProductQuickEditor({
       copy.status = "draft";
       copy.active = false;
       await backendApi.createCommerceProduct(copy);
-      await onSaved();
       toast.success("Copia creada como borrador");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo duplicar");
@@ -1776,7 +1771,6 @@ function ProductQuickEditor({
     if (!window.confirm(`¿Mover "${product.name}" a la papelera?`)) return;
     try {
       await backendApi.deleteCommerceProduct(product.id, false);
-      await onSaved();
       onBack();
       toast.success("Producto movido a la papelera");
     } catch (error: any) {
