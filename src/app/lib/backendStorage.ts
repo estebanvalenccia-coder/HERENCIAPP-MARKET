@@ -1374,6 +1374,13 @@ export const backendApi = {
     });
   },
 
+  async generateProductImage(payload: { prompt: string }) {
+    return request<{ image: string; source?: string; warnings?: string[] }>("/api/ai/product-image", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async generateBouquet(payload: BouquetPayload): Promise<BouquetResult> {
     const warnings: string[] = [];
     const localProposal = createLocalBouquetProposal(payload);
