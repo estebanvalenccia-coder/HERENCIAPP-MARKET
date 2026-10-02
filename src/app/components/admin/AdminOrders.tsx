@@ -45,6 +45,7 @@ function getPhone(order: Order) {
 
 function getAddress(order: Order) {
   const address = order.metadata?.shippingAddress || {};
+  if (order.metadata?.source === "HERENCIA_SALES_HANDOFF") return "Consulta comercial · entrega por definir";
   if (order.deliveryMethod === "recoger") return "Recogida en tienda";
   return [address.address, `${address.postalCode || ""} ${address.city || ""}`.trim(), address.province]
     .filter(Boolean)
@@ -53,6 +54,10 @@ function getAddress(order: Order) {
 
 function isFloresAdminRequest(order: Order) {
   return order.metadata?.source === "FLORES_TABLET" || order.metadata?.type === "flower_admin_request";
+}
+
+function isSalesHandoff(order: Order) {
+  return order.metadata?.source === "HERENCIA_SALES_HANDOFF" || order.metadata?.type === "sales_handoff";
 }
 
 export function AdminOrders() {
@@ -237,7 +242,8 @@ export function AdminOrders() {
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{order.deliveryMethod === "recoger" ? "Recogida" : "Envío"}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "recoger" ? "Recogida" : "Envío"}</span>
+                      {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">HERENCIA SALES</span>}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
@@ -250,12 +256,12 @@ export function AdminOrders() {
 
                     <div className="mt-3 text-sm">
                       <span className="text-muted-foreground">Productos: </span>
-                      <span className="font-medium">{order.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</span>
+                      <span className="font-medium">{order.items.length ? order.items.map((item) => `${item.name} x${item.quantity}`).join(", ") : isSalesHandoff(order) ? "Consulta comercial enviada desde el chat" : "Sin productos"}</span>
                     </div>
 
                     {expanded && (
                       <div className="mt-4 rounded-xl bg-muted/50 p-4 text-sm space-y-2">
-                        <p className="font-semibold">Detalle para preparar</p>
+                        <p className="font-semibold">{isSalesHandoff(order) ? "Conversación para atender" : "Detalle para preparar"}</p>
                         {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>€{Number((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span></div>)}
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
                         <p><strong>Dirección completa:</strong> {getAddress(order)}</p>
