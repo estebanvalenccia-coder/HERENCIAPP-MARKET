@@ -2,32 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Flower2, Loader2, Minus, Plus, Send, ShoppingCart, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
-
-const flowers = [
-  { id: "rosa-roja", name: "Rosa Roja", price: 1.8, category: "Rosas" },
-  { id: "rosa-blanca", name: "Rosa Blanca", price: 1.8, category: "Rosas" },
-  { id: "rosa-rosa", name: "Rosa Rosa", price: 1.8, category: "Rosas" },
-  { id: "tulipan", name: "Tulipán", price: 1.5, category: "Tulipanes" },
-  { id: "lirio", name: "Lirio Blanco", price: 2.2, category: "Lirios" },
-  { id: "girasol", name: "Girasol", price: 2.0, category: "Girasoles" },
-  { id: "paniculata", name: "Paniculata", price: 0.6, category: "Verdes y relleno" },
-  { id: "eucalipto", name: "Eucalipto", price: 1.2, category: "Verdes y relleno" },
-];
+import {
+  BOUQUET_CATALOG_KEY,
+  defaultBouquetCatalog,
+  parseBouquetCatalog,
+  type BouquetCatalogItem,
+} from "../lib/bouquetCatalog";
 
 const defaultPreviewImage = "https://images.unsplash.com/photo-1561181286-d3fee7d55364?q=80&w=800&auto=format&fit=crop";
 
-const flowerColors: Record<string, string> = {
-  "rosa-roja": "#c92d45",
-  "rosa-blanca": "#f5f1e8",
-  "rosa-rosa": "#ef8ca7",
-  tulipan: "#e9577e",
-  lirio: "#f5f2e9",
-  girasol: "#f2c94c",
-  paniculata: "#f8f5ec",
-  eucalipto: "#668f78",
-};
-
-function fallbackPreviewFor(items: Array<{ id: string; quantity: number }>, size: string) {
+function fallbackPreviewFor(items: Array<{ id: string; quantity: number; previewColor?: string; category?: string; name?: string }>, size: string) {
   if (!items.length) return defaultPreviewImage;
 
   const blooms = items
@@ -35,6 +19,9 @@ function fallbackPreviewFor(items: Array<{ id: string; quantity: number }>, size
       Array.from({ length: Math.min(Math.max(item.quantity, 1), 8) }, (_, index) => ({
         id: item.id,
         index,
+        previewColor: item.previewColor,
+        category: item.category,
+        name: item.name,
       }))
     )
     .slice(0, 30);
@@ -45,9 +32,13 @@ function fallbackPreviewFor(items: Array<{ id: string; quantity: number }>, size
     const radius = (24 + Math.sqrt(index + 1) * 38) * sizeScale;
     const x = 400 + Math.cos(angle) * radius;
     const y = 290 + Math.sin(angle) * radius * 0.62;
-    const color = flowerColors[bloom.id] || "#d7b6c7";
-    const core = bloom.id === "girasol" ? "#6f4b27" : bloom.id === "eucalipto" ? "#567763" : "#d9bd83";
-    const bloomRadius = bloom.id === "paniculata" ? 10 : bloom.id === "eucalipto" ? 15 : 24;
+    const color = bloom.previewColor || "#d7b6c7";
+    const descriptor = `${bloom.name || ""} ${bloom.category || ""}`.toLowerCase();
+    const isGreen = /verde|eucalipto|ruscus|hoja|follaje/.test(descriptor);
+    const isFiller = /relleno|paniculata|gypsophila|limonium|statice|solidago/.test(descriptor);
+    const isSunflower = /girasol/.test(descriptor);
+    const core = isSunflower ? "#6f4b27" : isGreen ? "#567763" : "#d9bd83";
+    const bloomRadius = isFiller ? 10 : isGreen ? 15 : 24;
     return `
       <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${bloomRadius}" fill="${color}" opacity="0.96"/>
       <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(4, bloomRadius * 0.26)}" fill="${core}" opacity="0.9"/>
@@ -83,14 +74,15 @@ function fallbackPreviewFor(items: Array<{ id: string; quantity: number }>, size
 const finishPrices: Record<string, number> = { S: 8, M: 12, L: 18, XL: 25 };
 const sizes = ["S", "M", "L", "XL"];
 const styles = ["Romántico", "Elegante", "Colorido", "Natural", "Premium"];
-const categories = ["Todas", ...Array.from(new Set(flowers.map((f) => f.category)))];
-
 function descriptionFor(items: any[], style: string, size: string) {
   if (!items.length) return "Selecciona flores para crear tu ramo personalizado.";
   return `Ramo ${style.toLowerCase()} tamaño ${size}, compuesto por ${items.map((item) => `${item.quantity} ${item.name}`).join(", ")}. Preparado artesanalmente por Herencia Market.`;
 }
 
 export function BouquetBuilder() {
+  const [flowers, setFlowers] = useState<BouquetCatalogItem[]>(() =>
+    parseBouquetCatalog(backendStorage.getItem(BOUQUET_CATALOG_KEY)).filter((item) => item.active)
+  );
   const [selected, setSelected] = useState<Record<string, number>>({});
   const [category, setCategory] = useState("Todas");
   const [style, setStyle] = useState("Romántico");
@@ -106,6 +98,34 @@ export function BouquetBuilder() {
   const previewRequestRef = useRef(0);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadCatalog = () => {
+      if (cancelled) return;
+      const next = parseBouquetCatalog(backendStorage.getItem(BOUQUET_CATALOG_KEY)).filter((item) => item.active);
+      setFlowers(next.length || backendStorage.getItem(BOUQUET_CATALOG_KEY) != null ? next : defaultBouquetCatalog.filter((item) => item.active));
+      setSelected((current) => {
+        const valid = new Set(next.map((item) => item.id));
+        return Object.fromEntries(Object.entries(current).filter(([id]) => valid.has(id)));
+      });
+    };
+
+    loadCatalog();
+    void backendStorage.refresh().then(loadCatalog).catch(() => null);
+    window.addEventListener("backend-storage", loadCatalog);
+    window.addEventListener("storage", loadCatalog);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("backend-storage", loadCatalog);
+      window.removeEventListener("storage", loadCatalog);
+    };
+  }, []);
+
+  const categories = useMemo(
+    () => ["Todas", ...Array.from(new Set(flowers.map((flower) => flower.category)))],
+    [flowers]
+  );
   const filteredFlowers = category === "Todas" ? flowers : flowers.filter((flower) => flower.category === category);
   const selectedFlowers = useMemo(() => flowers.filter((flower) => selected[flower.id] > 0).map((flower) => ({ ...flower, quantity: selected[flower.id] })), [selected]);
   const flowersSubtotal = selectedFlowers.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -120,6 +140,7 @@ export function BouquetBuilder() {
         flowers: selectedFlowers.map((flower) => ({
           id: flower.id,
           quantity: flower.quantity,
+          previewColor: flower.previewColor,
         })),
       }),
     [selectedFlowers, size, style]
@@ -342,6 +363,11 @@ export function BouquetBuilder() {
 
           <main className="bg-card border border-border rounded-2xl p-5">
             <div className="flex items-center justify-between gap-4 mb-5"><div><h2 className="text-2xl font-bold">Listado de flores</h2><p className="text-muted-foreground text-sm">Selecciona unidades para montar tu ramo.</p></div><div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-muted rounded-xl text-sm"><Flower2 className="w-4 h-4" /> {selectedFlowers.length} tipos elegidos</div></div>
+            {!flowers.length && (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center text-muted-foreground">
+                Ahora mismo no hay flores ni verdes publicados. El catálogo se gestiona desde Administración → Flores del creador.
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredFlowers.map((flower) => <div key={flower.id} className="bg-background border border-border rounded-2xl p-4"><p className="text-xs text-muted-foreground mb-1">{flower.category}</p><h3 className="font-bold text-lg">{flower.name}</h3><p className="text-primary font-bold mt-1">{flower.price.toFixed(2)} € / unidad</p><div className="flex items-center gap-3 mt-4"><button onClick={() => updateFlower(flower.id, -1)} className="w-10 h-10 rounded-xl bg-muted hover:bg-accent flex items-center justify-center"><Minus className="w-4 h-4" /></button><span className="font-bold min-w-[24px] text-center">{selected[flower.id] || 0}</span><button onClick={() => updateFlower(flower.id, 1)} className="w-10 h-10 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center"><Plus className="w-4 h-4" /></button></div></div>)}
             </div>

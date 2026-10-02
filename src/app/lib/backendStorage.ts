@@ -65,6 +65,7 @@ const remotelySyncedKeys = new Set([
   "adminProducts",
   "adminSuppliers",
   "adminFlowerCosts",
+  "bouquetCatalog",
   "adminLatestFlowerQuote",
   "tpvLayoutSettings",
   "posCustomers",
