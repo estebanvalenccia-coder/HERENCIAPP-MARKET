@@ -170,7 +170,13 @@ function ImageEditor({
   );
 }
 
-export function AdminContent() {
+export function AdminContent({
+  onManageProducts,
+  onAddProduct,
+}: {
+  onManageProducts?: () => void;
+  onAddProduct?: () => void;
+}) {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [saving, setSaving] = useState(false);
   const [visualMode, setVisualMode] = useState(false);
@@ -292,6 +298,8 @@ export function AdminContent() {
           load();
         }}
         onPublished={load}
+        onManageProducts={onManageProducts}
+        onAddProduct={onAddProduct}
       />
     );
   }
