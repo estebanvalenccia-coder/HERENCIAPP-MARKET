@@ -126,6 +126,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyEdit });
+  const [editRelatedIds, setEditRelatedIds] = useState<string[]>([]);
+  const [relatedSearch, setRelatedSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState("todos");
@@ -516,6 +518,14 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
     setEditingProduct(product);
     setAiPrompt("");
+    setRelatedSearch("");
+    setEditRelatedIds(
+      Array.isArray(product.relatedProductIds)
+        ? product.relatedProductIds.map(String).slice(0, 8)
+        : Array.isArray(product.metadata?.relatedProductIds)
+          ? product.metadata.relatedProductIds.map(String).slice(0, 8)
+          : []
+    );
     setEditForm({
       name: product.name || "",
       description: product.description || "",
@@ -555,6 +565,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   function cancelEdit() {
     setEditingProduct(null);
     setEditForm({ ...emptyEdit });
+    setEditRelatedIds([]);
+    setRelatedSearch("");
     setAiPrompt("");
   }
 
@@ -648,6 +660,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         metadata: {
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          relatedProductIds: editRelatedIds,
         },
       
         ...(plantLike
@@ -1041,6 +1054,85 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                 <label className="block text-sm font-bold">Etiquetas
                   <input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="regalo, verano, premium" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="mb-3">
+                    <p className="font-black">Completa tu compra</p>
+                    <p className="text-xs text-muted-foreground">Elige hasta 8 productos relacionados. Si no eliges ninguno, Herencia seguirá recomendando automáticamente.</p>
+                  </div>
+
+                  <input
+                    value={relatedSearch}
+                    onChange={(e) => setRelatedSearch(e.target.value)}
+                    placeholder="Buscar producto relacionado…"
+                    className="mb-3 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                  />
+
+                  {editRelatedIds.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {editRelatedIds.map((id) => {
+                        const related = products.find((item) => String(item.id) === id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setEditRelatedIds((current) => current.filter((item) => item !== id))}
+                            className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-black text-primary"
+                          >
+                            {related?.name || id} ×
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {products
+                      .filter((item) => String(item.id) !== String(editingProduct.id))
+                      .filter((item) => {
+                        const query = relatedSearch.trim().toLowerCase();
+                        if (!query) return true;
+                        return [item.name, item.sku, item.category]
+                          .filter(Boolean)
+                          .join(" ")
+                          .toLowerCase()
+                          .includes(query);
+                      })
+                      .slice(0, 20)
+                      .map((item) => {
+                        const id = String(item.id);
+                        const checked = editRelatedIds.includes(id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() =>
+                              setEditRelatedIds((current) => {
+                                if (current.includes(id)) return current.filter((value) => value !== id);
+                                if (current.length >= 8) {
+                                  toast.error("Puedes elegir hasta 8 productos relacionados");
+                                  return current;
+                                }
+                                return [...current, id];
+                              })
+                            }
+                            className={`flex items-center gap-3 rounded-xl border p-3 text-left ${
+                              checked ? "border-primary bg-primary/5" : "border-border bg-background"
+                            }`}
+                          >
+                            <div className="h-10 w-10 overflow-hidden rounded-lg bg-muted">
+                              {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" /> : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-black">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">€{Number(item.salePrice || item.price || 0).toFixed(2)}</p>
+                            </div>
+                            <input type="checkbox" readOnly checked={checked} />
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <label className="text-sm font-bold">Título SEO
