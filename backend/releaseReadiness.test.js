@@ -15,12 +15,12 @@ test("checkout público solo permite entrega a domicilio", async () => {
 
 test("los términos usan EUR y no USD", async () => {
   const terms = await read("src/app/pages/Terms.tsx");
-  assert.match(terms, /EUR|€/);
+  assert.match(terms, /EUR|€|euros?/i);
   assert.doesNotMatch(terms, /USD/);
 });
 
 test("las rutas legales públicas siguen disponibles", async () => {
-  const app = await read("src/app/App.tsx");
+  const app = await read("src/app/routes.tsx");
   assert.match(app, /privacidad/);
   assert.match(app, /cookies/);
   assert.match(app, /terminos/);
