@@ -23,6 +23,7 @@ import {
   consumeNeonCommerceStockReservation,
   releaseNeonCommerceStockReservation,
   syncNeonCommerceInventory,
+  listNeonCommerceProducts,
   recordNeonPaymentEvent,
 } from "./neonDb.js";
 import {
@@ -838,6 +839,20 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
   }).catch((error) => console.warn("No se pudo guardar historial de email:", error?.message || error));
 
   return result;
+}
+
+async function loadAuthoritativeProducts({ includeArchived = false } = {}) {
+  if (hasNeon()) {
+    try {
+      return await listNeonCommerceProducts({ includeArchived });
+    } catch (error) {
+      console.warn("No se pudo leer Commerce Core; usando copia de compatibilidad:", error?.message || error);
+    }
+  }
+  const rows = parseStoredJson(await readStorageValue("adminProducts"), []);
+  return Array.isArray(rows)
+    ? rows.filter((product) => includeArchived || (!product?.deletedAt && String(product?.status || "active") !== "archived"))
+    : [];
 }
 
 async function readStorageValue(key) {
@@ -3083,7 +3098,7 @@ async function authoritativeCustomBouquetItem(raw = {}) {
 }
 
 async function validateCommerceOrderPayload(order = {}) {
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts();
   const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
   let subtotal = 0;
   const normalizedItems = [];
@@ -3470,8 +3485,8 @@ function normalizePosCustomer(customer = {}) {
 }
 
 async function loadPosBootstrap() {
-  const [productsRaw, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
-    readStorageValue("adminProducts"),
+  const [products, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
+    loadAuthoritativeProducts(),
     readStorageValue("posCustomers"),
     readStorageValue("posFiscalSettings"),
     readStorageValue("stripeSettings"),
@@ -3488,7 +3503,7 @@ async function loadPosBootstrap() {
     ).trim();
 
   return {
-    products: parseStoredJson(productsRaw, []),
+    products,
     customers: parseStoredJson(customersRaw, []),
     fiscalSettings: parseStoredJson(fiscalRaw, {}),
     stripeSettings: {
