@@ -4,6 +4,7 @@ import { motion, useScroll, useTransform } from "motion/react";
 import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sparkles, Ruler, PawPrint, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { products as fallbackProducts } from "../data/products";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 
@@ -11,6 +12,7 @@ export function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState<any>(null);
+  const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [quantity, setQuantity] = useState(1);
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
@@ -25,6 +27,17 @@ export function ProductDetail() {
   const { scrollY } = useScroll();
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
+
+  useEffect(() => {
+    const hydrate = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    hydrate();
+    window.addEventListener("storage", hydrate);
+    window.addEventListener("backend-storage", hydrate);
+    return () => {
+      window.removeEventListener("storage", hydrate);
+      window.removeEventListener("backend-storage", hydrate);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +163,7 @@ export function ProductDetail() {
   const collection = getCommerceCollection(collectionId);
   const plantLike = product ? isPlantCareProduct(product) : false;
   const serviceProduct = collectionId === "servicios";
+  const detailConfig = site.productDetailPage;
 
   useEffect(() => {
     if (!galleryImages.length) {
@@ -328,7 +342,10 @@ export function ProductDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-14">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="relative">
           <div className="sticky top-24">
-            <div className="relative aspect-square overflow-hidden rounded-3xl bg-muted shadow-2xl">
+            <div
+              className="relative aspect-square overflow-hidden bg-muted shadow-2xl"
+              style={{ borderRadius: `${Math.max(0, Math.min(48, Number(detailConfig.galleryRadius ?? 24)))}px` }}
+            >
               {selectedImage ? (
                 <img src={selectedImage} alt={product.name} className="h-full w-full object-cover" />
               ) : (
@@ -337,7 +354,7 @@ export function ProductDetail() {
               {product.onSale && <div className="absolute right-6 top-6 rounded-full bg-primary px-4 py-2 font-bold text-primary-foreground shadow-lg">¡OFERTA!</div>}
             </div>
 
-            {galleryImages.length > 1 && (
+            {detailConfig.showGalleryThumbnails !== false && galleryImages.length > 1 && (
               <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-5">
                 {galleryImages.map((imageUrl, index) => (
                   <button
@@ -357,21 +374,25 @@ export function ProductDetail() {
           </div>
         </motion.div>
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-          <div><h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1><p className="text-muted-foreground text-lg">{product.description}</p></div>
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1>
+            {detailConfig.showDescription !== false && <p className="text-muted-foreground text-lg">{product.description}</p>}
+          </div>
           <div className="text-5xl font-bold text-primary">€{effectivePrice.toFixed(2)}</div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
-          {details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
-          {variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
-          {(product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
-          <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
-          <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>
-          {plantLike && aiData && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
-          {trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
+          {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
+          {detailConfig.showVariants !== false && variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
+          {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
+          {detailConfig.showQuantity !== false && <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>}
+          <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
+          {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>}
+          {detailConfig.showCare !== false && plantLike && aiData && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
+          {detailConfig.showWaitlist !== false && trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
         </motion.div>
       </div>
 
       {plantLike && aiData ? (
+        detailConfig.showCare !== false ? (
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-8">
           <div className="text-center"><h2 className="text-3xl md:text-4xl font-bold mb-3">Todo sobre tu planta</h2><p className="text-muted-foreground">Cuidados y recomendaciones para conservarla en las mejores condiciones.</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -385,7 +406,9 @@ export function ProductDetail() {
             {aiData.tips && <div className="lg:col-span-2 bg-primary/5 border border-primary/20 rounded-2xl p-7"><h3 className="font-bold text-xl mb-2">Consejos de HerencIA</h3><p>{aiData.tips}</p></div>}
           </div>
         </motion.div>
+        ) : null
       ) : (
+        detailConfig.showDetails !== false ? (
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-3xl border border-border bg-card p-7">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{collection.name}</p>
           <h2 className="mt-2 text-3xl font-bold">Información del artículo</h2>
@@ -393,15 +416,19 @@ export function ProductDetail() {
           {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">Este servicio requiere coordinar fecha o cita después de la compra.</div>}
           {collectionId === "dulce" && product.requiresRefrigeration && <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
         </motion.div>
+        ) : null
       )}
 
-      <section className="mt-14">
-        <div className="mb-5"><h2 className="text-3xl font-bold">Completa tu compra</h2><p className="mt-1 text-muted-foreground">Productos relacionados que pueden combinar bien con esta elección.</p></div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {relatedProducts.map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
-        </div>
-      </section>
+      {detailConfig.showRelated !== false && (
+        <section className="mt-14">
+          <div className="mb-5"><h2 className="text-3xl font-bold">{detailConfig.relatedTitle}</h2><p className="mt-1 text-muted-foreground">{detailConfig.relatedSubtitle}</p></div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {relatedProducts.map((p:any)=><Link key={p.id} to={`/producto/${p.id}`} className="overflow-hidden rounded-2xl border border-border bg-card transition hover:shadow-lg"><img src={p.image} alt={p.name} className="h-44 w-full object-cover"/><div className="p-4"><p className="font-semibold line-clamp-1">{p.name}</p><p className="mt-1 font-bold text-primary">€{Number(p.salePrice||p.price||0).toFixed(2)}</p></div></Link>)}
+          </div>
+        </section>
+      )}
 
+      {detailConfig.showReviews !== false && (
       <section className="mt-14 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-2xl font-bold">Reseñas de clientes</h2>
@@ -421,7 +448,9 @@ export function ProductDetail() {
           </div>
         </div>
       </section>
+      )}
 
+      {detailConfig.showQuestions !== false && (
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-2xl font-bold">Preguntas sobre este producto</h2>
@@ -432,6 +461,7 @@ export function ProductDetail() {
           <div className="mt-4 space-y-3"><input value={questionForm.name} onChange={(e)=>setQuestionForm({...questionForm,name:e.target.value})} placeholder="Nombre" className="w-full rounded-xl border border-border p-3"/><input type="email" value={questionForm.email} onChange={(e)=>setQuestionForm({...questionForm,email:e.target.value})} placeholder="Email" className="w-full rounded-xl border border-border p-3"/><textarea value={questionForm.question} onChange={(e)=>setQuestionForm({...questionForm,question:e.target.value})} placeholder="¿Qué quieres saber?" className="min-h-28 w-full rounded-xl border border-border p-3"/><button onClick={()=>void submitQuestion()} className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Enviar pregunta</button></div>
         </div>
       </section>
+      )}
     </div>
   </div>;
 }
