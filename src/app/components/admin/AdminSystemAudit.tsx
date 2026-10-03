@@ -179,6 +179,23 @@ export function AdminSystemAudit() {
     }
 
     try {
+      const auth = await backendApi.adminAuthConfig();
+      out.push({
+        name: "2FA de Administración",
+        ok: !!auth.totpRequired,
+        detail: auth.totpRequired
+          ? "TOTP activado para el acceso administrativo"
+          : "Recomendado antes de abrir ventas: configura ADMIN_TOTP_SECRET",
+      });
+    } catch (error: any) {
+      out.push({
+        name: "2FA de Administración",
+        ok: false,
+        detail: error?.message || "No se pudo comprobar 2FA",
+      });
+    }
+
+    try {
       const neural = await backendApi.neuralSelfTest();
       out.push({
         name: "HERENCIA Neural",
