@@ -10,7 +10,6 @@ import {
   Truck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { products as fallbackProducts } from "../data/products";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
@@ -53,7 +52,7 @@ function money(value: unknown) {
 
 export function Home() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
+  const [catalog, setCatalog] = useState<any[]>([]);
 
   useEffect(() => {
     const load = () => {
@@ -61,12 +60,12 @@ export function Home() {
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         setCatalog(
-          Array.isArray(saved) && saved.length
-            ? saved.filter((item: any) => item.active !== false)
-            : fallbackProducts
+          Array.isArray(saved)
+            ? saved.filter((item: any) => item.active !== false && !item.deletedAt && String(item.status || "active") !== "archived")
+            : []
         );
       } catch {
-        setCatalog(fallbackProducts);
+        setCatalog([]);
       }
     };
 
