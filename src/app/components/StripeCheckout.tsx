@@ -6,7 +6,7 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 
 interface StripeCheckoutProps {
   amount: number;
-  onSuccess: () => void;
+  onSuccess: (result: { orderId: string; paymentIntentId: string; status: "succeeded" | "processing" }) => void;
   onCancel: () => void;
   paymentMethod?: string;
   customerName?: string;
@@ -150,7 +150,7 @@ export function StripeCheckout({
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/pedido-confirmado`,
+          return_url: `${window.location.origin}/pedido-confirmado?orderId=${encodeURIComponent(orderIdRef.current)}`,
           payment_method_data: {
             billing_details: {
               name: cardholderName,
@@ -172,18 +172,22 @@ export function StripeCheckout({
         const paymentIntentId = paymentIntent.id || paymentIntentIdRef.current;
 
         if (!orderId || !paymentIntentId) {
-          throw new Error("Falta el identificador del pedido o del pago para confirmar en Supabase");
+          throw new Error("Falta el identificador del pedido o del pago para confirmarlo en el backend");
         }
 
         await backendApi.confirmStripeOrder({ orderId, paymentIntentId });
 
         const cartResult = await backendStorage.setItem("cart", JSON.stringify([]));
         if (!cartResult.ok) {
-          console.warn("Pago confirmado, pero no se pudo limpiar el carrito remoto:", cartResult.error);
+          console.warn("El pago se procesó, pero no se pudo limpiar el carrito remoto:", cartResult.error);
         }
 
-        toast.success("Pago confirmado. Te enviaremos la confirmación por email.");
-        onSuccess();
+        if (paymentIntent.status === "succeeded") {
+          toast.success("Pago confirmado. Te enviaremos la confirmación por email.");
+        } else {
+          toast.info("Pago en proceso. Te avisaremos cuando Stripe lo confirme.");
+        }
+        onSuccess({ orderId, paymentIntentId, status: paymentIntent.status });
         return;
       }
 
