@@ -19,7 +19,7 @@ export function Privacy() {
             </h1>
           </motion.div>
           <p className="text-muted-foreground">
-            Última actualización: 10 de abril de 2026
+            Última actualización: 3 de octubre de 2026
           </p>
         </div>
       </div>
@@ -63,9 +63,9 @@ export function Privacy() {
             <section>
               <h2 className="text-2xl font-bold mb-4">3. Protección de Datos</h2>
               <p className="text-muted-foreground">
-                Implementamos medidas de seguridad para proteger tu información personal contra acceso no autorizado,
-                alteración, divulgación o destrucción. Utilizamos encriptación SSL para todas las transacciones y
-                almacenamiento seguro de datos.
+                Aplicamos medidas técnicas y organizativas destinadas a proteger la información personal frente a
+                accesos no autorizados, pérdida, alteración o divulgación. Las comunicaciones con la web se realizan
+                mediante HTTPS y los datos de pago sensibles son tratados por el proveedor de pagos, no por el navegador de Herencia.
               </p>
             </section>
 
@@ -75,9 +75,9 @@ export function Privacy() {
                 No vendemos ni alquilamos tu información personal a terceros. Podemos compartir información con:
               </p>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-                <li>Proveedores de servicios de entrega</li>
-                <li>Procesadores de pago</li>
-                <li>Autoridades legales cuando sea requerido por ley</li>
+                <li>Proveedores necesarios para prestar el servicio, como pagos, email, alojamiento, base de datos y reparto</li>
+                <li>Proveedores de inteligencia artificial únicamente cuando una función solicitada lo requiera</li>
+                <li>Autoridades u organismos cuando exista una obligación legal</li>
               </ul>
             </section>
 
@@ -109,8 +109,7 @@ export function Privacy() {
                 Si tienes preguntas sobre esta política de privacidad o deseas ejercer tus derechos, contáctanos en:
               </p>
               <p className="text-muted-foreground mt-2">
-                Email: privacidad@herenciafloristeria.com<br />
-                Teléfono: +1 234 567 8900
+                Utiliza los canales publicados en la página de Contacto e indica que tu solicitud está relacionada con privacidad o protección de datos.
               </p>
             </section>
           </div>
