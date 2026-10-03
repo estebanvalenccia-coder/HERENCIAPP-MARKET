@@ -177,6 +177,10 @@ export function AdminDashboard() {
         setIsAuthenticated(false);
       })
       .finally(() => setIsCheckingSession(false));
+
+    backendApi.adminAuthConfig()
+      .then(({ totpRequired }) => setTotpRequired(Boolean(totpRequired)))
+      .catch(() => setTotpRequired(false));
   }, []);
 
   useEffect(() => {
