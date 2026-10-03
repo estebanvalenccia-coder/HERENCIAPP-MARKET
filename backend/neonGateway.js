@@ -76,6 +76,11 @@ const server=http.createServer(async(req,res)=>{try{
       databasePrimary:"neon",
       legacySupabase:Boolean(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY),
       stripe:Boolean(process.env.STRIPE_SECRET_KEY),
+      stripeWebhook:Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      email:Boolean(process.env.RESEND_API_KEY),
+      maps:Boolean(process.env.GOOGLE_MAPS_API_KEY||process.env.VITE_GOOGLE_MAPS_API_KEY),
+      salesAi:Boolean(process.env.GROQ_API_KEY),
+      imageAi:Boolean(process.env.NANO_BANANA_API_KEY||process.env.GEMINI_API_KEY||process.env.VITE_GEMINI_API_KEY),
       mediaProvider:hasR2?"cloudflare_r2":"legacy_supabase",
       r2Configured:hasR2,
     };
