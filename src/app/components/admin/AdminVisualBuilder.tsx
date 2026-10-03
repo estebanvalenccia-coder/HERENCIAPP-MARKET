@@ -499,6 +499,9 @@ export function AdminVisualBuilder({
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
   const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
+  const [catalogCollections, setCatalogCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [catalogPreviewCollection, setCatalogPreviewCollection] = useState("todos");
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
@@ -536,9 +539,16 @@ export function AdminVisualBuilder({
 
   async function loadCatalogPreview() {
     try {
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections({ includeArchived: true }),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collections = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections.filter((item: any) => String(item.status || "active") !== "archived")
+        : [];
       setCatalogPreview(rows.filter((product: any) => product.status !== "archived" && !product.deletedAt));
+      if (collections.length) setCatalogCollections(collections);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch {
       try {
@@ -558,8 +568,10 @@ export function AdminVisualBuilder({
     void loadCatalogPreview();
     const reload = () => void loadCatalogPreview();
     window.addEventListener("commerce-products-changed", reload);
+    window.addEventListener("commerce-collections-changed", reload);
     return () => {
       window.removeEventListener("commerce-products-changed", reload);
+      window.removeEventListener("commerce-collections-changed", reload);
     };
   }, []);
 
@@ -1160,6 +1172,7 @@ export function AdminVisualBuilder({
               <ProductsPreview
                 site={site}
                 products={catalogPreview}
+                collections={catalogCollections}
                 selected={selected === "products"}
                 selectedProductId={selectedCatalogProduct ? String(selectedCatalogProduct.id) : ""}
                 activeCollection={catalogPreviewCollection}
@@ -2398,6 +2411,7 @@ function previewPrice(product: any) {
 function ProductsPreview({
   site,
   products,
+  collections,
   selected,
   selectedProductId,
   activeCollection,
@@ -2411,6 +2425,7 @@ function ProductsPreview({
 }: {
   site: SiteContent;
   products: any[];
+  collections: any[];
   selected: boolean;
   selectedProductId: string;
   activeCollection: string;
@@ -2488,16 +2503,21 @@ function ProductsPreview({
             >
               Todo
             </button>
-            {COMMERCE_COLLECTIONS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={(event) => { event.stopPropagation(); onCollectionChange(item.id); }}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${activeCollection === item.id ? "bg-emerald-800 text-white" : "border border-slate-200 bg-white"}`}
-              >
-                {item.name}
-              </button>
-            ))}
+            {collections
+              .filter((item) => String(item.status || "active") === "active")
+              .map((item) => {
+                const id = String(item.id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); onCollectionChange(id); }}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${activeCollection === id ? "bg-emerald-800 text-white" : "border border-slate-200 bg-white"}`}
+                  >
+                    {String(item.name || id)}
+                  </button>
+                );
+              })}
           </div>
         )}
 
