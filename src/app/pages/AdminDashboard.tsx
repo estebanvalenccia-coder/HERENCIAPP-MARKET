@@ -45,6 +45,7 @@ import { useNavigate } from "react-router";
 import { AdminProducts } from "../components/admin/AdminProducts";
 import { AdminAddProduct } from "../components/admin/AdminAddProduct";
 import { AdminBulkProductImport } from "../components/admin/AdminBulkProductImport";
+import { AdminCollectionsManager } from "../components/admin/AdminCollectionsManager";
 import { AdminOffers } from "../components/admin/AdminOffers";
 import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
@@ -82,6 +83,7 @@ type AdminSection =
   | "products"
   | "add-product"
   | "bulk-product-import"
+  | "collections"
   | "pos"
   | "ai-bouquet-designer"
   | "offers"
@@ -397,6 +399,7 @@ export function AdminDashboard() {
   const productMenuItems = [
     { id: "products" as AdminSection, label: "Ver productos", icon: Package },
     { id: "add-product" as AdminSection, label: "Añadir uno", icon: Plus },
+    { id: "collections" as AdminSection, label: "Colecciones", icon: Layers3 },
     {
       id: "bulk-product-import" as AdminSection,
       label: "Importación masiva IA",
@@ -865,6 +868,8 @@ export function AdminDashboard() {
             <AdminBulkProductImport onBack={() => setCurrentSection("products")} />
           )}
 
+          {currentSection === "collections" && <AdminCollectionsManager />}
+
           {currentSection === "pos" && <AdminPOS />}
 
           {currentSection === "ai-bouquet-designer" && (
@@ -887,6 +892,7 @@ export function AdminDashboard() {
             <AdminContent
               onManageProducts={() => setCurrentSection("products")}
               onAddProduct={() => setCurrentSection("add-product")}
+              onManageCollections={() => setCurrentSection("collections")}
             />
           )}
 
