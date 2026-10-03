@@ -301,7 +301,7 @@ function createDraftFromImage(fileName: string, image: string): ProductDraft {
     family: selected.family,
     category: selected.category,
     price: "",
-    active: true,
+    active: false,
     featured: false,
     aiStatus: "manual",
     confidence: 0.35,
@@ -450,7 +450,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
             </div>
             <h2 className="text-2xl font-bold text-foreground">Subir fotos y clasificarlas por familias</h2>
             <p className="text-muted-foreground mt-2 max-w-2xl">
-              Sirve para plantas y también para ramos. Todo queda agrupado en desplegables para que el admin no se vea cargado.
+              Sirve para plantas y también para ramos. Las plantas se separan automáticamente en Interior, Exterior, Cactus y suculentas, Orquídeas o Exóticas. Se importan ocultas por defecto para que puedas revisar foto, precio y stock antes de publicarlas.
             </p>
           </div>
 
@@ -582,7 +582,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                               checked={draft.active}
                               onChange={(event) => updateDraft(draft.tempId, { active: event.target.checked })}
                             />
-                            Visible
+                            Publicar al importar
                           </label>
                         </div>
 
