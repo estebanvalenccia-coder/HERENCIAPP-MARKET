@@ -309,8 +309,16 @@ function isValidAdminToken(token) {
   if (!token || !token.includes(".")) return false;
 
   const [payload, signature] = token.split(".");
+  const expected = sign(payload);
+  const receivedBuffer = Buffer.from(String(signature || ""));
+  const expectedBuffer = Buffer.from(expected);
 
-  if (signature !== sign(payload)) return false;
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    return false;
+  }
 
   try {
     const decoded = JSON.parse(
@@ -318,8 +326,16 @@ function isValidAdminToken(token) {
     );
 
     const maxAgeMs = 1000 * 60 * 60 * 12;
+    const issuedAt = Number(decoded.iat || 0);
+    const age = Date.now() - issuedAt;
 
-    return decoded.role === "admin" && Date.now() - decoded.iat < maxAgeMs;
+    return (
+      decoded.role === "admin" &&
+      Number.isFinite(issuedAt) &&
+      issuedAt > 0 &&
+      age >= -5 * 60 * 1000 &&
+      age < maxAgeMs
+    );
   } catch {
     return false;
   }
