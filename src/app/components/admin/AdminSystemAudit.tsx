@@ -8,9 +8,13 @@ export function AdminSystemAudit(){
   try{const h=await backendApi.health();out.push({name:"Backend / Railway",ok:!!h.ok,detail:h.ok?"API responde correctamente":"API sin respuesta válida"});}catch(e:any){out.push({name:"Backend / Railway",ok:false,detail:e?.message||"Sin conexión"});}
   try{
     const r=await backendApi.readiness();
-    out.push({name:"Base de datos primaria",ok:!!r.database,detail:r.database?`Operativa · ${r.databaseProvider||"proveedor configurado"}`:"No disponible"});
+    out.push({name:"Base de datos primaria",ok:!!r.database,detail:r.database?`Operativa · ${r.databaseProvider||r.databasePrimary||"proveedor configurado"}`:"No disponible"});
     out.push({name:"Stripe backend",ok:!!r.stripe,detail:r.stripe?"Clave servidor configurada":"Stripe no está configurado"});
+    out.push({name:"Webhook Stripe",ok:!!r.stripeWebhook,detail:r.stripeWebhook?"Webhook de pagos configurado":"Falta STRIPE_WEBHOOK_SECRET"});
     out.push({name:"Email transaccional",ok:!!r.email,detail:r.email?"Resend configurado":"Falta proveedor de email"});
+    out.push({name:"Google Maps / reparto",ok:!!r.maps,detail:r.maps?"Cálculo de distancia configurado":"Falta clave de Google Maps"});
+    out.push({name:"IA de ventas",ok:!!r.salesAi,detail:r.salesAi?"Groq configurado en servidor":"Falta GROQ_API_KEY"});
+    out.push({name:"IA de imágenes",ok:!!r.imageAi,detail:r.imageAi?"Proveedor de imagen configurado":"Falta Gemini o Nano Banana"});
   }catch(e:any){out.push({name:"Readiness del backend",ok:false,detail:e?.message||"No disponible"});}
   try{
     const commerce=await backendApi.commerceHealth();
