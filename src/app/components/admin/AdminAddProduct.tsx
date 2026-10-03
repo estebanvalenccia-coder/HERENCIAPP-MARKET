@@ -73,7 +73,8 @@ type VariantDraft = {
 
 type SelectedImage = {
   id: string;
-  file: File;
+  file?: File;
+  remoteUrl?: string;
   preview: string;
 };
 
@@ -100,6 +101,7 @@ function readImagePreview(file: File) {
 export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState<FormState>(initialForm);
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [imageUrlInput, setImageUrlInput] = useState("");
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
@@ -185,6 +187,37 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     }
   }
 
+  function handleAddImageUrl() {
+    const value = imageUrlInput.trim();
+    if (!value) return toast.error("Pega la URL de una imagen");
+    if (selectedImages.length >= 8) return toast.error("Puedes añadir un máximo de 8 imágenes");
+
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      return toast.error("La URL de la imagen no es válida");
+    }
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return toast.error("La URL debe empezar por http:// o https://");
+    }
+
+    if (selectedImages.some((image) => image.remoteUrl === parsed.toString())) {
+      return toast.error("Esa imagen ya está añadida");
+    }
+
+    setSelectedImages((current) => [
+      ...current,
+      {
+        id: `url-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        remoteUrl: parsed.toString(),
+        preview: parsed.toString(),
+      },
+    ].slice(0, 8));
+    setImageUrlInput("");
+  }
+
   function moveImage(index: number, direction: -1 | 1) {
     setSelectedImages((current) => {
       const target = index + direction;
@@ -239,6 +272,12 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
 
       const imageUrls: string[] = [];
       for (const image of selectedImages) {
+        if (image.remoteUrl) {
+          imageUrls.push(image.remoteUrl);
+          continue;
+        }
+
+        if (!image.file) continue;
         const uploaded = await backendApi.uploadSiteMediaFile(image.file);
         const url = String(uploaded.media?.url || "");
         if (!url) throw new Error(`Cloudflare R2 no devolvió URL para ${image.file.name}`);
@@ -362,6 +401,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       );
       setFormData(initialForm);
       setSelectedImages([]);
+      setImageUrlInput("");
       setVariants([]);
       setTimeout(onBack, 250);
     } catch (error: any) {
@@ -473,6 +513,37 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleImageUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                 </label>
               )}
+
+              <div className="mt-3 rounded-2xl border border-border bg-background p-3">
+                <p className="text-sm font-black">Añadir imagen por URL</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Puedes pegar una URL pública de imagen. Se guardará directamente junto con las fotos subidas.
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="url"
+                    value={imageUrlInput}
+                    onChange={(event) => setImageUrlInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleAddImageUrl();
+                      }
+                    }}
+                    disabled={selectedImages.length >= 8}
+                    placeholder="https://ejemplo.com/imagen.webp"
+                    className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddImageUrl}
+                    disabled={selectedImages.length >= 8}
+                    className="rounded-xl border border-border px-4 py-2.5 text-sm font-black hover:bg-muted disabled:opacity-50"
+                  >
+                    + Añadir URL
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-5">
