@@ -295,7 +295,9 @@ export function ProductDetail() {
   const relatedProducts = useMemo(() => {
     const manualIds = Array.isArray(product?.relatedProductIds)
       ? product.relatedProductIds.map(String)
-      : [];
+      : Array.isArray(product?.metadata?.relatedProductIds)
+        ? product.metadata.relatedProductIds.map(String)
+        : [];
 
     if (manualIds.length > 0) {
       const byId = new Map(allProducts.map((item: any) => [String(item.id), item]));
@@ -314,7 +316,7 @@ export function ProductDetail() {
           (primaryCollectionOf(item) === collectionId || item.featured)
       )
       .slice(0, 8);
-  }, [allProducts, product?.id, product?.relatedProductIds, collectionId]);
+  }, [allProducts, product?.id, product?.relatedProductIds, product?.metadata?.relatedProductIds, collectionId]);
 
   const details = [
     plantLike && product.size && { icon: Ruler, label: "Tamaño", value: product.size },
