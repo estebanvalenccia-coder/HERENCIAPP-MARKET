@@ -23,7 +23,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   pending_bizum_review: { label: "Revisar Bizum", color: "bg-purple-100 text-purple-800 border-purple-200", icon: Clock },
   pending_manual_review: { label: "Revisión manual", color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: Clock },
   pending_transfer_review: { label: "Revisar transferencia", color: "bg-blue-100 text-blue-800 border-blue-200", icon: Clock },
-  pending_store_confirmation: { label: "Confirmar en tienda", color: "bg-orange-100 text-orange-800 border-orange-200", icon: Clock },
+  pending_store_confirmation: { label: "Confirmar pedido", color: "bg-orange-100 text-orange-800 border-orange-200", icon: Clock },
   paid: { label: "Pagado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   confirmed: { label: "Confirmado", color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: CheckCircle },
   preparing: { label: "Preparando", color: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: Package },
