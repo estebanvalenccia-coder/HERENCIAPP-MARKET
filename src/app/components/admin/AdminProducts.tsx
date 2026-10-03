@@ -11,6 +11,8 @@ import {
   Sparkles,
   Tag as TagIcon,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
@@ -58,7 +60,7 @@ type Product = {
   temperature?: string;
   scientificName?: string;
   allowDedication?: boolean;
-  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string }>;
+  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string; image?: string }>;
   seoTitle?: string;
   seoDescription?: string;
   tags?: string[] | string;
@@ -115,11 +117,30 @@ const emptyEdit = {
   water: "",
   temperature: "",
   allowDedication: true,
-  variantsText: "",
   tags: "",
   seoTitle: "",
   seoDescription: "",
 };
+
+type EditVariant = {
+  id: string;
+  name: string;
+  price: string;
+  stock: string;
+  sku: string;
+  image: string;
+};
+
+function makeEditVariant(): EditVariant {
+  return {
+    id: `edit-variant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: "",
+    price: "",
+    stock: "0",
+    sku: "",
+    image: "",
+  };
+}
 
 export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -134,6 +155,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [editImages, setEditImages] = useState<string[]>([]);
+  const [editVariants, setEditVariants] = useState<EditVariant[]>([]);
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkPricePercent, setBulkPricePercent] = useState("");
@@ -518,6 +542,25 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
     setEditingProduct(product);
     setAiPrompt("");
+
+    const gallery = Array.from(new Set([
+      String(product.image || "").trim(),
+      ...(Array.isArray(product.images)
+        ? product.images.map((image: any) => String(typeof image === "string" ? image : image?.url || "").trim())
+        : []),
+    ].filter(Boolean)));
+    setEditImages(gallery);
+    setEditVariants(
+      (product.variants || []).map((variant, index) => ({
+        id: `edit-variant-${product.id}-${index}`,
+        name: String(variant.name || ""),
+        price: variant.price == null ? "" : String(variant.price),
+        stock: String(Math.max(0, Number(variant.stock || 0))),
+        sku: String(variant.sku || ""),
+        image: String(variant.image || ""),
+      }))
+    );
+
     setRelatedSearch("");
     setEditRelatedIds(
       Array.isArray(product.relatedProductIds)
@@ -553,9 +596,6 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       water: product.water || "",
       temperature: product.temperature || "",
       allowDedication: product.allowDedication !== false,
-      variantsText: (product.variants || [])
-        .map((variant) => `${variant.name} | ${variant.price ?? ""} | ${variant.stock ?? ""} | ${variant.sku ?? ""}`)
-        .join("\n"),
       tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
       seoTitle: product.seoTitle || product.name || "",
       seoDescription: product.seoDescription || product.description || "",
@@ -565,6 +605,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   function cancelEdit() {
     setEditingProduct(null);
     setEditForm({ ...emptyEdit });
+    setEditImages([]);
+    setEditVariants([]);
     setEditRelatedIds([]);
     setRelatedSearch("");
     setAiPrompt("");
@@ -579,12 +621,72 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         aiPrompt
       );
       setEditForm((current) => ({ ...current, image: imageUrl }));
+      setEditImages((current) => current.length ? [imageUrl, ...current.slice(1)] : [imageUrl]);
       toast.success("Imagen generada");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo generar la imagen");
     } finally {
       setAiGenerating(false);
     }
+  }
+
+  async function addGalleryFiles(files: File[]) {
+    if (!files.length) return;
+    const remaining = Math.max(0, 8 - editImages.length);
+    if (!remaining) return toast.error("Máximo 8 imágenes por producto");
+
+    const accepted = files.slice(0, remaining);
+    for (const file of accepted) {
+      if (!file.type.startsWith("image/")) return toast.error(`${file.name}: formato no válido`);
+      if (file.size > 8 * 1024 * 1024) return toast.error(`${file.name}: supera 8 MB`);
+    }
+
+    try {
+      setGalleryUploading(true);
+      const uploadedUrls: string[] = [];
+      for (const file of accepted) {
+        const uploaded = await backendApi.uploadSiteMediaFile(file);
+        const url = String(uploaded.media?.url || "");
+        if (!url) throw new Error(`No se recibió URL para ${file.name}`);
+        uploadedUrls.push(url);
+      }
+      setEditImages((current) => [...current, ...uploadedUrls].slice(0, 8));
+      setEditForm((current) => ({ ...current, image: current.image || uploadedUrls[0] || "" }));
+      toast.success(uploadedUrls.length === 1 ? "Imagen añadida" : `${uploadedUrls.length} imágenes añadidas`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron subir las imágenes");
+    } finally {
+      setGalleryUploading(false);
+    }
+  }
+
+  function moveEditImage(index: number, direction: -1 | 1) {
+    setEditImages((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      setEditForm((form) => ({ ...form, image: next[0] || "" }));
+      return next;
+    });
+  }
+
+  function removeEditImage(index: number) {
+    setEditImages((current) => {
+      const removed = current[index];
+      const next = current.filter((_, itemIndex) => itemIndex !== index);
+      setEditForm((form) => ({ ...form, image: next[0] || "" }));
+      setEditVariants((variants) =>
+        variants.map((variant) => variant.image === removed ? { ...variant, image: "" } : variant)
+      );
+      return next;
+    });
+  }
+
+  function updateEditVariant(id: string, patchValue: Partial<EditVariant>) {
+    setEditVariants((current) =>
+      current.map((variant) => variant.id === id ? { ...variant, ...patchValue } : variant)
+    );
   }
 
   async function saveEdit() {
@@ -597,30 +699,36 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
     try {
       setSaving(true);
-      let imageUrl = editForm.image.trim();
-      if (imageUrl.startsWith("data:image/")) {
-        const uploaded = await backendApi.uploadSiteMedia({
-          dataUrl: imageUrl,
-          filename: `${editForm.name.replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
-        });
-        imageUrl = String(uploaded.media?.url || "");
+      const resolvedImages: string[] = [];
+      const imageMap = new Map<string, string>();
+      for (let index = 0; index < editImages.length; index += 1) {
+        const image = editImages[index];
+        if (image.startsWith("data:image/")) {
+          const uploaded = await backendApi.uploadSiteMedia({
+            dataUrl: image,
+            filename: `${editForm.name.replace(/[^a-z0-9]+/gi, "-") || "producto"}-${index + 1}.jpg`,
+          });
+          const url = String(uploaded.media?.url || "");
+          if (!url) throw new Error("No se pudo guardar una imagen generada");
+          resolvedImages.push(url);
+          imageMap.set(image, url);
+        } else if (image) {
+          resolvedImages.push(image);
+          imageMap.set(image, image);
+        }
       }
+      const imageUrl = resolvedImages[0] || "";
 
       const plantLike = isPlantCareProduct({ collection: editForm.collection, category: editForm.category });
-      const variants = editForm.variantsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [name, price, stock, sku] = line.split("|").map((part) => part.trim());
-          return {
-            name,
-            price: price ? Math.max(0, Number(price)) : undefined,
-            stock: stock ? Math.max(0, Math.floor(Number(stock))) : 0,
-            sku: sku || undefined,
-          };
-        })
-        .filter((variant) => variant.name);
+      const variants = editVariants
+        .filter((variant) => variant.name.trim())
+        .map((variant) => ({
+          name: variant.name.trim(),
+          price: variant.price ? Math.max(0, Number(variant.price)) : undefined,
+          stock: variant.stock ? Math.max(0, Math.floor(Number(variant.stock))) : 0,
+          sku: variant.sku.trim() || undefined,
+          image: variant.image ? (imageMap.get(variant.image) || variant.image) : undefined,
+        }));
 
       const basePayload: any = {
         name: editForm.name.trim(),
@@ -643,7 +751,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         trackInventory: editForm.trackInventory,
         taxRate: editForm.iva,
         image: imageUrl || undefined,
-        images: imageUrl ? [imageUrl] : [],
+        images: resolvedImages,
         scientificName: plantLike ? editForm.scientificName.trim() : "",
         environment: plantLike ? editForm.environment : "",
         light: plantLike ? editForm.light : "",
@@ -946,17 +1054,65 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
             <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
               <div className="space-y-4">
-                <div className="h-72 overflow-hidden rounded-2xl border border-border bg-muted">
-                  {editForm.image ? <img src={editForm.image} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground">Sin imagen</div>}
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-black">Galería</p>
+                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-black">{editImages.length}/8</span>
+                  </div>
+
+                  {editImages.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="relative h-72 overflow-hidden rounded-2xl border border-border bg-muted">
+                        <img src={editImages[0]} alt="" className="h-full w-full object-cover" />
+                        <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs font-black text-white">Principal</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {editImages.map((image, index) => (
+                          <div key={`${image}-${index}`} className="overflow-hidden rounded-xl border border-border bg-background">
+                            <div className="relative aspect-square bg-muted">
+                              <img src={image} alt="" className="h-full w-full object-cover" />
+                              <button type="button" onClick={() => removeEditImage(index)} className="absolute right-1.5 top-1.5 rounded-full bg-black/65 p-1.5 text-white">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between gap-1 p-2">
+                              <span className="text-[10px] font-black">{index === 0 ? "Principal" : `Foto ${index + 1}`}</span>
+                              <div className="flex gap-1">
+                                <button type="button" disabled={index === 0} onClick={() => moveEditImage(index, -1)} className="rounded border border-border px-1.5 py-0.5 text-[10px] disabled:opacity-30">←</button>
+                                <button type="button" disabled={index === editImages.length - 1} onClick={() => moveEditImage(index, 1)} className="rounded border border-border px-1.5 py-0.5 text-[10px] disabled:opacity-30">→</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">Sin imágenes</div>
+                  )}
                 </div>
-                <label className="block text-sm font-bold">URL de imagen
-                  <input value={editForm.image} onChange={(e) => setEditForm({ ...editForm, image: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
-                </label>
+
+                {editImages.length < 8 && (
+                  <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
+                    <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Añadir fotos"}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                      disabled={galleryUploading}
+                      onChange={(event) => {
+                        const input = event.currentTarget;
+                        void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
+                      }}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </label>
+                )}
+
                 <label className="block text-sm font-bold">Prompt de imagen IA
                   <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
                 <button onClick={() => void generateAiImage()} disabled={aiGenerating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-black text-primary-foreground disabled:opacity-60">
-                  <Sparkles className="h-4 w-4" /> {aiGenerating ? "Generando…" : "Generar imagen con IA"}
+                  <Sparkles className="h-4 w-4" /> {aiGenerating ? "Generando…" : "Generar imagen principal con IA"}
                 </button>
               </div>
 
@@ -1048,9 +1204,50 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   </div>
                 )}
 
-                <label className="block text-sm font-bold">Variantes
-                  <textarea value={editForm.variantsText} onChange={(e) => setEditForm({ ...editForm, variantsText: e.target.value })} rows={4} placeholder={"nombre | precio | stock | SKU"} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
-                </label>
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-black">Variantes</p>
+                      <p className="text-xs text-muted-foreground">Tallas, colores, tamaños, sabores o packs.</p>
+                    </div>
+                    <button type="button" onClick={() => setEditVariants((current) => [...current, makeEditVariant()])} className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground">+ Variante</button>
+                  </div>
+
+                  {editVariants.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Sin variantes</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {editVariants.map((variant, index) => (
+                        <div key={variant.id} className="rounded-xl bg-muted/20 p-3">
+                          <div className="mb-3 flex items-center justify-between">
+                            <span className="text-xs font-black">Variante {index + 1}</span>
+                            <button type="button" onClick={() => setEditVariants((current) => current.filter((item) => item.id !== variant.id))} className="rounded-lg bg-destructive/10 px-2 py-1 text-xs font-black text-destructive">Quitar</button>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <label className="text-xs font-bold">Nombre
+                              <input value={variant.name} onChange={(e) => updateEditVariant(variant.id, { name: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">Precio €
+                              <input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateEditVariant(variant.id, { price: e.target.value })} placeholder="General" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">Stock
+                              <input type="number" min="0" step="1" value={variant.stock} onChange={(e) => updateEditVariant(variant.id, { stock: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">SKU
+                              <input value={variant.sku} onChange={(e) => updateEditVariant(variant.id, { sku: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold sm:col-span-2 lg:col-span-4">Imagen propia
+                              <select value={variant.image} onChange={(e) => updateEditVariant(variant.id, { image: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5">
+                                <option value="">Usar imagen principal</option>
+                                {editImages.map((image, imageIndex) => <option key={`${image}-${imageIndex}`} value={image}>Foto {imageIndex + 1}{imageIndex === 0 ? " · Principal" : ""}</option>)}
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <label className="block text-sm font-bold">Etiquetas
                   <input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="regalo, verano, premium" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
