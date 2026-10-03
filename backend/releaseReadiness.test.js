@@ -136,3 +136,11 @@ test("Vercel aplica cabeceras de seguridad al frontend", async () => {
   assert.match(byKey.get("content-security-policy") || "", /default-src 'self'/);
   assert.match(byKey.get("content-security-policy") || "", /js\.stripe\.com/);
 });
+
+
+test("el backend no contiene credenciales administrativas por defecto", async () => {
+  const server = await read("backend/server.js");
+  assert.doesNotMatch(server, /13101098/);
+  assert.doesNotMatch(server, /dev-only-change-me/);
+  assert.doesNotMatch(server, /ADMIN_USERNAME \|\| \(!isProduction/);
+});
