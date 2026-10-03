@@ -155,7 +155,7 @@ function CollectionPage({ kind }: { kind: Kind }) {
                   <Link to={`/producto/${product.id}`} className="text-lg font-black">{product.name}</Link>
                   <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#6c786f]">{product.description}</p>
                   <div className="mt-5 flex items-center justify-between gap-3">
-                    <span className="text-lg font-black text-[#315b42]">{money(product.salePrice || product.price)}</span>
+                    <span className="text-lg font-black text-[#315b42]">{money(product.onSale && product.salePrice ? product.salePrice : product.price)}</span>
                     <button
                       type="button"
                       onClick={() => addToCart(product)}
