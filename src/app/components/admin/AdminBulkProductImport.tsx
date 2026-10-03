@@ -12,6 +12,7 @@ import {
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { backendStorage } from "../../lib/backendStorage";
+import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
 
 type TaxonomyOption = {
   department: string;
@@ -130,33 +131,33 @@ const taxonomy: TaxonomyOption[] = [
   },
   {
     department: "Plantas",
-    area: "Tropicales",
+    area: "Exóticas",
     family: "Aglaonemas",
-    category: "plantas-interior",
+    category: "plantas-exoticas",
     keywords: ["aglaonema", "fucsia", "pink", "red", "silver", "lipstick", "aurora"],
     description: "Aglaonema de hojas llamativas, muy decorativa y perfecta para dar color a interiores.",
   },
   {
     department: "Plantas",
-    area: "Tropicales",
+    area: "Exóticas",
     family: "Alocasias",
-    category: "plantas-interior",
+    category: "plantas-exoticas",
     keywords: ["alocasia", "frydek", "jacklyn", "black velvet", "regal", "marquesa", "silver dragon", "dragon scale"],
     description: "Alocasia tropical de hojas espectaculares, ideal para amantes de plantas especiales.",
   },
   {
     department: "Plantas",
-    area: "Tropicales",
+    area: "Exóticas",
     family: "Bromelias",
-    category: "plantas-interior",
+    category: "plantas-exoticas",
     keywords: ["bromelia", "guzmania", "vriesea", "neoregelia", "aechmea", "tillandsia"],
     description: "Bromelia tropical de colores vivos, perfecta para regalar o decorar interiores con alegría.",
   },
   {
     department: "Plantas",
-    area: "Tropicales",
+    area: "Exóticas",
     family: "Philodendron y Monstera",
-    category: "plantas-interior",
+    category: "plantas-exoticas",
     keywords: ["philodendron", "filodendro", "monstera", "adansonii", "deliciosa", "thai", "variegada", "pink princess"],
     description: "Planta tropical de interior con hojas muy decorativas y presencia elegante.",
   },
@@ -172,7 +173,7 @@ const taxonomy: TaxonomyOption[] = [
     department: "Plantas",
     area: "Cactus y suculentas",
     family: "Cactus pequeños",
-    category: "cactus",
+    category: "cactus-suculentas",
     keywords: ["mammillaria", "rebutia", "gymnocalycium", "astrophytum", "parodia", "mini cactus", "cactus pequeño"],
     description: "Cactus pequeño individual, fácil de cuidar y perfecto para detalles o decoración.",
   },
@@ -180,7 +181,7 @@ const taxonomy: TaxonomyOption[] = [
     department: "Plantas",
     area: "Cactus y suculentas",
     family: "Cactus grandes",
-    category: "cactus",
+    category: "cactus-suculentas",
     keywords: ["cereus", "trichocereus", "ferocactus", "echinocactus", "grusonii", "cactus grande", "candelabro"],
     description: "Cactus grande individual, decorativo, resistente y de gran presencia para interior luminoso o terraza protegida.",
   },
@@ -188,7 +189,7 @@ const taxonomy: TaxonomyOption[] = [
     department: "Plantas",
     area: "Cactus y suculentas",
     family: "Suculentas",
-    category: "suculentas",
+    category: "cactus-suculentas",
     keywords: ["suculenta", "echeveria", "sedum", "crassula", "haworthia", "aloe", "aeonium", "graptopetalum", "pachyphytum"],
     description: "Suculenta individual, bonita, resistente y fácil de mantener.",
   },
@@ -196,7 +197,7 @@ const taxonomy: TaxonomyOption[] = [
     department: "Plantas",
     area: "Cactus y suculentas",
     family: "Euphorbias",
-    category: "cactus",
+    category: "cactus-suculentas",
     keywords: ["euphorbia", "euforbia", "trigona", "lactea", "obesa", "milii", "tirucalli", "cristata"],
     description: "Euphorbia exótica individual, de forma escultural y gran valor decorativo.",
   },
@@ -301,7 +302,7 @@ function createDraftFromImage(fileName: string, image: string): ProductDraft {
     family: selected.family,
     category: selected.category,
     price: "",
-    active: true,
+    active: false,
     featured: false,
     aiStatus: "manual",
     confidence: 0.35,
@@ -362,6 +363,31 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       description: selected.description,
       aiStatus: "manual",
     });
+  };
+
+  const loadRealPlantCatalog = () => {
+    const existingNames = new Set(drafts.map((draft) => draft.name.trim().toLowerCase()));
+    const additions = REAL_PLANT_CATALOG_DRAFTS
+      .filter((plant) => !existingNames.has(plant.name.toLowerCase()))
+      .map((plant) => ({
+        tempId: crypto.randomUUID(),
+        fileName: `${plant.slug}.jpg`,
+        image: plant.image,
+        name: plant.name,
+        description: plant.description,
+        department: "Plantas",
+        area: plant.area,
+        family: plant.family,
+        category: plant.category,
+        price: "",
+        active: false,
+        featured: false,
+        aiStatus: "manual" as const,
+        confidence: 1,
+      }));
+
+    setDrafts((current) => [...current, ...additions]);
+    toast.success(`${additions.length} plantas reales añadidas como borradores`);
   };
 
   const classifyAll = async () => {
@@ -450,11 +476,20 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
             </div>
             <h2 className="text-2xl font-bold text-foreground">Subir fotos y clasificarlas por familias</h2>
             <p className="text-muted-foreground mt-2 max-w-2xl">
-              Sirve para plantas y también para ramos. Todo queda agrupado en desplegables para que el admin no se vea cargado.
+              Sirve para plantas y también para ramos. Las plantas se separan automáticamente en Interior, Exterior, Cactus y suculentas, Orquídeas o Exóticas. Se importan ocultas por defecto para que puedas revisar foto, precio y stock antes de publicarlas.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={loadRealPlantCatalog}
+              disabled={isClassifying}
+              className="inline-flex items-center gap-2 px-4 py-3 border border-primary text-primary rounded-xl hover:bg-primary/5 disabled:opacity-50"
+            >
+              <ImagePlus className="w-4 h-4" />
+              Cargar catálogo real · tanda 1
+            </button>
             <button
               type="button"
               onClick={classifyAll}
@@ -582,7 +617,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                               checked={draft.active}
                               onChange={(event) => updateDraft(draft.tempId, { active: event.target.checked })}
                             />
-                            Visible
+                            Publicar al importar
                           </label>
                         </div>
 
