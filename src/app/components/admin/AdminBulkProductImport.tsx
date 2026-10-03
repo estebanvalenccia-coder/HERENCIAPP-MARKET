@@ -322,6 +322,7 @@ function readFileAsDataUrl(file: File) {
 export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [drafts, setDrafts] = useState<ProductDraft[]>([]);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [savingLibrary, setSavingLibrary] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const groupedDrafts = useMemo(() => {
@@ -390,6 +391,66 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
 
     setDrafts((current) => [...current, ...additions]);
     toast.success(`${additions.length} plantas reales añadidas como borradores`);
+  };
+
+  const saveRealCatalogToLibrary = async () => {
+    setSavingLibrary(true);
+    try {
+      const current = await backendApi.listCommerceProducts({ includeArchived: true });
+      const existing = Array.isArray(current.products) ? current.products : [];
+      const existingSlugs = new Set(existing.map((product: any) => String(product?.metadata?.librarySlug || "")));
+      const existingNames = new Set(existing.map((product: any) => String(product?.name || "").trim().toLowerCase()));
+      const pending = REAL_PLANT_CATALOG_DRAFTS.filter(
+        (plant) => !existingSlugs.has(plant.slug) && !existingNames.has(plant.name.trim().toLowerCase())
+      );
+
+      for (const plant of pending) {
+        await backendApi.createCommerceProduct({
+          name: plant.name,
+          scientificName: plant.scientificName,
+          description: plant.description,
+          category: plant.category,
+          collection: "plantas",
+          collections: ["plantas"],
+          type: "plant",
+          department: "Plantas",
+          area: plant.area,
+          family: plant.family,
+          subcategory: plant.family,
+          image: plant.image,
+          images: plant.images?.length ? plant.images : [plant.image],
+          price: 0,
+          stock: 0,
+          trackInventory: true,
+          active: false,
+          status: "draft",
+          featured: false,
+          environment: plant.environment,
+          light: plant.light,
+          difficulty: plant.difficulty,
+          toxicity: plant.toxicity,
+          water: plant.watering,
+          metadata: {
+            libraryItem: true,
+            librarySlug: plant.slug,
+            imageSourcePage: plant.imageSourcePage,
+            imageAuthor: plant.imageAuthor,
+            imageLicense: plant.imageLicense,
+            imageLicenseUrl: plant.imageLicenseUrl,
+          },
+        });
+      }
+
+      toast.success(
+        pending.length
+          ? `Biblioteca creada: ${pending.length} plantas guardadas como borradores en Neon`
+          : "La biblioteca ya estaba sincronizada"
+      );
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar la biblioteca en Neon");
+    } finally {
+      setSavingLibrary(false);
+    }
   };
 
   const classifyAll = async () => {
@@ -484,6 +545,15 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveRealCatalogToLibrary}
+              disabled={savingLibrary || isClassifying}
+              className="inline-flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {savingLibrary ? "Guardando biblioteca..." : "Guardar catálogo en biblioteca"}
+            </button>
             <button
               type="button"
               onClick={loadRealPlantCatalog}
