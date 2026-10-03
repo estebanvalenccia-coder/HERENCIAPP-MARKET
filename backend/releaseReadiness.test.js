@@ -67,3 +67,14 @@ test("las páginas legales no contienen datos de plantilla", async () => {
   assert.doesNotMatch(joined, /Google Analytics - para análisis web/);
   assert.doesNotMatch(terms, /\$50/);
 });
+
+
+test("las sesiones web usan cookies same-origin compatibles", async () => {
+  const [server, gateway] = await Promise.all([
+    read("backend/server.js"),
+    read("backend/neonGateway.js"),
+  ]);
+  assert.match(server, /SameSite=Lax/);
+  assert.doesNotMatch(server, /SameSite=\$\{\s*isProduction\s*\?\s*"None"/);
+  assert.doesNotMatch(gateway, /SameSite=None/);
+});
