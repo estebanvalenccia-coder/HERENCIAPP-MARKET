@@ -409,7 +409,7 @@ export function AdminDashboard() {
     { id: "collections" as AdminSection, label: "Colecciones", icon: Layers3 },
     {
       id: "bulk-product-import" as AdminSection,
-      label: "Importación masiva IA",
+      label: "Biblioteca de productos",
       icon: Layers3,
       badge: "PRO",
     },
