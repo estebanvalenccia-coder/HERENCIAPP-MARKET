@@ -36,7 +36,7 @@ export function Checkout() {
   const location = useLocation();
 
   const paymentMethod = location.state?.paymentMethod || "tarjeta";
-  const deliveryMethod = location.state?.deliveryMethod || "envio";
+  const deliveryMethod = "envio";
   const discount = Math.max(0, Number(location.state?.discount || 0));
   const coupon = String(location.state?.coupon || "");
   const isStripePayment = ["tarjeta", "bizum", "alternativos"].includes(paymentMethod);
@@ -98,13 +98,6 @@ export function Checkout() {
   }, []);
 
   useEffect(() => {
-    if (deliveryMethod === "recoger" || deliveryMethod === "recogida") {
-      setShippingCost(0);
-      setShippingInfo(null);
-      setShippingError("");
-      return;
-    }
-
     const hasMinimumAddress = form.address.trim().length >= 5 && form.postalCode.trim().length >= 4;
 
     if (!hasMinimumAddress) {
@@ -185,7 +178,7 @@ export function Checkout() {
   }, [form.requestedDate, deliveryMethod, businessSuite.scheduledOrdersEnabled]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
-  const shipping = deliveryMethod === "recoger" || deliveryMethod === "recogida" ? 0 : shippingCost;
+  const shipping = shippingCost;
   const total = Math.max(0, subtotal - discount + shipping);
 
   const handleChange = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
