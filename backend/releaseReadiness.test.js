@@ -125,3 +125,14 @@ test("el admin soporta 2FA TOTP opcional sin exponer el secreto", async () => {
   assert.match(server, /totpRequired/);
   assert.doesNotMatch(server, /res\.json\([^\n]*ADMIN_TOTP_SECRET/);
 });
+
+
+test("Vercel aplica cabeceras de seguridad al frontend", async () => {
+  const vercel = JSON.parse(await read("vercel.json"));
+  const headers = Array.isArray(vercel.headers) ? vercel.headers.flatMap((entry) => entry.headers || []) : [];
+  const byKey = new Map(headers.map((entry) => [String(entry.key || "").toLowerCase(), String(entry.value || "")]));
+  assert.equal(byKey.get("x-content-type-options"), "nosniff");
+  assert.equal(byKey.get("x-frame-options"), "DENY");
+  assert.match(byKey.get("content-security-policy") || "", /default-src 'self'/);
+  assert.match(byKey.get("content-security-policy") || "", /js\.stripe\.com/);
+});
