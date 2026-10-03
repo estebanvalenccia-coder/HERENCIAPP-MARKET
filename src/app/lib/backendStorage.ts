@@ -314,6 +314,17 @@ export const backendApi = {
     return request<{ product: any; source?: string }>(`/api/commerce/products/${encodeURIComponent(String(id))}`);
   },
 
+  async getServiceAvailability(id: string | number, date: string) {
+    const search = new URLSearchParams({ date });
+    return request<{
+      productId: string;
+      date: string;
+      capacity: number;
+      slots: Array<{ slot: string; reserved: number; remaining: number; available: boolean }>;
+      source?: string;
+    }>(`/api/commerce/services/${encodeURIComponent(String(id))}/availability?${search.toString()}`);
+  },
+
   async bootstrapCommerceCatalog() {
     return request<{ ok: boolean; imported: number; products: any[]; source?: string; migrationRequired?: boolean }>("/api/admin/commerce/bootstrap", { method: "POST" });
   },
