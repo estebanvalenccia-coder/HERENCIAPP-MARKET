@@ -4,7 +4,6 @@ import { ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { productBelongsToCollection } from "../lib/commerceCatalog";
-import { products as fallbackProducts } from "../data/products";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
@@ -37,7 +36,7 @@ function addToCart(product: any) {
 
 function CollectionPage({ kind }: { kind: Kind }) {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
+  const [catalog, setCatalog] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,9 +57,9 @@ function CollectionPage({ kind }: { kind: Kind }) {
         if (cancelled) return;
         try {
           const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-          setCatalog(Array.isArray(rows) && rows.length
-            ? rows.filter((item: any) => (item.status === "active" || item.active !== false) && matchesKind(item, kind))
-            : fallbackProducts.filter((item: any) => matchesKind(item, kind)));
+          setCatalog(Array.isArray(rows)
+            ? rows.filter((item: any) => (item.status === "active" || item.active !== false) && !item.deletedAt && matchesKind(item, kind))
+            : []);
         } catch {
           setCatalog([]);
         }
