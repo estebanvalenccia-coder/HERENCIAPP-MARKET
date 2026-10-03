@@ -131,6 +131,24 @@ export type SiteContent = {
     imageAspect: "square" | "portrait" | "landscape";
     defaultSort: string;
   };
+  productDetailPage: {
+    showGalleryThumbnails: boolean;
+    showDescription: boolean;
+    showDetails: boolean;
+    showVariants: boolean;
+    showDedication: boolean;
+    showQuantity: boolean;
+    showFavorite: boolean;
+    showStock: boolean;
+    showWaitlist: boolean;
+    showCare: boolean;
+    showRelated: boolean;
+    showReviews: boolean;
+    showQuestions: boolean;
+    relatedTitle: string;
+    relatedSubtitle: string;
+    galleryRadius: number;
+  };
   servicesPage: {
     title: string;
     subtitle: string;
@@ -307,6 +325,24 @@ export const defaultSiteContent: SiteContent = {
     cardRadius: 24,
     imageAspect: "square",
     defaultSort: "relevance",
+  },
+  productDetailPage: {
+    showGalleryThumbnails: true,
+    showDescription: true,
+    showDetails: true,
+    showVariants: true,
+    showDedication: true,
+    showQuantity: true,
+    showFavorite: true,
+    showStock: true,
+    showWaitlist: true,
+    showCare: true,
+    showRelated: true,
+    showReviews: true,
+    showQuestions: true,
+    relatedTitle: "Completa tu compra",
+    relatedSubtitle: "Productos relacionados que pueden combinar bien con esta elección.",
+    galleryRadius: 24,
   },
   servicesPage: {
     title: "Nuestros Servicios",
@@ -790,6 +826,10 @@ export function parseSiteContent(raw: string | null): SiteContent {
       productsPage: {
         ...defaultSiteContent.productsPage,
         ...(parsed.productsPage || {}),
+      },
+      productDetailPage: {
+        ...defaultSiteContent.productDetailPage,
+        ...(parsed.productDetailPage || {}),
       },
       servicesPage: {
         ...defaultSiteContent.servicesPage,

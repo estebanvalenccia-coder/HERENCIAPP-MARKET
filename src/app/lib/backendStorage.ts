@@ -294,8 +294,11 @@ export const backendApi = {
   },
 
 
-  async listCommerceCollections() {
-    return request<{ collections: any[]; source?: string }>("/api/commerce/collections");
+  async listCommerceCollections(params?: { includeArchived?: boolean }) {
+    const search = new URLSearchParams();
+    if (params?.includeArchived) search.set("includeArchived", "1");
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<{ collections: any[]; source?: string }>(`/api/commerce/collections${suffix}`);
   },
 
   async listCommerceProducts(params?: { collection?: string; includeArchived?: boolean; status?: string }) {
@@ -346,10 +349,25 @@ export const backendApi = {
   },
 
   async saveCommerceCollection(payload: any) {
-    return request<{ collections: any[]; source?: string; migrationRequired?: boolean }>("/api/admin/commerce/collections", {
+    const result = await request<{ collections: any[]; source?: string; migrationRequired?: boolean }>("/api/admin/commerce/collections", {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    window.dispatchEvent(new Event("commerce-collections-changed"));
+    return result;
+  },
+
+  async setCommerceCollectionProducts(id: string, productIds: Array<string | number>) {
+    const result = await request<{ products: any[]; source?: string }>(
+      `/api/admin/commerce/collections/${encodeURIComponent(id)}/products`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ productIds: productIds.map(String) }),
+      }
+    );
+    window.dispatchEvent(new Event("commerce-products-changed"));
+    window.dispatchEvent(new Event("commerce-collections-changed"));
+    return result;
   },
 
   async preload() {

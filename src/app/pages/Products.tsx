@@ -37,6 +37,9 @@ export function Products() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [displayProducts, setDisplayProducts] = useState<any[]>(fallbackProducts);
+  const [collectionOptions, setCollectionOptions] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [selectedCollection, setSelectedCollection] = useState("todos");
   const [selectedCategory, setSelectedCategory] = useState("todos");
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,12 +96,21 @@ export function Products() {
 
     async function loadCatalog() {
       try {
-        const result = await backendApi.listCommerceProducts();
+        const [productResult, collectionResult] = await Promise.all([
+          backendApi.listCommerceProducts(),
+          backendApi.listCommerceCollections(),
+        ]);
         if (cancelled) return;
-        const rows = Array.isArray(result.products)
-          ? result.products.filter((product: any) => product.status === "active" || product.active === true)
+
+        const rows = Array.isArray(productResult.products)
+          ? productResult.products.filter((product: any) => product.status === "active" || product.active === true)
           : [];
+        const collections = Array.isArray(collectionResult.collections)
+          ? collectionResult.collections.filter((item: any) => String(item.status || "active") === "active")
+          : [];
+
         setDisplayProducts(rows.length ? rows : fallbackProducts);
+        if (collections.length) setCollectionOptions(collections);
         if (rows.length) backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
         if (cancelled) return;
@@ -129,18 +141,27 @@ export function Products() {
     window.addEventListener("storage", refreshLocal);
     window.addEventListener("backend-storage", refreshLocal);
     window.addEventListener("commerce-products-changed", refreshCatalog);
+    window.addEventListener("commerce-collections-changed", refreshCatalog);
     return () => {
       cancelled = true;
       window.removeEventListener("storage", refreshLocal);
       window.removeEventListener("backend-storage", refreshLocal);
       window.removeEventListener("commerce-products-changed", refreshCatalog);
+      window.removeEventListener("commerce-collections-changed", refreshCatalog);
     };
   }, []);
 
-  const selectedDefinition =
-    selectedCollection === "todos" ? null : getCommerceCollection(selectedCollection);
-  const categoryOptions = selectedDefinition?.categories || [];
-  const plantFilters = selectedDefinition ? isPlantLikeCollection(selectedDefinition.id) : false;
+  const selectedBaseDefinition =
+    selectedCollection === "todos"
+      ? null
+      : COMMERCE_COLLECTIONS.find((item) => item.id === selectedCollection) || null;
+  const selectedDynamicCollection =
+    selectedCollection === "todos"
+      ? null
+      : collectionOptions.find((item) => String(item.id) === selectedCollection) || null;
+  const selectedDefinition = selectedBaseDefinition || selectedDynamicCollection;
+  const categoryOptions = selectedBaseDefinition?.categories || [];
+  const plantFilters = selectedBaseDefinition ? isPlantLikeCollection(selectedBaseDefinition.id) : false;
 
   useEffect(() => {
     if (selectedCollection === "todos") {
@@ -366,16 +387,21 @@ export function Products() {
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Colecciones</p>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => setSelectedCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
-                {COMMERCE_COLLECTIONS.map((item) => (
-                  <button key={item.id} onClick={() => setSelectedCollection(item.id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === item.id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
-                    {item.name}
-                  </button>
-                ))}
+                {collectionOptions
+                  .filter((item) => String(item.status || "active") === "active")
+                  .map((item) => {
+                    const id = String(item.id);
+                    return (
+                      <button key={id} onClick={() => setSelectedCollection(id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
+                        {String(item.name || id)}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           )}
 
-          {selectedDefinition && site.productsPage.showSubcategories !== false && (
+          {selectedBaseDefinition && site.productsPage.showSubcategories !== false && (
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Subcategorías</p>
               <div className="flex flex-wrap gap-2">

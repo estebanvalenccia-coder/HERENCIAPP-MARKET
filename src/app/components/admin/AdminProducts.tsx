@@ -11,6 +11,8 @@ import {
   Sparkles,
   Tag as TagIcon,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
@@ -20,6 +22,7 @@ import {
   getCommerceCollection,
   isPlantCareProduct,
   primaryCollectionOf,
+  productBelongsToCollection,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
 
@@ -58,7 +61,7 @@ type Product = {
   temperature?: string;
   scientificName?: string;
   allowDedication?: boolean;
-  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string }>;
+  variants?: Array<{ name: string; price?: number; stock?: number; sku?: string; image?: string }>;
   seoTitle?: string;
   seoDescription?: string;
   tags?: string[] | string;
@@ -115,32 +118,72 @@ const emptyEdit = {
   water: "",
   temperature: "",
   allowDedication: true,
-  variantsText: "",
   tags: "",
   seoTitle: "",
   seoDescription: "",
 };
+
+type EditVariant = {
+  id: string;
+  name: string;
+  price: string;
+  stock: string;
+  sku: string;
+  image: string;
+};
+
+function makeEditVariant(): EditVariant {
+  return {
+    id: `edit-variant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: "",
+    price: "",
+    stock: "0",
+    sku: "",
+    image: "",
+  };
+}
 
 export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyEdit });
+  const [editExtraCollections, setEditExtraCollections] = useState<string[]>([]);
+  const [collectionOptions, setCollectionOptions] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
+  const [editRelatedIds, setEditRelatedIds] = useState<string[]>([]);
+  const [relatedSearch, setRelatedSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState("todos");
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [editImages, setEditImages] = useState<string[]>([]);
+  const [editVariants, setEditVariants] = useState<EditVariant[]>([]);
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkPricePercent, setBulkPricePercent] = useState("");
+  const [bulkDiscountPercent, setBulkDiscountPercent] = useState("");
+  const [bulkStockValue, setBulkStockValue] = useState("");
+  const [bulkTaxValue, setBulkTaxValue] = useState("");
+  const [bulkSupplier, setBulkSupplier] = useState("");
 
   async function loadProducts() {
     try {
       setLoading(true);
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections({ includeArchived: true }),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collections = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections
+        : [];
       setProducts(rows);
+      if (collections.length) setCollectionOptions(collections);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch (error) {
       try {
@@ -165,7 +208,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     return products.filter((product) => {
       const archived = product.status === "archived" || Boolean(product.deletedAt);
       if (showTrash !== archived) return false;
-      if (collectionFilter !== "todos" && primaryCollectionOf(product) !== collectionFilter) return false;
+      if (collectionFilter !== "todos" && !productBelongsToCollection(product, collectionFilter)) return false;
       if (!query) return true;
       return [product.name, product.description, product.sku, product.category, primaryCollectionOf(product)]
         .filter(Boolean)
@@ -238,6 +281,70 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     }
   }
 
+  async function bulkTransform(transform: (product: Product) => any, message: string) {
+    if (!selectedProducts.length) return;
+    try {
+      setLoading(true);
+      await Promise.all(selectedProducts.map((product) => backendApi.updateCommerceProduct(product.id, transform(product))));
+      await loadProducts();
+      toast.success(message);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los artículos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyBulkPricePercent() {
+    const percent = Number(bulkPricePercent);
+    if (!Number.isFinite(percent) || percent === 0) return toast.error("Escribe un porcentaje distinto de 0");
+    if (percent <= -100) return toast.error("El porcentaje no puede reducir el precio a 0 o menos");
+    await bulkTransform((product) => {
+      const regular = Math.max(0.01, Number(product.price || 0));
+      const next = Math.max(0.01, Math.round(regular * (1 + percent / 100) * 100) / 100);
+      const payload: any = { price: next };
+      if (product.onSale && product.salePrice) {
+        const sale = Math.max(0.01, Math.round(Number(product.salePrice) * (1 + percent / 100) * 100) / 100);
+        payload.salePrice = Math.min(sale, Math.max(0.01, next - 0.01));
+        payload.compareAtPrice = next;
+        payload.onSale = true;
+      }
+      return payload;
+    }, "Precios actualizados");
+    setBulkPricePercent("");
+  }
+
+  async function applyBulkDiscount() {
+    const percent = Number(bulkDiscountPercent);
+    if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) return toast.error("El descuento debe estar entre 1% y 99%");
+    await bulkTransform((product) => {
+      const regular = Math.max(0.01, Number(product.price || 0));
+      const sale = Math.max(0.01, Math.round(regular * (1 - percent / 100) * 100) / 100);
+      return { price: regular, salePrice: sale, compareAtPrice: regular, onSale: true };
+    }, "Descuento aplicado");
+    setBulkDiscountPercent("");
+  }
+
+  async function applyBulkStock() {
+    const stock = Number(bulkStockValue);
+    if (!Number.isFinite(stock) || stock < 0) return toast.error("Escribe un stock válido");
+    await bulkTransform((product) => product.trackInventory === false ? {} : { stock: Math.max(0, Math.floor(stock)) }, "Stock actualizado");
+    setBulkStockValue("");
+  }
+
+  async function applyBulkTax() {
+    const tax = Number(bulkTaxValue);
+    if (!Number.isFinite(tax) || tax < 0 || tax > 100) return toast.error("Escribe un IVA entre 0 y 100");
+    await bulkTransform(() => ({ taxRate: tax, iva: tax }), "IVA actualizado");
+    setBulkTaxValue("");
+  }
+
+  async function applyBulkSupplier() {
+    const supplier = bulkSupplier.trim();
+    if (!supplier) return toast.error("Escribe el proveedor");
+    await bulkTransform((product) => ({ metadata: { ...(product.metadata || {}), supplierId: supplier } }), "Proveedor actualizado");
+    setBulkSupplier("");
+  }
   async function bulkArchive() {
     if (!selectedProducts.length) return;
     if (!confirm(`¿Mover ${selectedProducts.length} artículos a la papelera?`)) return;
@@ -443,10 +550,41 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
   function startEdit(product: Product) {
     const collection = primaryCollectionOf(product);
+    const extraCollections = Array.isArray(product.collections)
+      ? product.collections.map(String).filter((id) => id && id !== collection)
+      : [];
     const regularPrice = Number(product.price || 0);
     const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
     setEditingProduct(product);
+    setEditExtraCollections(extraCollections);
     setAiPrompt("");
+
+    const gallery = Array.from(new Set([
+      String(product.image || "").trim(),
+      ...(Array.isArray(product.images)
+        ? product.images.map((image: any) => String(typeof image === "string" ? image : image?.url || "").trim())
+        : []),
+    ].filter(Boolean)));
+    setEditImages(gallery);
+    setEditVariants(
+      (product.variants || []).map((variant, index) => ({
+        id: `edit-variant-${product.id}-${index}`,
+        name: String(variant.name || ""),
+        price: variant.price == null ? "" : String(variant.price),
+        stock: String(Math.max(0, Number(variant.stock || 0))),
+        sku: String(variant.sku || ""),
+        image: String(variant.image || ""),
+      }))
+    );
+
+    setRelatedSearch("");
+    setEditRelatedIds(
+      Array.isArray(product.relatedProductIds)
+        ? product.relatedProductIds.map(String).slice(0, 8)
+        : Array.isArray(product.metadata?.relatedProductIds)
+          ? product.metadata.relatedProductIds.map(String).slice(0, 8)
+          : []
+    );
     setEditForm({
       name: product.name || "",
       description: product.description || "",
@@ -474,9 +612,6 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       water: product.water || "",
       temperature: product.temperature || "",
       allowDedication: product.allowDedication !== false,
-      variantsText: (product.variants || [])
-        .map((variant) => `${variant.name} | ${variant.price ?? ""} | ${variant.stock ?? ""} | ${variant.sku ?? ""}`)
-        .join("\n"),
       tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
       seoTitle: product.seoTitle || product.name || "",
       seoDescription: product.seoDescription || product.description || "",
@@ -486,6 +621,11 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   function cancelEdit() {
     setEditingProduct(null);
     setEditForm({ ...emptyEdit });
+    setEditExtraCollections([]);
+    setEditImages([]);
+    setEditVariants([]);
+    setEditRelatedIds([]);
+    setRelatedSearch("");
     setAiPrompt("");
   }
 
@@ -498,12 +638,72 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         aiPrompt
       );
       setEditForm((current) => ({ ...current, image: imageUrl }));
+      setEditImages((current) => current.length ? [imageUrl, ...current.slice(1)] : [imageUrl]);
       toast.success("Imagen generada");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo generar la imagen");
     } finally {
       setAiGenerating(false);
     }
+  }
+
+  async function addGalleryFiles(files: File[]) {
+    if (!files.length) return;
+    const remaining = Math.max(0, 8 - editImages.length);
+    if (!remaining) return toast.error("Máximo 8 imágenes por producto");
+
+    const accepted = files.slice(0, remaining);
+    for (const file of accepted) {
+      if (!file.type.startsWith("image/")) return toast.error(`${file.name}: formato no válido`);
+      if (file.size > 8 * 1024 * 1024) return toast.error(`${file.name}: supera 8 MB`);
+    }
+
+    try {
+      setGalleryUploading(true);
+      const uploadedUrls: string[] = [];
+      for (const file of accepted) {
+        const uploaded = await backendApi.uploadSiteMediaFile(file);
+        const url = String(uploaded.media?.url || "");
+        if (!url) throw new Error(`No se recibió URL para ${file.name}`);
+        uploadedUrls.push(url);
+      }
+      setEditImages((current) => [...current, ...uploadedUrls].slice(0, 8));
+      setEditForm((current) => ({ ...current, image: current.image || uploadedUrls[0] || "" }));
+      toast.success(uploadedUrls.length === 1 ? "Imagen añadida" : `${uploadedUrls.length} imágenes añadidas`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron subir las imágenes");
+    } finally {
+      setGalleryUploading(false);
+    }
+  }
+
+  function moveEditImage(index: number, direction: -1 | 1) {
+    setEditImages((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      setEditForm((form) => ({ ...form, image: next[0] || "" }));
+      return next;
+    });
+  }
+
+  function removeEditImage(index: number) {
+    setEditImages((current) => {
+      const removed = current[index];
+      const next = current.filter((_, itemIndex) => itemIndex !== index);
+      setEditForm((form) => ({ ...form, image: next[0] || "" }));
+      setEditVariants((variants) =>
+        variants.map((variant) => variant.image === removed ? { ...variant, image: "" } : variant)
+      );
+      return next;
+    });
+  }
+
+  function updateEditVariant(id: string, patchValue: Partial<EditVariant>) {
+    setEditVariants((current) =>
+      current.map((variant) => variant.id === id ? { ...variant, ...patchValue } : variant)
+    );
   }
 
   async function saveEdit() {
@@ -516,36 +716,43 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
     try {
       setSaving(true);
-      let imageUrl = editForm.image.trim();
-      if (imageUrl.startsWith("data:image/")) {
-        const uploaded = await backendApi.uploadSiteMedia({
-          dataUrl: imageUrl,
-          filename: `${editForm.name.replace(/[^a-z0-9]+/gi, "-") || "producto"}.jpg`,
-        });
-        imageUrl = String(uploaded.media?.url || "");
+      const resolvedImages: string[] = [];
+      const imageMap = new Map<string, string>();
+      for (let index = 0; index < editImages.length; index += 1) {
+        const image = editImages[index];
+        if (image.startsWith("data:image/")) {
+          const uploaded = await backendApi.uploadSiteMedia({
+            dataUrl: image,
+            filename: `${editForm.name.replace(/[^a-z0-9]+/gi, "-") || "producto"}-${index + 1}.jpg`,
+          });
+          const url = String(uploaded.media?.url || "");
+          if (!url) throw new Error("No se pudo guardar una imagen generada");
+          resolvedImages.push(url);
+          imageMap.set(image, url);
+        } else if (image) {
+          resolvedImages.push(image);
+          imageMap.set(image, image);
+        }
       }
+      const imageUrl = resolvedImages[0] || "";
 
       const plantLike = isPlantCareProduct({ collection: editForm.collection, category: editForm.category });
-      const variants = editForm.variantsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [name, price, stock, sku] = line.split("|").map((part) => part.trim());
-          return {
-            name,
-            price: price ? Math.max(0, Number(price)) : undefined,
-            stock: stock ? Math.max(0, Math.floor(Number(stock))) : 0,
-            sku: sku || undefined,
-          };
-        })
-        .filter((variant) => variant.name);
+      const variants = editVariants
+        .filter((variant) => variant.name.trim())
+        .map((variant) => ({
+          name: variant.name.trim(),
+          price: variant.price ? Math.max(0, Number(variant.price)) : undefined,
+          stock: variant.stock ? Math.max(0, Math.floor(Number(variant.stock))) : 0,
+          sku: variant.sku.trim() || undefined,
+          image: variant.image ? (imageMap.get(variant.image) || variant.image) : undefined,
+        }));
 
       const basePayload: any = {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
         collection: editForm.collection,
-        collections: [editForm.collection],
+        collections: [editForm.collection, ...editExtraCollections]
+          .filter((value, index, rows) => value && rows.indexOf(value) === index),
         category: editForm.category,
         type: productTypeForCollection(editForm.collection),
         status: editForm.status,
@@ -562,7 +769,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         trackInventory: editForm.trackInventory,
         taxRate: editForm.iva,
         image: imageUrl || undefined,
-        images: imageUrl ? [imageUrl] : [],
+        images: resolvedImages,
         scientificName: plantLike ? editForm.scientificName.trim() : "",
         environment: plantLike ? editForm.environment : "",
         light: plantLike ? editForm.light : "",
@@ -579,6 +786,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         metadata: {
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          relatedProductIds: editRelatedIds,
         },
       
         ...(plantLike
@@ -664,7 +872,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           className="rounded-xl border border-border bg-background px-4 py-3 font-bold"
         >
           <option value="todos">Todas las colecciones</option>
-          {COMMERCE_COLLECTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          {collectionOptions
+            .filter((item) => String(item.status || "active") !== "archived")
+            .map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name || item.id)}</option>)}
         </select>
       </div>
 
@@ -693,6 +903,51 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         </div>
       )}
 
+      {selectedIds.length > 0 && !showTrash && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="mb-3">
+            <p className="font-black">Edición masiva Pro</p>
+            <p className="text-xs text-muted-foreground">Aplica cambios comerciales a los artículos seleccionados.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Precio ± %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" step="0.1" value={bulkPricePercent} onChange={(e) => setBulkPricePercent(e.target.value)} placeholder="+10 / -5" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkPricePercent()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Descuento %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="1" max="99" step="1" value={bulkDiscountPercent} onChange={(e) => setBulkDiscountPercent(e.target.value)} placeholder="20" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkDiscount()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Fijar stock</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="0" step="1" value={bulkStockValue} onChange={(e) => setBulkStockValue(e.target.value)} placeholder="10" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkStock()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">IVA %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="0" max="100" step="0.1" value={bulkTaxValue} onChange={(e) => setBulkTaxValue(e.target.value)} placeholder="21" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkTax()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Proveedor</label>
+              <div className="mt-2 flex gap-2">
+                <input value={bulkSupplier} onChange={(e) => setBulkSupplier(e.target.value)} placeholder="Proveedor / ID" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkSupplier()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Cargando catálogo de Neon…</div>
       ) : visibleProducts.length === 0 ? (
@@ -819,17 +1074,65 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
             <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
               <div className="space-y-4">
-                <div className="h-72 overflow-hidden rounded-2xl border border-border bg-muted">
-                  {editForm.image ? <img src={editForm.image} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground">Sin imagen</div>}
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-black">Galería</p>
+                    <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-black">{editImages.length}/8</span>
+                  </div>
+
+                  {editImages.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="relative h-72 overflow-hidden rounded-2xl border border-border bg-muted">
+                        <img src={editImages[0]} alt="" className="h-full w-full object-cover" />
+                        <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs font-black text-white">Principal</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {editImages.map((image, index) => (
+                          <div key={`${image}-${index}`} className="overflow-hidden rounded-xl border border-border bg-background">
+                            <div className="relative aspect-square bg-muted">
+                              <img src={image} alt="" className="h-full w-full object-cover" />
+                              <button type="button" onClick={() => removeEditImage(index)} className="absolute right-1.5 top-1.5 rounded-full bg-black/65 p-1.5 text-white">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between gap-1 p-2">
+                              <span className="text-[10px] font-black">{index === 0 ? "Principal" : `Foto ${index + 1}`}</span>
+                              <div className="flex gap-1">
+                                <button type="button" disabled={index === 0} onClick={() => moveEditImage(index, -1)} className="rounded border border-border px-1.5 py-0.5 text-[10px] disabled:opacity-30">←</button>
+                                <button type="button" disabled={index === editImages.length - 1} onClick={() => moveEditImage(index, 1)} className="rounded border border-border px-1.5 py-0.5 text-[10px] disabled:opacity-30">→</button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">Sin imágenes</div>
+                  )}
                 </div>
-                <label className="block text-sm font-bold">URL de imagen
-                  <input value={editForm.image} onChange={(e) => setEditForm({ ...editForm, image: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
-                </label>
+
+                {editImages.length < 8 && (
+                  <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
+                    <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Añadir fotos"}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                      disabled={galleryUploading}
+                      onChange={(event) => {
+                        const input = event.currentTarget;
+                        void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
+                      }}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </label>
+                )}
+
                 <label className="block text-sm font-bold">Prompt de imagen IA
                   <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
                 <button onClick={() => void generateAiImage()} disabled={aiGenerating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-black text-primary-foreground disabled:opacity-60">
-                  <Sparkles className="h-4 w-4" /> {aiGenerating ? "Generando…" : "Generar imagen con IA"}
+                  <Sparkles className="h-4 w-4" /> {aiGenerating ? "Generando…" : "Generar imagen principal con IA"}
                 </button>
               </div>
 
@@ -859,6 +1162,36 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                       {getCommerceCollection(editForm.collection).categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                     </select>
                   </label>
+
+                  <div className="sm:col-span-2">
+                    <p className="mb-2 text-sm font-bold">También mostrar en otras colecciones</p>
+                    <div className="flex flex-wrap gap-2">
+                      {collectionOptions
+                        .filter((item) => String(item.status || "active") === "active" && String(item.id) !== editForm.collection)
+                        .map((item) => {
+                          const id = String(item.id);
+                          const checked = editExtraCollections.includes(id);
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() =>
+                                setEditExtraCollections((current) =>
+                                  current.includes(id)
+                                    ? current.filter((value) => value !== id)
+                                    : [...current, id]
+                                )
+                              }
+                              className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                                checked ? "border-primary bg-primary/10 text-primary" : "border-border"
+                              }`}
+                            >
+                              {checked ? "✓ " : ""}{String(item.name || id)}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
 
                   <label className="text-sm font-bold">Precio normal (€)
                     <input type="number" min="0" step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value || 0) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
@@ -921,12 +1254,132 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   </div>
                 )}
 
-                <label className="block text-sm font-bold">Variantes
-                  <textarea value={editForm.variantsText} onChange={(e) => setEditForm({ ...editForm, variantsText: e.target.value })} rows={4} placeholder={"nombre | precio | stock | SKU"} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
-                </label>
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-black">Variantes</p>
+                      <p className="text-xs text-muted-foreground">Tallas, colores, tamaños, sabores o packs.</p>
+                    </div>
+                    <button type="button" onClick={() => setEditVariants((current) => [...current, makeEditVariant()])} className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground">+ Variante</button>
+                  </div>
+
+                  {editVariants.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Sin variantes</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {editVariants.map((variant, index) => (
+                        <div key={variant.id} className="rounded-xl bg-muted/20 p-3">
+                          <div className="mb-3 flex items-center justify-between">
+                            <span className="text-xs font-black">Variante {index + 1}</span>
+                            <button type="button" onClick={() => setEditVariants((current) => current.filter((item) => item.id !== variant.id))} className="rounded-lg bg-destructive/10 px-2 py-1 text-xs font-black text-destructive">Quitar</button>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <label className="text-xs font-bold">Nombre
+                              <input value={variant.name} onChange={(e) => updateEditVariant(variant.id, { name: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">Precio €
+                              <input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateEditVariant(variant.id, { price: e.target.value })} placeholder="General" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">Stock
+                              <input type="number" min="0" step="1" value={variant.stock} onChange={(e) => updateEditVariant(variant.id, { stock: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold">SKU
+                              <input value={variant.sku} onChange={(e) => updateEditVariant(variant.id, { sku: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                            </label>
+                            <label className="text-xs font-bold sm:col-span-2 lg:col-span-4">Imagen propia
+                              <select value={variant.image} onChange={(e) => updateEditVariant(variant.id, { image: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5">
+                                <option value="">Usar imagen principal</option>
+                                {editImages.map((image, imageIndex) => <option key={`${image}-${imageIndex}`} value={image}>Foto {imageIndex + 1}{imageIndex === 0 ? " · Principal" : ""}</option>)}
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <label className="block text-sm font-bold">Etiquetas
                   <input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="regalo, verano, premium" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                 </label>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="mb-3">
+                    <p className="font-black">Completa tu compra</p>
+                    <p className="text-xs text-muted-foreground">Elige hasta 8 productos relacionados. Si no eliges ninguno, Herencia seguirá recomendando automáticamente.</p>
+                  </div>
+
+                  <input
+                    value={relatedSearch}
+                    onChange={(e) => setRelatedSearch(e.target.value)}
+                    placeholder="Buscar producto relacionado…"
+                    className="mb-3 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                  />
+
+                  {editRelatedIds.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {editRelatedIds.map((id) => {
+                        const related = products.find((item) => String(item.id) === id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setEditRelatedIds((current) => current.filter((item) => item !== id))}
+                            className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-black text-primary"
+                          >
+                            {related?.name || id} ×
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {products
+                      .filter((item) => String(item.id) !== String(editingProduct.id))
+                      .filter((item) => {
+                        const query = relatedSearch.trim().toLowerCase();
+                        if (!query) return true;
+                        return [item.name, item.sku, item.category]
+                          .filter(Boolean)
+                          .join(" ")
+                          .toLowerCase()
+                          .includes(query);
+                      })
+                      .slice(0, 20)
+                      .map((item) => {
+                        const id = String(item.id);
+                        const checked = editRelatedIds.includes(id);
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() =>
+                              setEditRelatedIds((current) => {
+                                if (current.includes(id)) return current.filter((value) => value !== id);
+                                if (current.length >= 8) {
+                                  toast.error("Puedes elegir hasta 8 productos relacionados");
+                                  return current;
+                                }
+                                return [...current, id];
+                              })
+                            }
+                            className={`flex items-center gap-3 rounded-xl border p-3 text-left ${
+                              checked ? "border-primary bg-primary/5" : "border-border bg-background"
+                            }`}
+                          >
+                            <div className="h-10 w-10 overflow-hidden rounded-lg bg-muted">
+                              {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" /> : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-black">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">€{Number(item.salePrice || item.price || 0).toFixed(2)}</p>
+                            </div>
+                            <input type="checkbox" readOnly checked={checked} />
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <label className="text-sm font-bold">Título SEO
