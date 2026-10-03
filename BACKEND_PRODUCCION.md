@@ -1,77 +1,91 @@
-# Backend real para Herencia Market
+# Backend de producción — Herencia Market
 
-Este paquete elimina el uso de almacenamiento crítico en el navegador y mueve carrito, pedidos, configuración admin, claves de IA y pagos a un backend Express conectado a Supabase.
+## Topología actual
 
-## Qué se cambió
+El navegador utiliza rutas `/api/*` del mismo origen. Vercel las reenvía al backend de Railway. No es necesario que el frontend conozca secretos ni claves privadas.
 
-- Se añadió `backend/server.js` como API real.
-- Se añadió `src/app/lib/backendStorage.ts` para que el frontend lea y guarde contra backend.
-- Se añadió `supabase/migrations/001_backend_real.sql` con tablas para configuración, pedidos y productos admin.
-- Stripe usa `STRIPE_SECRET_KEY` solo en backend.
-- La IA usa la clave guardada en backend y ya no llama a OpenAI/Groq directamente desde el navegador.
-- Los pedidos manuales, Bizum y Stripe se guardan en base de datos.
-- El panel admin lee los pedidos desde backend.
+Railway ejecuta el gateway híbrido de Herencia:
+- Neon es la base de datos principal.
+- Stripe gestiona los pagos.
+- Cloudflare R2 almacena imágenes y archivos.
+- Resend envía emails transaccionales.
+- Google Maps calcula distancia y precio de reparto.
+- Groq y Gemini alimentan HERENCIA SALES y funciones de IA.
+- Supabase se conserva únicamente para compatibilidad de rutas legacy durante la migración.
 
-## Variables necesarias
+## Variables privadas de Railway
 
-Copia `.env.example` a `.env` y rellena los valores reales.
+Como mínimo:
 
 ```env
-VITE_API_URL=https://herenciapp-market-production.up.railway.app
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
-STRIPE_SECRET_KEY=sk_live_o_sk_test
-STRIPE_WEBHOOK_SECRET=whsec_tu_webhook
-CORS_ORIGIN=https://www.herenciamarket.es,https://herenciamarket.es
-RESEND_API_KEY=re_tu_api_key
-EMAIL_FROM=Herencia Market <email-verificado@tudominio.com>
-ADMIN_ORDER_EMAIL=herenciafloristeria@gmail.com
+NODE_ENV=production
 PORT=3001
+DATABASE_URL=postgresql://...
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PUBLISHABLE_KEY=
+
+RESEND_API_KEY=
+EMAIL_FROM=
+STORE_EMAIL=
+
+GOOGLE_MAPS_API_KEY=
+STORE_ADDRESS=
+SHIPPING_BASE_PRICE=5
+SHIPPING_STEP_KM=3
+SHIPPING_STEP_PRICE=3
+
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+GEMINI_API_KEY=
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_PUBLIC_URL=
 ```
 
-La `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY` y `RESEND_API_KEY` nunca deben ponerse en Vercel como variables públicas del frontend. Deben estar solo en el servicio backend.
+Las variables `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DATABASE_URL`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `RESEND_API_KEY` y credenciales R2 **nunca** deben publicarse como variables `VITE_*`.
 
-## Supabase
+## Stripe
 
-Ejecuta el SQL de `supabase/migrations/001_backend_real.sql` en el SQL editor de Supabase.
+El webhook de producción debe apuntar a:
 
-## Desarrollo
-
-```bash
-npm install
-npm run dev:backend
-npm run dev
-```
-
-También puedes arrancar todo junto con:
-
-```bash
-npm run dev:full
-```
-
-## Producción
-
-El frontend puede ir en Vercel, Netlify o similar.
-
-El backend debe ir en Render, Railway, Fly.io, VPS o cualquier servicio Node que permita variables privadas.
-
-Después de desplegar el backend, pon en el frontend:
-
-```env
-VITE_API_URL=https://herenciapp-market-production.up.railway.app
-```
-
-## Stripe real
-
-Configura en Stripe un webhook hacia:
-
-```txt
+```text
 https://herenciapp-market-production.up.railway.app/api/stripe/webhook
 ```
 
-Evento necesario:
+Como mínimo debe procesar `payment_intent.succeeded`. El backend valida precio, cupón, stock, dirección y coste de reparto antes de crear el PaymentIntent.
 
-```txt
-payment_intent.succeeded
-```
+## Reparto
 
+Herencia Market funciona únicamente con **entrega a domicilio**. `STORE_ADDRESS` es el origen privado usado para calcular rutas; no representa un establecimiento abierto al público y no debe mostrarse en la web.
+
+El precio del reparto se vuelve a calcular en servidor. El navegador no es la fuente autoritativa del coste.
+
+## Inventario
+
+Commerce/Neon es la fuente autoritativa del catálogo y stock vendible. El TPV, checkout, HERENCIA SALES y herramientas de inventario deben leer esa fuente. Las ubicaciones internas sirven para distribuir existencias entre almacén, preparación o vehículo.
+
+## Diagnóstico previo a ventas
+
+Desde Administración → Diagnóstico comprueba:
+- Railway/API y Neon.
+- sesión admin.
+- catálogo vendible.
+- Stripe + webhook.
+- datos fiscales TPV.
+- R2 con lectura/escritura.
+- Resend.
+- Google Maps.
+- HERENCIA SALES / IA.
+- pedidos.
+
+Los smoke tests de email y Maps no crean pedidos ni realizan cargos.
