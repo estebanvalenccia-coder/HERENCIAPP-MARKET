@@ -434,10 +434,11 @@ export function Checkout() {
               },
             }}
             onCancel={() => setShowStripe(false)}
-            onSuccess={() => {
+            onSuccess={({ orderId, paymentIntentId, status }) => {
               if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
-              toast.success("Pago realizado correctamente 🌿");
-              navigate("/");
+              if (status === "succeeded") toast.success("Pago realizado correctamente 🌿");
+              else toast.info("Pago en proceso. No vuelvas a pagar este pedido.");
+              navigate(`/pedido-confirmado?orderId=${encodeURIComponent(orderId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}&status=${encodeURIComponent(status)}`);
             }}
           />
         )}

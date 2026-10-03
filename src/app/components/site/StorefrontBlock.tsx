@@ -131,6 +131,7 @@ export function StorefrontBlock({
         style={{
           ...sectionStyle(block),
           minHeight: `${Math.max(360, Number(block.design.minHeight || (preview ? 460 : 650)))}px`,
+          borderRadius: `${Math.max(0, Number(block.design.radius || 0))}px`,
         }}
       >
         {image && (
@@ -190,7 +191,10 @@ export function StorefrontBlock({
               {block.data.description}
             </p>
           )}
-          <div className="mt-7 flex flex-wrap gap-3">
+          <div
+            className="mt-7 flex flex-wrap"
+            style={{ gap: `${Math.max(0, Number(block.design.gap || 0))}px` }}
+          >
             {block.data?.primaryButton?.label && (
               <SmartLink
                 link={block.data.primaryButton}
@@ -309,7 +313,16 @@ export function StorefrontBlock({
     const image = block.data?.imageUrl || ctaFallback;
     const overlay = Math.max(0, Math.min(90, Number(block.design.overlay || 0))) / 100;
     return (
-      <section className={`relative overflow-hidden ${hiddenMobileClass}`} style={sectionStyle(block)}>
+      <section
+        className={`relative overflow-hidden ${hiddenMobileClass}`}
+        style={{
+          ...sectionStyle(block),
+          minHeight: Number(block.design.minHeight || 0) > 0
+            ? `${Math.max(0, Number(block.design.minHeight || 0))}px`
+            : undefined,
+          borderRadius: `${Math.max(0, Number(block.design.radius || 0))}px`,
+        }}
+      >
         {image && (
           <img
             src={image}
