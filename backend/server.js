@@ -6230,7 +6230,7 @@ async function restockOnlineOrderInventory(order) {
     return { skipped: true };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts({ includeArchived: true });
   const quantities = new Map();
 
   for (const item of Array.isArray(order.items) ? order.items : []) {
