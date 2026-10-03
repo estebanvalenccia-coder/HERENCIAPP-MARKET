@@ -44,8 +44,8 @@ function statusLabel(value) {
   return labels[String(value || "").toLowerCase()] || value || "Pendiente";
 }
 
-function deliveryLabel(value) {
-  return String(value || "").toLowerCase() === "recogida" ? "Recogida en tienda" : "Envío a domicilio";
+function deliveryLabel() {
+  return "Envío a domicilio";
 }
 
 function renderItems(items) {
@@ -88,9 +88,7 @@ export function renderOrderEmailPro(order, recipientType = "customer") {
   const subtitle = isAdmin
     ? `Se ha recibido una compra de ${escapeHtml(o.customerName)}. Revisa los datos para preparar el pedido.`
     : `Hola ${escapeHtml(o.customerName)}, hemos recibido tu compra correctamente. Aquí tienes el resumen.`;
-  const deliveryText = o.deliveryMethod === "recogida"
-    ? "Tu pedido será preparado para recogida en tienda. Te avisaremos cuando esté listo."
-    : "Tu pedido será preparado para envío a domicilio. Te avisaremos cuando salga para entrega.";
+  const deliveryText = "Tu pedido será preparado para envío a domicilio. Te avisaremos cuando salga para entrega.";
 
   return `<!doctype html>
 <html lang="es">
