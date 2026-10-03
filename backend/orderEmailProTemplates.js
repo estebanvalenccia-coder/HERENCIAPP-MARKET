@@ -44,8 +44,12 @@ function statusLabel(value) {
   return labels[String(value || "").toLowerCase()] || value || "Pendiente";
 }
 
-function deliveryLabel() {
-  return "Envío a domicilio";
+function deliveryLabel(value) {
+  const method = String(value || "").toLowerCase();
+  if (method === "envio") return "Envío a domicilio";
+  if (method === "consulta-floristeria") return "Entrega por coordinar";
+  if (method === "mostrador") return "Venta TPV / entrega gestionada";
+  return "Entrega por coordinar";
 }
 
 function renderItems(items) {
