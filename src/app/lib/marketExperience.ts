@@ -20,7 +20,7 @@ export type MarketPromo = {
 };
 
 export type MarketSalesAction = {
-  id: "bouquet" | "plant" | "photo" | "gift" | "surprise";
+  id: "bouquet" | "plant" | "sweet" | "gardening" | "seeds" | "soil" | "decor" | "fashion" | "services" | "photo" | "gift" | "surprise";
   label: string;
   prompt: string;
 };
@@ -229,11 +229,18 @@ export const defaultMarketExperience: MarketExperienceContent = {
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
     helperText: "Solo compras, personalización y productos de Herencia.",
     quickActions: [
-      { id: "bouquet", label: "Crear un ramo", prompt: "Quiero crear un ramo personalizado." },
-      { id: "plant", label: "Encontrar una planta", prompt: "Quiero encontrar una planta para comprar." },
+      { id: "bouquet", label: "Crear un ramo", prompt: "Quiero crear un ramo personalizado con las flores reales disponibles." },
+      { id: "plant", label: "Plantas", prompt: "Muéstrame plantas disponibles para comprar." },
+      { id: "sweet", label: "Dulces", prompt: "Muéstrame dulces, tartas, chocolates, galletas y cajas regalo disponibles." },
+      { id: "gardening", label: "Jardinería", prompt: "Muéstrame productos de jardinería disponibles: macetas, herramientas, riego, fertilizantes y accesorios." },
+      { id: "seeds", label: "Semillas", prompt: "Muéstrame semillas disponibles para comprar." },
+      { id: "soil", label: "Tierra y sustratos", prompt: "Muéstrame tierra, sustratos, humus, compost y productos relacionados disponibles." },
+      { id: "decor", label: "Decoración", prompt: "Muéstrame productos de decoración disponibles para comprar." },
+      { id: "fashion", label: "Moda", prompt: "Muéstrame productos de moda disponibles, incluyendo tallas, colores y variantes." },
+      { id: "services", label: "Servicios", prompt: "Muéstrame los servicios de Herencia que puedo contratar." },
       { id: "photo", label: "Buscar por foto", prompt: "" },
-      { id: "gift", label: "Buscar un regalo", prompt: "Quiero encontrar un regalo." },
-      { id: "surprise", label: "Sorpréndeme", prompt: "Sorpréndeme con algo que pueda comprar en Herencia." },
+      { id: "gift", label: "Buscar un regalo", prompt: "Quiero encontrar un regalo usando productos reales disponibles." },
+      { id: "surprise", label: "Sorpréndeme", prompt: "Sorpréndeme con algo real que pueda comprar ahora en Herencia." },
     ],
   },
 };
@@ -251,6 +258,21 @@ function mergeObject<T extends Record<string, any>>(base: T, incoming: unknown):
 function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown): T[] {
   if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(base));
   return incoming.map((item, index) => ({ ...(base[index] || {}), ...(item || {}) })) as T[];
+}
+
+function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): MarketSalesAction[] {
+  if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(base));
+  const incomingById = new Map(
+    incoming
+      .filter((item: any) => item && typeof item.id === "string")
+      .map((item: any) => [item.id, item])
+  );
+  const baseIds = new Set(base.map((item) => item.id));
+  const merged = base.map((item) => ({ ...item, ...(incomingById.get(item.id) || {}) })) as MarketSalesAction[];
+  const customExtras = incoming.filter(
+    (item: any) => item && typeof item.id === "string" && !baseIds.has(item.id)
+  ) as MarketSalesAction[];
+  return [...merged, ...customExtras];
 }
 
 export function getMarketExperience(site: SiteContent): MarketExperienceContent {
@@ -291,7 +313,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     sales: {
       ...defaultMarketExperience.sales,
       ...salesIncoming,
-      quickActions: mergeList(defaultMarketExperience.sales.quickActions, salesIncoming.quickActions),
+      quickActions: mergeSalesActions(defaultMarketExperience.sales.quickActions, salesIncoming.quickActions),
     },
   };
 }
