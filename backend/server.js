@@ -302,9 +302,7 @@ function requireAdmin(req, res, next) {
 }
 
 function cookieOptions(maxAgeSeconds) {
-  return `HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=${
-    isProduction ? "None" : "Lax"
-  }${isProduction ? "; Secure" : ""}`;
+  return `HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${isProduction ? "; Secure" : ""}`;
 }
 
 function getVisitorId(req, res) {
