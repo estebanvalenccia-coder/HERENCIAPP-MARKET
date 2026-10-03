@@ -186,7 +186,7 @@ async function generateImageWithGemini(prompt) {
   }
 
   const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -285,7 +285,15 @@ async function safeAIBouquetHandler(req, res) {
     imageGeneratedByAi = true;
     source = source === "fallback" ? imageResult.source : `${source}+${imageResult.source}`;
   } else {
-    console.warn("[AI Bouquet] Usando imagen de catálogo porque no hay proveedor IA disponible");
+    const error = warnings[warnings.length - 1] || "No se pudo generar la imagen con Gemini";
+    return res.status(502).json({
+      error: "No se pudo generar la imagen del ramo con IA",
+      detail: error,
+      proposal,
+      imageGeneratedByAi: false,
+      source: "image-generation-error",
+      warnings,
+    });
   }
 
   res.json({
