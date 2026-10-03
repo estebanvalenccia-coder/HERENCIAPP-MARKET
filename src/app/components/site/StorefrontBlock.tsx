@@ -429,7 +429,10 @@ export function StorefrontBlock({
   }
 
   if (block.type === "testimonials") {
-    const items = Array.isArray(block.data?.items) ? block.data.items : [];
+    const items = Array.isArray(block.data?.items)
+      ? block.data.items.filter((item: any) => String(item?.name || "").trim() && String(item?.text || "").trim())
+      : [];
+    if (!items.length) return null;
     return (
       <section className={hiddenMobileClass} style={sectionStyle(block)}>
         <div style={containerStyle(block)}>
