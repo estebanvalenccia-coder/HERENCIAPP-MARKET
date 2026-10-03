@@ -22,10 +22,27 @@ function money(value: unknown) {
 
 function addToCart(product: any) {
   try {
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    const variant = variants.length
+      ? variants.find((item: any) => product.trackInventory === false || Number(item?.stock || 0) > 0) || null
+      : null;
+    if (variants.length && !variant) return toast.error("Este producto está agotado");
+
+    const tracked = product.trackInventory !== false;
+    const stock = tracked ? Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0))) : Number.POSITIVE_INFINITY;
+    const selectedVariant = variant ? String(variant?.name || variant) : "";
+    const price = Number(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price || 0));
+    if (tracked && stock <= 0) return toast.error("Este producto está agotado");
+    if (!Number.isFinite(price) || price <= 0) return toast.error("Este producto no tiene un precio válido");
+
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const existing = cart.find((item: any) => String(item.id) === String(product.id));
-    if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-    else cart.push({ ...product, quantity: 1 });
+    const lineKey = `${product.id}::${selectedVariant || "base"}::`;
+    const existing = cart.find((item: any) => item.lineKey === lineKey);
+    const nextQuantity = Number(existing?.quantity || 0) + 1;
+    if (tracked && nextQuantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
+
+    if (existing) existing.quantity = nextQuantity;
+    else cart.push({ ...product, price, quantity: 1, lineKey, selectedVariant: selectedVariant || undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
     toast.success(`${product.name} añadido al carrito`);
