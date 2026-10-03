@@ -151,3 +151,10 @@ test("el email interno no se fuerza desde el código", async () => {
   assert.doesNotMatch(emailPatch, /process\.env\.ADMIN_ORDER_EMAIL\s*=\s*["']/);
   assert.doesNotMatch(emailPatch, /herenciafloristeria@gmail\.com/);
 });
+
+
+test("la firma de sesión admin usa comparación timing-safe", async () => {
+  const server = await read("backend/server.js");
+  assert.match(server, /timingSafeEqual/);
+  assert.doesNotMatch(server, /signature !== sign\(payload\)/);
+});
