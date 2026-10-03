@@ -409,6 +409,13 @@ export const backendApi = {
     return request<{ authenticated: boolean }>("/api/admin/session");
   },
 
+  async sendAdminSmokeEmail(email = "") {
+    return request<{ ok: boolean; providerId?: string | null }>("/api/admin/smoke/email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
   async siteMediaStatus() {
     return request<{
       provider: "cloudflare_r2" | "legacy_supabase";
