@@ -629,6 +629,11 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
 
     const marketExperience = (next as SiteContent & { marketExperience?: any }).marketExperience;
     if (marketExperience?.home) {
+      marketExperience.home.kicker = String(hero.data?.eyebrow || marketExperience.home.kicker || "");
+      marketExperience.home.description = String(hero.data?.description || marketExperience.home.description || "");
+      marketExperience.home.heroImageUrl = String(hero.data?.imageUrl || marketExperience.home.heroImageUrl || "");
+      const heading = String(hero.data?.heading || "").trim();
+      if (heading) marketExperience.home.title = heading;
       marketExperience.home.heroOverlayColor = String(hero.design?.overlayColor || "#102b20");
       marketExperience.home.heroOverlayOpacity = Math.max(0, Math.min(100, Number(hero.design?.overlay ?? 90)));
       marketExperience.home.heroOverlayWidth = Math.max(25, Math.min(100, Number(hero.design?.overlayWidth ?? 72)));
