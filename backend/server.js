@@ -1320,6 +1320,26 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
 });
 
+app.post("/api/admin/smoke/email", requireAdmin, async (req, res) => {
+  try {
+    const recipient = String(req.body?.email || process.env.STORE_EMAIL || "").trim();
+    if (!isValidEmail(recipient)) {
+      return res.status(400).json({ error: "Configura un email de tienda válido o indica uno para la prueba" });
+    }
+    const result = await sendResendEmail({
+      to: recipient,
+      subject: "Herencia Market · prueba de email transaccional",
+      html: `<div style="font-family:Arial,sans-serif;padding:24px"><h1>Herencia Market</h1><p>La prueba de email transaccional se ha enviado correctamente desde el backend de producción.</p><p style="color:#666">Fecha: ${new Date().toISOString()}</p></div>`,
+    });
+    if (result?.skipped) {
+      return res.status(503).json({ error: result.reason || "El proveedor de email no está disponible" });
+    }
+    return res.json({ ok: true, providerId: result?.id || result?.data?.id || null });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "No se pudo enviar el email de prueba" });
+  }
+});
+
 app.get("/api/ready", async (_req, res) => {
   try {
     const database = hasNeon() ? await neonReady() : Boolean(supabase);
