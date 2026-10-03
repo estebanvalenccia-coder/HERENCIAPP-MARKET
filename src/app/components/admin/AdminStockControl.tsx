@@ -73,14 +73,34 @@ export function AdminStockControl() {
     if (!rows.length) return;
     setSaving(true);
     try {
-      await Promise.all(
-        rows.map((product) =>
-          backendApi.updateCommerceProduct(product.id, {
-            stock: Math.max(0, Math.floor(Number(drafts[String(product.id)] ?? 0))),
-            trackInventory: product.trackInventory !== false,
-          })
-        )
-      );
+      const operationsResult = await backendApi.getPosOperations().catch(() => ({ operations: {} as any }));
+      const operations = operationsResult.operations || {};
+      const locations = Array.isArray(operations.inventoryLocations) ? operations.inventoryLocations.filter((item: any) => item?.active !== false) : [];
+      let primaryLocation = locations[0];
+
+      if (!primaryLocation) {
+        const created = await backendApi.createInventoryLocation("Almacén principal");
+        primaryLocation = created.location;
+      }
+
+      for (const product of rows) {
+        const stock = Math.max(0, Math.floor(Number(drafts[String(product.id)] ?? 0)));
+        await backendApi.updateCommerceProduct(product.id, {
+          stock,
+          trackInventory: product.trackInventory !== false,
+        });
+
+        const existingByLocation = operations.inventoryLocationStock?.[String(product.id)] || {};
+        const hasLocationBreakdown = Object.keys(existingByLocation).length > 0;
+        if (!hasLocationBreakdown && product.trackInventory !== false && primaryLocation?.id) {
+          await backendApi.setInventoryLocationStock({
+            productId: String(product.id),
+            locationId: String(primaryLocation.id),
+            stock,
+          });
+        }
+      }
+
       toast.success(rows.length === 1 ? "Stock actualizado" : `${rows.length} existencias actualizadas`);
       await load();
       window.dispatchEvent(new Event("backend-storage"));
