@@ -37,6 +37,16 @@ export function Products() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [displayProducts, setDisplayProducts] = useState<any[]>(fallbackProducts);
+  const [commerceCollections, setCommerceCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item, index) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      status: "active",
+      sortOrder: (index + 1) * 10,
+      metadata: { categories: item.categories },
+    }))
+  );
   const [selectedCollection, setSelectedCollection] = useState("todos");
   const [selectedCategory, setSelectedCategory] = useState("todos");
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,12 +103,21 @@ export function Products() {
 
     async function loadCatalog() {
       try {
-        const result = await backendApi.listCommerceProducts();
+        const [productResult, collectionResult] = await Promise.all([
+          backendApi.listCommerceProducts(),
+          backendApi.listCommerceCollections(),
+        ]);
         if (cancelled) return;
-        const rows = Array.isArray(result.products)
-          ? result.products.filter((product: any) => product.status === "active" || product.active === true)
+        const rows = Array.isArray(productResult.products)
+          ? productResult.products.filter((product: any) => product.status === "active" || product.active === true)
+          : [];
+        const collectionRows = Array.isArray(collectionResult.collections)
+          ? collectionResult.collections
+              .filter((collection: any) => collection.status === "active")
+              .sort((a: any, b: any) => Number(a.sortOrder ?? a.sort_order ?? 0) - Number(b.sortOrder ?? b.sort_order ?? 0))
           : [];
         setDisplayProducts(rows.length ? rows : fallbackProducts);
+        if (collectionRows.length) setCommerceCollections(collectionRows);
         if (rows.length) backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
         if (cancelled) return;
@@ -129,16 +148,32 @@ export function Products() {
     window.addEventListener("storage", refreshLocal);
     window.addEventListener("backend-storage", refreshLocal);
     window.addEventListener("commerce-products-changed", refreshCatalog);
+    window.addEventListener("commerce-collections-changed", refreshCatalog);
     return () => {
       cancelled = true;
       window.removeEventListener("storage", refreshLocal);
       window.removeEventListener("backend-storage", refreshLocal);
       window.removeEventListener("commerce-products-changed", refreshCatalog);
+      window.removeEventListener("commerce-collections-changed", refreshCatalog);
     };
   }, []);
 
-  const selectedDefinition =
-    selectedCollection === "todos" ? null : getCommerceCollection(selectedCollection);
+  const selectedDefinition = useMemo(() => {
+    if (selectedCollection === "todos") return null;
+    const dynamic = commerceCollections.find((item) => String(item.id) === selectedCollection);
+    if (dynamic) {
+      const fallback = COMMERCE_COLLECTIONS.find((item) => item.id === selectedCollection);
+      return {
+        id: selectedCollection,
+        name: dynamic.name || fallback?.name || selectedCollection,
+        description: dynamic.description || fallback?.description || "",
+        categories: Array.isArray(dynamic.metadata?.categories)
+          ? dynamic.metadata.categories
+          : fallback?.categories || [],
+      };
+    }
+    return getCommerceCollection(selectedCollection);
+  }, [selectedCollection, commerceCollections]);
   const categoryOptions = selectedDefinition?.categories || [];
   const plantFilters = selectedDefinition ? isPlantLikeCollection(selectedDefinition.id) : false;
 
@@ -366,8 +401,8 @@ export function Products() {
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Colecciones</p>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => setSelectedCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
-                {COMMERCE_COLLECTIONS.map((item) => (
-                  <button key={item.id} onClick={() => setSelectedCollection(item.id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === item.id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
+                {commerceCollections.map((item) => (
+                  <button key={String(item.id)} onClick={() => setSelectedCollection(String(item.id))} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === String(item.id) ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
                     {item.name}
                   </button>
                 ))}
