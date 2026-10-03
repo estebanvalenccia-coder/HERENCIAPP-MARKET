@@ -1356,13 +1356,12 @@ app.get("/api/ready", async (_req, res) => {
         process.env.R2_BUCKET_NAME &&
         process.env.R2_PUBLIC_URL
       ),
-      maps: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+      maps: Boolean(process.env.GOOGLE_MAPS_API_KEY),
       salesAi: Boolean(process.env.GROQ_API_KEY),
       imageAi: Boolean(
         process.env.GEMINI_API_KEY ||
         process.env.GOOGLE_API_KEY ||
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-        process.env.VITE_GEMINI_API_KEY
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY
       ),
       commerceCore: true,
     });
@@ -1427,7 +1426,6 @@ function serverGeminiKey() {
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
     ""
   );
 }
