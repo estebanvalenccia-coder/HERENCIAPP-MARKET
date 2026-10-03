@@ -77,6 +77,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
   announcement: "Envíos en Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada",
   navigation: [
     { label: "Inicio", href: "/" },
+    { label: "Plantas", href: "/productos?coleccion=plantas" },
     { label: "Tienda", href: "/productos" },
     { label: "Servicios", href: "/servicios" },
     { label: "Dulce", href: "/dulce" },
@@ -260,6 +261,20 @@ function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown):
   return incoming.map((item, index) => ({ ...(base[index] || {}), ...(item || {}) })) as T[];
 }
 
+function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
+  const merged = mergeList(base, incoming);
+  const hasPlants = merged.some((item) => {
+    const label = String(item?.label || "").toLowerCase();
+    const href = String(item?.href || "").toLowerCase();
+    return label === "plantas" || href.includes("coleccion=plantas");
+  });
+  if (hasPlants) return merged;
+  const plants: SiteLink = { label: "Plantas", href: "/productos?coleccion=plantas" };
+  const startIndex = merged.findIndex((item) => String(item?.href || "") === "/");
+  if (startIndex >= 0) return [...merged.slice(0, startIndex + 1), plants, ...merged.slice(startIndex + 1)];
+  return [plants, ...merged];
+}
+
 function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): MarketSalesAction[] {
   if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(base));
   const incomingById = new Map(
@@ -294,7 +309,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     ...incoming,
     locationLabel: String(incoming.locationLabel || defaultMarketExperience.locationLabel),
     announcement: String(incoming.announcement || defaultMarketExperience.announcement),
-    navigation: mergeList(defaultMarketExperience.navigation, incoming.navigation),
+    navigation: mergeNavigation(defaultMarketExperience.navigation, incoming.navigation),
     home: {
       ...defaultMarketExperience.home,
       ...homeIncoming,
