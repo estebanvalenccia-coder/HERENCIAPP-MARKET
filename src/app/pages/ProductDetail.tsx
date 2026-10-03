@@ -5,7 +5,6 @@ import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sp
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
-import { products as fallbackProducts } from "../data/products";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 
 export function ProductDetail() {
@@ -53,7 +52,7 @@ export function ProductDetail() {
         const rows = Array.isArray(catalog.products)
           ? catalog.products.filter((item: any) => item.status === "active" || item.active === true)
           : [];
-        setAllProducts(rows.length ? rows : fallbackProducts);
+        setAllProducts(rows);
 
         const found = detail.product || rows.find((item: any) => String(item.id) === String(id));
         setProduct(found || null);
@@ -67,17 +66,16 @@ export function ProductDetail() {
       } catch {
         try {
           const parsed = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-          const rows = Array.isArray(parsed) && parsed.length
-            ? parsed.filter((item: any) => item.status === "active" || item.active !== false)
-            : fallbackProducts;
+          const rows = Array.isArray(parsed)
+            ? parsed.filter((item: any) => (item.status === "active" || item.active !== false) && !item.deletedAt)
+            : [];
           if (cancelled) return;
           setAllProducts(rows);
           const found = rows.find((item: any) => String(item.id) === String(id));
           setProduct(found || null);
         } catch {
-          const found = fallbackProducts.find((item: any) => String(item.id) === String(id));
-          setAllProducts(fallbackProducts);
-          setProduct(found || null);
+          setAllProducts([]);
+          setProduct(null);
         }
       }
 
