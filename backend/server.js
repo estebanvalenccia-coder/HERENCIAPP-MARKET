@@ -4118,12 +4118,34 @@ app.patch("/api/admin/inventory/lots/:id", requireAdmin, async (req, res) => {
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+    const defaults = {
+      giftCards: [],
+      floristOrders: [],
+      suppliers: [],
+      purchases: [],
+      staff: [],
+      staffShifts: [],
+      loyalty: {},
+      quotes: [],
+      inventoryAdjustments: [],
+      inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }],
+      inventoryLocationStock: {},
+      inventoryTransfers: [],
+      registers: [{ id: "caja-01", name: "Caja 01", active: true }],
+    };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
     const operations = { ...defaults, ...(saved || {}) };
     if (!Array.isArray(operations.registers) || !operations.registers.length) {
       operations.registers = defaults.registers;
     }
+    if (!Array.isArray(operations.inventoryLocations) || !operations.inventoryLocations.length) {
+      operations.inventoryLocations = defaults.inventoryLocations;
+    }
+    operations.inventoryLocations = operations.inventoryLocations.map((location) =>
+      String(location?.id || "") === "tienda" && String(location?.name || "").toLowerCase() === "tienda"
+        ? { ...location, name: "Almacén principal" }
+        : location
+    );
     res.json({ operations: sanitizePosOperations(operations) });
   } catch (error) {
     res.status(500).json({ error: error.message });
