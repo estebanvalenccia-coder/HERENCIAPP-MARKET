@@ -96,7 +96,7 @@ export function Home() {
       (a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured))
     );
     return rows.filter((item) => {
-      if (!item?.image || Number(item?.salePrice || item?.price || 0) <= 0) return false;
+      if (!item?.image || Number(item?.onSale && item?.salePrice ? item.salePrice : item?.price || 0) <= 0) return false;
       if (item?.trackInventory === false) return true;
       if (Number(item?.stock || 0) > 0) return true;
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
@@ -370,7 +370,7 @@ export function Home() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {featured.map((product) => {
-            const price = Number(product.salePrice || product.price || 0);
+            const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
               <article
                 key={product.id}
