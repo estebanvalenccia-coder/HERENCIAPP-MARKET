@@ -434,10 +434,10 @@ export function Checkout() {
               },
             }}
             onCancel={() => setShowStripe(false)}
-            onSuccess={() => {
+            onSuccess={({ orderId, status }) => {
               if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
               toast.success("Pago realizado correctamente 🌿");
-              navigate("/");
+              navigate(`/pedido-confirmado?orderId=${encodeURIComponent(orderId)}&status=${encodeURIComponent(status)}`);
             }}
           />
         )}
