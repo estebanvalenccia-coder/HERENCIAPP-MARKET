@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
-  listNeonOrders, patchNeonOrder,
+  listNeonOrders, patchNeonOrder, getNeonServiceAvailability,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct
@@ -233,6 +233,32 @@ const server=http.createServer(async(req,res)=>{try{
     await bootstrapNeonCommerceFromLegacy();
     const products=await listNeonCommerceProducts({collection,includeArchived});
     return json(res,200,{products,source:"neon"});
+  }
+
+  const serviceAvailabilityMatch=path.match(/^\/api\/commerce\/services\/([^/]+)\/availability$/);
+  if(serviceAvailabilityMatch&&req.method==="GET"){
+    const url=new URL(req.url,"http://localhost");
+    const date=String(url.searchParams.get("date")||"").trim();
+    if(!date)return json(res,400,{error:"Fecha obligatoria"});
+    const productId=decodeURIComponent(serviceAvailabilityMatch[1]);
+    const product=await getNeonCommerceProduct(productId);
+    if(!product)return json(res,404,{error:"Servicio no encontrado"});
+    const capacity=Math.max(1,Number(product.serviceCapacityPerSlot||1));
+    const slots=Array.isArray(product.serviceTimeSlots)&&product.serviceTimeSlots.length
+      ? product.serviceTimeSlots.map(String)
+      : ["09:00","11:00","13:00","16:00","18:00"];
+    const reservations=await getNeonServiceAvailability(productId,date);
+    const reservedBySlot=new Map((reservations||[]).map((row)=>[String(row.slot||""),Number(row.reserved||0)]));
+    return json(res,200,{
+      productId,
+      date,
+      capacity,
+      slots:slots.map((slot)=>{
+        const reserved=Math.max(0,Number(reservedBySlot.get(slot)||0));
+        return {slot,reserved,remaining:Math.max(0,capacity-reserved),available:reserved<capacity};
+      }),
+      source:"neon"
+    });
   }
 
   const commerceProductMatch=path.match(/^\/api\/commerce\/products\/([^/]+)$/);
