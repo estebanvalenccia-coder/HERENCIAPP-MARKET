@@ -441,6 +441,7 @@ const COMMERCE_COLLECTION_IDS = new Set([
 const COMMERCE_COLLECTION_ALIASES = new Map([
   ["planta", "plantas"], ["plantas", "plantas"], ["flores", "plantas"],
   ["plantas-interior", "plantas"], ["plantas-exterior", "plantas"], ["orquideas", "plantas"],
+  ["cactus-suculentas", "plantas"], ["plantas-exoticas", "plantas"],
   ["semilla", "semillas"], ["semillas", "semillas"],
   ["jardineria", "jardineria"],
   ["sustrato", "sustratos"], ["sustratos", "sustratos"], ["tierra-y-sustratos", "sustratos"],
