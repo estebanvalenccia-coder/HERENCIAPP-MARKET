@@ -19,7 +19,7 @@ export function Terms() {
             </h1>
           </motion.div>
           <p className="text-muted-foreground">
-            Última actualización: 10 de abril de 2026
+            Última actualización: 3 de octubre de 2026
           </p>
         </div>
       </div>
@@ -74,15 +74,15 @@ export function Terms() {
               <div>
                 <h3 className="font-semibold mb-2">4.1 Procesamiento de Pedidos</h3>
                 <p className="text-muted-foreground">
-                  Todos los pedidos están sujetos a aceptación y disponibilidad. Nos reservamos el derecho de rechazar
-                  cualquier pedido por cualquier motivo.
+                  Todos los pedidos están sujetos a disponibilidad, validación del pago y capacidad de entrega. Si no
+                  podemos aceptar un pedido, informaremos al cliente y, cuando corresponda, se gestionará el reembolso.
                 </p>
               </div>
               <div>
                 <h3 className="font-semibold mb-2">4.2 Métodos de Pago</h3>
                 <p className="text-muted-foreground">
-                  Aceptamos tarjetas de crédito/débito, transferencias bancarias y efectivo en entrega. Todos los pagos
-                  se procesan de forma segura.
+                  Los métodos de pago disponibles se muestran durante el proceso de compra. Los pagos con tarjeta y
+                  otros métodos electrónicos compatibles se procesan mediante proveedores de pago externos de forma segura.
                 </p>
               </div>
               <div>
@@ -98,7 +98,7 @@ export function Terms() {
             <h2 className="text-2xl font-bold mb-4">5. Envío y Entrega</h2>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
               <li>Los tiempos de entrega son estimados y pueden variar</li>
-              <li>Envío gratuito en pedidos superiores a $50</li>
+              <li>El coste de entrega se calcula según la dirección, distancia y promociones vigentes antes de confirmar el pedido</li>
               <li>Debes proporcionar una dirección de entrega válida</li>
               <li>No somos responsables de entregas fallidas por información incorrecta</li>
               <li>Productos perecederos requieren que alguien esté presente para recibir</li>
@@ -108,15 +108,14 @@ export function Terms() {
           <section>
             <h2 className="text-2xl font-bold mb-4">6. Devoluciones y Reembolsos</h2>
             <p className="text-muted-foreground mb-4">
-              Nuestra política de devoluciones:
+              Las devoluciones, desistimientos, sustituciones y reembolsos se gestionan conforme a la normativa aplicable
+              y a la naturaleza del producto. Los productos perecederos, personalizados o confeccionados por encargo
+              pueden estar sujetos a excepciones legales específicas.
             </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Productos defectuosos: reemplazo gratuito dentro de 48 horas</li>
-              <li>Flores y plantas frescas: garantía de frescura de 7 días</li>
-              <li>Productos no perecederos: devolución dentro de 14 días</li>
-              <li>Reembolsos procesados en 5-10 días hábiles</li>
-              <li>Los gastos de envío no son reembolsables (excepto por productos defectuosos)</li>
-            </ul>
+            <p className="text-muted-foreground">
+              Si un pedido llega dañado, incompleto o no se corresponde con lo comprado, contacta con Herencia lo antes
+              posible desde la página de Contacto indicando el número de pedido y, cuando sea útil, fotografías del producto.
+            </p>
           </section>
 
           <section>
@@ -149,8 +148,8 @@ export function Terms() {
           <section>
             <h2 className="text-2xl font-bold mb-4">10. Ley Aplicable</h2>
             <p className="text-muted-foreground">
-              Estos términos se rigen por las leyes aplicables del país/estado donde opera Herencia Floristería.
-              Cualquier disputa será resuelta en los tribunales competentes de dicha jurisdicción.
+              Estos términos se interpretan conforme a la legislación española y a la normativa de protección de
+              consumidores que resulte aplicable. Los derechos imperativos del consumidor no quedan limitados por estos términos.
             </p>
           </section>
 
@@ -160,9 +159,8 @@ export function Terms() {
               Para preguntas sobre estos términos y condiciones, contáctanos:
             </p>
             <p className="text-muted-foreground mt-2">
-              Email: legal@herenciafloristeria.com<br />
-              Teléfono: +1 234 567 8900<br />
-              Dirección: [Tu dirección física]
+              Utiliza los canales de contacto publicados y actualizados en la página de Contacto de Herencia Market.
+              Herencia Market opera con entrega a domicilio y no ofrece recogida en tienda.
             </p>
           </section>
         </motion.div>
