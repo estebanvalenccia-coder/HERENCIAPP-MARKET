@@ -14,6 +14,7 @@ export function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
+  const [selectedImage, setSelectedImage] = useState("");
   const [dedication, setDedication] = useState("");
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [reviews, setReviews] = useState<any[]>([]);
@@ -128,6 +129,18 @@ export function ProductDetail() {
 
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
+  const galleryImages = useMemo(() => {
+    const urls = [
+      selected?.image,
+      product?.image,
+      ...(Array.isArray(product?.images)
+        ? product.images.map((image: any) => typeof image === "string" ? image : image?.url)
+        : []),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(urls));
+  }, [product, selected]);
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
   const trackInventory = product?.trackInventory !== false;
   const stock = trackInventory
@@ -137,6 +150,20 @@ export function ProductDetail() {
   const collection = getCommerceCollection(collectionId);
   const plantLike = product ? isPlantCareProduct(product) : false;
   const serviceProduct = collectionId === "servicios";
+
+  useEffect(() => {
+    if (!galleryImages.length) {
+      setSelectedImage("");
+      return;
+    }
+    if (selected?.image) {
+      setSelectedImage(String(selected.image));
+      return;
+    }
+    setSelectedImage((current) =>
+      current && galleryImages.includes(current) ? current : galleryImages[0]
+    );
+  }, [product?.id, selectedVariant, selected?.image, galleryImages]);
   const relatedProducts = useMemo(() => {
     if (!product) return [];
     const manualIds = Array.isArray(product.relatedProductIds)
@@ -176,14 +203,14 @@ export function ProductDetail() {
       "@context":"https://schema.org","@type":"Product",
       name: product.name,
       description: product.seoDescription || product.description || "",
-      image: [product.image, ...(product.images || [])].filter(Boolean),
+      image: galleryImages,
       sku: selected?.sku || product.sku || undefined,
       brand: product.vendor ? {"@type":"Brand",name:product.vendor} : undefined,
       offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!trackInventory||stock>0)?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
     });
     document.head.appendChild(script);
     return () => document.getElementById(id)?.remove();
-  }, [product, selectedVariant, effectivePrice, stock, trackInventory]);
+  }, [product, selectedVariant, effectivePrice, stock, trackInventory, galleryImages]);
 
   const toggleFavorite = async () => {
     let list: string[] = [];
@@ -299,13 +326,42 @@ export function ProductDetail() {
     <motion.div style={{ opacity, scale }} className="sticky top-0 z-40 bg-card/80 backdrop-blur-lg border-b border-border"><div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-4"><button onClick={() => navigate("/productos")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground"><ArrowLeft className="w-5 h-5" />Volver a productos</button></div></motion.div>
     <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-14">
-        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="relative"><div className="sticky top-24"><div className="aspect-square rounded-3xl overflow-hidden bg-muted shadow-2xl"><img src={product.image} alt={product.name} className="w-full h-full object-cover" /></div>{product.onSale && <div className="absolute top-6 right-6 px-4 py-2 bg-primary text-primary-foreground rounded-full font-bold shadow-lg">¡OFERTA!</div>}</div></motion.div>
+        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="relative">
+          <div className="sticky top-24">
+            <div className="relative aspect-square overflow-hidden rounded-3xl bg-muted shadow-2xl">
+              {selectedImage ? (
+                <img src={selectedImage} alt={product.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="grid h-full place-items-center text-sm text-muted-foreground">Sin imagen</div>
+              )}
+              {product.onSale && <div className="absolute right-6 top-6 rounded-full bg-primary px-4 py-2 font-bold text-primary-foreground shadow-lg">¡OFERTA!</div>}
+            </div>
+
+            {galleryImages.length > 1 && (
+              <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-5">
+                {galleryImages.map((imageUrl, index) => (
+                  <button
+                    key={imageUrl}
+                    type="button"
+                    onClick={() => setSelectedImage(imageUrl)}
+                    className={`aspect-square overflow-hidden rounded-xl border bg-muted transition ${
+                      selectedImage === imageUrl ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50"
+                    }`}
+                    aria-label={`Ver imagen ${index + 1}`}
+                  >
+                    <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
           <div><h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1><p className="text-muted-foreground text-lg">{product.description}</p></div>
           <div className="text-5xl font-bold text-primary">€{effectivePrice.toFixed(2)}</div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
-          {variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => setSelectedVariant(name)} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
+          {variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
           {(product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
           <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button><button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button></div>
