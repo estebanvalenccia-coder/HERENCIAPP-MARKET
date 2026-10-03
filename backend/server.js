@@ -462,8 +462,7 @@ function renderOrderEmail(order, recipientType = "customer") {
         .join("")
     : `<tr><td colspan="2" style="padding:16px 0;color:#8b6b61;">Pedido recibido sin detalle de productos.</td></tr>`;
 
-  const deliveryLabel =
-    normalized.deliveryMethod === "recogida" ? "Recogida en tienda" : "Envío a domicilio";
+  const deliveryLabel = "Envío a domicilio";
 
   const paymentLabel =
     normalized.paymentMethod === "bizum"
@@ -584,12 +583,12 @@ function statusLabel(status) {
     pending_bizum_review: "Revisión de Bizum",
     pending_manual_review: "Revisión manual",
     pending_transfer_review: "Revisión de transferencia",
-    pending_store_confirmation: "Confirmación en tienda",
+    pending_store_confirmation: "Confirmación de Herencia",
     paid: "Pagado",
     confirmed: "Confirmado",
     preparing: "Preparando pedido",
     processing: "Pedido en camino",
-    ready: "Listo para recoger",
+    ready: "Listo para entrega",
     delivered: "Entregado",
     completed: "Completado",
     cancelled: "Cancelado",
@@ -600,14 +599,9 @@ function statusLabel(status) {
 
 function statusMessageForOrder(order) {
   const normalized = normalizeOrder(order);
-  const isPickup = ["recogida", "recoger", "mostrador"].includes(
-    String(normalized.deliveryMethod || "").toLowerCase()
-  );
 
   if (normalized.status === "ready") {
-    return isPickup
-      ? "Tu pedido ya está listo para recoger en tienda. Puedes pasar a buscarlo cuando quieras dentro de nuestro horario."
-      : "Tu pedido ya está listo y preparado para su salida.";
+    return "Tu pedido ya está listo y preparado para su entrega a domicilio.";
   }
 
   if (normalized.status === "processing") {
@@ -3110,14 +3104,44 @@ async function validateCommerceOrderPayload(order = {}) {
     discount = rule.type === "fixed" ? Number(rule.value||0) : subtotal * Number(rule.value||0) / 100;
     discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
   }
-  const shipping = normalizeMoney(order.shipping || 0);
   const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+  const source = String(order?.metadata?.source || "");
+  const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
+
+  if (source === "frontend_checkout" && deliveryMethod !== "envio") {
+    throw new Error("Herencia Market solo ofrece entrega a domicilio");
+  }
+
+  let shipping = normalizeMoney(order.shipping || 0);
+  let shippingQuote = null;
+
+  if (source === "frontend_checkout") {
+    const shippingAddress = order?.metadata?.shippingAddress || {};
+    shippingQuote = await calculateShippingQuote(shippingAddress);
+    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+      throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
+    }
+    shipping = normalizeMoney(shippingQuote.price || 0);
+    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+    if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
+  }
+
   await assertDeliveryAvailability({
-    deliveryMethod: order.deliveryMethod || "envio",
+    deliveryMethod,
     metadata: order.metadata || {},
     suite,
   });
-  return {items:normalizedItems,subtotal,shipping,discount,total:normalizeMoney(subtotal-discount+shipping)};
+
+  return {
+    items: normalizedItems,
+    subtotal,
+    shipping,
+    discount,
+    total: normalizeMoney(subtotal - discount + shipping),
+    deliveryMethod: source === "frontend_checkout" ? "envio" : deliveryMethod,
+    shippingQuote,
+  };
 }
 
 app.post("/api/orders", async (req, res) => {
@@ -3125,7 +3149,26 @@ app.post("/api/orders", async (req, res) => {
   const id = order.id || crypto.randomUUID();
   try {
     const verified = await validateCommerceOrderPayload(order);
-    order = {...order,...verified,metadata:{...(order.metadata||{}),discount:verified.discount,pricingVerifiedAt:new Date().toISOString()}};
+    order = {
+      ...order,
+      ...verified,
+      metadata: {
+        ...(order.metadata || {}),
+        discount: verified.discount,
+        pricingVerifiedAt: new Date().toISOString(),
+        pricingSource: String(order?.metadata?.source || "") === "frontend_checkout"
+          ? "backend_catalog_coupons_and_maps"
+          : "backend_catalog",
+        shippingDistance: verified.shippingQuote
+          ? {
+              distanceKm: verified.shippingQuote.distanceKm,
+              distanceText: verified.shippingQuote.distanceText,
+              durationText: verified.shippingQuote.durationText,
+              destination: verified.shippingQuote.destination,
+            }
+          : order?.metadata?.shippingDistance || null,
+      },
+    };
   } catch (validationError) {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
@@ -5791,6 +5834,11 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       return res.status(400).json({ error: "Email inválido" });
     }
 
+    const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
+    if (normalizedDeliveryMethod !== "envio") {
+      return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
+    }
+
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
     const catalog = parseStoredJson(await readStorageValue("adminProducts"), []);
     const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
@@ -5880,26 +5928,21 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
-    await assertDeliveryAvailability({ deliveryMethod, metadata, suite });
-    const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
+    await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
 
-    let authoritativeShipping = 0;
-    let shippingQuote = null;
-    if (!isPickup) {
-      const shippingAddress = metadata?.shippingAddress || {};
-      shippingQuote = await calculateShippingQuote(shippingAddress);
-      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
-        return res.status(400).json({
-          error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
-          distanceKm: shippingQuote.distanceKm,
-        });
-      }
-      authoritativeShipping = Number(shippingQuote.price || 0);
-      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-      if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
-        authoritativeShipping = 0;
-      }
+    const shippingAddress = metadata?.shippingAddress || {};
+    const shippingQuote = await calculateShippingQuote(shippingAddress);
+    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+      return res.status(400).json({
+        error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
+        distanceKm: shippingQuote.distanceKm,
+      });
+    }
+    let authoritativeShipping = Number(shippingQuote.price || 0);
+    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+    if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
+      authoritativeShipping = 0;
     }
 
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
@@ -5935,7 +5978,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         customer_email: customerEmail || null,
         customer_name: customerName || null,
         payment_method: selectedPaymentMethod,
-        delivery_method: deliveryMethod,
+        delivery_method: normalizedDeliveryMethod,
         status: "payment_pending",
         subtotal: authoritativeSubtotal,
         shipping: authoritativeShipping,
