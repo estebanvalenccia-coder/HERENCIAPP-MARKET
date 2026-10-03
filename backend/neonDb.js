@@ -292,6 +292,28 @@ export async function listNeonOrders({ email = null, statuses = null, requestedD
   return result.rows || [];
 }
 
+export async function getNeonServiceAvailability(productId, date) {
+  if (!neonPool) return [];
+  const id = String(productId || "").trim();
+  const requestedDate = String(date || "").trim();
+  if (!id || !requestedDate) return [];
+
+  const result = await neonPool.query(
+    `select
+       item->'serviceBooking'->>'timeSlot' as slot,
+       coalesce(sum(greatest(1, coalesce((item->>'quantity')::int, 1))), 0)::int as reserved
+     from orders o
+     cross join lateral jsonb_array_elements(coalesce(o.items, '[]'::jsonb)) item
+     where o.status not in ('cancelled','refunded','payment_error','payment_canceled')
+       and item->>'id' = $1
+       and item->'serviceBooking'->>'date' = $2
+       and coalesce(item->'serviceBooking'->>'timeSlot','') <> ''
+     group by 1`,
+    [id, requestedDate]
+  );
+  return result.rows || [];
+}
+
 export async function getNeonOrder(id) {
   if (!neonPool) return null;
   const result = await neonPool.query(
