@@ -3976,7 +3976,7 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
 app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const name = cleanText(req.body?.name, 120);
     if (!name) return res.status(400).json({ error: "La ubicación necesita un nombre" });
@@ -3994,13 +3994,14 @@ app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
 app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const productId = String(req.body?.productId || "").trim();
     const locationId = String(req.body?.locationId || "").trim();
     const stock = Math.max(0, Math.floor(Number(req.body?.stock || 0)));
     if (!productId || !locationId) return res.status(400).json({ error: "Producto y ubicación obligatorios" });
     if (!(current.inventoryLocations || []).some((item) => item.id === locationId && item.active !== false)) return res.status(404).json({ error: "Ubicación no encontrada" });
+
     current.inventoryLocationStock = {
       ...(current.inventoryLocationStock || {}),
       [productId]: {
@@ -4008,8 +4009,26 @@ app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) =
         [locationId]: stock,
       },
     };
+
+    const totalStock = Object.values(current.inventoryLocationStock[productId] || {})
+      .reduce((sum, value) => sum + Math.max(0, Math.floor(Number(value || 0))), 0);
+
+    const products = await loadAuthoritativeProducts({ includeArchived: true });
+    const previousProducts = products.map((product) => ({ ...product }));
+    const nextProducts = products.map((product) =>
+      String(product?.id ?? "") === productId && product?.trackInventory !== false
+        ? { ...product, stock: totalStock }
+        : product
+    );
+
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ stock, operations: sanitizePosOperations(current) });
+    await upsertStorageValue("adminProducts", JSON.stringify(nextProducts));
+    void notifyWaitlistForRestockedProducts(previousProducts, nextProducts)
+      .catch((error) => console.warn("Waitlist location stock notify:", error?.message || error));
+    void evaluateInventoryAutomations(nextProducts)
+      .catch((error) => console.warn("Automations location stock:", error?.message || error));
+
+    res.json({ stock, totalStock, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo actualizar el stock por ubicación" });
   }
@@ -4018,7 +4037,7 @@ app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) =
 app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const productId = String(req.body?.productId || "").trim();
     const from = String(req.body?.from || "").trim();
