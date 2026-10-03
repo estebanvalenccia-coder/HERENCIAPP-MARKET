@@ -22,6 +22,7 @@ import {
   getCommerceCollection,
   isPlantCareProduct,
   primaryCollectionOf,
+  productBelongsToCollection,
   productTypeForCollection,
 } from "../../lib/commerceCatalog";
 
@@ -147,6 +148,10 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyEdit });
+  const [editExtraCollections, setEditExtraCollections] = useState<string[]>([]);
+  const [collectionOptions, setCollectionOptions] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [editRelatedIds, setEditRelatedIds] = useState<string[]>([]);
   const [relatedSearch, setRelatedSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -169,9 +174,16 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   async function loadProducts() {
     try {
       setLoading(true);
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections({ includeArchived: true }),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collections = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections
+        : [];
       setProducts(rows);
+      if (collections.length) setCollectionOptions(collections);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch (error) {
       try {
@@ -196,7 +208,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     return products.filter((product) => {
       const archived = product.status === "archived" || Boolean(product.deletedAt);
       if (showTrash !== archived) return false;
-      if (collectionFilter !== "todos" && primaryCollectionOf(product) !== collectionFilter) return false;
+      if (collectionFilter !== "todos" && !productBelongsToCollection(product, collectionFilter)) return false;
       if (!query) return true;
       return [product.name, product.description, product.sku, product.category, primaryCollectionOf(product)]
         .filter(Boolean)
@@ -538,9 +550,13 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
   function startEdit(product: Product) {
     const collection = primaryCollectionOf(product);
+    const extraCollections = Array.isArray(product.collections)
+      ? product.collections.map(String).filter((id) => id && id !== collection)
+      : [];
     const regularPrice = Number(product.price || 0);
     const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
     setEditingProduct(product);
+    setEditExtraCollections(extraCollections);
     setAiPrompt("");
 
     const gallery = Array.from(new Set([
@@ -605,6 +621,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   function cancelEdit() {
     setEditingProduct(null);
     setEditForm({ ...emptyEdit });
+    setEditExtraCollections([]);
     setEditImages([]);
     setEditVariants([]);
     setEditRelatedIds([]);
@@ -734,7 +751,8 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
         collection: editForm.collection,
-        collections: [editForm.collection],
+        collections: [editForm.collection, ...editExtraCollections]
+          .filter((value, index, rows) => value && rows.indexOf(value) === index),
         category: editForm.category,
         type: productTypeForCollection(editForm.collection),
         status: editForm.status,
@@ -854,7 +872,9 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           className="rounded-xl border border-border bg-background px-4 py-3 font-bold"
         >
           <option value="todos">Todas las colecciones</option>
-          {COMMERCE_COLLECTIONS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          {collectionOptions
+            .filter((item) => String(item.status || "active") !== "archived")
+            .map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name || item.id)}</option>)}
         </select>
       </div>
 
@@ -1142,6 +1162,36 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                       {getCommerceCollection(editForm.collection).categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                     </select>
                   </label>
+
+                  <div className="sm:col-span-2">
+                    <p className="mb-2 text-sm font-bold">También mostrar en otras colecciones</p>
+                    <div className="flex flex-wrap gap-2">
+                      {collectionOptions
+                        .filter((item) => String(item.status || "active") === "active" && String(item.id) !== editForm.collection)
+                        .map((item) => {
+                          const id = String(item.id);
+                          const checked = editExtraCollections.includes(id);
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() =>
+                                setEditExtraCollections((current) =>
+                                  current.includes(id)
+                                    ? current.filter((value) => value !== id)
+                                    : [...current, id]
+                                )
+                              }
+                              className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                                checked ? "border-primary bg-primary/10 text-primary" : "border-border"
+                              }`}
+                            >
+                              {checked ? "✓ " : ""}{String(item.name || id)}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
 
                   <label className="text-sm font-bold">Precio normal (€)
                     <input type="number" min="0" step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value || 0) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
