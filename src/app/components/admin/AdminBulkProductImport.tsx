@@ -12,6 +12,7 @@ import {
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { backendStorage } from "../../lib/backendStorage";
+import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
 
 type TaxonomyOption = {
   department: string;
@@ -364,6 +365,31 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     });
   };
 
+  const loadRealPlantCatalog = () => {
+    const existingNames = new Set(drafts.map((draft) => draft.name.trim().toLowerCase()));
+    const additions = REAL_PLANT_CATALOG_DRAFTS
+      .filter((plant) => !existingNames.has(plant.name.toLowerCase()))
+      .map((plant) => ({
+        tempId: crypto.randomUUID(),
+        fileName: `${plant.slug}.jpg`,
+        image: plant.image,
+        name: plant.name,
+        description: plant.description,
+        department: "Plantas",
+        area: plant.area,
+        family: plant.family,
+        category: plant.category,
+        price: "",
+        active: false,
+        featured: false,
+        aiStatus: "manual" as const,
+        confidence: 1,
+      }));
+
+    setDrafts((current) => [...current, ...additions]);
+    toast.success(`${additions.length} plantas reales añadidas como borradores`);
+  };
+
   const classifyAll = async () => {
     if (!drafts.length) return;
 
@@ -455,6 +481,15 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={loadRealPlantCatalog}
+              disabled={isClassifying}
+              className="inline-flex items-center gap-2 px-4 py-3 border border-primary text-primary rounded-xl hover:bg-primary/5 disabled:opacity-50"
+            >
+              <ImagePlus className="w-4 h-4" />
+              Cargar catálogo real · tanda 1
+            </button>
             <button
               type="button"
               onClick={classifyAll}
