@@ -104,3 +104,15 @@ test("inventario por ubicación no presenta una tienda física por defecto", asy
   assert.match(admin, /Almacén principal/);
   assert.doesNotMatch(admin, /name:"Tienda"/);
 });
+
+
+test("el origen privado de reparto no está hardcodeado", async () => {
+  const maps = await read("backend/fixMapsShipping.js");
+  assert.doesNotMatch(maps, /Riera de Cassoles/i);
+  assert.match(maps, /STORE_ADDRESS/);
+});
+
+test("Administración no muestra confirmar en tienda", async () => {
+  const orders = await read("src/app/components/admin/AdminOrders.tsx");
+  assert.doesNotMatch(orders, /Confirmar en tienda/i);
+});
