@@ -259,10 +259,70 @@ function productStock(product: SalesProduct, variant?: SalesVariant | null) {
 const iconByAction = {
   bouquet: Flower2,
   plant: Leaf,
+  sweet: Gift,
+  gardening: Leaf,
+  seeds: Leaf,
+  soil: Leaf,
+  decor: ImageIcon,
+  fashion: Sparkles,
+  services: MessageCircle,
   photo: Camera,
   gift: Gift,
   surprise: Sparkles,
 } as const;
+
+const actionDescriptions: Record<string, string> = {
+  bouquet: "Flores reales · crea tu ramo",
+  plant: "Encuentra la planta ideal",
+  sweet: "Tartas, chocolates y regalos",
+  gardening: "Macetas, herramientas y riego",
+  seeds: "Cultiva tu propio espacio",
+  soil: "Sustratos, tierra y humus",
+  decor: "Objetos para tu hogar",
+  fashion: "Tallas, colores y personalizados",
+  services: "Jardín, decoración y más",
+  photo: "Identifica y encuentra productos",
+  gift: "Ideas según ocasión y presupuesto",
+  surprise: "Una propuesta especial para ti",
+};
+
+const categoryActionIds = new Set(["plant", "sweet", "gardening", "seeds", "soil", "decor", "fashion", "services"]);
+
+const categoryMatchers: Record<string, RegExp> = {
+  plant: /planta|plantas|monstera|pothos|potos|ficus|cactus|suculenta|orquidea|palmera|bonsai/,
+  sweet: /dulce|dulces|tarta|pastel|brownie|galleta|chocolate|reposteria|postre|caja regalo/,
+  gardening: /jardiner|herramient|maceta|riego|fertiliz|abono|pala|tijera|regadera|accesorio jardin/,
+  seeds: /semilla|semillas|siembra|hortaliza|aromatica/,
+  soil: /sustrat|tierra|humus|compost|corteza|mantillo|turba/,
+  decor: /decor|jarron|cuadro|lampara|vela|ceramica|adorno|hogar/,
+  fashion: /moda|camiseta|sudadera|tote|ropa|textil|bolso|accesorio moda/,
+  services: /servicio|mantenimiento|limpieza|decoracion|diseno floral|jardin|instalacion|presupuesto/,
+};
+
+function normalizedProductSearchText(product: SalesProduct) {
+  return [
+    product.name,
+    product.description,
+    product.category,
+    product.type,
+    ...(product.collections || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function categoryProductIds(actionId: string, catalog: SalesProduct[]) {
+  const matcher = categoryMatchers[actionId];
+  if (!matcher) return [];
+  return catalog
+    .filter((product) => matcher.test(normalizedProductSearchText(product)))
+    .filter((product) => product.trackInventory === false || productStock(product) > 0)
+    .slice(0, 8)
+    .map((product) => String(product.id));
+}
 
 export function SalesChatWidget() {
   const navigate = useNavigate();
@@ -448,6 +508,39 @@ export function SalesChatWidget() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleQuickAction = async (action: { id: string; label: string; prompt: string }) => {
+    if (action.id === "photo") {
+      fileRef.current?.click();
+      return;
+    }
+
+    if (categoryActionIds.has(action.id)) {
+      const ids = categoryProductIds(action.id, catalog);
+      if (ids.length) {
+        const userMessage: ChatMessage = {
+          id: newId(),
+          role: "user",
+          content: action.prompt || `Quiero ver ${action.label.toLowerCase()}.`,
+        };
+        const assistantMessage: ChatMessage = {
+          id: newId(),
+          role: "assistant",
+          content: `Estas son opciones reales de ${action.label.toLowerCase()} disponibles ahora en Herencia. Puedes ver detalles, elegir variantes, añadir al carrito o comprar directamente.`,
+          productIds: ids,
+        };
+        setMessages((prev) => [...prev, userMessage, assistantMessage]);
+        trackSalesEvent("sales_category_open", {
+          conversationId,
+          eventLabel: action.label,
+          metadata: { actionId: action.id, productIds: ids },
+        });
+        return;
+      }
+    }
+
+    await send(action.prompt);
   };
 
   const generateBouquet = async (draft: BouquetDraft) => {
@@ -965,14 +1058,27 @@ export function SalesChatWidget() {
 
             {messages.length <= 1 ? (
               <div className="space-y-2">
-                {sales.quickActions.map((action) => {
-                  const Icon = iconByAction[action.id] || Sparkles;
-                  return (
-                    <button key={action.id} type="button" onClick={() => { if (action.id === "photo") fileRef.current?.click(); else void send(action.prompt); }} className="flex w-full items-center justify-between gap-4 rounded-2xl border border-[#dfdbd1] bg-white px-4 py-3 text-left text-sm font-black shadow-sm transition hover:border-[#315b42]/40 hover:bg-[#fdfbf6]">
-                      <span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#eef2eb] text-[#315b42]"><Icon className="h-4 w-4" /></span>{action.label}</span><span className="text-[#879287]">›</span>
-                    </button>
-                  );
-                })}
+                <div className="grid grid-cols-2 gap-2">
+                  {sales.quickActions.map((action) => {
+                    const Icon = iconByAction[action.id] || Sparkles;
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => void handleQuickAction(action)}
+                        className="group min-h-[94px] rounded-2xl border border-[#dfdbd1] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#315b42]/40 hover:bg-[#fdfbf6] hover:shadow-md"
+                      >
+                        <span className="mb-2 grid h-9 w-9 place-items-center rounded-full bg-[#eef2eb] text-[#315b42] transition group-hover:bg-[#315b42] group-hover:text-white">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="block text-sm font-black leading-tight">{action.label}</span>
+                        <span className="mt-1 block text-[10px] font-medium leading-snug text-[#7a847d]">
+                          {actionDescriptions[action.id] || "Explorar en Herencia"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <button type="button" onClick={openSpacePicker} className="flex w-full items-center justify-between gap-4 rounded-2xl border border-[#315b42]/25 bg-[#eef2eb] px-4 py-3 text-left text-sm font-black shadow-sm transition hover:border-[#315b42]/50">
                   <span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#315b42]"><ImageIcon className="h-4 w-4" /></span>Ver una planta en mi espacio</span><span className="text-[#879287]">›</span>
                 </button>
