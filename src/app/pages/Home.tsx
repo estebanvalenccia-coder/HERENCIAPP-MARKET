@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { products as fallbackProducts } from "../data/products";
 import { backendStorage } from "../lib/backendStorage";
-import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
+import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
 const DEFAULT_HERO = "/herencia-portada.avif";
@@ -80,6 +80,17 @@ export function Home() {
   }, []);
 
   const market = getMarketExperience(site);
+  const heroBlock = useMemo(
+    () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
+    [site]
+  );
+  const heroDesign = heroBlock?.design;
+  const heroMinHeight = Math.max(360, Number(heroDesign?.minHeight || 620));
+  const heroImage =
+    String(heroBlock?.data?.imageUrl || "").trim() ||
+    market.home.heroImageUrl ||
+    site.hero.imageUrl ||
+    DEFAULT_HERO;
 
   const featured = useMemo(() => {
     const rows = [...catalog].sort(
@@ -109,19 +120,40 @@ export function Home() {
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
-      <section className="relative min-h-[620px] overflow-hidden">
+      <section
+        className="relative overflow-hidden"
+        style={{
+          minHeight: `${heroMinHeight}px`,
+          backgroundColor: heroDesign?.backgroundColor || undefined,
+          color: heroDesign?.textColor || undefined,
+          borderRadius: `${Math.max(0, Number(heroDesign?.radius || 0))}px`,
+          fontFamily:
+            heroDesign?.fontFamily && heroDesign.fontFamily !== "inherit"
+              ? heroDesign.fontFamily
+              : undefined,
+        }}
+      >
         <img
-          src={market.home.heroImageUrl || site.hero.imageUrl || DEFAULT_HERO}
+          src={heroImage}
           alt=""
           onError={(event) => imageFallback(event, IMAGE_FALLBACKS.hero)}
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: "center 15%" }}
+          style={{
+            objectPosition: heroDesign?.imagePosition || "center 15%",
+            transform: `scale(${Math.max(100, Number(heroDesign?.imageZoom || 100)) / 100})`,
+          }}
         />
         {(() => {
-          const overlayOpacity = Math.max(0, Math.min(100, Number(market.home.heroOverlayOpacity ?? 90))) / 100;
-          const overlayWidth = Math.max(25, Math.min(100, Number(market.home.heroOverlayWidth ?? 72)));
+          const overlayOpacity = Math.max(
+            0,
+            Math.min(100, Number(heroDesign?.overlay ?? market.home.heroOverlayOpacity ?? 90))
+          ) / 100;
+          const overlayWidth = Math.max(
+            25,
+            Math.min(100, Number(heroDesign?.overlayWidth ?? market.home.heroOverlayWidth ?? 72))
+          );
           const overlayMid = Math.round(overlayWidth * 0.58);
-          const color = hexToRgb(market.home.heroOverlayColor || "#102b20");
+          const color = hexToRgb(heroDesign?.overlayColor || market.home.heroOverlayColor || "#102b20");
           return (
             <div
               className="absolute inset-0"
@@ -135,8 +167,29 @@ export function Home() {
             />
           );
         })()}
-        <div className="relative mx-auto flex min-h-[620px] max-w-7xl items-center px-5 py-16 sm:px-8 lg:px-10">
-          <div className="max-w-2xl text-white">
+        <div
+          className="relative mx-auto flex items-center px-5 sm:px-8 lg:px-10"
+          style={{
+            minHeight: `${heroMinHeight}px`,
+            maxWidth: `${Math.max(760, Number(heroDesign?.maxWidth || 1280))}px`,
+            paddingTop: `${Math.max(16, Number(heroDesign?.paddingY || 64))}px`,
+            paddingBottom: `${Math.max(16, Number(heroDesign?.paddingY || 64))}px`,
+          }}
+        >
+          <div
+            className="max-w-2xl"
+            style={{
+              color: heroDesign?.textColor || "#ffffff",
+              textAlign:
+                heroDesign?.alignment === "center"
+                  ? "center"
+                  : heroDesign?.alignment === "right"
+                    ? "right"
+                    : "left",
+              marginLeft: heroDesign?.alignment === "right" ? "auto" : undefined,
+              marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
+            }}
+          >
             <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
               {market.home.kicker}
             </p>
@@ -146,7 +199,18 @@ export function Home() {
             <p className="mt-6 max-w-xl text-base leading-7 text-white/88 sm:text-lg">
               {market.home.description}
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div
+              className="mt-8 flex flex-wrap"
+              style={{
+                gap: `${Math.max(0, Number(heroDesign?.gap || 12))}px`,
+                justifyContent:
+                  heroDesign?.alignment === "center"
+                    ? "center"
+                    : heroDesign?.alignment === "right"
+                      ? "flex-end"
+                      : "flex-start",
+              }}
+            >
               <Link
                 to={site.hero.primaryButton.href || "/productos"}
                 className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
