@@ -4,7 +4,7 @@ import {
   Home, House, Sparkles, Flower, Flower2, Leaf, LeafyGreen, Package, ShoppingBag,
   Briefcase, Scissors, Store, Building, Brain, Zap, Star, Truck
 } from "lucide-react";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { toast } from "sonner";
 
 type TpvLeftBlockId = "status" | "currentSale" | "payment" | "keypad";
@@ -115,6 +115,7 @@ export function AdminSettings() {
   const [tpvLayout, setTpvLayout] = useState<TpvLayoutSettings>(defaultTpvLayout);
   const [draggingBlock, setDraggingBlock] = useState<TpvLeftBlockId | null>(null);
   const [dragOverBlock, setDragOverBlock] = useState<TpvLeftBlockId | null>(null);
+  const [readiness, setReadiness] = useState<any>(null);
 
   const availableIcons = [
     { name: "Home", icon: Home, label: "Casa" },
@@ -193,6 +194,7 @@ export function AdminSettings() {
     setHeroBannerUrl(parseBannerUrl(backendStorage.getItem("heroBanner")));
     setCtaBannerUrl(parseBannerUrl(backendStorage.getItem("ctaBanner")));
     setTpvLayout(parseTpvLayout(backendStorage.getItem("tpvLayoutSettings")));
+    void backendApi.readiness().then(setReadiness).catch(() => setReadiness(null));
   }, []);
 
   const moveLeftBlock = (index: number, direction: -1 | 1) => {
@@ -356,18 +358,12 @@ export function AdminSettings() {
         publishableKey: stripePublishableKey,
         enabled: stripeEnabled,
       }));
-      backendStorage.setItem("supabaseSettings", JSON.stringify({
-        url: supabaseUrl,
-        anonKey: supabaseAnonKey,
-        enabled: supabaseEnabled,
-      }));
       backendStorage.setItem("shippingSettings", JSON.stringify({
         cost: shippingCost,
       }));
       backendStorage.setItem("aiSettings", JSON.stringify({
-        apiKey: aiApiKey,
         enabled: aiEnabled,
-        provider: aiProvider,
+        provider: "groq",
       }));
       backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: heroBannerUrl.trim() }));
       backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: ctaBannerUrl.trim() }));
@@ -525,7 +521,7 @@ export function AdminSettings() {
             ⚠️ backend no está disponible
           </p>
           <p className="text-xs text-muted-foreground">
-            El backend no respondió correctamente. Revisa VITE_API_URL, CORS y las variables de Supabase del servidor.
+            El backend no respondió correctamente. Revisa el proxy /api, CORS y las variables de Railway del servidor.
           </p>
         </div>
       )}
@@ -640,93 +636,39 @@ export function AdminSettings() {
         </div>
       </div>
 
-      {/* Supabase Backend */}
+      {/* Production infrastructure */}
       <div className="bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-6">
-          <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M13.9 1.6c-.5-.4-1.2-.4-1.7 0L1.3 10.2c-.4.3-.6.8-.4 1.3.2.5.7.8 1.2.8h2.5V21c0 .6.4 1 1 1h13c.6 0 1-.4 1-1v-8.7h2.5c.5 0 1-.3 1.2-.8.2-.5 0-1-.4-1.3L13.9 1.6z"/>
-          </svg>
-          <h3 className="text-xl font-bold text-foreground">Supabase Backend</h3>
+          <Building className="w-5 h-5 text-primary" />
+          <h3 className="text-xl font-bold text-foreground">Infraestructura de producción</h3>
         </div>
-
-        <div className="space-y-4">
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-            <p className="text-sm text-foreground mb-2">
-              🚀 <strong>Base de Datos y Backend</strong>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Conecta tu proyecto de Supabase para guardar pedidos, productos y gestionar todo en tiempo real.
-              Encuentra tus credenciales en: <a href="https://supabase.com/dashboard/project/_/settings/api" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Dashboard → Settings → API</a>
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm">
+            <p className="font-semibold text-foreground">Base principal: Neon PostgreSQL</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Las credenciales de base de datos, Stripe, R2, Resend, Maps e IA se administran únicamente en Railway/Vercel. No se guardan claves privadas desde el navegador.
             </p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Project URL
-            </label>
-            <input
-              type="url"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              placeholder="https://xxxxx.supabase.co"
-              className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              URL de tu proyecto Supabase
-            </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              ["Neon / base de datos", readiness?.database],
+              ["Stripe servidor", readiness?.stripe],
+              ["Webhook Stripe", readiness?.stripeWebhook],
+              ["Cloudflare R2", readiness?.r2Configured],
+              ["Resend / email", readiness?.email],
+              ["Google Maps", readiness?.maps],
+            ].map(([label, ok]) => (
+              <div key={String(label)} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
+                <span>{String(label)}</span>
+                <span className={ok ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                  {readiness == null ? "Comprobando…" : ok ? "OK" : "Pendiente"}
+                </span>
+              </div>
+            ))}
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Anon/Public Key
-            </label>
-            <input
-              type="password"
-              value={supabaseAnonKey}
-              onChange={(e) => setSupabaseAnonKey(e.target.value)}
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              ⚠️ Usa la clave <strong>anon public</strong>, no la service_role
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
-            <div>
-              <span className="text-sm font-medium text-foreground">Activar Supabase</span>
-              <p className="text-xs text-muted-foreground mt-1">
-                Base de datos y backend en tiempo real
-              </p>
-            </div>
-            <button
-              onClick={() => setSupabaseEnabled(!supabaseEnabled)}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                supabaseEnabled ? "bg-primary" : "bg-muted-foreground/30"
-              }`}
-            >
-              <div
-                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                  supabaseEnabled ? "translate-x-6" : ""
-                }`}
-              />
-            </button>
-          </div>
-
-          {supabaseEnabled && (!supabaseUrl || !supabaseAnonKey) && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-              <p className="text-sm text-destructive">
-                ⚠️ Debes ingresar URL y Anon Key para activar Supabase
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={saveSupabaseSettings}
-            className="w-full py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm"
-          >
-            Guardar Configuración de Supabase
-          </button>
+          <p className="text-xs text-muted-foreground">
+            Para una comprobación completa usa Administración → Diagnóstico. Supabase queda solo como compatibilidad heredada y no es la base principal de Commerce.
+          </p>
         </div>
       </div>
 
@@ -786,139 +728,54 @@ export function AdminSettings() {
         </div>
       </div>
 
-      {/* AI Configuration (Groq/OpenAI) */}
+      {/* AI Configuration */}
       <div className="bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-6">
           <Brain className="w-5 h-5 text-primary" />
-          <h3 className="text-xl font-bold text-foreground">IA - Descripciones Automáticas</h3>
+          <h3 className="text-xl font-bold text-foreground">Inteligencia artificial</h3>
         </div>
-
         <div className="space-y-4">
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-            <p className="text-sm text-foreground mb-2">
-              🤖 <strong>Generación Automática de Descripciones</strong>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Usa Groq (recomendado - más rápido y económico) o OpenAI para generar descripciones detalladas de plantas.
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm font-semibold text-foreground">Credenciales protegidas en Railway</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Groq se usa para texto y ventas; Gemini/Nano Banana para funciones visuales cuando están configurados. Las claves privadas no se introducen ni se muestran en Administración.
             </p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Proveedor de IA
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setAiProvider("groq")}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  aiProvider === "groq"
-                    ? "border-primary bg-primary/10"
-                    : "border-border hover:bg-muted"
-                }`}
-              >
-                <div className="text-center">
-                  <p className="font-bold text-foreground mb-1">Groq</p>
-                  <p className="text-xs text-muted-foreground">Súper rápido</p>
-                  {aiProvider === "groq" && (
-                    <p className="text-xs text-primary mt-2">✓ Seleccionado</p>
-                  )}
-                </div>
-              </button>
-              <button
-                onClick={() => setAiProvider("openai")}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  aiProvider === "openai"
-                    ? "border-primary bg-primary/10"
-                    : "border-border hover:bg-muted"
-                }`}
-              >
-                <div className="text-center">
-                  <p className="font-bold text-foreground mb-1">OpenAI</p>
-                  <p className="text-xs text-muted-foreground">GPT-3.5/4</p>
-                  {aiProvider === "openai" && (
-                    <p className="text-xs text-primary mt-2">✓ Seleccionado</p>
-                  )}
-                </div>
-              </button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex items-center justify-between rounded-xl border border-border px-3 py-3 text-sm">
+              <span>IA de texto / ventas</span>
+              <span className={readiness?.salesAi ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                {readiness == null ? "Comprobando…" : readiness?.salesAi ? "Groq OK" : "Pendiente"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-border px-3 py-3 text-sm">
+              <span>IA de imágenes</span>
+              <span className={readiness?.imageAi ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                {readiness == null ? "Comprobando…" : readiness?.imageAi ? "Proveedor OK" : "Pendiente"}
+              </span>
             </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              {aiProvider === "groq" ? "Groq API Key" : "OpenAI API Key"}
-            </label>
-            <input
-              type="password"
-              value={aiApiKey}
-              onChange={(e) => setAiApiKey(e.target.value)}
-              placeholder={aiProvider === "groq" ? "gsk_..." : "sk-..."}
-              className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              {aiProvider === "groq" ? (
-                <>
-                  Obtén tu API Key gratis en: <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Groq Console</a>
-                </>
-              ) : (
-                <>
-                  Obtén tu API Key en: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenAI Platform</a>
-                </>
-              )}
-            </p>
-          </div>
-
           <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
             <div>
-              <span className="text-sm font-medium text-foreground">Activar IA</span>
-              <p className="text-xs text-muted-foreground mt-1">
-                Genera descripciones automáticas al ver productos
-              </p>
+              <span className="text-sm font-medium text-foreground">Activar funciones IA del catálogo</span>
+              <p className="text-xs text-muted-foreground mt-1">Generación automática de información al preparar productos para publicar.</p>
             </div>
             <button
               onClick={() => setAiEnabled(!aiEnabled)}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                aiEnabled ? "bg-primary" : "bg-muted-foreground/30"
-              }`}
+              className={`relative w-12 h-6 rounded-full transition-colors ${aiEnabled ? "bg-primary" : "bg-muted-foreground/30"}`}
             >
-              <div
-                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                  aiEnabled ? "translate-x-6" : ""
-                }`}
-              />
+              <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${aiEnabled ? "translate-x-6" : ""}`} />
             </button>
           </div>
-
-          {aiEnabled && !aiApiKey && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-              <p className="text-sm text-destructive">
-                ⚠️ Debes ingresar tu API Key de {aiProvider === "groq" ? "Groq" : "OpenAI"} para activar esta función
-              </p>
-            </div>
-          )}
-
-          <div className="p-3 bg-muted rounded-xl">
-            <p className="text-sm text-foreground font-medium mb-2">¿Qué se generará?</p>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>✓ Descripción detallada de la planta</li>
-              <li>✓ Guía de cuidados (riego, luz, temperatura, fertilización)</li>
-              <li>✓ Beneficios y características principales</li>
-              <li>✓ Consejos de experto personalizados</li>
-            </ul>
-          </div>
-
-          {aiProvider === "groq" && (
-            <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl">
-              <p className="text-xs text-foreground">
-                💡 <strong>Groq es recomendado:</strong> Es gratuito, súper rápido (10x más que OpenAI) y usa modelos avanzados como Llama 3.
-              </p>
-            </div>
-          )}
-
           <button
-            onClick={saveAiSettings}
+            onClick={() => {
+              void backendStorage.setItem("aiSettings", JSON.stringify({ enabled: aiEnabled, provider: "groq" }));
+              window.dispatchEvent(new Event("storage"));
+              toast.success("Preferencia de IA guardada");
+            }}
             className="w-full py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm"
           >
-            Guardar Configuración de IA
+            Guardar preferencia de IA
           </button>
         </div>
       </div>
@@ -1285,7 +1142,7 @@ export function AdminSettings() {
               <p className="font-medium text-foreground mb-1">⚠️ ¿Los datos desaparecen?</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>Verifica que el backend esté desplegado y activo</li>
-                <li>Verifica que Supabase tenga las tablas creadas y la service role configurada</li>
+                <li>Verifica que Neon esté disponible y que Railway tenga las variables de producción configuradas</li>
                 <li>Usa el botón "Diagnóstico" para verificar qué está guardado</li>
                 <li>Después de guardar, usa "Recargar" para confirmar que los datos persisten</li>
               </ul>
