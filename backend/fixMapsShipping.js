@@ -89,7 +89,6 @@ export async function calculateShippingQuote(address = {}) {
     distanceKm: Number(distanceKm.toFixed(2)),
     distanceText: result.distanceText,
     durationText: result.durationText,
-    origin: result.origin,
     destination: result.destination,
     pricing: {
       basePrice: BASE_SHIPPING_EUR,
