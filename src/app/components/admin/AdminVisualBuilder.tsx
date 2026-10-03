@@ -417,7 +417,7 @@ function RangeField({
         max={max}
         step={step}
         value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onInput={(event) => onChange(Number(event.currentTarget.value))}
         className="w-full accent-emerald-700"
       />
     </label>
@@ -500,6 +500,7 @@ export function AdminVisualBuilder({
   const [catalogPreviewCollection, setCatalogPreviewCollection] = useState("todos");
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
+  const siteRef = useRef(site);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
@@ -512,6 +513,10 @@ export function AdminVisualBuilder({
   useEffect(() => {
     hydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    siteRef.current = site;
+  }, [site]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
@@ -562,13 +567,15 @@ export function AdminVisualBuilder({
   }, []);
 
   function commit(next: SiteContent) {
-    setUndoStack((current) => [...current.slice(-29), clone(site)]);
+    const currentSite = siteRef.current;
+    setUndoStack((current) => [...current.slice(-29), clone(currentSite)]);
     setRedoStack([]);
+    siteRef.current = next;
     setSite(next);
   }
 
   function updateSite(mutator: (current: SiteContent) => SiteContent) {
-    commit(mutator(clone(site)));
+    commit(mutator(clone(siteRef.current)));
   }
 
   function updateBlock(id: string, mutator: (block: BuilderBlock) => BuilderBlock) {
@@ -2342,7 +2349,7 @@ function DesignEditor({
                   <input
                     type="color"
                     value={design.overlayColor || "#102b20"}
-                    onChange={(event) => update({ overlayColor: event.target.value })}
+                    onInput={(event) => update({ overlayColor: event.currentTarget.value })}
                     className="h-5 w-7 cursor-pointer border-0 bg-transparent p-0"
                   />
                 </label>
