@@ -13,6 +13,9 @@ interface CartItem {
   lineKey?: string;
   selectedVariant?: string;
   personalization?: { dedication?: string };
+  stock?: number;
+  trackInventory?: boolean;
+  variants?: Array<{ name?: string; stock?: number } | string>;
 }
 
 export function Cart() {
@@ -64,13 +67,25 @@ export function Cart() {
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
-    saveCart(
-      cartItems.map((item) =>
-        itemKey(item) === key
-          ? { ...item, quantity: Math.max(1, Number(item.quantity || 1) + delta) }
-          : item
-      )
-    );
+    let blocked = false;
+    const next = cartItems.map((item) => {
+      if (itemKey(item) !== key) return item;
+      const quantity = Math.max(1, Number(item.quantity || 1) + delta);
+      if (delta <= 0 || item.trackInventory === false) return { ...item, quantity };
+
+      const variants = Array.isArray(item.variants) ? item.variants : [];
+      const variant = item.selectedVariant
+        ? variants.find((entry: any) => String(entry?.name || entry) === String(item.selectedVariant))
+        : null;
+      const stock = Math.max(0, Math.floor(Number((variant as any)?.stock ?? item.stock ?? 0)));
+      if (quantity > stock) {
+        blocked = true;
+        return item;
+      }
+      return { ...item, quantity };
+    });
+    if (blocked) toast.error("No hay más unidades disponibles de este artículo");
+    saveCart(next);
   };
 
   const removeItem = (key: string) => {
