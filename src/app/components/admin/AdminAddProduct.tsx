@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
-import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -30,7 +29,6 @@ const initialForm = {
   featured: false,
   allowDedication: true,
   tags: "",
-  variantsText: "",
   seoTitle: "",
   seoDescription: "",
 
@@ -63,27 +61,45 @@ const initialForm = {
 
 type FormState = typeof initialForm;
 
-function parseVariants(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [name, price, stock, sku] = line.split("|").map((part) => part.trim());
-      return {
-        name,
-        price: price ? Math.max(0, Number(price)) : undefined,
-        stock: stock ? Math.max(0, Math.floor(Number(stock))) : 0,
-        sku: sku || undefined,
-      };
-    })
-    .filter((variant) => variant.name);
+type VariantDraft = {
+  id: string;
+  name: string;
+  price: string;
+  stock: string;
+  sku: string;
+  imageIndex: number | null;
+};
+
+type SelectedImage = {
+  id: string;
+  file: File;
+  preview: string;
+};
+
+function makeVariant(): VariantDraft {
+  return {
+    id: `variant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: "",
+    price: "",
+    stock: "0",
+    sku: "",
+    imageIndex: null,
+  };
+}
+
+function readImagePreview(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState<FormState>(initialForm);
-  const [imagePreview, setImagePreview] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [saving, setSaving] = useState(false);
 
   const collection = useMemo(
@@ -125,17 +141,76 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     });
   }
 
-  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0] || null;
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files || []);
     event.currentTarget.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return toast.error("Selecciona una imagen válida");
-    if (file.size > 8 * 1024 * 1024) return toast.error("La imagen supera 8 MB");
+    if (!files.length) return;
 
-    setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(String(reader.result || ""));
-    reader.readAsDataURL(file);
+    const remaining = Math.max(0, 8 - selectedImages.length);
+    if (!remaining) return toast.error("Puedes añadir un máximo de 8 imágenes");
+
+    const accepted = files.slice(0, remaining);
+    for (const file of accepted) {
+      if (!file.type.startsWith("image/")) {
+        toast.error(`${file.name}: formato no válido`);
+        return;
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        toast.error(`${file.name}: supera 8 MB`);
+        return;
+      }
+    }
+
+    try {
+      const previews = await Promise.all(
+        accepted.map(async (file) => ({
+          id: `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          file,
+          preview: await readImagePreview(file),
+        }))
+      );
+      setSelectedImages((current) => [...current, ...previews].slice(0, 8));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron preparar las imágenes");
+    }
+  }
+
+  function moveImage(index: number, direction: -1 | 1) {
+    setSelectedImages((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setVariants((current) =>
+      current.map((variant) => {
+        if (variant.imageIndex === index) return { ...variant, imageIndex: index + direction };
+        if (variant.imageIndex === index + direction) return { ...variant, imageIndex: index };
+        return variant;
+      })
+    );
+  }
+
+  function removeImage(index: number) {
+    setSelectedImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setVariants((current) =>
+      current.map((variant) => ({
+        ...variant,
+        imageIndex:
+          variant.imageIndex === index
+            ? null
+            : variant.imageIndex !== null && variant.imageIndex > index
+              ? variant.imageIndex - 1
+              : variant.imageIndex,
+      }))
+    );
+  }
+
+  function updateVariant(id: string, patchValue: Partial<VariantDraft>) {
+    setVariants((current) =>
+      current.map((variant) => (variant.id === id ? { ...variant, ...patchValue } : variant))
+    );
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -152,20 +227,51 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     try {
       setSaving(true);
 
-      let imageUrl = "";
-      if (selectedFile) {
-        const uploaded = await backendApi.uploadSiteMediaFile(selectedFile);
-        imageUrl = String(uploaded.media?.url || "");
-        if (!imageUrl) throw new Error("Cloudflare R2 no devolvió la URL de la imagen");
+      const imageUrls: string[] = [];
+      for (const image of selectedImages) {
+        const uploaded = await backendApi.uploadSiteMediaFile(image.file);
+        const url = String(uploaded.media?.url || "");
+        if (!url) throw new Error(`Cloudflare R2 no devolvió URL para ${image.file.name}`);
+        imageUrls.push(url);
       }
+      const imageUrl = imageUrls[0] || "";
 
       const collections = [formData.collection, ...formData.extraCollections].filter(
         (value, index, rows) => value && rows.indexOf(value) === index
       );
 
-      const productPayload: any = {
+      let aiPlantInfo: any = null;
+      if (formData.status === "active" && plantLike) {
+        try {
+          const generated = await backendApi.generatePlantDescription({
+            plantName: formData.name.trim(),
+            baseDescription: formData.description.trim(),
+          });
+          aiPlantInfo = generated?.result || null;
+        } catch (error: any) {
+          throw new Error(
+            error?.message
+              ? `No se pudo publicar la planta: ${error.message}. Guárdala como borrador y vuelve a intentarlo.`
+              : "No se pudo generar la ficha IA de la planta. Guárdala como borrador y vuelve a intentarlo."
+          );
+        }
+      }
+
+      const generatedDescription =
+        formData.description.trim() || String(aiPlantInfo?.description || "").trim();
+      const generatedEnvironment = ["interior", "exterior", "ambos"].includes(String(aiPlantInfo?.environment || "").toLowerCase())
+        ? String(aiPlantInfo.environment).toLowerCase()
+        : formData.environment;
+      const generatedLight = ["baja", "indirecta", "sol"].includes(String(aiPlantInfo?.light || "").toLowerCase())
+        ? String(aiPlantInfo.light).toLowerCase()
+        : formData.light;
+      const generatedDifficulty = ["Fácil", "Media", "Avanzada"].includes(String(aiPlantInfo?.difficulty || ""))
+        ? String(aiPlantInfo.difficulty)
+        : formData.difficulty;
+
+      await backendApi.createCommerceProduct({
         name: formData.name.trim(),
-        description: formData.description.trim(),
+        description: generatedDescription,
         type: productTypeForCollection(formData.collection),
         collection: formData.collection,
         collections,
@@ -191,22 +297,43 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         trackInventory: formData.trackInventory,
 
         image: imageUrl || undefined,
-        images: imageUrl ? [imageUrl] : [],
+        images: imageUrls,
         allowDedication: formData.allowDedication,
 
-        scientificName: plantLike ? formData.scientificName.trim() : "",
-        environment: plantLike ? formData.environment : "",
-        light: plantLike ? formData.light : "",
+        scientificName: plantLike
+          ? formData.scientificName.trim() || String(aiPlantInfo?.scientificName || "").trim()
+          : "",
+        environment: plantLike ? generatedEnvironment : "",
+        light: plantLike ? generatedLight : "",
         size: plantLike ? formData.size.trim() : "",
-        difficulty: plantLike ? formData.difficulty : "",
-        petSafe: plantLike ? formData.petSafe : false,
-        toxicity: plantLike ? formData.toxicity.trim() : "",
-        water: plantLike ? formData.water.trim() : "",
-        temperature: plantLike ? formData.temperature.trim() : "",
+        difficulty: plantLike ? generatedDifficulty : "",
+        petSafe: plantLike && aiPlantInfo && typeof aiPlantInfo.petSafe === "boolean"
+          ? aiPlantInfo.petSafe
+          : plantLike ? formData.petSafe : false,
+        toxicity: plantLike
+          ? formData.toxicity.trim() || String(aiPlantInfo?.toxicity || "").trim()
+          : "",
+        water: plantLike
+          ? formData.water.trim() || String(aiPlantInfo?.water || aiPlantInfo?.care?.water || "").trim()
+          : "",
+        temperature: plantLike
+          ? formData.temperature.trim() || String(aiPlantInfo?.temperature || aiPlantInfo?.care?.temperature || "").trim()
+          : "",
 
         seoTitle: formData.seoTitle.trim() || formData.name.trim(),
-        seoDescription: formData.seoDescription.trim() || formData.description.trim(),
-        variants: parseVariants(formData.variantsText),
+        seoDescription: formData.seoDescription.trim() || generatedDescription,
+        variants: variants
+          .filter((variant) => variant.name.trim())
+          .map((variant) => ({
+            name: variant.name.trim(),
+            price: variant.price ? Math.max(0, Number(variant.price)) : undefined,
+            stock: variant.stock ? Math.max(0, Math.floor(Number(variant.stock))) : 0,
+            sku: variant.sku.trim() || undefined,
+            image:
+              variant.imageIndex !== null && imageUrls[variant.imageIndex]
+                ? imageUrls[variant.imageIndex]
+                : undefined,
+          })),
 
         metadata: {
           tags: formData.tags
@@ -230,31 +357,42 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           leadTimeDays: formData.leadTimeDays
             ? Math.max(0, Number(formData.leadTimeDays))
             : null,
+          humidity: plantLike ? String(aiPlantInfo?.humidity || "").trim() : "",
+          growth: plantLike ? String(aiPlantInfo?.growth || "").trim() : "",
+          origin: plantLike ? String(aiPlantInfo?.origin || "").trim() : "",
+          fertilizer: plantLike ? String(aiPlantInfo?.fertilizer || aiPlantInfo?.care?.fertilizer || "").trim() : "",
+          careNotes: plantLike ? String(aiPlantInfo?.careNotes || aiPlantInfo?.tips || "").trim() : "",
+          benefits: plantLike && Array.isArray(aiPlantInfo?.benefits) ? aiPlantInfo.benefits.slice(0, 8) : [],
+          aiGeneratedAt: aiPlantInfo ? new Date().toISOString() : null,
+          aiGeneratedBy: aiPlantInfo ? "server" : null,
+          plantProfile: aiPlantInfo
+            ? {
+                description: generatedDescription,
+                care: {
+                  water: formData.water.trim() || String(aiPlantInfo?.water || aiPlantInfo?.care?.water || "").trim(),
+                  light: generatedLight,
+                  temperature: formData.temperature.trim() || String(aiPlantInfo?.temperature || aiPlantInfo?.care?.temperature || "").trim(),
+                  fertilizer: String(aiPlantInfo?.fertilizer || aiPlantInfo?.care?.fertilizer || "").trim(),
+                },
+                benefits: Array.isArray(aiPlantInfo?.benefits) ? aiPlantInfo.benefits.slice(0, 8) : [],
+                tips: String(aiPlantInfo?.tips || aiPlantInfo?.careNotes || "").trim(),
+                scientificName: formData.scientificName.trim() || String(aiPlantInfo?.scientificName || "").trim(),
+                environment: generatedEnvironment,
+                difficulty: generatedDifficulty,
+                petSafe: typeof aiPlantInfo?.petSafe === "boolean" ? aiPlantInfo.petSafe : formData.petSafe,
+                toxicity: formData.toxicity.trim() || String(aiPlantInfo?.toxicity || "").trim(),
+                humidity: String(aiPlantInfo?.humidity || "").trim(),
+                growth: String(aiPlantInfo?.growth || "").trim(),
+                origin: String(aiPlantInfo?.origin || "").trim(),
+                generatedAt: new Date().toISOString(),
+                version: 1,
+                source: "publish-ai",
+              }
+            : null,
+          aiPlantProfileGenerated: Boolean(aiPlantInfo),
+          aiPlantProfileGeneratedAt: aiPlantInfo ? new Date().toISOString() : null,
         },
-      };
-
-      let finalPayload = productPayload;
-      if (formData.status === "active") {
-        try {
-          const aiPatch = await buildPlantProfilePublishPatch(productPayload);
-          finalPayload = {
-            ...productPayload,
-            ...aiPatch,
-            metadata: {
-              ...(productPayload.metadata || {}),
-              ...(aiPatch as any).metadata,
-            },
-          };
-        } catch (error: any) {
-          throw new Error(
-            error?.message
-              ? `No se pudo publicar la planta: ${error.message}. Guárdala como borrador y vuelve a intentarlo.`
-              : "No se pudo generar la ficha IA de la planta. Guárdala como borrador y vuelve a intentarlo."
-          );
-        }
-      }
-
-      await backendApi.createCommerceProduct(finalPayload);
+      });
 
       window.dispatchEvent(new Event("backend-storage"));
       toast.success(
@@ -263,8 +401,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           : `✅ "${formData.name.trim()}" guardado como borrador`
       );
       setFormData(initialForm);
-      setImagePreview("");
-      setSelectedFile(null);
+      setSelectedImages([]);
+      setVariants([]);
       setTimeout(onBack, 250);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo crear el artículo");
@@ -323,30 +461,69 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
             </div>
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
+          <section className="grid gap-6 lg:grid-cols-[360px_1fr]">
             <div>
-              <h3 className="mb-3 text-lg font-black">2. Imagen principal</h3>
-              {imagePreview ? (
-                <div className="relative h-80 overflow-hidden rounded-2xl border border-border bg-muted">
-                  <img src={imagePreview} alt="Vista previa" className="h-full w-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setImagePreview("");
-                    }}
-                    className="absolute right-3 top-3 rounded-full bg-black/65 p-2 text-white"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">2. Galería de imágenes</h3>
+                  <p className="text-xs text-muted-foreground">La primera imagen será la principal. Máximo 8.</p>
+                </div>
+                <span className="rounded-full bg-muted px-3 py-1 text-xs font-black">{selectedImages.length}/8</span>
+              </div>
+
+              {selectedImages.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="relative h-72 overflow-hidden rounded-2xl border border-border bg-muted">
+                    <img src={selectedImages[0].preview} alt="Imagen principal" className="h-full w-full object-cover" />
+                    <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs font-black text-white">Principal</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {selectedImages.map((image, index) => (
+                      <div key={image.id} className="overflow-hidden rounded-2xl border border-border bg-background">
+                        <div className="relative aspect-square bg-muted">
+                          <img src={image.preview} alt={`Foto ${index + 1}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute right-2 top-2 rounded-full bg-black/65 p-1.5 text-white"
+                            aria-label={`Eliminar foto ${index + 1}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 p-2">
+                          <span className="text-[11px] font-black">{index === 0 ? "Principal" : `Foto ${index + 1}`}</span>
+                          <div className="flex gap-1">
+                            <button type="button" disabled={index === 0} onClick={() => moveImage(index, -1)} className="rounded border border-border px-2 py-1 text-xs disabled:opacity-30">←</button>
+                            <button type="button" disabled={index === selectedImages.length - 1} onClick={() => moveImage(index, 1)} className="rounded border border-border px-2 py-1 text-xs disabled:opacity-30">→</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedImages.length < 8 && (
+                    <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 px-4 py-4 text-sm font-bold hover:bg-muted/40">
+                      <Upload className="h-4 w-4" /> Añadir más fotos
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                        onChange={handleImageUpload}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      />
+                    </label>
+                  )}
                 </div>
               ) : (
                 <label className="relative flex h-80 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30 text-center hover:bg-muted/60">
                   <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                  <span className="font-bold">Subir imagen</span>
-                  <span className="mt-1 text-xs text-muted-foreground">JPG, PNG, WEBP, GIF o AVIF · máximo 8 MB</span>
+                  <span className="font-bold">Subir fotos</span>
+                  <span className="mt-1 max-w-64 text-xs text-muted-foreground">Selecciona hasta 8 imágenes JPG, PNG, WEBP, GIF o AVIF · máximo 8 MB cada una</span>
                   <input
                     type="file"
+                    multiple
                     accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
                     onChange={handleImageUpload}
                     className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
@@ -687,17 +864,70 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           <section className="rounded-2xl border border-border bg-muted/20 p-5">
             <h3 className="text-lg font-black">6. Variantes, etiquetas y personalización</h3>
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <label className="block text-sm font-bold">
-                Variantes
-                <textarea
-                  value={formData.variantsText}
-                  onChange={(e) => patch({ variantsText: e.target.value })}
-                  rows={5}
-                  placeholder={"Una por línea: nombre | precio | stock | SKU\nTalla M · Verde | 24.90 | 5 | MOD-M-V"}
-                  className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3"
-                />
-                <span className="mt-1 block text-xs text-muted-foreground">Sirve para tallas, tamaños, sabores, packs o tipos de servicio.</span>
-              </label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black">Variantes</p>
+                    <p className="text-xs text-muted-foreground">Tallas, colores, tamaños, sabores, packs o modalidades.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVariants((current) => [...current, makeVariant()])}
+                    className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground"
+                  >
+                    + Añadir variante
+                  </button>
+                </div>
+
+                {variants.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                    Sin variantes. El artículo usará el precio y stock generales.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {variants.map((variant, index) => (
+                      <div key={variant.id} className="rounded-2xl border border-border bg-background p-3">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <span className="text-xs font-black">Variante {index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => setVariants((current) => current.filter((item) => item.id !== variant.id))}
+                            className="rounded-lg bg-destructive/10 px-2 py-1 text-xs font-black text-destructive"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="text-xs font-bold">Nombre
+                            <input value={variant.name} onChange={(e) => updateVariant(variant.id, { name: e.target.value })} placeholder="Ej: Talla M · Verde" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                          </label>
+                          <label className="text-xs font-bold">SKU
+                            <input value={variant.sku} onChange={(e) => updateVariant(variant.id, { sku: e.target.value })} placeholder="MOD-M-V" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                          </label>
+                          <label className="text-xs font-bold">Precio propio (€)
+                            <input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateVariant(variant.id, { price: e.target.value })} placeholder="Vacío = precio general" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                          </label>
+                          <label className="text-xs font-bold">Stock
+                            <input type="number" min="0" step="1" value={variant.stock} onChange={(e) => updateVariant(variant.id, { stock: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                          </label>
+                          <label className="text-xs font-bold sm:col-span-2">Imagen de esta variante
+                            <select
+                              value={variant.imageIndex === null ? "" : String(variant.imageIndex)}
+                              onChange={(e) => updateVariant(variant.id, { imageIndex: e.target.value === "" ? null : Number(e.target.value) })}
+                              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                            >
+                              <option value="">Usar imagen principal</option>
+                              {selectedImages.map((image, imageIndex) => (
+                                <option key={image.id} value={imageIndex}>Foto {imageIndex + 1}{imageIndex === 0 ? " · Principal" : ""}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="space-y-4">
                 <label className="block text-sm font-bold">
                   Etiquetas
