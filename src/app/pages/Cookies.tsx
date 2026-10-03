@@ -19,7 +19,7 @@ export function Cookies() {
             </h1>
           </motion.div>
           <p className="text-muted-foreground">
-            Última actualización: 10 de abril de 2026
+            Última actualización: 3 de octubre de 2026
           </p>
         </div>
       </div>
@@ -57,14 +57,14 @@ export function Cookies() {
               </div>
 
               <div className="bg-card border border-border rounded-xl p-6">
-                <h3 className="text-lg font-semibold mb-3">2. Cookies de Rendimiento</h3>
+                <h3 className="text-lg font-semibold mb-3">2. Analítica opcional</h3>
                 <p className="text-muted-foreground mb-2">
-                  Nos ayudan a entender cómo los visitantes interactúan con nuestro sitio.
+                  Solo se registra analítica de uso cuando aceptas las cookies opcionales.
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground text-sm">
-                  <li>Análisis de tráfico web</li>
-                  <li>Páginas más visitadas</li>
-                  <li>Tiempo de permanencia</li>
+                  <li>Páginas visitadas y eventos básicos de navegación</li>
+                  <li>Dispositivo, navegador y origen aproximado del tráfico</li>
+                  <li>Eventos de conversión de HERENCIA SALES cuando corresponde</li>
                 </ul>
               </div>
 
@@ -81,15 +81,10 @@ export function Cookies() {
               </div>
 
               <div className="bg-card border border-border rounded-xl p-6">
-                <h3 className="text-lg font-semibold mb-3">4. Cookies de Marketing</h3>
+                <h3 className="text-lg font-semibold mb-3">4. Preferencias</h3>
                 <p className="text-muted-foreground mb-2">
-                  Utilizadas para mostrar anuncios relevantes.
+                  Algunas preferencias se guardan localmente en el navegador para recordar decisiones como el consentimiento de cookies.
                 </p>
-                <ul className="list-disc list-inside space-y-1 text-muted-foreground text-sm">
-                  <li>Personalización de ofertas</li>
-                  <li>Seguimiento de campañas publicitarias</li>
-                  <li>Remarketing</li>
-                </ul>
               </div>
             </div>
           </section>
@@ -112,13 +107,9 @@ export function Cookies() {
           <section>
             <h2 className="text-2xl font-bold mb-4">Cookies de Terceros</h2>
             <p className="text-muted-foreground">
-              Algunos de nuestros socios de servicio pueden establecer cookies en tu dispositivo:
-            </p>
-            <ul className="list-disc list-inside space-y-2 text-muted-foreground mt-4">
-              <li>Google Analytics - para análisis web</li>
-              <li>Procesadores de pago - para transacciones seguras</li>
-              <li>Redes sociales - para compartir contenido</li>
-            </ul>
+              Determinados proveedores necesarios para funciones que solicites pueden utilizar tecnologías propias,
+              por ejemplo el procesador de pagos. Herencia no declara utilizar Google Analytics ni cookies publicitarias
+              de terceros salvo que se integren expresamente y se actualice esta política.
           </section>
 
           <section>
@@ -127,8 +118,7 @@ export function Cookies() {
               Si tienes preguntas sobre nuestra política de cookies, contáctanos en:
             </p>
             <p className="text-muted-foreground mt-2">
-              Email: cookies@herenciafloristeria.com<br />
-              Teléfono: +1 234 567 8900
+              Utiliza los canales publicados en la página de Contacto de Herencia Market.
             </p>
           </section>
         </motion.div>
