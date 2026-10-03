@@ -46,7 +46,6 @@ function getPhone(order: Order) {
 function getAddress(order: Order) {
   const address = order.metadata?.shippingAddress || {};
   if (order.metadata?.source === "HERENCIA_SALES_HANDOFF") return "Consulta comercial · entrega por definir";
-  if (order.deliveryMethod === "recoger") return "Recogida en tienda";
   return [address.address, `${address.postalCode || ""} ${address.city || ""}`.trim(), address.province]
     .filter(Boolean)
     .join(" · ") || "Dirección no indicada";
@@ -242,7 +241,7 @@ export function AdminOrders() {
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "recoger" ? "Recogida" : "Envío"}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
                       {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">HERENCIA SALES</span>}
                     </div>
 
