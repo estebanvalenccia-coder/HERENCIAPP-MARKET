@@ -33,3 +33,37 @@ test("el contacto público no invita a visitar un local", async () => {
   const content = await read("src/app/lib/siteContent.ts");
   assert.doesNotMatch(content, /Visítanos/i);
 });
+
+
+test("la tienda pública no usa catálogo de demostración", async () => {
+  const files = await Promise.all([
+    read("src/app/pages/Home.tsx"),
+    read("src/app/pages/Products.tsx"),
+    read("src/app/pages/ProductDetail.tsx"),
+    read("src/app/pages/MarketCollections.tsx"),
+    read("src/app/components/SalesChatWidget.tsx"),
+  ]);
+  for (const source of files) {
+    assert.doesNotMatch(source, /fallbackProducts/);
+    assert.doesNotMatch(source, /\.\.\/data\/products/);
+  }
+});
+
+test("no se publican testimonios ficticios por defecto", async () => {
+  const site = await read("src/app/lib/siteContent.ts");
+  assert.doesNotMatch(site, /Cliente 1/);
+  assert.doesNotMatch(site, /Una experiencia excelente/);
+});
+
+test("las páginas legales no contienen datos de plantilla", async () => {
+  const [terms, privacy, cookies] = await Promise.all([
+    read("src/app/pages/Terms.tsx"),
+    read("src/app/pages/Privacy.tsx"),
+    read("src/app/pages/Cookies.tsx"),
+  ]);
+  const joined = [terms, privacy, cookies].join("\n");
+  assert.doesNotMatch(joined, /\+1 234 567 8900/);
+  assert.doesNotMatch(joined, /\[Tu dirección física\]/);
+  assert.doesNotMatch(joined, /Google Analytics - para análisis web/);
+  assert.doesNotMatch(terms, /\$50/);
+});
