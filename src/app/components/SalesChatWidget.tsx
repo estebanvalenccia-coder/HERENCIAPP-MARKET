@@ -19,7 +19,6 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseBouquetCatalog } from "../lib/bouquetCatalog";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
-import { products as fallbackProducts } from "../data/products";
 
 type SalesVariant = {
   id?: string;
@@ -334,7 +333,7 @@ export function SalesChatWidget() {
       const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
       if (Array.isArray(cached) && cached.length) return sellableCatalog(cached);
     } catch {}
-    return sellableCatalog(fallbackProducts);
+    return [];
   });
   const [messages, setMessages] = useState<ChatMessage[]>(loadPersistedMessages);
   const [input, setInput] = useState("");
@@ -366,9 +365,9 @@ export function SalesChatWidget() {
         setCatalogLoading(true);
         const result = await backendApi.listCommerceProducts();
         const next = sellableCatalog(Array.isArray(result.products) ? result.products : []);
-        if (active && next.length) {
+        if (active) {
           setCatalog(next);
-          return;
+          if (next.length) return;
         }
       } catch (error) {
         console.warn("[HERENCIA SALES] catálogo Commerce no disponible:", error);
@@ -379,7 +378,7 @@ export function SalesChatWidget() {
       try {
         const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         const next = sellableCatalog(Array.isArray(cached) ? cached : []);
-        if (active && next.length) setCatalog(next);
+        if (active) setCatalog(next);
       } catch {}
     };
 
