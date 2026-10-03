@@ -133,6 +133,8 @@ export function AdminDashboard() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [totpRequired, setTotpRequired] = useState(false);
   const [currentSection, setCurrentSection] =
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -316,7 +318,7 @@ export function AdminDashboard() {
     }
 
     try {
-      await backendApi.adminLogin(username, password);
+      await backendApi.adminLogin(username, password, otp);
       const session = await backendApi.adminSession();
 
       if (!session.authenticated) {
@@ -330,8 +332,8 @@ export function AdminDashboard() {
       await backendStorage.refresh();
       setIsAuthenticated(true);
       toast.success("Bienvenido");
-    } catch {
-      toast.error("Usuario o contraseña incorrectos");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar sesión");
     }
   };
 
@@ -340,6 +342,7 @@ export function AdminDashboard() {
     setIsAuthenticated(false);
     setUsername("");
     setPassword("");
+    setOtp("");
     toast.success("Sesión cerrada");
     navigate("/");
   };
@@ -522,6 +525,25 @@ export function AdminDashboard() {
                     className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
+
+                {totpRequired ? (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Código de verificación
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      required
+                      disabled={!backendApi.enabled}
+                      className="w-full px-4 py-3 bg-background/50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                ) : null}
               </>
 
               <button
