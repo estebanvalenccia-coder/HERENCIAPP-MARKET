@@ -60,7 +60,7 @@ export function Terms() {
               Nuestros productos y servicios están sujetos a las siguientes condiciones:
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-              <li>Todos los precios están en dólares estadounidenses y pueden cambiar sin previo aviso</li>
+              <li>Todos los precios se muestran en euros e incluyen los impuestos aplicables salvo que se indique expresamente lo contrario</li>
               <li>Las imágenes de productos son representativas y pueden variar ligeramente</li>
               <li>Nos reservamos el derecho de limitar cantidades de productos</li>
               <li>La disponibilidad de productos está sujeta a existencias</li>
