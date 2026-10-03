@@ -20,7 +20,7 @@ export function OrderConfirmed() {
         <p className="text-muted-foreground leading-relaxed mb-3">
           {processing
             ? "Stripe está terminando de procesar el pago. No vuelvas a pagar este pedido; actualizaremos su estado automáticamente."
-            : "Gracias por confiar en Herencia Floristería. Si el pago se ha confirmado, recibirás un email con el resumen del pedido. También te contactaremos si necesitamos confirmar algún detalle de entrega o recogida."}
+            : "Gracias por confiar en Herencia Floristería. Si el pago se ha confirmado, recibirás un email con el resumen del pedido. También te contactaremos si necesitamos confirmar algún detalle de la entrega."}
         </p>
         {orderId && (
           <p className="mb-6 text-xs font-semibold text-muted-foreground">
@@ -37,7 +37,7 @@ export function OrderConfirmed() {
           <div className="bg-muted/40 rounded-2xl p-4">
             <ShoppingBag className="w-5 h-5 text-primary mb-2" />
             <p className="font-semibold text-foreground">Prepararemos tu pedido</p>
-            <p className="text-sm text-muted-foreground">Gestionaremos la entrega o recogida según lo elegido.</p>
+            <p className="text-sm text-muted-foreground">Gestionaremos la entrega a domicilio con los datos del pedido.</p>
           </div>
         </div>
 
