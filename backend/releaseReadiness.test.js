@@ -144,3 +144,10 @@ test("el backend no contiene credenciales administrativas por defecto", async ()
   assert.doesNotMatch(server, /dev-only-change-me/);
   assert.doesNotMatch(server, /ADMIN_USERNAME \|\| \(!isProduction/);
 });
+
+
+test("el email interno no se fuerza desde el código", async () => {
+  const emailPatch = await read("backend/fixAdminEmail.js");
+  assert.doesNotMatch(emailPatch, /process\.env\.ADMIN_ORDER_EMAIL\s*=\s*["']/);
+  assert.doesNotMatch(emailPatch, /herenciafloristeria@gmail\.com/);
+});
