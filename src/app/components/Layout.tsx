@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { Bot, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
+import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
 import { Toaster } from "sonner";
 import { backendStorage } from "../lib/backendStorage";
 import {
@@ -207,14 +207,21 @@ export function Layout() {
               </Link>
 
               <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
-                {market.navigation.map((item) => (
-                  <MarketNavLink
-                    key={item.href}
-                    href={item.href}
-                    label={item.label}
-                    active={isPathActive(location.pathname, item.href)}
-                  />
-                ))}
+                {market.navigation.map((item) =>
+                  isPlantsNavigationItem(item) ? (
+                    <PlantsNavMenu
+                      key={item.href}
+                      active={location.pathname === "/productos"}
+                    />
+                  ) : (
+                    <MarketNavLink
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      active={isPathActive(location.pathname, item.href)}
+                    />
+                  )
+                )}
                 {herenciaEnabled ? (
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
@@ -287,15 +294,36 @@ export function Layout() {
             </div>
 
             <nav className="flex gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
-              {market.navigation.map((item) => (
-                <MarketNavLink
-                  key={item.href}
-                  href={item.href}
-                  label={item.label}
-                  active={isPathActive(location.pathname, item.href)}
-                  mobile
-                />
-              ))}
+              {market.navigation.map((item) =>
+                isPlantsNavigationItem(item) ? (
+                  <MarketNavLink
+                    key={item.href}
+                    href="/productos?coleccion=plantas"
+                    label="Plantas"
+                    active={location.pathname === "/productos"}
+                    mobile
+                  />
+                ) : (
+                  <MarketNavLink
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    active={isPathActive(location.pathname, item.href)}
+                    mobile
+                  />
+                )
+              )}
+              <div className="flex shrink-0 items-center gap-1 border-l border-[#e4ded4] pl-2">
+                {PLANT_SUBMENU.map((item) => (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    className="shrink-0 rounded-full bg-[#f3f0e9] px-3 py-2 text-xs font-bold text-[#315b42]"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
               {herenciaEnabled ? (
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
@@ -432,6 +460,57 @@ export function Layout() {
         </div>
       ) : null}
     </>
+  );
+}
+
+const PLANT_SUBMENU = [
+  { label: "Interior", href: "/productos?coleccion=plantas&categoria=plantas-interior" },
+  { label: "Exterior", href: "/productos?coleccion=plantas&categoria=plantas-exterior" },
+  { label: "Cactus y suculentas", href: "/productos?coleccion=plantas&categoria=cactus-suculentas" },
+  { label: "Orquídeas", href: "/productos?coleccion=plantas&categoria=orquideas" },
+  { label: "Exóticas", href: "/productos?coleccion=plantas&categoria=plantas-exoticas" },
+];
+
+function isPlantsNavigationItem(item: { label?: string; href?: string }) {
+  return (
+    String(item?.label || "").trim().toLowerCase() === "plantas" ||
+    String(item?.href || "").toLowerCase().includes("coleccion=plantas")
+  );
+}
+
+function PlantsNavMenu({ active }: { active: boolean }) {
+  return (
+    <div className="group relative">
+      <Link
+        to="/productos?coleccion=plantas"
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-bold transition ${
+          active ? "bg-[#eef2eb] text-[#244a35]" : "text-[#526158] hover:bg-[#f3f0e9] hover:text-[#244a35]"
+        }`}
+      >
+        Plantas
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
+      </Link>
+      <div className="pointer-events-none absolute left-1/2 top-full z-[80] w-64 -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <div className="overflow-hidden rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
+          <Link
+            to="/productos?coleccion=plantas"
+            className="block rounded-xl px-4 py-3 text-sm font-black text-[#244a35] hover:bg-[#eef2eb]"
+          >
+            Ver todas las plantas
+          </Link>
+          <div className="my-1 border-t border-[#eee8dd]" />
+          {PLANT_SUBMENU.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              className="block rounded-xl px-4 py-3 text-sm font-bold text-[#526158] transition hover:bg-[#f3f0e9] hover:text-[#244a35]"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
