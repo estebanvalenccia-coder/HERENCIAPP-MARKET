@@ -461,7 +461,12 @@ function renderOrderEmail(order, recipientType = "customer") {
         .join("")
     : `<tr><td colspan="2" style="padding:16px 0;color:#8b6b61;">Pedido recibido sin detalle de productos.</td></tr>`;
 
-  const deliveryLabel = "Envío a domicilio";
+  const deliveryLabel =
+    normalized.deliveryMethod === "envio"
+      ? "Envío a domicilio"
+      : normalized.deliveryMethod === "mostrador"
+      ? "Venta TPV / entrega gestionada"
+      : "Entrega por coordinar";
 
   const paymentLabel =
     normalized.paymentMethod === "bizum"
