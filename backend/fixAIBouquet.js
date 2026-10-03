@@ -185,7 +185,7 @@ async function generateImageWithGemini(prompt) {
   }
 
   const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
