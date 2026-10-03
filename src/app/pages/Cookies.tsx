@@ -110,6 +110,7 @@ export function Cookies() {
               Determinados proveedores necesarios para funciones que solicites pueden utilizar tecnologías propias,
               por ejemplo el procesador de pagos. Herencia no declara utilizar Google Analytics ni cookies publicitarias
               de terceros salvo que se integren expresamente y se actualice esta política.
+            </p>
           </section>
 
           <section>
