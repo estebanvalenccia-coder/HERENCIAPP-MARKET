@@ -448,11 +448,13 @@ export function AdminVisualBuilder({
   onPublished,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   onClose: () => void;
   onPublished?: () => void;
   onManageProducts?: () => void;
   onAddProduct?: () => void;
+  onManageCollections?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
     const draft = backendStorage.getItem("siteContentDraft");
@@ -1278,6 +1280,7 @@ export function AdminVisualBuilder({
                 updateSite={updateSite}
                 onManageProducts={onManageProducts}
                 onAddProduct={onAddProduct}
+                onManageCollections={onManageCollections}
               />
             )}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
@@ -1895,17 +1898,20 @@ function ProductsPageEditor({
   updateSite,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   site: SiteContent;
   updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
   onManageProducts?: () => void;
   onAddProduct?: () => void;
+  onManageCollections?: () => void;
 }) {
   const patch = (value: Partial<SiteContent["productsPage"]>) => updateSite((current) => ({ ...current, productsPage: { ...current.productsPage, ...value } }));
   return <div className="space-y-4">
     <div className="grid grid-cols-2 gap-2">
       <button type="button" onClick={onAddProduct} disabled={!onAddProduct} className="rounded-xl bg-emerald-700 px-3 py-3 text-xs font-black text-white disabled:opacity-40">+ Crear producto</button>
       <button type="button" onClick={onManageProducts} disabled={!onManageProducts} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Gestionar catálogo</button>
+      <button type="button" onClick={onManageCollections} disabled={!onManageCollections} className="col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-black text-emerald-800 disabled:opacity-40">Colecciones y campañas</button>
     </div>
 
     <div className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
