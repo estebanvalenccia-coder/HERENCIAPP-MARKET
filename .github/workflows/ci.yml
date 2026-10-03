@@ -16,16 +16,16 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm install
+        run: npm ci
 
-      - name: POS tests
-        run: npm run test:pos 2>&1 | tee pos-tests.log
+      - name: Full tests and frontend build
+        run: npm run build 2>&1 | tee full-build.log
 
       - name: Backend syntax
-        run: node --check backend/server.js 2>&1 | tee backend-syntax.log
-
-      - name: Frontend build
-        run: npx vite build 2>&1 | tee vite-build.log
+        run: |
+          node --check backend/server.js 2>&1 | tee backend-syntax.log
+          node --check backend/neonGateway.js 2>&1 | tee -a backend-syntax.log
+          node --check backend/neonDb.js 2>&1 | tee -a backend-syntax.log
 
       - name: Upload CI diagnostics
         if: always()
@@ -33,8 +33,7 @@ jobs:
         with:
           name: herencia-ci-diagnostics
           path: |
-            pos-tests.log
+            full-build.log
             backend-syntax.log
-            vite-build.log
           if-no-files-found: ignore
           retention-days: 3
