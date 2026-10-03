@@ -25,7 +25,6 @@ function getGeminiApiKey() {
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
     ""
   );
 }
@@ -182,7 +181,7 @@ async function generateImageWithGemini(prompt) {
   const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY / VITE_GEMINI_API_KEY no está configurada");
+    throw new Error("GEMINI_API_KEY no está configurada");
   }
 
   const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
