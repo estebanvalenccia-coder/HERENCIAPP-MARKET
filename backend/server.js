@@ -2845,7 +2845,7 @@ app.put("/api/admin/automations/rules", requireAdmin, async (req, res) => {
       },
     };
     await upsertStorageValue(AUTOMATION_RULES_KEY, JSON.stringify(next));
-    const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const products = await loadAuthoritativeProducts();
     await evaluateInventoryAutomations(products);
     res.json({ rules: next });
   } catch (error) {
@@ -3267,7 +3267,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     !nextMetadata.inventoryRestockedAt
   ) {
     try {
-      const currentProducts = parseStoredJson(await readStorageValue("adminProducts"), []);
+      const currentProducts = await loadAuthoritativeProducts({ includeArchived: true });
       const quantities = new Map();
 
       for (const item of previousOrder.items || []) {
@@ -5917,7 +5917,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
-    const catalog = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const catalog = await loadAuthoritativeProducts();
     const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
     const authoritativeItems = [];
     const requestedByProduct = new Map();
@@ -6122,7 +6122,7 @@ async function commitOnlineOrderInventory(order) {
     return { skipped: true, reason: "already_committed", order: freshOrder };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts({ includeArchived: true });
   const byId = new Map((Array.isArray(products) ? products : []).map((product) => [String(product?.id ?? ""), product]));
   const requirements = new Map();
 
@@ -6452,7 +6452,7 @@ function requireNeuralActionId(req, res) {
 }
 
 async function readNeuralProducts() {
-  return parseStoredJson(await readStorageValue("adminProducts"), []);
+  return loadAuthoritativeProducts({ includeArchived: true });
 }
 
 async function writeNeuralProducts(products) {
@@ -6791,7 +6791,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
   try {
     const [orders, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
       listOrdersPrimary({ limit: 250 }),
-      readStorageValue("adminProducts"),
+      loadAuthoritativeProducts({ includeArchived: true }),
       readStorageValue("posCashSession"),
       readStorageValue("siteContent"),
       readStorageValue("siteContentDraft"),
@@ -6801,7 +6801,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       readStorageValue("herencia_finance_closures"),
       readStorageValue("adminSuppliers"),
     ]);
-    const products = parseStoredJson(productsRaw, []);
+    const products = Array.isArray(productsRaw) ? productsRaw : [];
     const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null, sku: p.sku || null }));
     const orderCustomers = (orders || []).filter(o => o.customer_email).map(o => ({ email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }));
     const posCustomers = parseStoredJson(posCustomersRaw, []);
