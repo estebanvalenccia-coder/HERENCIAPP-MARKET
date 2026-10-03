@@ -134,6 +134,11 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [aiGenerating, setAiGenerating] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkPricePercent, setBulkPricePercent] = useState("");
+  const [bulkDiscountPercent, setBulkDiscountPercent] = useState("");
+  const [bulkStockValue, setBulkStockValue] = useState("");
+  const [bulkTaxValue, setBulkTaxValue] = useState("");
+  const [bulkSupplier, setBulkSupplier] = useState("");
 
   async function loadProducts() {
     try {
@@ -238,6 +243,70 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     }
   }
 
+  async function bulkTransform(transform: (product: Product) => any, message: string) {
+    if (!selectedProducts.length) return;
+    try {
+      setLoading(true);
+      await Promise.all(selectedProducts.map((product) => backendApi.updateCommerceProduct(product.id, transform(product))));
+      await loadProducts();
+      toast.success(message);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron actualizar los artículos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyBulkPricePercent() {
+    const percent = Number(bulkPricePercent);
+    if (!Number.isFinite(percent) || percent === 0) return toast.error("Escribe un porcentaje distinto de 0");
+    if (percent <= -100) return toast.error("El porcentaje no puede reducir el precio a 0 o menos");
+    await bulkTransform((product) => {
+      const regular = Math.max(0.01, Number(product.price || 0));
+      const next = Math.max(0.01, Math.round(regular * (1 + percent / 100) * 100) / 100);
+      const payload: any = { price: next };
+      if (product.onSale && product.salePrice) {
+        const sale = Math.max(0.01, Math.round(Number(product.salePrice) * (1 + percent / 100) * 100) / 100);
+        payload.salePrice = Math.min(sale, Math.max(0.01, next - 0.01));
+        payload.compareAtPrice = next;
+        payload.onSale = true;
+      }
+      return payload;
+    }, "Precios actualizados");
+    setBulkPricePercent("");
+  }
+
+  async function applyBulkDiscount() {
+    const percent = Number(bulkDiscountPercent);
+    if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) return toast.error("El descuento debe estar entre 1% y 99%");
+    await bulkTransform((product) => {
+      const regular = Math.max(0.01, Number(product.price || 0));
+      const sale = Math.max(0.01, Math.round(regular * (1 - percent / 100) * 100) / 100);
+      return { price: regular, salePrice: sale, compareAtPrice: regular, onSale: true };
+    }, "Descuento aplicado");
+    setBulkDiscountPercent("");
+  }
+
+  async function applyBulkStock() {
+    const stock = Number(bulkStockValue);
+    if (!Number.isFinite(stock) || stock < 0) return toast.error("Escribe un stock válido");
+    await bulkTransform((product) => product.trackInventory === false ? {} : { stock: Math.max(0, Math.floor(stock)) }, "Stock actualizado");
+    setBulkStockValue("");
+  }
+
+  async function applyBulkTax() {
+    const tax = Number(bulkTaxValue);
+    if (!Number.isFinite(tax) || tax < 0 || tax > 100) return toast.error("Escribe un IVA entre 0 y 100");
+    await bulkTransform(() => ({ taxRate: tax, iva: tax }), "IVA actualizado");
+    setBulkTaxValue("");
+  }
+
+  async function applyBulkSupplier() {
+    const supplier = bulkSupplier.trim();
+    if (!supplier) return toast.error("Escribe el proveedor");
+    await bulkTransform((product) => ({ metadata: { ...(product.metadata || {}), supplierId: supplier } }), "Proveedor actualizado");
+    setBulkSupplier("");
+  }
   async function bulkArchive() {
     if (!selectedProducts.length) return;
     if (!confirm(`¿Mover ${selectedProducts.length} artículos a la papelera?`)) return;
@@ -693,6 +762,51 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
         </div>
       )}
 
+      {selectedIds.length > 0 && !showTrash && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="mb-3">
+            <p className="font-black">Edición masiva Pro</p>
+            <p className="text-xs text-muted-foreground">Aplica cambios comerciales a los artículos seleccionados.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Precio ± %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" step="0.1" value={bulkPricePercent} onChange={(e) => setBulkPricePercent(e.target.value)} placeholder="+10 / -5" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkPricePercent()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Descuento %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="1" max="99" step="1" value={bulkDiscountPercent} onChange={(e) => setBulkDiscountPercent(e.target.value)} placeholder="20" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkDiscount()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Fijar stock</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="0" step="1" value={bulkStockValue} onChange={(e) => setBulkStockValue(e.target.value)} placeholder="10" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkStock()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">IVA %</label>
+              <div className="mt-2 flex gap-2">
+                <input type="number" min="0" max="100" step="0.1" value={bulkTaxValue} onChange={(e) => setBulkTaxValue(e.target.value)} placeholder="21" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkTax()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <label className="text-xs font-black">Proveedor</label>
+              <div className="mt-2 flex gap-2">
+                <input value={bulkSupplier} onChange={(e) => setBulkSupplier(e.target.value)} placeholder="Proveedor / ID" className="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-sm" />
+                <button type="button" onClick={() => void applyBulkSupplier()} className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground">Aplicar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Cargando catálogo de Neon…</div>
       ) : visibleProducts.length === 0 ? (
