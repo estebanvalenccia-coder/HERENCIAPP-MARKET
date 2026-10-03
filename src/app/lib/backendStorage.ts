@@ -287,8 +287,14 @@ export const backendApi = {
       ok: boolean;
       database: boolean;
       databaseProvider?: string;
+      databasePrimary?: string;
       stripe?: boolean;
+      stripeWebhook?: boolean;
       email?: boolean;
+      r2Configured?: boolean;
+      maps?: boolean;
+      salesAi?: boolean;
+      imageAi?: boolean;
       commerceCore?: boolean;
     }>("/api/ready");
   },
