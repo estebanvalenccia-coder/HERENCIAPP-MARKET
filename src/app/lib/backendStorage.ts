@@ -287,8 +287,14 @@ export const backendApi = {
       ok: boolean;
       database: boolean;
       databaseProvider?: string;
+      databasePrimary?: string;
       stripe?: boolean;
+      stripeWebhook?: boolean;
       email?: boolean;
+      r2Configured?: boolean;
+      maps?: boolean;
+      salesAi?: boolean;
+      imageAi?: boolean;
       commerceCore?: boolean;
     }>("/api/ready");
   },
@@ -1321,6 +1327,13 @@ export const backendApi = {
 
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async generateProductImage(payload: { prompt: string }) {
+    return request<{ image: string; model?: string }>("/api/admin/ai/product-image", {
       method: "POST",
       body: JSON.stringify(payload),
     });
