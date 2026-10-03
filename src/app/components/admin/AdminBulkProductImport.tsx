@@ -27,6 +27,7 @@ type ProductDraft = {
   tempId: string;
   fileName: string;
   image: string;
+  images?: string[];
   name: string;
   description: string;
   department: string;
@@ -373,6 +374,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
         tempId: crypto.randomUUID(),
         fileName: `${plant.slug}.jpg`,
         image: plant.image,
+        images: plant.images?.length ? plant.images : [plant.image],
         name: plant.name,
         description: plant.description,
         department: "Plantas",
@@ -447,6 +449,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       family: draft.family,
       subcategory: draft.family,
       image: draft.image,
+      images: draft.images?.length ? draft.images : [draft.image],
       featured: draft.featured,
       onSale: false,
       active: draft.active,
