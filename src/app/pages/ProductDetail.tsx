@@ -18,6 +18,10 @@ export function ProductDetail() {
   const [selectedVariant, setSelectedVariant] = useState("");
   const [selectedImage, setSelectedImage] = useState("");
   const [dedication, setDedication] = useState("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [serviceTimeSlot, setServiceTimeSlot] = useState("");
+  const [serviceAvailability, setServiceAvailability] = useState<any>(null);
+  const [serviceAvailabilityLoading, setServiceAvailabilityLoading] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewForm, setReviewForm] = useState({ name: "", email: "", rating: 5, comment: "" });
@@ -164,6 +168,61 @@ export function ProductDetail() {
   const plantLike = product ? isPlantCareProduct(product) : false;
   const serviceProduct = collectionId === "servicios";
   const detailConfig = site.productDetailPage;
+  const serviceLeadDays = Math.max(0, Number(product?.leadTimeDays || 0));
+  const serviceAvailableDays = Array.isArray(product?.serviceAvailableDays) && product.serviceAvailableDays.length
+    ? product.serviceAvailableDays.map(Number)
+    : [1, 2, 3, 4, 5];
+  const serviceSlots = Array.isArray(product?.serviceTimeSlots) && product.serviceTimeSlots.length
+    ? product.serviceTimeSlots.map(String)
+    : ["09:00", "11:00", "13:00", "16:00", "18:00"];
+  const serviceMinDate = useMemo(() => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + serviceLeadDays);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }, [serviceLeadDays]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!serviceProduct || !product?.bookingRequired || !serviceDate) {
+      setServiceAvailability(null);
+      setServiceTimeSlot("");
+      return;
+    }
+
+    const date = new Date(`${serviceDate}T12:00:00`);
+    if (!Number.isFinite(date.getTime()) || !serviceAvailableDays.includes(date.getDay())) {
+      setServiceAvailability(null);
+      setServiceTimeSlot("");
+      return;
+    }
+
+    setServiceAvailabilityLoading(true);
+    backendApi.getServiceAvailability(product.id, serviceDate)
+      .then((result) => {
+        if (cancelled) return;
+        setServiceAvailability(result);
+        const current = result.slots?.find((slot: any) => slot.slot === serviceTimeSlot);
+        if (serviceTimeSlot && current && !current.available) setServiceTimeSlot("");
+      })
+      .catch((error: any) => {
+        if (!cancelled) {
+          setServiceAvailability(null);
+          toast.error(error?.message || "No se pudo comprobar la disponibilidad");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setServiceAvailabilityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceProduct, product?.id, product?.bookingRequired, serviceDate, serviceAvailableDays.join(",")]);
 
   useEffect(() => {
     if (!galleryImages.length) {
@@ -284,17 +343,44 @@ export function ProductDetail() {
   const addToCart = () => {
     if (!product) return;
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
+
+    let serviceBooking: any = undefined;
+    if (serviceProduct && product.bookingRequired) {
+      if (!serviceDate) return toast.error("Elige la fecha del servicio");
+      if (serviceDate < serviceMinDate) return toast.error(`Este servicio requiere al menos ${serviceLeadDays} días de antelación`);
+      const date = new Date(`${serviceDate}T12:00:00`);
+      if (!serviceAvailableDays.includes(date.getDay())) return toast.error("Ese día no está disponible para este servicio");
+      if (!serviceTimeSlot) return toast.error("Elige una hora disponible");
+      const availability = serviceAvailability?.slots?.find((slot: any) => slot.slot === serviceTimeSlot);
+      if (availability && !availability.available) return toast.error("Esa franja ya está completa");
+      serviceBooking = {
+        date: serviceDate,
+        timeSlot: serviceTimeSlot,
+        durationMinutes: Number(product.durationMinutes || 0) || undefined,
+        serviceArea: product.serviceArea || undefined,
+      };
+    }
+
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}`;
+    const bookingKey = serviceBooking ? `${serviceBooking.date}::${serviceBooking.timeSlot}` : "";
+    const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}::${bookingKey}`;
     const existingItem = cart.find((item: any) => item.lineKey === lineKey);
     if (trackInventory && Number(existingItem?.quantity || 0) + quantity > stock) {
       return toast.error(`Solo quedan ${stock} unidades disponibles`);
     }
     if (existingItem) existingItem.quantity += quantity;
-    else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined, personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
+    else cart.push({
+      ...product,
+      price: effectivePrice,
+      quantity,
+      lineKey,
+      selectedVariant: selectedVariant || undefined,
+      personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined,
+      serviceBooking,
+    });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
-    toast.success(serviceProduct ? "Servicio añadido" : "Producto añadido al carrito");
+    toast.success(serviceProduct ? "Servicio añadido con reserva" : "Producto añadido al carrito");
   };
 
   if (!product) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Producto no encontrado o cargando…</p></div>;
@@ -383,6 +469,49 @@ export function ProductDetail() {
           {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
           {detailConfig.showVariants !== false && variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
+          {serviceProduct && product.bookingRequired && (
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+              <p className="font-black">Reserva tu cita</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {serviceLeadDays > 0 ? `Antelación mínima: ${serviceLeadDays} días.` : "Puedes reservar desde hoy."}
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-bold">
+                  Fecha
+                  <input
+                    type="date"
+                    min={serviceMinDate}
+                    value={serviceDate}
+                    onChange={(e) => {
+                      setServiceDate(e.target.value);
+                      setServiceTimeSlot("");
+                    }}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3"
+                  />
+                </label>
+                <label className="text-sm font-bold">
+                  Hora
+                  <select
+                    value={serviceTimeSlot}
+                    onChange={(e) => setServiceTimeSlot(e.target.value)}
+                    disabled={!serviceDate || serviceAvailabilityLoading}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3 disabled:opacity-50"
+                  >
+                    <option value="">{serviceAvailabilityLoading ? "Comprobando disponibilidad…" : "Selecciona una hora"}</option>
+                    {serviceSlots.map((slot: string) => {
+                      const row = serviceAvailability?.slots?.find((item: any) => item.slot === slot);
+                      const disabled = row ? !row.available : false;
+                      const suffix = row ? (disabled ? " · completo" : ` · quedan ${row.remaining}`) : "";
+                      return <option key={slot} value={slot} disabled={disabled}>{slot}{suffix}</option>;
+                    })}
+                  </select>
+                </label>
+              </div>
+              {serviceDate && !serviceAvailableDays.includes(new Date(`${serviceDate}T12:00:00`).getDay()) && (
+                <p className="mt-3 text-sm font-semibold text-destructive">Ese día no está disponible para este servicio.</p>
+              )}
+            </div>
+          )}
           {detailConfig.showQuantity !== false && <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>}
           <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>}
@@ -413,7 +542,7 @@ export function ProductDetail() {
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{collection.name}</p>
           <h2 className="mt-2 text-3xl font-bold">Información del artículo</h2>
           <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{product.description}</p>
-          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">Este servicio requiere coordinar fecha o cita después de la compra.</div>}
+          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">La fecha y hora se reservan antes de añadir el servicio al carrito.</div>}
           {collectionId === "dulce" && product.requiresRefrigeration && <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
         </motion.div>
         ) : null
