@@ -33,10 +33,27 @@ function effectivePrice(product: any) {
   return Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
 }
 
+function resolveProductImage(product: any) {
+  const gallery = Array.isArray(product?.images) ? product.images : [];
+  const galleryImage = gallery
+    .map((image: any) => typeof image === "string" ? image : image?.url || image?.imageUrl || "")
+    .find((value: any) => String(value || "").trim());
+
+  return String(
+    product?.image ||
+    product?.imageUrl ||
+    product?.image_url ||
+    galleryImage ||
+    product?.metadata?.image ||
+    ""
+  ).trim();
+}
+
 export function Products() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [displayProducts, setDisplayProducts] = useState<any[]>(fallbackProducts);
+  const [displayProducts, setDisplayProducts] = useState<any[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
   );
@@ -95,6 +112,7 @@ export function Products() {
     };
 
     async function loadCatalog() {
+      setCatalogLoading(true);
       try {
         const [productResult, collectionResult] = await Promise.all([
           backendApi.listCommerceProducts(),
@@ -109,9 +127,11 @@ export function Products() {
           ? collectionResult.collections.filter((item: any) => String(item.status || "active") === "active")
           : [];
 
-        setDisplayProducts(rows.length ? rows : fallbackProducts);
+        // La API es la fuente de verdad. No mezclar productos demo con el catálogo real:
+        // eso provocaba el parpadeo de 16 productos y después 2 al recargar.
+        setDisplayProducts(rows);
         if (collections.length) setCollectionOptions(collections);
-        if (rows.length) backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
+        backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
         if (cancelled) return;
         try {
@@ -119,10 +139,13 @@ export function Products() {
           const active = Array.isArray(cached)
             ? cached.filter((product: any) => product.status === "active" || product.active !== false)
             : [];
+          // Solo recurrimos al catálogo estático si el backend no está disponible.
           setDisplayProducts(active.length ? active : fallbackProducts);
         } catch {
           setDisplayProducts(fallbackProducts);
         }
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
       }
     }
 
@@ -354,7 +377,7 @@ export function Products() {
                   {suggestions.map((product) => (
                     <Link key={String(product.id)} to={`/producto/${product.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted">
                       <div className="h-10 w-10 overflow-hidden rounded-lg bg-muted">
-                        {product.image && <img src={product.image} className="h-full w-full object-cover" alt="" />}
+                        {resolveProductImage(product) && <img src={resolveProductImage(product)} className="h-full w-full object-cover" alt="" />}
                       </div>
                       <div>
                         <p className="font-semibold">{product.name}</p>
@@ -454,12 +477,25 @@ export function Products() {
           )}
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{filteredProducts.length} artículos</span>
+            <span>{catalogLoading ? "Cargando catálogo…" : `${filteredProducts.length} artículos`}</span>
             {site.productsPage.showFavorites !== false && <span>{favorites.length} favoritos</span>}
           </div>
         </div>
 
-        {filteredProducts.length === 0 ? (
+        {catalogLoading ? (
+          <div className={`grid gap-6 ${gridClass}`}>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="overflow-hidden rounded-3xl border border-border bg-card">
+                <div className={`animate-pulse bg-muted ${imageClass}`} />
+                <div className="space-y-3 p-5">
+                  <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="py-20 text-center">
             <Filter className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
             <p className="text-lg text-muted-foreground">{site.productsPage.emptyText}</p>
@@ -484,8 +520,8 @@ export function Products() {
                   style={{ borderRadius: `${Math.max(0, Math.min(40, Number(site.productsPage.cardRadius ?? 24)))}px` }}
                 >
                   <Link to={`/producto/${product.id}`} className={`relative block overflow-hidden bg-muted ${imageClass}`}>
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    {resolveProductImage(product) ? (
+                      <img src={resolveProductImage(product)} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sin imagen</div>
                     )}
