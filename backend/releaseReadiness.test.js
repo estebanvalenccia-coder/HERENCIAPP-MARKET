@@ -116,3 +116,12 @@ test("Administración no muestra confirmar en tienda", async () => {
   const orders = await read("src/app/components/admin/AdminOrders.tsx");
   assert.doesNotMatch(orders, /Confirmar en tienda/i);
 });
+
+
+test("el admin soporta 2FA TOTP opcional sin exponer el secreto", async () => {
+  const server = await read("backend/server.js");
+  assert.match(server, /\/api\/admin\/auth-config/);
+  assert.match(server, /ADMIN_TOTP_SECRET/);
+  assert.match(server, /totpRequired/);
+  assert.doesNotMatch(server, /res\.json\([^\n]*ADMIN_TOTP_SECRET/);
+});
