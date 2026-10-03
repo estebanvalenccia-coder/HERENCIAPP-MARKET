@@ -23,6 +23,8 @@ import {
   consumeNeonCommerceStockReservation,
   releaseNeonCommerceStockReservation,
   syncNeonCommerceInventory,
+  recordNeonStripeEvent,
+  recordNeonPaymentEvent,
 } from "./neonDb.js";
 import {
   calculatePosTotals,
@@ -1143,6 +1145,33 @@ app.post(
       return res.status(400).send(`Webhook inválido: ${error.message}`);
     }
 
+    await recordNeonStripeEvent({
+      id: event.id,
+      type: event.type,
+      payload: event,
+    }).catch((error) =>
+      console.warn("No se pudo registrar el evento Stripe:", error?.message || error)
+    );
+
+    if (String(event.type || "").startsWith("payment_intent.")) {
+      const paymentIntentEvent = event.data?.object || {};
+      await recordNeonPaymentEvent({
+        provider: "stripe",
+        eventId: event.id,
+        eventType: event.type,
+        orderId: paymentIntentEvent.metadata?.orderId || null,
+        payload: {
+          paymentIntentId: paymentIntentEvent.id || null,
+          status: paymentIntentEvent.status || null,
+          amount: paymentIntentEvent.amount ?? null,
+          amountReceived: paymentIntentEvent.amount_received ?? null,
+          currency: paymentIntentEvent.currency || null,
+        },
+      }).catch((error) =>
+        console.warn("No se pudo registrar el evento de pago:", error?.message || error)
+      );
+    }
+
     if (event.type === "payment_intent.succeeded") {
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
@@ -1150,7 +1179,9 @@ app.post(
       if (orderId) {
         let updatedOrder = null;
         let orderUpdateError = null;
+        let previousOrder = null;
         try {
+          previousOrder = await getOrderPrimary(orderId);
           updatedOrder = await patchOrderPrimary(orderId, {
             status: "paid",
             stripe_payment_intent_id: paymentIntent.id,
@@ -1179,13 +1210,19 @@ app.post(
             }).catch(() => null);
           }
 
-          broadcastAdminOrderEvent(inventoryOrder, "order_paid");
-          void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
+          const alreadyConfirmed =
+            previousOrder?.status === "paid" &&
+            String(previousOrder?.stripe_payment_intent_id || "") === String(paymentIntent.id || "");
 
-          try {
-            await sendOrderConfirmationEmails(inventoryOrder, "stripe_payment_succeeded");
-          } catch (emailError) {
-            console.error("Error enviando emails de confirmación:", emailError.message);
+          if (!alreadyConfirmed) {
+            broadcastAdminOrderEvent(inventoryOrder, "order_paid");
+            void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
+
+            try {
+              await sendOrderConfirmationEmails(inventoryOrder, "stripe_payment_succeeded");
+            } catch (emailError) {
+              console.error("Error enviando emails de confirmación:", emailError.message);
+            }
           }
         }
       }
@@ -1307,7 +1344,22 @@ app.get("/api/ready", async (_req, res) => {
       database: true,
       databaseProvider: hasNeon() ? "neon" : "supabase",
       stripe: Boolean(stripe),
+      stripeWebhook: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
       email: Boolean(process.env.RESEND_API_KEY),
+      r2Configured: Boolean(
+        process.env.R2_ACCOUNT_ID &&
+        process.env.R2_ACCESS_KEY_ID &&
+        process.env.R2_SECRET_ACCESS_KEY &&
+        process.env.R2_BUCKET_NAME &&
+        process.env.R2_PUBLIC_URL
+      ),
+      maps: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+      salesAi: Boolean(process.env.GROQ_API_KEY),
+      imageAi: Boolean(
+        process.env.NANO_BANANA_API_KEY ||
+        process.env.GEMINI_API_KEY ||
+        process.env.VITE_GEMINI_API_KEY
+      ),
       commerceCore: true,
     });
   } catch (error) {
@@ -5571,11 +5623,24 @@ function groqModel(model) {
 }
 
 async function getAiSettings() {
+  let stored = {};
   try {
-    return parseStoredJson(await readStorageValue("aiSettings"), {});
+    stored = parseStoredJson(await readStorageValue("aiSettings"), {});
   } catch {
-    return {};
+    stored = {};
   }
+
+  if (process.env.GROQ_API_KEY) {
+    return {
+      ...stored,
+      enabled: true,
+      provider: "groq",
+      apiKey: process.env.GROQ_API_KEY,
+      model: stored.model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+    };
+  }
+
+  return stored;
 }
 
 app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
@@ -5626,7 +5691,8 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
             content: `Crea un ramo para Herencia Market. Idea: ${description}. Presupuesto: ${budget} euros. Estilo: ${style}. Color principal: ${color}. Tamano: ${size}.`,
           },
         ],
-        temperature: 0.7,
+        temperature: 0.35,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -5649,7 +5715,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/api/ai/plant-description", async (req, res) => {
+app.post("/api/ai/plant-description", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
 
   const { plantName, baseDescription = "" } = req.body;
@@ -5672,19 +5738,26 @@ app.post("/api/ai/plant-description", async (req, res) => {
       ? groqModel(settings.model)
       : "gpt-4o-mini";
 
-  const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
+  const systemPrompt = `Eres un experto en botánica y fichas de producto para una tienda de plantas. Genera información útil, prudente y comercial en español. Responde SOLO JSON válido con esta estructura exacta:
 {
-  "description": "descripción completa de la planta",
-  "care": {
-    "water": "instrucciones de riego",
-    "light": "requisitos de luz",
-    "temperature": "temperatura ideal",
-    "fertilizer": "guía de fertilización"
-  },
-  "benefits": ["beneficio", "beneficio", "beneficio", "beneficio"],
-  "tips": "consejos adicionales del experto"
+  "scientificName": "nombre científico más probable",
+  "description": "descripción completa y comercial de la planta",
+  "environment": "interior|exterior|ambos",
+  "light": "baja|indirecta|sol",
+  "difficulty": "Fácil|Media|Avanzada",
+  "petSafe": false,
+  "toxicity": "toxicidad para mascotas/personas o 'No conocida'",
+  "water": "instrucciones de riego",
+  "temperature": "rango de temperatura recomendado",
+  "humidity": "humedad recomendada",
+  "growth": "ritmo y hábito de crecimiento",
+  "origin": "origen geográfico",
+  "fertilizer": "guía breve de fertilización",
+  "careNotes": "resumen breve de cuidados",
+  "benefits": ["beneficio", "beneficio", "beneficio"],
+  "tips": "consejos adicionales"
 }
-Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
+No inventes una identificación exacta si el nombre es ambiguo: indícalo de forma prudente en description. Responde ÚNICAMENTE con JSON.`;
 
   const aiResponse = await fetch(endpoint, {
     method: "POST",
@@ -6108,7 +6181,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (!stripe) {
     return res
       .status(503)
-      .json({ error: "Stripe no estÃ¡ configurado en el backend" });
+      .json({ error: "Stripe no está configurado en el backend" });
   }
 
   const { orderId, paymentIntentId } = req.body || {};
@@ -6149,14 +6222,34 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
     return res.status(404).json({ error: "Pedido no encontrado" });
   }
 
+  const wasAlreadyPaidForIntent =
+    order.status === "paid" &&
+    String(order.stripe_payment_intent_id || "") === String(paymentIntent.id || "");
+
   if (
     order.stripe_payment_intent_id &&
     order.stripe_payment_intent_id !== paymentIntent.id
   ) {
     return res.status(409).json({
-      error: "El pedido ya estÃ¡ asociado a otro pago de Stripe",
+      error: "El pedido ya está asociado a otro pago de Stripe",
     });
   }
+
+  await recordNeonPaymentEvent({
+    provider: "stripe_confirm",
+    eventId: `confirm:${paymentIntent.id}:${orderId}`,
+    eventType: "confirm_order",
+    orderId,
+    payload: {
+      paymentIntentId: paymentIntent.id,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount ?? null,
+      amountReceived: paymentIntent.amount_received ?? null,
+      currency: paymentIntent.currency || null,
+    },
+  }).catch((error) =>
+    console.warn("No se pudo registrar la confirmación de pago:", error?.message || error)
+  );
 
   const now = new Date().toISOString();
   const isPaid = paymentIntent.status === "succeeded";
@@ -6174,7 +6267,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   };
 
   if (!isPaid && !isProcessing) {
-    nextMetadata.stripeConfirmationError = `Stripe devolviÃ³ estado: ${paymentIntent.status}`;
+    nextMetadata.stripeConfirmationError = `Stripe devolvió estado: ${paymentIntent.status}`;
   }
 
   let updatedOrder;
@@ -6191,7 +6284,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (!isPaid && !isProcessing) {
     await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
-      error: `Stripe devolviÃ³ estado: ${paymentIntent.status}`,
+      error: `Stripe devolvió estado: ${paymentIntent.status}`,
       paymentIntentStatus: paymentIntent.status,
       order: updatedOrder,
     });
@@ -6217,20 +6310,22 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
       }).catch(() => null);
     }
 
-    broadcastAdminOrderEvent(inventoryOrder, "order_paid");
-    void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
+    if (!wasAlreadyPaidForIntent) {
+      broadcastAdminOrderEvent(inventoryOrder, "order_paid");
+      void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
 
-    try {
-      emailResults = await sendOrderConfirmationEmails(
-        inventoryOrder,
-        "stripe_confirm_order"
-      );
-    } catch (emailError) {
-      console.error(
-        "Error enviando emails de confirmaciÃ³n:",
-        emailError.message
-      );
-      emailResults = { error: emailError.message };
+      try {
+        emailResults = await sendOrderConfirmationEmails(
+          inventoryOrder,
+          "stripe_confirm_order"
+        );
+      } catch (emailError) {
+        console.error(
+          "Error enviando emails de confirmación:",
+          emailError.message
+        );
+        emailResults = { error: emailError.message };
+      }
     }
   }
 
