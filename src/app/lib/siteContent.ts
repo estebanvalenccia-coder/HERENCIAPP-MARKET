@@ -362,7 +362,7 @@ export const defaultSiteContent: SiteContent = {
   },
   contactPage: {
     title: "Contacto",
-    subtitle: "Estamos aquí para ayudarte. Visítanos, llámanos o escríbenos.",
+    subtitle: "Estamos aquí para ayudarte. Llámanos, escríbenos o contáctanos por WhatsApp.",
     whatsappTitle: "WhatsApp",
     whatsappSubtitle: "Haz clic para abrir chat",
     callTitle: "Teléfono",
