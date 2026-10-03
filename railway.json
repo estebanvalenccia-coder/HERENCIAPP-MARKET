@@ -4,6 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "node neonGateway.js"
+    "startCommand": "node frontendServer.js"
   }
 }
