@@ -51,7 +51,7 @@ import {
 } from "../../lib/commerceCatalog";
 
 type Device = "desktop" | "tablet" | "mobile";
-type PageMode = "home" | "products" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
+type PageMode = "home" | "products" | "product-detail" | "services" | "dulce" | "moda" | "about" | "contact" | "herencia";
 type SelectedTarget = "header" | "footer" | "products" | "services" | "contact" | string;
 type EditorTab = "contenido" | "diseno" | "avanzado";
 
@@ -455,6 +455,7 @@ export function AdminVisualBuilder({
   onManageProducts?: () => void;
   onAddProduct?: () => void;
   onManageCollections?: () => void;
+  onManageCollections?: () => void;
 }) {
   const [site, setSite] = useState<SiteContent>(() => {
     const draft = backendStorage.getItem("siteContentDraft");
@@ -499,6 +500,9 @@ export function AdminVisualBuilder({
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
   const [catalogPreview, setCatalogPreview] = useState<any[]>([]);
+  const [catalogCollections, setCatalogCollections] = useState<any[]>(
+    COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
+  );
   const [catalogPreviewCollection, setCatalogPreviewCollection] = useState("todos");
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
@@ -536,9 +540,16 @@ export function AdminVisualBuilder({
 
   async function loadCatalogPreview() {
     try {
-      const result = await backendApi.listCommerceProducts({ includeArchived: true });
-      const rows = Array.isArray(result.products) ? result.products : [];
+      const [productResult, collectionResult] = await Promise.all([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listCommerceCollections(),
+      ]);
+      const rows = Array.isArray(productResult.products) ? productResult.products : [];
+      const collectionRows = Array.isArray(collectionResult.collections)
+        ? collectionResult.collections.filter((item: any) => item.status === "active")
+        : [];
       setCatalogPreview(rows.filter((product: any) => product.status !== "archived" && !product.deletedAt));
+      if (collectionRows.length) setCatalogCollections(collectionRows);
       backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
     } catch {
       try {
@@ -558,8 +569,10 @@ export function AdminVisualBuilder({
     void loadCatalogPreview();
     const reload = () => void loadCatalogPreview();
     window.addEventListener("commerce-products-changed", reload);
+    window.addEventListener("commerce-collections-changed", reload);
     return () => {
       window.removeEventListener("commerce-products-changed", reload);
+      window.removeEventListener("commerce-collections-changed", reload);
     };
   }, []);
 
@@ -881,6 +894,7 @@ export function AdminVisualBuilder({
               {([
                 ["home", "Inicio"],
                 ["products", "Productos"],
+                ["product-detail", "Ficha producto"],
                 ["services", "Servicios"],
                 ["dulce", "Dulce"],
                 ["moda", "Moda"],
@@ -998,6 +1012,7 @@ export function AdminVisualBuilder({
                 <div>
                   <p className="text-sm font-black">
                     {pageMode === "products" ? "Página de Productos"
+                      : pageMode === "product-detail" ? "Ficha de producto"
                       : pageMode === "services" ? "Página de Servicios"
                       : pageMode === "dulce" ? "Página Dulce"
                       : pageMode === "moda" ? "Página Moda"
@@ -1007,6 +1022,7 @@ export function AdminVisualBuilder({
                   </p>
                   <p className="text-xs text-slate-500">
                     {pageMode === "products" ? "Catálogo, filtros y presentación"
+                      : pageMode === "product-detail" ? "Galería, compra, módulos y contenido"
                       : pageMode === "services" ? "Servicios y contratación"
                       : pageMode === "dulce" || pageMode === "moda" ? "Portada y colección"
                       : pageMode === "about" ? "Historia, imagen y valores"
@@ -1047,7 +1063,7 @@ export function AdminVisualBuilder({
               onChange={(event) => {
                 const value = event.target.value;
                 setSelected(value);
-                if (["products","services","dulce","moda","about","contact","herencia"].includes(value)) {
+                if (["products","product-detail","services","dulce","moda","about","contact","herencia"].includes(value)) {
                   setPageMode(value as PageMode);
                 } else if (pageMode !== "home") {
                   setPageMode("home");
@@ -1063,6 +1079,7 @@ export function AdminVisualBuilder({
               ))}
               <option value="footer">Footer</option>
               <option value="products">Productos</option>
+              <option value="product-detail">Ficha de producto</option>
               <option value="services">Servicios</option>
               <option value="dulce">Dulce</option>
               <option value="moda">Moda</option>
@@ -1160,6 +1177,7 @@ export function AdminVisualBuilder({
               <ProductsPreview
                 site={site}
                 products={catalogPreview}
+                collections={catalogCollections}
                 selected={selected === "products"}
                 selectedProductId={selectedCatalogProduct ? String(selectedCatalogProduct.id) : ""}
                 activeCollection={catalogPreviewCollection}
@@ -1170,6 +1188,14 @@ export function AdminVisualBuilder({
                 onSearchChange={setCatalogPreviewSearch}
                 onManageProducts={onManageProducts}
                 onAddProduct={onAddProduct}
+                onManageCollections={onManageCollections}
+              />
+            ) : pageMode === "product-detail" ? (
+              <ProductDetailTemplatePreview
+                site={site}
+                product={catalogPreview[0] || null}
+                selected={selected === "product-detail"}
+                onSelect={() => setSelected("product-detail")}
               />
             ) : pageMode === "services" ? (
               <ServicesPreview site={site} products={catalogPreview} selected={selected === "services"} onSelect={() => setSelected("services")} />
@@ -1210,6 +1236,7 @@ export function AdminVisualBuilder({
                     selected === "header" ? "Header"
                       : selected === "footer" ? "Footer"
                       : selected === "products" ? "Productos"
+                      : selected === "product-detail" ? "Ficha de producto"
                       : selected === "services" ? "Servicios"
                       : selected === "dulce" ? "Dulce"
                       : selected === "moda" ? "Moda"
@@ -1283,6 +1310,7 @@ export function AdminVisualBuilder({
                 onManageCollections={onManageCollections}
               />
             )}
+            {selected === "product-detail" && <ProductDetailPageEditor site={site} updateSite={updateSite} />}
             {selected === "services" && <ServicesPageEditor site={site} updateSite={updateSite} />}
             {selected === "dulce" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="dulce" />}
             {selected === "moda" && <MarketExperiencePageEditor site={site} updateSite={updateSite} section="moda" />}
@@ -1893,6 +1921,94 @@ function ProductQuickEditor({
   );
 }
 
+function ProductDetailPageEditor({
+  site,
+  updateSite,
+}: {
+  site: SiteContent;
+  updateSite: (mutator: (site: SiteContent) => SiteContent) => void;
+}) {
+  const patch = (value: Partial<SiteContent["productDetailPage"]>) =>
+    updateSite((current) => ({
+      ...current,
+      productDetailPage: {
+        ...current.productDetailPage,
+        ...value,
+      },
+    }));
+
+  const toggles = [
+    ["showGalleryThumbnails", "Miniaturas de galería"],
+    ["showDescription", "Descripción junto al título"],
+    ["showDetails", "Características / atributos"],
+    ["showVariants", "Selector de variantes"],
+    ["showDedication", "Dedicatoria / personalización"],
+    ["showQuantity", "Selector de cantidad"],
+    ["showFavorite", "Botón de favoritos"],
+    ["showStock", "Estado de stock"],
+    ["showWaitlist", "Aviso cuando vuelva a estar disponible"],
+    ["showCare", "Cuidados / pasaporte de plantas"],
+    ["showRelated", "Completa tu compra"],
+    ["showReviews", "Reseñas"],
+    ["showQuestions", "Preguntas y respuestas"],
+  ] as const;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+        Esta plantilla se aplica a todas las fichas de producto. Los datos concretos de cada artículo siguen viniendo de Commerce/Neon.
+      </div>
+
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Galería</p>
+        <RangeField
+          label="Redondeado de imagen"
+          value={Number(site.productDetailPage.galleryRadius ?? 24)}
+          min={0}
+          max={48}
+          suffix="px"
+          onChange={(galleryRadius) => patch({ galleryRadius })}
+        />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 p-3">
+        <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Módulos visibles</p>
+        <div className="space-y-2">
+          {toggles.map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-bold">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                checked={site.productDetailPage[key] !== false}
+                onChange={(event) =>
+                  patch({ [key]: event.target.checked } as Partial<SiteContent["productDetailPage"]>)
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {site.productDetailPage.showRelated !== false && (
+        <div className="rounded-xl border border-slate-200 p-3">
+          <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Venta cruzada</p>
+          <TextField
+            label="Título"
+            value={site.productDetailPage.relatedTitle}
+            onChange={(relatedTitle) => patch({ relatedTitle })}
+          />
+          <TextField
+            label="Subtítulo"
+            value={site.productDetailPage.relatedSubtitle}
+            onChange={(relatedSubtitle) => patch({ relatedSubtitle })}
+            multiline
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductsPageEditor({
   site,
   updateSite,
@@ -1908,10 +2024,10 @@ function ProductsPageEditor({
 }) {
   const patch = (value: Partial<SiteContent["productsPage"]>) => updateSite((current) => ({ ...current, productsPage: { ...current.productsPage, ...value } }));
   return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-2">
-      <button type="button" onClick={onAddProduct} disabled={!onAddProduct} className="rounded-xl bg-emerald-700 px-3 py-3 text-xs font-black text-white disabled:opacity-40">+ Crear producto</button>
-      <button type="button" onClick={onManageProducts} disabled={!onManageProducts} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Gestionar catálogo</button>
-      <button type="button" onClick={onManageCollections} disabled={!onManageCollections} className="col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-black text-emerald-800 disabled:opacity-40">Colecciones y campañas</button>
+    <div className="grid grid-cols-3 gap-2">
+      <button type="button" onClick={onAddProduct} disabled={!onAddProduct} className="rounded-xl bg-emerald-700 px-3 py-3 text-xs font-black text-white disabled:opacity-40">+ Crear</button>
+      <button type="button" onClick={onManageProducts} disabled={!onManageProducts} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Catálogo</button>
+      <button type="button" onClick={onManageCollections} disabled={!onManageCollections} className="rounded-xl border border-slate-200 px-3 py-3 text-xs font-black disabled:opacity-40">Colecciones</button>
     </div>
 
     <div className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
@@ -2395,9 +2511,156 @@ function previewPrice(product: any) {
   return Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
 }
 
+function ProductDetailTemplatePreview({
+  site,
+  product,
+  selected,
+  onSelect,
+}: {
+  site: SiteContent;
+  product: any | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const config = site.productDetailPage;
+  const sample = product || {
+    id: "preview",
+    name: "Producto Herencia",
+    description: "Descripción del producto y sus características principales.",
+    price: 29.9,
+    image: "",
+    images: [],
+    stock: 5,
+    trackInventory: true,
+    variants: [
+      { name: "Pequeño", price: 24.9 },
+      { name: "Grande", price: 34.9 },
+    ],
+    category: "plantas-interior",
+    collections: ["plantas"],
+  };
+
+  const images = Array.from(new Set(
+    [
+      sample.image,
+      ...(Array.isArray(sample.images)
+        ? sample.images.map((image: any) => typeof image === "string" ? image : image?.url)
+        : []),
+    ].map((value) => String(value || "")).filter(Boolean)
+  ));
+  const collection = getCommerceCollection(primaryCollectionOf(sample));
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}
+    >
+      <div className="grid gap-7 p-7 lg:grid-cols-2">
+        <div>
+          <div
+            className="aspect-square overflow-hidden bg-slate-100"
+            style={{ borderRadius: `${Math.max(0, Math.min(48, Number(config.galleryRadius ?? 24)))}px` }}
+          >
+            {images[0] ? (
+              <img src={images[0]} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="grid h-full place-items-center text-sm text-slate-400">Imagen principal</div>
+            )}
+          </div>
+          {config.showGalleryThumbnails !== false && (
+            <div className="mt-3 grid grid-cols-5 gap-2">
+              {(images.length ? images.slice(0, 5) : ["", "", ""]).map((url, index) => (
+                <div key={index} className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                  {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900">{sample.name}</h1>
+            {config.showDescription !== false && (
+              <p className="mt-2 text-sm leading-6 text-slate-500">{sample.description}</p>
+            )}
+          </div>
+          <p className="text-3xl font-black text-emerald-800">€{Number(sample.salePrice || sample.price || 0).toFixed(2)}</p>
+          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-800">{collection.name}</span>
+
+          {config.showDetails !== false && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Stock</p><p className="mt-1 text-sm font-bold">{sample.stock ?? "—"}</p></div>
+              <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Categoría</p><p className="mt-1 text-sm font-bold">{sample.category || "—"}</p></div>
+            </div>
+          )}
+
+          {config.showVariants !== false && Array.isArray(sample.variants) && sample.variants.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-black">Variantes</p>
+              <div className="flex flex-wrap gap-2">
+                {sample.variants.slice(0, 4).map((variant: any, index: number) => (
+                  <span key={index} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">
+                    {variant.name || `Variante ${index + 1}`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {config.showDedication !== false && (
+            <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-400">Dedicatoria / personalización</div>
+          )}
+
+          {config.showQuantity !== false && (
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg bg-slate-100 px-3 py-2 font-black">−</span>
+              <span className="font-black">1</span>
+              <span className="rounded-lg bg-slate-100 px-3 py-2 font-black">+</span>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <span className="flex-1 rounded-xl bg-emerald-800 px-4 py-3 text-center text-sm font-black text-white">Añadir al carrito</span>
+            {config.showFavorite !== false && <span className="rounded-xl bg-slate-100 px-4 py-3">♡</span>}
+          </div>
+
+          {config.showStock !== false && (
+            <div className="rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Disponible · {sample.stock ?? 0} en stock</div>
+          )}
+        </div>
+      </div>
+
+      {config.showRelated !== false && (
+        <div className="border-t border-slate-200 p-6">
+          <h2 className="text-2xl font-black">{config.relatedTitle}</h2>
+          <p className="mt-1 text-xs text-slate-500">{config.relatedSubtitle}</p>
+          <div className="mt-4 grid grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((item) => (
+              <div key={item} className="rounded-xl border border-slate-200 p-3">
+                <div className="h-16 rounded-lg bg-slate-100" />
+                <div className="mt-2 h-2 w-2/3 rounded bg-slate-200" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(config.showReviews !== false || config.showQuestions !== false) && (
+        <div className="grid gap-3 border-t border-slate-200 p-6 md:grid-cols-2">
+          {config.showReviews !== false && <div className="rounded-xl border border-slate-200 p-4 text-sm font-black">Reseñas de clientes</div>}
+          {config.showQuestions !== false && <div className="rounded-xl border border-slate-200 p-4 text-sm font-black">Preguntas y respuestas</div>}
+        </div>
+      )}
+    </button>
+  );
+}
+
 function ProductsPreview({
   site,
   products,
+  collections,
   selected,
   selectedProductId,
   activeCollection,
@@ -2408,9 +2671,11 @@ function ProductsPreview({
   onSearchChange,
   onManageProducts,
   onAddProduct,
+  onManageCollections,
 }: {
   site: SiteContent;
   products: any[];
+  collections: any[];
   selected: boolean;
   selectedProductId: string;
   activeCollection: string;
@@ -2488,7 +2753,7 @@ function ProductsPreview({
             >
               Todo
             </button>
-            {COMMERCE_COLLECTIONS.map((item) => (
+            {collections.map((item) => (
               <button
                 key={item.id}
                 type="button"
