@@ -58,6 +58,9 @@ const initialForm = {
   serviceArea: "Barcelona",
   bookingRequired: true,
   leadTimeDays: "",
+  serviceAvailableDays: [1, 2, 3, 4, 5] as number[],
+  serviceTimeSlots: "09:00\n11:00\n13:00\n16:00\n18:00",
+  serviceCapacityPerSlot: "1",
 };
 
 type FormState = typeof initialForm;
@@ -801,9 +804,65 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   <input type="number" min="0" value={formData.leadTimeDays} onChange={(e) => patch({ leadTimeDays: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
               </div>
+
               <button type="button" onClick={() => patch({ bookingRequired: !formData.bookingRequired })} className={`mt-4 rounded-xl border px-4 py-2 text-sm font-bold ${formData.bookingRequired ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>
                 {formData.bookingRequired ? "✓ Requiere reserva/cita" : "No requiere reserva"}
               </button>
+
+              {formData.bookingRequired && (
+                <div className="mt-5 space-y-4 rounded-2xl bg-muted/20 p-4">
+                  <div>
+                    <p className="text-sm font-black">Días disponibles</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
+                      ].map(([day, label]) => {
+                        const numericDay = Number(day);
+                        const active = formData.serviceAvailableDays.includes(numericDay);
+                        return (
+                          <button
+                            key={numericDay}
+                            type="button"
+                            onClick={() => patch({
+                              serviceAvailableDays: active
+                                ? formData.serviceAvailableDays.filter((value) => value !== numericDay)
+                                : [...formData.serviceAvailableDays, numericDay],
+                            })}
+                            className={`rounded-lg border px-3 py-2 text-xs font-black ${active ? "border-primary bg-primary/10 text-primary" : "border-border"}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-bold">Franjas / horas disponibles
+                      <textarea
+                        value={formData.serviceTimeSlots}
+                        onChange={(e) => patch({ serviceTimeSlots: e.target.value })}
+                        rows={5}
+                        placeholder={"09:00\n11:00\n16:00"}
+                        className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3"
+                      />
+                      <span className="mt-1 block text-xs text-muted-foreground">Una hora o franja por línea.</span>
+                    </label>
+
+                    <label className="text-sm font-bold">Capacidad por franja
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={formData.serviceCapacityPerSlot}
+                        onChange={(e) => patch({ serviceCapacityPerSlot: e.target.value })}
+                        className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3"
+                      />
+                      <span className="mt-1 block text-xs text-muted-foreground">Número máximo de reservas simultáneas para esa hora.</span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
