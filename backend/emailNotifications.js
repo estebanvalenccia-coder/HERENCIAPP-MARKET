@@ -1,3 +1,10 @@
+function deliveryLabelForEmail(value) {
+  const method = String(value || "").toLowerCase();
+  if (method === "envio") return "Envío a domicilio";
+  if (method === "mostrador") return "Venta TPV / entrega gestionada";
+  return "Entrega por coordinar";
+}
+
 function money(value) {
   return `€${Number(value || 0).toFixed(2)}`;
 }
@@ -19,7 +26,7 @@ function orderText(order, customer = false) {
     .map((item) => `- ${item.name} x${item.quantity || 1}: ${money(Number(item.price || 0) * Number(item.quantity || 1))}`)
     .join("\n");
 
-  return `${customer ? "Gracias por tu compra en Herencia Floristería" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${order.delivery_method === "recoger" ? "Recoger en tienda" : "Envío a domicilio"}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal)}\nEnvío: ${money(order.shipping)}\nTotal: ${money(order.total)}\n\nNotas:\n${metadata.notes || ""}\n`;
+  return `${customer ? "Gracias por tu compra en Herencia Floristería" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${deliveryLabelForEmail(order.delivery_method)}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal)}\nEnvío: ${money(order.shipping)}\nTotal: ${money(order.total)}\n\nNotas:\n${metadata.notes || ""}\n`;
 }
 
 function orderHtml(order, customer = false) {
@@ -53,8 +60,8 @@ function orderHtml(order, customer = false) {
 
         <div style="background:#fffaf0;border:1px solid #efe0bd;border-radius:16px;padding:18px;margin:20px 0;">
           <h2 style="font-size:18px;margin:0 0 12px;color:#8a6418;">Entrega y pago</h2>
-          <p style="margin:0;line-height:1.7;"><strong>Entrega:</strong> ${order.delivery_method === "recoger" ? "Recoger en tienda" : "Envío a domicilio"}<br><strong>Pago:</strong> ${safe(order.payment_method || "")}<br><strong>Estado:</strong> ${safe(order.status || "")}</p>
-          ${order.delivery_method === "envio" ? `<p style="margin:14px 0 0;line-height:1.7;"><strong>Dirección:</strong><br>${safe(address.address || "")}<br>${safe(address.postalCode || "")} ${safe(address.city || "")}<br>${safe(address.province || "")}</p>` : ""}
+          <p style="margin:0;line-height:1.7;"><strong>Entrega:</strong> ${safe(deliveryLabelForEmail(order.delivery_method))}<br><strong>Pago:</strong> ${safe(order.payment_method || "")}<br><strong>Estado:</strong> ${safe(order.status || "")}</p>
+          ${String(order.delivery_method || "").toLowerCase() === "envio" ? `<p style="margin:14px 0 0;line-height:1.7;"><strong>Dirección:</strong><br>${safe(address.address || "")}<br>${safe(address.postalCode || "")} ${safe(address.city || "")}<br>${safe(address.province || "")}</p>` : ""}
         </div>
 
         <h2 style="font-size:18px;margin:26px 0 8px;color:#2f6b3f;">Productos</h2>

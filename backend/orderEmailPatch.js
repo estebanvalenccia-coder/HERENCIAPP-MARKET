@@ -50,7 +50,7 @@ async function enrichOrdersResponse(body) {
 }
 async function saveStripeOrderDetails(req, body) {
   if (!hasNeon() || !body?.orderId) return;
-  await patchNeonOrder(body.orderId, { metadata: req.body?.metadata || {}, payment_method: req.body?.paymentMethod || "stripe", delivery_method: req.body?.deliveryMethod || "envio", status: "payment_pending" });
+  await patchNeonOrder(body.orderId, { metadata: req.body?.metadata || {}, payment_method: req.body?.paymentMethod || "stripe", delivery_method: "envio", status: "payment_pending" });
 }
 async function notifyPaidStripeOrder(req) {
   if (!hasNeon()) return;

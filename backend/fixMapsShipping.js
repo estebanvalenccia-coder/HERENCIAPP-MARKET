@@ -1,7 +1,6 @@
 import express from "express";
 
-const STORE_ADDRESS =
-  process.env.STORE_ADDRESS || "Riera de Cassoles, 08012 Barcelona, Spain";
+const STORE_ADDRESS = String(process.env.STORE_ADDRESS || "").trim();
 const BASE_SHIPPING_EUR = Number(process.env.SHIPPING_BASE_PRICE || 5);
 const STEP_KM = Number(process.env.SHIPPING_STEP_KM || 3);
 const STEP_PRICE_EUR = Number(process.env.SHIPPING_STEP_PRICE || 3);
@@ -27,6 +26,12 @@ export function calculateShippingPrice(distanceKm) {
 
 export async function calculateDistanceWithGoogleMaps(destination) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!STORE_ADDRESS) {
+    const error = new Error("Falta STORE_ADDRESS en el backend para calcular el reparto");
+    error.statusCode = 503;
+    throw error;
+  }
 
   if (!apiKey) {
     const error = new Error("Falta GOOGLE_MAPS_API_KEY en el backend");
@@ -89,7 +94,6 @@ export async function calculateShippingQuote(address = {}) {
     distanceKm: Number(distanceKm.toFixed(2)),
     distanceText: result.distanceText,
     durationText: result.durationText,
-    origin: result.origin,
     destination: result.destination,
     pricing: {
       basePrice: BASE_SHIPPING_EUR,

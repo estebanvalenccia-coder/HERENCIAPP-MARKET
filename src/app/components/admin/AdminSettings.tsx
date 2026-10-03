@@ -685,7 +685,7 @@ export function AdminSettings() {
               🚚 <strong>Precio de Envío a Domicilio</strong>
             </p>
             <p className="text-xs text-muted-foreground">
-              Configura el costo de envío que se aplicará cuando el cliente elija "Envío a domicilio". La opción "Recoger en tienda" siempre será gratis.
+              Configura el coste base de la entrega a domicilio. Herencia Market no ofrece recogida en tienda.
             </p>
           </div>
 
@@ -714,8 +714,8 @@ export function AdminSettings() {
               <span className="font-bold text-foreground">€{shippingCost.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-muted-foreground">Recoger en tienda:</span>
-              <span className="font-bold text-primary">¡Gratis!</span>
+              <span className="text-muted-foreground">Modalidad:</span>
+              <span className="font-bold text-primary">Solo entrega a domicilio</span>
             </div>
           </div>
 

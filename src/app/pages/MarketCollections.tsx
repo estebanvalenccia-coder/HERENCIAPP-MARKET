@@ -4,7 +4,6 @@ import { ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { productBelongsToCollection } from "../lib/commerceCatalog";
-import { products as fallbackProducts } from "../data/products";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
@@ -23,10 +22,27 @@ function money(value: unknown) {
 
 function addToCart(product: any) {
   try {
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    const variant = variants.length
+      ? variants.find((item: any) => product.trackInventory === false || Number(item?.stock || 0) > 0) || null
+      : null;
+    if (variants.length && !variant) return toast.error("Este producto está agotado");
+
+    const tracked = product.trackInventory !== false;
+    const stock = tracked ? Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0))) : Number.POSITIVE_INFINITY;
+    const selectedVariant = variant ? String(variant?.name || variant) : "";
+    const price = Number(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price || 0));
+    if (tracked && stock <= 0) return toast.error("Este producto está agotado");
+    if (!Number.isFinite(price) || price <= 0) return toast.error("Este producto no tiene un precio válido");
+
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const existing = cart.find((item: any) => String(item.id) === String(product.id));
-    if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-    else cart.push({ ...product, quantity: 1 });
+    const lineKey = `${product.id}::${selectedVariant || "base"}::`;
+    const existing = cart.find((item: any) => item.lineKey === lineKey);
+    const nextQuantity = Number(existing?.quantity || 0) + 1;
+    if (tracked && nextQuantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
+
+    if (existing) existing.quantity = nextQuantity;
+    else cart.push({ ...product, price, quantity: 1, lineKey, selectedVariant: selectedVariant || undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
     toast.success(`${product.name} añadido al carrito`);
@@ -37,7 +53,7 @@ function addToCart(product: any) {
 
 function CollectionPage({ kind }: { kind: Kind }) {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
+  const [catalog, setCatalog] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,9 +74,9 @@ function CollectionPage({ kind }: { kind: Kind }) {
         if (cancelled) return;
         try {
           const rows = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-          setCatalog(Array.isArray(rows) && rows.length
-            ? rows.filter((item: any) => (item.status === "active" || item.active !== false) && matchesKind(item, kind))
-            : fallbackProducts.filter((item: any) => matchesKind(item, kind)));
+          setCatalog(Array.isArray(rows)
+            ? rows.filter((item: any) => (item.status === "active" || item.active !== false) && !item.deletedAt && matchesKind(item, kind))
+            : []);
         } catch {
           setCatalog([]);
         }
@@ -139,7 +155,7 @@ function CollectionPage({ kind }: { kind: Kind }) {
                   <Link to={`/producto/${product.id}`} className="text-lg font-black">{product.name}</Link>
                   <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#6c786f]">{product.description}</p>
                   <div className="mt-5 flex items-center justify-between gap-3">
-                    <span className="text-lg font-black text-[#315b42]">{money(product.salePrice || product.price)}</span>
+                    <span className="text-lg font-black text-[#315b42]">{money(product.onSale && product.salePrice ? product.salePrice : product.price)}</span>
                     <button
                       type="button"
                       onClick={() => addToCart(product)}

@@ -23,7 +23,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   pending_bizum_review: { label: "Revisar Bizum", color: "bg-purple-100 text-purple-800 border-purple-200", icon: Clock },
   pending_manual_review: { label: "Revisión manual", color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: Clock },
   pending_transfer_review: { label: "Revisar transferencia", color: "bg-blue-100 text-blue-800 border-blue-200", icon: Clock },
-  pending_store_confirmation: { label: "Confirmar en tienda", color: "bg-orange-100 text-orange-800 border-orange-200", icon: Clock },
+  pending_store_confirmation: { label: "Confirmar pedido", color: "bg-orange-100 text-orange-800 border-orange-200", icon: Clock },
   paid: { label: "Pagado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   confirmed: { label: "Confirmado", color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: CheckCircle },
   preparing: { label: "Preparando", color: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: Package },
@@ -46,7 +46,6 @@ function getPhone(order: Order) {
 function getAddress(order: Order) {
   const address = order.metadata?.shippingAddress || {};
   if (order.metadata?.source === "HERENCIA_SALES_HANDOFF") return "Consulta comercial · entrega por definir";
-  if (order.deliveryMethod === "recoger") return "Recogida en tienda";
   return [address.address, `${address.postalCode || ""} ${address.city || ""}`.trim(), address.province]
     .filter(Boolean)
     .join(" · ") || "Dirección no indicada";
@@ -242,7 +241,7 @@ export function AdminOrders() {
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "recoger" ? "Recogida" : "Envío"}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
                       {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">HERENCIA SALES</span>}
                     </div>
 

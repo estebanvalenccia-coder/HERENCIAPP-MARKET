@@ -25,7 +25,6 @@ function getGeminiApiKey() {
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
     ""
   );
 }
@@ -182,7 +181,7 @@ async function generateImageWithGemini(prompt) {
   const apiKey = getGeminiApiKey();
 
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY / VITE_GEMINI_API_KEY no está configurada");
+    throw new Error("GEMINI_API_KEY no está configurada");
   }
 
   const timeoutMs = Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000);
@@ -285,15 +284,7 @@ async function safeAIBouquetHandler(req, res) {
     imageGeneratedByAi = true;
     source = source === "fallback" ? imageResult.source : `${source}+${imageResult.source}`;
   } else {
-    const error = warnings[warnings.length - 1] || "No se pudo generar la imagen con Gemini";
-    return res.status(502).json({
-      error: "No se pudo generar la imagen del ramo con IA",
-      detail: error,
-      proposal,
-      imageGeneratedByAi: false,
-      source: "image-generation-error",
-      warnings,
-    });
+    console.warn("[AI Bouquet] Usando imagen de catálogo porque no hay proveedor IA disponible");
   }
 
   res.json({

@@ -28,7 +28,7 @@ const adminOnly = ["supabaseSettings","aiSettings","heroBanner","ctaBanner","adm
 
 function json(res,status,body){if(res.headersSent||res.writableEnded)return res;if(!res.destroyed){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}return res;}
 function cookies(req){return String(req.headers.cookie||"");}
-function visitorId(req,res){const match=cookies(req).match(/(?:^|;\s*)visitor_id=([^;]+)/);if(match)return decodeURIComponent(match[1]);const id=crypto.randomUUID();res.setHeader("Set-Cookie",`visitor_id=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=None; Secure`);return id;}
+function visitorId(req,res){const match=cookies(req).match(/(?:^|;\s*)visitor_id=([^;]+)/);if(match)return decodeURIComponent(match[1]);const id=crypto.randomUUID();res.setHeader("Set-Cookie",`visitor_id=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=Lax; Secure`);return id;}
 function storageKey(req,res,key){return key==="cart"||key==="user"?`visitor:${visitorId(req,res)}:${key}`:key;}
 function sanitize(key,value,isAdmin){if(!value)return value;try{if(key==="aiSettings"){const p=JSON.parse(value);return JSON.stringify({...p,apiKey:isAdmin?(p.apiKey?"••••••••":""):""});}if(key==="supabaseSettings"){const p=JSON.parse(value);return JSON.stringify({...p,serviceRoleKey:""});}}catch{}return value;}
 function decodeHeaderValue(value){try{return decodeURIComponent(String(value||"").replace(/\+/g," "));}catch{return String(value||"");}}
@@ -78,13 +78,12 @@ const server=http.createServer(async(req,res)=>{try{
       stripe:Boolean(process.env.STRIPE_SECRET_KEY),
       stripeWebhook:Boolean(process.env.STRIPE_WEBHOOK_SECRET),
       email:Boolean(process.env.RESEND_API_KEY),
-      maps:Boolean(process.env.GOOGLE_MAPS_API_KEY||process.env.VITE_GOOGLE_MAPS_API_KEY),
+      maps:Boolean(process.env.GOOGLE_MAPS_API_KEY),
       salesAi:Boolean(process.env.GROQ_API_KEY),
       imageAi:Boolean(
         process.env.GEMINI_API_KEY||
         process.env.GOOGLE_API_KEY||
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY||
-        process.env.VITE_GEMINI_API_KEY
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY
       ),
       mediaProvider:hasR2?"cloudflare_r2":"legacy_supabase",
       r2Configured:hasR2,
@@ -146,9 +145,9 @@ const server=http.createServer(async(req,res)=>{try{
     const sellable=active.filter((product)=>product?.trackInventory===false||Number(product?.stock||0)>0||(Array.isArray(product?.variants)&&product.variants.some((variant)=>Number(variant?.stock||0)>0)));
     let flowers=[];try{const raw=await readNeonStorageValue("bouquetCatalog");flowers=JSON.parse(raw||"[]");if(!Array.isArray(flowers))flowers=[];}catch{}
     return json(res,200,{
-      ok:Boolean(process.env.GROQ_API_KEY)&&Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY||process.env.VITE_GEMINI_API_KEY),
+      ok:Boolean(process.env.GROQ_API_KEY)&&Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY),
       chat:{configured:Boolean(process.env.GROQ_API_KEY),model:process.env.GROQ_MODEL||"openai/gpt-oss-120b"},
-      vision:{configured:Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY||process.env.VITE_GEMINI_API_KEY),legacyEnv:Boolean(!process.env.GEMINI_API_KEY&&!process.env.GOOGLE_API_KEY&&process.env.VITE_GEMINI_API_KEY),textModel:process.env.GEMINI_TEXT_MODEL||"gemini-2.5-flash",imageModel:process.env.GEMINI_IMAGE_MODEL||"gemini-2.5-flash-image"},
+      vision:{configured:Boolean(process.env.GEMINI_API_KEY||process.env.GOOGLE_API_KEY),legacyEnv:Boolean(!process.env.GEMINI_API_KEY&&!process.env.GOOGLE_API_KEY&&process.env.VITE_GEMINI_API_KEY),textModel:process.env.GEMINI_TEXT_MODEL||"gemini-2.5-flash",imageModel:process.env.GEMINI_IMAGE_MODEL||"gemini-2.5-flash-image"},
       media:{r2Configured:hasR2},
       limits:{
         chatPerMinute:Math.max(3,Number(process.env.SALES_AI_CHAT_LIMIT_PER_MINUTE||30)),

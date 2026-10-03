@@ -12,7 +12,6 @@ import {
   primaryCollectionOf,
   productBelongsToCollection,
 } from "../lib/commerceCatalog";
-import { products as fallbackProducts } from "../data/products";
 
 const normalize = (value: unknown) =>
   String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -127,8 +126,6 @@ export function Products() {
           ? collectionResult.collections.filter((item: any) => String(item.status || "active") === "active")
           : [];
 
-        // La API es la fuente de verdad. No mezclar productos demo con el catálogo real:
-        // eso provocaba el parpadeo de 16 productos y después 2 al recargar.
         setDisplayProducts(rows);
         if (collections.length) setCollectionOptions(collections);
         backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
@@ -139,10 +136,9 @@ export function Products() {
           const active = Array.isArray(cached)
             ? cached.filter((product: any) => product.status === "active" || product.active !== false)
             : [];
-          // Solo recurrimos al catálogo estático si el backend no está disponible.
-          setDisplayProducts(active.length ? active : fallbackProducts);
+          setDisplayProducts(active);
         } catch {
-          setDisplayProducts(fallbackProducts);
+          setDisplayProducts([]);
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -314,20 +310,30 @@ export function Products() {
     const product = displayProducts.find((item) => String(item.id) === String(productId));
     if (!product) return toast.error("Artículo no encontrado");
 
-    const price = effectivePrice(product);
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    const variant = variants.length
+      ? variants.find((item: any) => product.trackInventory === false || Number(item?.stock || 0) > 0) || null
+      : null;
+    if (variants.length && !variant) return toast.error(site.productsPage.outOfStockText);
+
+    const price = Number(variant?.price ?? effectivePrice(product));
     if (!price || price <= 0) return toast.error("Este artículo no tiene un precio válido");
 
     const tracked = product.trackInventory !== false;
-    const stock = Math.max(0, Math.floor(Number(product.stock || 0)));
+    const stock = tracked
+      ? Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)))
+      : Number.POSITIVE_INFINITY;
+    const selectedVariant = variant ? String(variant?.name || variant) : "";
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-    const existing = cart.find((item: any) => String(item.id) === String(productId));
+    const lineKey = `${product.id}::${selectedVariant || "base"}::`;
+    const existing = cart.find((item: any) => item.lineKey === lineKey);
     const nextQuantity = Number(existing?.quantity || 0) + 1;
 
     if (tracked && stock <= 0) return toast.error(site.productsPage.outOfStockText);
     if (tracked && nextQuantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
 
     if (existing) existing.quantity = nextQuantity;
-    else cart.push({ ...product, quantity: 1 });
+    else cart.push({ ...product, price, quantity: 1, lineKey, selectedVariant: selectedVariant || undefined });
 
     void backendStorage.setItem("cart", JSON.stringify(cart));
     toast.success(primaryCollectionOf(product) === "servicios" ? "Servicio añadido" : "Producto añadido al carrito");

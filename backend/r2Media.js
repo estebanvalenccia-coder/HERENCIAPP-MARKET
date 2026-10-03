@@ -164,7 +164,7 @@ export async function deleteR2Media(path) {
 }
 
 
-export async function checkR2Connection({ verifyWrite = false } = {}) {
+export async function checkR2Connection({ verifyWrite = true } = {}) {
   if (!hasR2) {
     return { ok: false, configured: false, error: "Cloudflare R2 no está configurado" };
   }

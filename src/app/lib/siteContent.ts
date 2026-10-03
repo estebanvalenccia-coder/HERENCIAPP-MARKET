@@ -362,7 +362,7 @@ export const defaultSiteContent: SiteContent = {
   },
   contactPage: {
     title: "Contacto",
-    subtitle: "Estamos aquí para ayudarte. Visítanos, llámanos o escríbenos.",
+    subtitle: "Estamos aquí para ayudarte. Llámanos, escríbenos o contáctanos por WhatsApp.",
     whatsappTitle: "WhatsApp",
     whatsappSubtitle: "Haz clic para abrir chat",
     callTitle: "Teléfono",
@@ -590,11 +590,7 @@ export function createBuilderBlock(
       data: {
         heading: "Lo que dicen nuestros clientes",
         description: "Experiencias reales de quienes confían en Herencia.",
-        items: [
-          { name: "Cliente 1", text: "Una experiencia excelente.", rating: 5 },
-          { name: "Cliente 2", text: "Todo llegó precioso y a tiempo.", rating: 5 },
-          { name: "Cliente 3", text: "Atención cercana y muy profesional.", rating: 5 },
-        ],
+        items: [],
       },
       design: defaultBlockDesign(type),
     };

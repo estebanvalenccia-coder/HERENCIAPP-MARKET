@@ -45,7 +45,11 @@ function statusLabel(value) {
 }
 
 function deliveryLabel(value) {
-  return String(value || "").toLowerCase() === "recogida" ? "Recogida en tienda" : "Envío a domicilio";
+  const method = String(value || "").toLowerCase();
+  if (method === "envio") return "Envío a domicilio";
+  if (method === "consulta-floristeria") return "Entrega por coordinar";
+  if (method === "mostrador") return "Venta TPV / entrega gestionada";
+  return "Entrega por coordinar";
 }
 
 function renderItems(items) {
@@ -88,9 +92,7 @@ export function renderOrderEmailPro(order, recipientType = "customer") {
   const subtitle = isAdmin
     ? `Se ha recibido una compra de ${escapeHtml(o.customerName)}. Revisa los datos para preparar el pedido.`
     : `Hola ${escapeHtml(o.customerName)}, hemos recibido tu compra correctamente. Aquí tienes el resumen.`;
-  const deliveryText = o.deliveryMethod === "recogida"
-    ? "Tu pedido será preparado para recogida en tienda. Te avisaremos cuando esté listo."
-    : "Tu pedido será preparado para envío a domicilio. Te avisaremos cuando salga para entrega.";
+  const deliveryText = "Tu pedido será preparado para envío a domicilio. Te avisaremos cuando salga para entrega.";
 
   return `<!doctype html>
 <html lang="es">

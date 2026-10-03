@@ -13,12 +13,15 @@ interface CartItem {
   lineKey?: string;
   selectedVariant?: string;
   personalization?: { dedication?: string };
+  stock?: number;
+  trackInventory?: boolean;
+  variants?: Array<{ name?: string; stock?: number } | string>;
 }
 
 export function Cart() {
   const navigate = useNavigate();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [deliveryMethod, setDeliveryMethod] = useState("envio");
+  const deliveryMethod = "envio";
   const [paymentMethod, setPaymentMethod] = useState("tarjeta");
   const [shippingCost, setShippingCost] = useState(5);
   const [coupon, setCoupon] = useState("");
@@ -59,18 +62,30 @@ export function Cart() {
     (sum, item) => sum + Number(item.price || 0) * Math.max(1, Number(item.quantity || 1)),
     0
   );
-  const shipping = deliveryMethod === "recoger" ? 0 : shippingCost;
+  const shipping = shippingCost;
   const total = Math.max(0, subtotal - discount + shipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
-    saveCart(
-      cartItems.map((item) =>
-        itemKey(item) === key
-          ? { ...item, quantity: Math.max(1, Number(item.quantity || 1) + delta) }
-          : item
-      )
-    );
+    let blocked = false;
+    const next = cartItems.map((item) => {
+      if (itemKey(item) !== key) return item;
+      const quantity = Math.max(1, Number(item.quantity || 1) + delta);
+      if (delta <= 0 || item.trackInventory === false) return { ...item, quantity };
+
+      const variants = Array.isArray(item.variants) ? item.variants : [];
+      const variant = item.selectedVariant
+        ? variants.find((entry: any) => String(entry?.name || entry) === String(item.selectedVariant))
+        : null;
+      const stock = Math.max(0, Math.floor(Number((variant as any)?.stock ?? item.stock ?? 0)));
+      if (quantity > stock) {
+        blocked = true;
+        return item;
+      }
+      return { ...item, quantity };
+    });
+    if (blocked) toast.error("No hay más unidades disponibles de este artículo");
+    saveCart(next);
   };
 
   const removeItem = (key: string) => {
@@ -122,7 +137,7 @@ export function Cart() {
           </p>
           <h1 className="mt-2 text-4xl font-medium sm:text-5xl">Tu carrito</h1>
           <p className="mt-2 text-sm text-[#66736b]">
-            Revisa tus productos y elige cómo quieres recibir tu pedido.
+            Revisa tus productos antes de continuar con la entrega a domicilio.
           </p>
         </div>
       </div>
@@ -198,15 +213,12 @@ export function Cart() {
         <aside className="h-fit rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm lg:sticky lg:top-28">
           <h2 className="text-2xl font-black">Resumen</h2>
 
-          <label className="mt-5 block text-sm font-black">Entrega</label>
-          <select
-            className="mt-2 w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]"
-            value={deliveryMethod}
-            onChange={(event) => setDeliveryMethod(event.target.value)}
-          >
-            <option value="envio">Envío a domicilio</option>
-            <option value="recoger">Recoger</option>
-          </select>
+          <div className="mt-5 rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-4">
+            <p className="text-sm font-black">Entrega a domicilio</p>
+            <p className="mt-1 text-xs leading-5 text-[#6c786f]">
+              Herencia Market funciona exclusivamente con entrega. No disponemos de recogida en tienda.
+            </p>
+          </div>
 
           <label className="mt-5 block text-sm font-black">Pago</label>
           <select
@@ -231,11 +243,9 @@ export function Cart() {
               <span className="text-[#6c786f]">Envío desde</span>
               <span className="font-black">{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
             </div>
-            {deliveryMethod === "envio" ? (
-              <p className="rounded-2xl bg-[#f4f1e8] p-3 text-xs leading-5 text-[#6c786f]">
-                El precio final del envío se calcula con tu dirección en el siguiente paso.
-              </p>
-            ) : null}
+            <p className="rounded-2xl bg-[#f4f1e8] p-3 text-xs leading-5 text-[#6c786f]">
+              El precio final del envío se calcula con tu dirección en el siguiente paso.
+            </p>
             <div className="flex justify-between gap-4 border-t border-[#e3ded4] pt-4 text-lg">
               <span className="font-black">Total estimado</span>
               <span className="font-black text-[#315b42]">€{total.toFixed(2)}</span>

@@ -10,7 +10,6 @@ import {
   Truck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { products as fallbackProducts } from "../data/products";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
@@ -53,7 +52,7 @@ function money(value: unknown) {
 
 export function Home() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [catalog, setCatalog] = useState<any[]>(fallbackProducts);
+  const [catalog, setCatalog] = useState<any[]>([]);
 
   useEffect(() => {
     const load = () => {
@@ -61,12 +60,12 @@ export function Home() {
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         setCatalog(
-          Array.isArray(saved) && saved.length
-            ? saved.filter((item: any) => item.active !== false)
-            : fallbackProducts
+          Array.isArray(saved)
+            ? saved.filter((item: any) => item.active !== false && !item.deletedAt && String(item.status || "active") !== "archived")
+            : []
         );
       } catch {
-        setCatalog(fallbackProducts);
+        setCatalog([]);
       }
     };
 
@@ -96,18 +95,39 @@ export function Home() {
     const rows = [...catalog].sort(
       (a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured))
     );
-    return rows.filter((item) => item?.image && Number(item?.price || item?.salePrice || 0) > 0).slice(0, 6);
+    return rows.filter((item) => {
+      if (!item?.image || Number(item?.onSale && item?.salePrice ? item.salePrice : item?.price || 0) <= 0) return false;
+      if (item?.trackInventory === false) return true;
+      if (Number(item?.stock || 0) > 0) return true;
+      return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
+    }).slice(0, 6);
   }, [catalog]);
 
   const addToCart = (product: any) => {
     try {
+      const variants = Array.isArray(product?.variants) ? product.variants : [];
+      const variant = variants.length
+        ? variants.find((item: any) => product.trackInventory === false || Number(item?.stock || 0) > 0) || null
+        : null;
+      if (variants.length && !variant) return toast.error("Este producto está agotado");
+
+      const trackInventory = product.trackInventory !== false;
+      const stock = trackInventory
+        ? Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)))
+        : Number.POSITIVE_INFINITY;
+      const selectedVariant = variant ? String(variant?.name || variant) : "";
+      const price = Number(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price || 0));
+      if (trackInventory && stock <= 0) return toast.error("Este producto está agotado");
+      if (!Number.isFinite(price) || price <= 0) return toast.error("Este producto no tiene un precio válido");
+
       const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-      const existing = cart.find((item: any) => String(item.id) === String(product.id));
-      if (existing) {
-        existing.quantity = Number(existing.quantity || 1) + 1;
-      } else {
-        cart.push({ ...product, quantity: 1 });
-      }
+      const lineKey = `${product.id}::${selectedVariant || "base"}::`;
+      const existing = cart.find((item: any) => item.lineKey === lineKey);
+      const nextQuantity = Number(existing?.quantity || 0) + 1;
+      if (trackInventory && nextQuantity > stock) return toast.error(`Solo quedan ${stock} unidades disponibles`);
+
+      if (existing) existing.quantity = nextQuantity;
+      else cart.push({ ...product, price, quantity: 1, lineKey, selectedVariant: selectedVariant || undefined });
       void backendStorage.setItem("cart", JSON.stringify(cart));
       window.dispatchEvent(new Event("storage"));
       toast.success(`${product.name} añadido al carrito`);
@@ -350,7 +370,7 @@ export function Home() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {featured.map((product) => {
-            const price = Number(product.salePrice || product.price || 0);
+            const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
               <article
                 key={product.id}

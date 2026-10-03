@@ -11,6 +11,8 @@ export function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [totpRequired, setTotpRequired] = useState(false);
   const [chatboxUrl, setChatboxUrl] = useState("");
   const [chatboxEnabled, setChatboxEnabled] = useState(false);
   const [herenciaUrl, setHerenciaUrl] = useState("");
@@ -33,6 +35,9 @@ export function Admin() {
     backendApi.adminSession()
       .then(({ authenticated }) => setIsAuthenticated(authenticated))
       .catch(() => setIsAuthenticated(false));
+    backendApi.adminAuthConfig()
+      .then(({ totpRequired }) => setTotpRequired(Boolean(totpRequired)))
+      .catch(() => setTotpRequired(false));
 
     const savedChatbox = backendStorage.getItem("chatboxSettings");
     if (savedChatbox) {
@@ -57,12 +62,12 @@ export function Admin() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await backendApi.adminLogin(username, password);
+      await backendApi.adminLogin(username, password, otp);
       await backendStorage.refresh();
       setIsAuthenticated(true);
       toast.success("Bienvenido");
-    } catch {
-      toast.error("Usuario o contraseña incorrectos");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo iniciar sesión");
     }
   };
 
@@ -71,6 +76,7 @@ export function Admin() {
     setIsAuthenticated(false);
     setUsername("");
     setPassword("");
+    setOtp("");
     toast.success("Sesión cerrada");
     navigate("/");
   };
@@ -196,6 +202,24 @@ export function Admin() {
                   className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
+
+              {totpRequired ? (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Código de verificación
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    required
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              ) : null}
 
               <button
                 type="submit"

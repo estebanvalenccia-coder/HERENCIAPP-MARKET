@@ -9,7 +9,7 @@ const labels:Record<string,string>={confirmed:"Confirmado",preparing:"Preparando
 function addressOf(order:DeliveryOrder){const a=order.metadata?.shippingAddress||order.metadata?.address||{};return [a.address||a.street,a.postalCode||a.zip,a.city,a.province].filter(Boolean).join(", ");}
 export function AdminDeliveryPanel(){
  const [orders,setOrders]=useState<DeliveryOrder[]>([]);const [loading,setLoading]=useState(true);
- const load=async()=>{setLoading(true);try{const r=await backendApi.listOrders();setOrders((Array.isArray(r.orders)?r.orders:[]).filter((o:any)=>(o.deliveryMethod||o.delivery_method)!=="recoger"));}catch(e:any){toast.error(e?.message||"No se pudieron cargar las entregas");}finally{setLoading(false);}};
+ const load=async()=>{setLoading(true);try{const r=await backendApi.listOrders();setOrders((Array.isArray(r.orders)?r.orders:[]).filter((o:any)=>String(o.deliveryMethod||o.delivery_method||"envio").toLowerCase()==="envio"));}catch(e:any){toast.error(e?.message||"No se pudieron cargar las entregas");}finally{setLoading(false);}};
  useEffect(()=>{void load();},[]);
  const active=useMemo(()=>orders.filter(o=>!["delivered","completed","cancelled"].includes(o.status||"")).length,[orders]);
  const update=async(order:DeliveryOrder,status:string)=>{try{await backendApi.updateOrderStatus(order.id,status);setOrders(rows=>rows.map(o=>o.id===order.id?{...o,status}:o));toast.success("Estado de entrega actualizado");}catch(e:any){toast.error(e?.message||"No se pudo actualizar");}};

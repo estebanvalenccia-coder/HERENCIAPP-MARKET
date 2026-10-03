@@ -23,6 +23,7 @@ import {
   consumeNeonCommerceStockReservation,
   releaseNeonCommerceStockReservation,
   syncNeonCommerceInventory,
+  listNeonCommerceProducts,
   recordNeonPaymentEvent,
 } from "./neonDb.js";
 import {
@@ -146,29 +147,64 @@ app.use((req, res, next) => {
   next();
 });
 
-const adminUsername =
-  process.env.ADMIN_USERNAME || (!isProduction ? "Daniel" : "");
-const adminPassword =
-  process.env.ADMIN_PASSWORD || (!isProduction ? "13101098" : "");
-const sessionSecret =
-  process.env.ADMIN_SESSION_SECRET ||
-  (!isProduction ? process.env.JWT_SECRET || "dev-only-change-me" : "");
-const usingDefaultAdminCredentials =
-  !isProduction && (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD);
+const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
+const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+const sessionSecret = String(
+  process.env.ADMIN_SESSION_SECRET || (!isProduction ? process.env.JWT_SECRET || "" : "")
+);
 const adminAuthConfigured = Boolean(
   adminUsername &&
   adminPassword &&
   sessionSecret
 );
 
-if (usingDefaultAdminCredentials) {
-  console.warn(
-    "Admin auth de desarrollo usando credenciales locales por defecto. Producción falla cerrado si faltan variables."
-  );
+const adminTotpSecret = String(process.env.ADMIN_TOTP_SECRET || "")
+  .replace(/\s+/g, "")
+  .toUpperCase();
+
+function decodeBase32(value = "") {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const char of String(value || "").replace(/=+$/g, "")) {
+    const index = alphabet.indexOf(char);
+    if (index < 0) throw new Error("ADMIN_TOTP_SECRET no tiene formato Base32 válido");
+    bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  }
+  return Buffer.from(bytes);
 }
 
-if (isProduction && !adminAuthConfigured) {
-  console.error("Admin auth incompleto en producción. El acceso administrativo queda bloqueado.");
+function adminTotpCode(secret, timestamp = Date.now()) {
+  const counter = Math.floor(timestamp / 30000);
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64BE(BigInt(counter));
+  const digest = crypto.createHmac("sha1", decodeBase32(secret)).update(buffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(value % 1000000).padStart(6, "0");
+}
+
+function verifyAdminTotp(code) {
+  if (!adminTotpSecret) return true;
+  const normalized = String(code || "").replace(/\D/g, "");
+  if (!/^\d{6}$/.test(normalized)) return false;
+  return [-1, 0, 1].some((offset) => {
+    const expected = adminTotpCode(adminTotpSecret, Date.now() + offset * 30000);
+    return crypto.timingSafeEqual(Buffer.from(normalized), Buffer.from(expected));
+  });
+}
+
+if (!adminAuthConfigured) {
+  console.error(
+    `Admin auth incompleto en ${isProduction ? "producción" : "desarrollo"}. Configura ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET.`
+  );
 }
 
 const publicKeys = new Set([
@@ -273,8 +309,16 @@ function isValidAdminToken(token) {
   if (!token || !token.includes(".")) return false;
 
   const [payload, signature] = token.split(".");
+  const expected = sign(payload);
+  const receivedBuffer = Buffer.from(String(signature || ""));
+  const expectedBuffer = Buffer.from(expected);
 
-  if (signature !== sign(payload)) return false;
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    return false;
+  }
 
   try {
     const decoded = JSON.parse(
@@ -282,8 +326,16 @@ function isValidAdminToken(token) {
     );
 
     const maxAgeMs = 1000 * 60 * 60 * 12;
+    const issuedAt = Number(decoded.iat || 0);
+    const age = Date.now() - issuedAt;
 
-    return decoded.role === "admin" && Date.now() - decoded.iat < maxAgeMs;
+    return (
+      decoded.role === "admin" &&
+      Number.isFinite(issuedAt) &&
+      issuedAt > 0 &&
+      age >= -5 * 60 * 1000 &&
+      age < maxAgeMs
+    );
   } catch {
     return false;
   }
@@ -302,9 +354,7 @@ function requireAdmin(req, res, next) {
 }
 
 function cookieOptions(maxAgeSeconds) {
-  return `HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=${
-    isProduction ? "None" : "Lax"
-  }${isProduction ? "; Secure" : ""}`;
+  return `HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${isProduction ? "; Secure" : ""}`;
 }
 
 function getVisitorId(req, res) {
@@ -463,7 +513,11 @@ function renderOrderEmail(order, recipientType = "customer") {
     : `<tr><td colspan="2" style="padding:16px 0;color:#8b6b61;">Pedido recibido sin detalle de productos.</td></tr>`;
 
   const deliveryLabel =
-    normalized.deliveryMethod === "recogida" ? "Recogida en tienda" : "Envío a domicilio";
+    normalized.deliveryMethod === "envio"
+      ? "Envío a domicilio"
+      : normalized.deliveryMethod === "mostrador"
+      ? "Venta TPV / entrega gestionada"
+      : "Entrega por coordinar";
 
   const paymentLabel =
     normalized.paymentMethod === "bizum"
@@ -584,12 +638,12 @@ function statusLabel(status) {
     pending_bizum_review: "Revisión de Bizum",
     pending_manual_review: "Revisión manual",
     pending_transfer_review: "Revisión de transferencia",
-    pending_store_confirmation: "Confirmación en tienda",
+    pending_store_confirmation: "Confirmación de Herencia",
     paid: "Pagado",
     confirmed: "Confirmado",
     preparing: "Preparando pedido",
     processing: "Pedido en camino",
-    ready: "Listo para recoger",
+    ready: "Listo para entrega",
     delivered: "Entregado",
     completed: "Completado",
     cancelled: "Cancelado",
@@ -600,14 +654,9 @@ function statusLabel(status) {
 
 function statusMessageForOrder(order) {
   const normalized = normalizeOrder(order);
-  const isPickup = ["recogida", "recoger", "mostrador"].includes(
-    String(normalized.deliveryMethod || "").toLowerCase()
-  );
 
   if (normalized.status === "ready") {
-    return isPickup
-      ? "Tu pedido ya está listo para recoger en tienda. Puedes pasar a buscarlo cuando quieras dentro de nuestro horario."
-      : "Tu pedido ya está listo y preparado para su salida.";
+    return "Tu pedido ya está listo y preparado para su entrega a domicilio.";
   }
 
   if (normalized.status === "processing") {
@@ -846,6 +895,20 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
   }).catch((error) => console.warn("No se pudo guardar historial de email:", error?.message || error));
 
   return result;
+}
+
+async function loadAuthoritativeProducts({ includeArchived = false } = {}) {
+  if (hasNeon()) {
+    try {
+      return await listNeonCommerceProducts({ includeArchived });
+    } catch (error) {
+      console.warn("No se pudo leer Commerce Core; usando copia de compatibilidad:", error?.message || error);
+    }
+  }
+  const rows = parseStoredJson(await readStorageValue("adminProducts"), []);
+  return Array.isArray(rows)
+    ? rows.filter((product) => includeArchived || (!product?.deletedAt && String(product?.status || "active") !== "archived"))
+    : [];
 }
 
 async function readStorageValue(key) {
@@ -1326,6 +1389,26 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "Herencia backend" });
 });
 
+app.post("/api/admin/smoke/email", requireAdmin, async (req, res) => {
+  try {
+    const recipient = String(req.body?.email || process.env.STORE_EMAIL || "").trim();
+    if (!isValidEmail(recipient)) {
+      return res.status(400).json({ error: "Configura un email de tienda válido o indica uno para la prueba" });
+    }
+    const result = await sendResendEmail({
+      to: recipient,
+      subject: "Herencia Market · prueba de email transaccional",
+      html: `<div style="font-family:Arial,sans-serif;padding:24px"><h1>Herencia Market</h1><p>La prueba de email transaccional se ha enviado correctamente desde el backend de producción.</p><p style="color:#666">Fecha: ${new Date().toISOString()}</p></div>`,
+    });
+    if (result?.skipped) {
+      return res.status(503).json({ error: result.reason || "El proveedor de email no está disponible" });
+    }
+    return res.json({ ok: true, providerId: result?.id || result?.data?.id || null });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "No se pudo enviar el email de prueba" });
+  }
+});
+
 app.get("/api/ready", async (_req, res) => {
   try {
     const database = hasNeon() ? await neonReady() : Boolean(supabase);
@@ -1344,13 +1427,12 @@ app.get("/api/ready", async (_req, res) => {
         process.env.R2_BUCKET_NAME &&
         process.env.R2_PUBLIC_URL
       ),
-      maps: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+      maps: Boolean(process.env.GOOGLE_MAPS_API_KEY),
       salesAi: Boolean(process.env.GROQ_API_KEY),
       imageAi: Boolean(
         process.env.GEMINI_API_KEY ||
         process.env.GOOGLE_API_KEY ||
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-        process.env.VITE_GEMINI_API_KEY
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY
       ),
       commerceCore: true,
     });
@@ -1378,6 +1460,10 @@ app.get("/api/shipping/availability", async (req, res) => {
   }
 });
 
+app.get("/api/admin/auth-config", (_req, res) => {
+  res.json({ totpRequired: Boolean(adminTotpSecret) });
+});
+
 app.post("/api/admin/login", (req, res) => {
   if (!adminAuthConfigured) {
     return res.status(503).json({
@@ -1385,10 +1471,14 @@ app.post("/api/admin/login", (req, res) => {
     });
   }
 
-  const { username, password } = req.body || {};
+  const { username, password, otp } = req.body || {};
 
   if (username !== adminUsername || password !== adminPassword) {
     return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+  }
+
+  if (!verifyAdminTotp(otp)) {
+    return res.status(401).json({ error: "Código de verificación incorrecto" });
   }
 
   res.setHeader(
@@ -1415,7 +1505,6 @@ function serverGeminiKey() {
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
     ""
   );
 }
@@ -2815,7 +2904,7 @@ app.put("/api/admin/automations/rules", requireAdmin, async (req, res) => {
       },
     };
     await upsertStorageValue(AUTOMATION_RULES_KEY, JSON.stringify(next));
-    const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const products = await loadAuthoritativeProducts();
     await evaluateInventoryAutomations(products);
     res.json({ rules: next });
   } catch (error) {
@@ -3073,7 +3162,7 @@ async function authoritativeCustomBouquetItem(raw = {}) {
 }
 
 async function validateCommerceOrderPayload(order = {}) {
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts();
   const byId = new Map((Array.isArray(products) ? products : []).map(p => [String(p?.id ?? ""), p]));
   let subtotal = 0;
   const normalizedItems = [];
@@ -3110,14 +3199,44 @@ async function validateCommerceOrderPayload(order = {}) {
     discount = rule.type === "fixed" ? Number(rule.value||0) : subtotal * Number(rule.value||0) / 100;
     discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
   }
-  const shipping = normalizeMoney(order.shipping || 0);
   const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+  const source = String(order?.metadata?.source || "");
+  const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
+
+  if (source === "frontend_checkout" && deliveryMethod !== "envio") {
+    throw new Error("Herencia Market solo ofrece entrega a domicilio");
+  }
+
+  let shipping = normalizeMoney(order.shipping || 0);
+  let shippingQuote = null;
+
+  if (source === "frontend_checkout") {
+    const shippingAddress = order?.metadata?.shippingAddress || {};
+    shippingQuote = await calculateShippingQuote(shippingAddress);
+    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+      throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
+    }
+    shipping = normalizeMoney(shippingQuote.price || 0);
+    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+    if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
+  }
+
   await assertDeliveryAvailability({
-    deliveryMethod: order.deliveryMethod || "envio",
+    deliveryMethod,
     metadata: order.metadata || {},
     suite,
   });
-  return {items:normalizedItems,subtotal,shipping,discount,total:normalizeMoney(subtotal-discount+shipping)};
+
+  return {
+    items: normalizedItems,
+    subtotal,
+    shipping,
+    discount,
+    total: normalizeMoney(subtotal - discount + shipping),
+    deliveryMethod: source === "frontend_checkout" ? "envio" : deliveryMethod,
+    shippingQuote,
+  };
 }
 
 app.post("/api/orders", async (req, res) => {
@@ -3125,7 +3244,26 @@ app.post("/api/orders", async (req, res) => {
   const id = order.id || crypto.randomUUID();
   try {
     const verified = await validateCommerceOrderPayload(order);
-    order = {...order,...verified,metadata:{...(order.metadata||{}),discount:verified.discount,pricingVerifiedAt:new Date().toISOString()}};
+    order = {
+      ...order,
+      ...verified,
+      metadata: {
+        ...(order.metadata || {}),
+        discount: verified.discount,
+        pricingVerifiedAt: new Date().toISOString(),
+        pricingSource: String(order?.metadata?.source || "") === "frontend_checkout"
+          ? "backend_catalog_coupons_and_maps"
+          : "backend_catalog",
+        shippingDistance: verified.shippingQuote
+          ? {
+              distanceKm: verified.shippingQuote.distanceKm,
+              distanceText: verified.shippingQuote.distanceText,
+              durationText: verified.shippingQuote.durationText,
+              destination: verified.shippingQuote.destination,
+            }
+          : order?.metadata?.shippingDistance || null,
+      },
+    };
   } catch (validationError) {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
@@ -3188,7 +3326,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     !nextMetadata.inventoryRestockedAt
   ) {
     try {
-      const currentProducts = parseStoredJson(await readStorageValue("adminProducts"), []);
+      const currentProducts = await loadAuthoritativeProducts({ includeArchived: true });
       const quantities = new Map();
 
       for (const item of previousOrder.items || []) {
@@ -3411,8 +3549,8 @@ function normalizePosCustomer(customer = {}) {
 }
 
 async function loadPosBootstrap() {
-  const [productsRaw, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
-    readStorageValue("adminProducts"),
+  const [products, customersRaw, fiscalRaw, stripeRaw, cashSessionRaw] = await Promise.all([
+    loadAuthoritativeProducts(),
     readStorageValue("posCustomers"),
     readStorageValue("posFiscalSettings"),
     readStorageValue("stripeSettings"),
@@ -3429,7 +3567,7 @@ async function loadPosBootstrap() {
     ).trim();
 
   return {
-    products: parseStoredJson(productsRaw, []),
+    products,
     customers: parseStoredJson(customersRaw, []),
     fiscalSettings: parseStoredJson(fiscalRaw, {}),
     stripeSettings: {
@@ -3902,7 +4040,7 @@ app.put("/api/pos/fiscal-settings", requireAdmin, async (req, res) => {
 app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const name = cleanText(req.body?.name, 120);
     if (!name) return res.status(400).json({ error: "La ubicación necesita un nombre" });
@@ -3920,13 +4058,14 @@ app.post("/api/admin/inventory/locations", requireAdmin, async (req, res) => {
 app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const productId = String(req.body?.productId || "").trim();
     const locationId = String(req.body?.locationId || "").trim();
     const stock = Math.max(0, Math.floor(Number(req.body?.stock || 0)));
     if (!productId || !locationId) return res.status(400).json({ error: "Producto y ubicación obligatorios" });
     if (!(current.inventoryLocations || []).some((item) => item.id === locationId && item.active !== false)) return res.status(404).json({ error: "Ubicación no encontrada" });
+
     current.inventoryLocationStock = {
       ...(current.inventoryLocationStock || {}),
       [productId]: {
@@ -3934,8 +4073,26 @@ app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) =
         [locationId]: stock,
       },
     };
+
+    const totalStock = Object.values(current.inventoryLocationStock[productId] || {})
+      .reduce((sum, value) => sum + Math.max(0, Math.floor(Number(value || 0))), 0);
+
+    const products = await loadAuthoritativeProducts({ includeArchived: true });
+    const previousProducts = products.map((product) => ({ ...product }));
+    const nextProducts = products.map((product) =>
+      String(product?.id ?? "") === productId && product?.trackInventory !== false
+        ? { ...product, stock: totalStock }
+        : product
+    );
+
     await upsertStorageValue("posOperations", JSON.stringify(current));
-    res.json({ stock, operations: sanitizePosOperations(current) });
+    await upsertStorageValue("adminProducts", JSON.stringify(nextProducts));
+    void notifyWaitlistForRestockedProducts(previousProducts, nextProducts)
+      .catch((error) => console.warn("Waitlist location stock notify:", error?.message || error));
+    void evaluateInventoryAutomations(nextProducts)
+      .catch((error) => console.warn("Automations location stock:", error?.message || error));
+
+    res.json({ stock, totalStock, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo actualizar el stock por ubicación" });
   }
@@ -3944,7 +4101,7 @@ app.post("/api/admin/inventory/location-stock", requireAdmin, async (req, res) =
 app.post("/api/admin/inventory/transfers", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { inventoryLocations: [{ id: "tienda", name: "Tienda", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
+    const defaults = { inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }], inventoryLocationStock: {}, inventoryTransfers: [] };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const productId = String(req.body?.productId || "").trim();
     const from = String(req.body?.from || "").trim();
@@ -4025,12 +4182,34 @@ app.patch("/api/admin/inventory/lots/:id", requireAdmin, async (req, res) => {
 app.get("/api/pos/operations", requireAdmin, async (_req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
-    const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], staffShifts: [], loyalty: {}, quotes: [], inventoryAdjustments: [], registers: [{ id: "caja-01", name: "Caja 01", active: true }] };
+    const defaults = {
+      giftCards: [],
+      floristOrders: [],
+      suppliers: [],
+      purchases: [],
+      staff: [],
+      staffShifts: [],
+      loyalty: {},
+      quotes: [],
+      inventoryAdjustments: [],
+      inventoryLocations: [{ id: "almacen-principal", name: "Almacén principal", active: true }],
+      inventoryLocationStock: {},
+      inventoryTransfers: [],
+      registers: [{ id: "caja-01", name: "Caja 01", active: true }],
+    };
     const saved = parseStoredJson(await readStorageValue("posOperations"), defaults);
     const operations = { ...defaults, ...(saved || {}) };
     if (!Array.isArray(operations.registers) || !operations.registers.length) {
       operations.registers = defaults.registers;
     }
+    if (!Array.isArray(operations.inventoryLocations) || !operations.inventoryLocations.length) {
+      operations.inventoryLocations = defaults.inventoryLocations;
+    }
+    operations.inventoryLocations = operations.inventoryLocations.map((location) =>
+      String(location?.id || "") === "tienda" && String(location?.name || "").toLowerCase() === "tienda"
+        ? { ...location, name: "Almacén principal" }
+        : location
+    );
     res.json({ operations: sanitizePosOperations(operations) });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -5791,8 +5970,13 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       return res.status(400).json({ error: "Email inválido" });
     }
 
+    const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
+    if (normalizedDeliveryMethod !== "envio") {
+      return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
+    }
+
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
-    const catalog = parseStoredJson(await readStorageValue("adminProducts"), []);
+    const catalog = await loadAuthoritativeProducts();
     const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
     const authoritativeItems = [];
     const requestedByProduct = new Map();
@@ -5880,26 +6064,21 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
-    await assertDeliveryAvailability({ deliveryMethod, metadata, suite });
-    const isPickup = ["recoger", "recogida"].includes(String(deliveryMethod || "").toLowerCase());
+    await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
 
-    let authoritativeShipping = 0;
-    let shippingQuote = null;
-    if (!isPickup) {
-      const shippingAddress = metadata?.shippingAddress || {};
-      shippingQuote = await calculateShippingQuote(shippingAddress);
-      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
-        return res.status(400).json({
-          error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
-          distanceKm: shippingQuote.distanceKm,
-        });
-      }
-      authoritativeShipping = Number(shippingQuote.price || 0);
-      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-      if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
-        authoritativeShipping = 0;
-      }
+    const shippingAddress = metadata?.shippingAddress || {};
+    const shippingQuote = await calculateShippingQuote(shippingAddress);
+    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+      return res.status(400).json({
+        error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
+        distanceKm: shippingQuote.distanceKm,
+      });
+    }
+    let authoritativeShipping = Number(shippingQuote.price || 0);
+    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+    if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
+      authoritativeShipping = 0;
     }
 
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
@@ -5935,7 +6114,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         customer_email: customerEmail || null,
         customer_name: customerName || null,
         payment_method: selectedPaymentMethod,
-        delivery_method: deliveryMethod,
+        delivery_method: normalizedDeliveryMethod,
         status: "payment_pending",
         subtotal: authoritativeSubtotal,
         shipping: authoritativeShipping,
@@ -6002,7 +6181,7 @@ async function commitOnlineOrderInventory(order) {
     return { skipped: true, reason: "already_committed", order: freshOrder };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts({ includeArchived: true });
   const byId = new Map((Array.isArray(products) ? products : []).map((product) => [String(product?.id ?? ""), product]));
   const requirements = new Map();
 
@@ -6110,7 +6289,7 @@ async function restockOnlineOrderInventory(order) {
     return { skipped: true };
   }
 
-  const products = parseStoredJson(await readStorageValue("adminProducts"), []);
+  const products = await loadAuthoritativeProducts({ includeArchived: true });
   const quantities = new Map();
 
   for (const item of Array.isArray(order.items) ? order.items : []) {
@@ -6332,7 +6511,7 @@ function requireNeuralActionId(req, res) {
 }
 
 async function readNeuralProducts() {
-  return parseStoredJson(await readStorageValue("adminProducts"), []);
+  return loadAuthoritativeProducts({ includeArchived: true });
 }
 
 async function writeNeuralProducts(products) {
@@ -6671,7 +6850,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
   try {
     const [orders, productsRaw, cashRaw, siteRaw, draftRaw, posCustomersRaw, expensesRaw, manualSalesRaw, closuresRaw, suppliersRaw] = await Promise.all([
       listOrdersPrimary({ limit: 250 }),
-      readStorageValue("adminProducts"),
+      loadAuthoritativeProducts({ includeArchived: true }),
       readStorageValue("posCashSession"),
       readStorageValue("siteContent"),
       readStorageValue("siteContentDraft"),
@@ -6681,7 +6860,7 @@ app.get("/api/neural-bridge/full-snapshot", requireNeuralBridge, async (_req, re
       readStorageValue("herencia_finance_closures"),
       readStorageValue("adminSuppliers"),
     ]);
-    const products = parseStoredJson(productsRaw, []);
+    const products = Array.isArray(productsRaw) ? productsRaw : [];
     const inventory = products.map((p) => ({ id: p.id, name: p.name || p.title, stock: Number(p.stock || 0), price: Number(p.price || 0), category: p.category || null, sku: p.sku || null }));
     const orderCustomers = (orders || []).filter(o => o.customer_email).map(o => ({ email: o.customer_email, name: o.customer_name || "", lastOrderAt: o.created_at }));
     const posCustomers = parseStoredJson(posCustomersRaw, []);
