@@ -78,3 +78,29 @@ test("las sesiones web usan cookies same-origin compatibles", async () => {
   assert.doesNotMatch(server, /SameSite=\$\{\s*isProduction\s*\?\s*"None"/);
   assert.doesNotMatch(gateway, /SameSite=None/);
 });
+
+
+test("TPV y checkout leen el catálogo autoritativo", async () => {
+  const server = await read("backend/server.js");
+  assert.match(server, /async function loadAuthoritativeProducts/);
+  assert.match(server, /async function loadPosBootstrap\(\)[\s\S]*loadAuthoritativeProducts\(\)/);
+  assert.match(server, /app\.post\("\/api\/stripe\/create-payment-intent"[\s\S]*const catalog = await loadAuthoritativeProducts\(\)/);
+});
+
+test("el origen privado de reparto no se devuelve al navegador", async () => {
+  const maps = await read("backend/fixMapsShipping.js");
+  const quoteStart = maps.indexOf("export async function calculateShippingQuote");
+  assert.ok(quoteStart >= 0);
+  const quoteSource = maps.slice(quoteStart);
+  assert.doesNotMatch(quoteSource, /origin:\s*result\.origin/);
+});
+
+test("inventario por ubicación no presenta una tienda física por defecto", async () => {
+  const [server, admin] = await Promise.all([
+    read("backend/server.js"),
+    read("src/app/components/admin/AdminInventoryLocations.tsx"),
+  ]);
+  assert.match(server, /Almacén principal/);
+  assert.match(admin, /Almacén principal/);
+  assert.doesNotMatch(admin, /name:"Tienda"/);
+});
