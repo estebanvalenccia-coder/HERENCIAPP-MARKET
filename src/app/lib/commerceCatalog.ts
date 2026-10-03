@@ -21,15 +21,16 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
   {
     id: "plantas",
     name: "Plantas",
-    description: "Plantas, flores, orquídeas, cactus y suculentas.",
+    description: "Plantas de interior y exterior, cactus, suculentas, orquídeas y especies exóticas.",
     productType: "plant",
     inventoryDefault: true,
     categories: [
       { id: "plantas-interior", name: "Plantas de interior" },
       { id: "plantas-exterior", name: "Plantas de exterior" },
-      { id: "flores", name: "Flores y ramos" },
-      { id: "orquideas", name: "Orquídeas" },
       { id: "cactus-suculentas", name: "Cactus y suculentas" },
+      { id: "orquideas", name: "Orquídeas" },
+      { id: "plantas-exoticas", name: "Plantas exóticas" },
+      { id: "flores", name: "Flores y ramos" },
     ],
   },
   {
