@@ -147,15 +147,11 @@ app.use((req, res, next) => {
   next();
 });
 
-const adminUsername =
-  process.env.ADMIN_USERNAME || (!isProduction ? "Daniel" : "");
-const adminPassword =
-  process.env.ADMIN_PASSWORD || (!isProduction ? "13101098" : "");
-const sessionSecret =
-  process.env.ADMIN_SESSION_SECRET ||
-  (!isProduction ? process.env.JWT_SECRET || "dev-only-change-me" : "");
-const usingDefaultAdminCredentials =
-  !isProduction && (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD);
+const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
+const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+const sessionSecret = String(
+  process.env.ADMIN_SESSION_SECRET || (!isProduction ? process.env.JWT_SECRET || "" : "")
+);
 const adminAuthConfigured = Boolean(
   adminUsername &&
   adminPassword &&
@@ -205,14 +201,10 @@ function verifyAdminTotp(code) {
   });
 }
 
-if (usingDefaultAdminCredentials) {
-  console.warn(
-    "Admin auth de desarrollo usando credenciales locales por defecto. Producción falla cerrado si faltan variables."
+if (!adminAuthConfigured) {
+  console.error(
+    `Admin auth incompleto en ${isProduction ? "producción" : "desarrollo"}. Configura ADMIN_USERNAME, ADMIN_PASSWORD y ADMIN_SESSION_SECRET.`
   );
-}
-
-if (isProduction && !adminAuthConfigured) {
-  console.error("Admin auth incompleto en producción. El acceso administrativo queda bloqueado.");
 }
 
 const publicKeys = new Set([
