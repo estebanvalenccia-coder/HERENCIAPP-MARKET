@@ -1882,7 +1882,13 @@ function getCustomerSession(req) {
   const token = parseCookies(req).customer_session;
   if (!token || !token.includes(".")) return null;
   const [payload, signature] = token.split(".");
-  if (signature !== sign(payload)) return null;
+  const expectedSignature = sign(payload);
+  const receivedSignatureBuffer = Buffer.from(String(signature || ""));
+  const expectedSignatureBuffer = Buffer.from(expectedSignature);
+  if (
+    receivedSignatureBuffer.length !== expectedSignatureBuffer.length ||
+    !crypto.timingSafeEqual(receivedSignatureBuffer, expectedSignatureBuffer)
+  ) return null;
   try {
     const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     const maxAgeMs = 1000 * 60 * 60 * 24 * 30;
