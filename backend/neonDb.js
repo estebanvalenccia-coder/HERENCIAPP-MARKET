@@ -364,6 +364,63 @@ export async function deleteNeonOrder(id) {
 }
 
 
+let paymentAuditSchemaReady = false;
+
+async function ensureNeonPaymentAuditSchema() {
+  if (!neonPool) return false;
+  if (paymentAuditSchemaReady) return true;
+
+  await neonPool.query(`
+    create table if not exists commerce_payment_events (
+      provider text not null,
+      event_id text not null,
+      event_type text,
+      order_id text,
+      payload jsonb not null default '{}'::jsonb,
+      processed_at timestamptz not null default now(),
+      primary key(provider, event_id)
+    )
+  `);
+  await neonPool.query(
+    "create index if not exists commerce_payment_events_order_idx on commerce_payment_events(order_id, processed_at desc)"
+  );
+  paymentAuditSchemaReady = true;
+  return true;
+}
+
+export async function recordNeonPaymentEvent({
+  provider = "stripe",
+  eventId,
+  eventType = "",
+  orderId = null,
+  payload = {},
+} = {}) {
+  if (!neonPool) return { recorded: false, reason: "neon_unavailable" };
+  const safeEventId = String(eventId || "").trim();
+  if (!safeEventId) return { recorded: false, reason: "missing_event_id" };
+
+  await ensureNeonPaymentAuditSchema();
+  const result = await neonPool.query(
+    `insert into commerce_payment_events(provider,event_id,event_type,order_id,payload,processed_at)
+     values($1,$2,$3,$4,$5::jsonb,now())
+     on conflict(provider,event_id) do update
+       set event_type=excluded.event_type,
+           order_id=coalesce(excluded.order_id,commerce_payment_events.order_id),
+           payload=excluded.payload,
+           processed_at=now()
+     returning event_id`,
+    [
+      String(provider || "stripe"),
+      safeEventId,
+      String(eventType || ""),
+      orderId ? String(orderId) : null,
+      JSON.stringify(payload || {}),
+    ]
+  );
+  return { recorded: Boolean(result.rows?.[0]?.event_id), eventId: safeEventId };
+}
+
+
 
 function slugify(value) {
   return String(value || "")
