@@ -394,10 +394,14 @@ export const backendApi = {
     return request<{ settings: Record<string, any> }>("/api/settings/public");
   },
 
-  async adminLogin(username: string, password: string) {
+  async adminAuthConfig() {
+    return request<{ totpRequired: boolean }>("/api/admin/auth-config");
+  },
+
+  async adminLogin(username: string, password: string, otp = "") {
     return request<{ ok: boolean }>("/api/admin/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, otp }),
     });
   },
 
