@@ -17,16 +17,21 @@ export function AdminSystemAudit(){
     out.push({name:"IA de imágenes",ok:!!r.imageAi,detail:r.imageAi?"Proveedor de imagen configurado":"Falta Gemini o Nano Banana"});
   }catch(e:any){out.push({name:"Readiness del backend",ok:false,detail:e?.message||"No disponible"});}
   try{
-    const commerce=await backendApi.commerceHealth();
+    const [commerce,catalog]=await Promise.all([backendApi.commerceHealth(),backendApi.listCommerceProducts({includeArchived:true})]);
+    const products=Array.isArray(catalog?.products)?catalog.products:[];
+    const active=products.filter((p:any)=>p?.active!==false&&!p?.deletedAt&&String(p?.status||"active")!=="archived");
+    const sellable=active.filter((p:any)=>p?.trackInventory===false||Number(p?.stock||0)>0||(Array.isArray(p?.variants)&&p.variants.some((v:any)=>Number(v?.stock||0)>0)));
     out.push({name:"Commerce Core",ok:commerce?.ok!==false,detail:`${commerce?.products||0} productos · ${commerce?.collections||0} colecciones · ${commerce?.source||"sin fuente"}`});
+    out.push({name:"Catálogo vendible",ok:sellable.length>0,detail:`${active.length} activos · ${sellable.length} con disponibilidad de venta`});
   }catch(e:any){out.push({name:"Commerce Core",ok:false,detail:e?.message||"No accesible"});}
   try{
     const media=await backendApi.siteMediaStatus();
-    const ready=media.provider==="cloudflare_r2"&&media.configured;
-    out.push({name:"Biblioteca multimedia",ok:ready,detail:ready?"Cloudflare R2 operativo":"R2 pendiente; el fallback de Supabase puede estar restringido"});
+    const ready=media.provider==="cloudflare_r2"&&media.configured&&media.connection?.ok!==false;
+    out.push({name:"Biblioteca multimedia",ok:ready,detail:ready?"Cloudflare R2 operativo · lectura/escritura comprobadas":(media.connection?.error||"R2 pendiente o sin acceso de escritura")});
   }catch(e:any){out.push({name:"Biblioteca multimedia",ok:false,detail:e?.message||"No se pudo comprobar"});}
   try{const p=await backendApi.posSelfTest();out.push(...(p.tests||[]).map((t:any)=>({name:"TPV · "+t.name,ok:!!t.ok,detail:t.detail})));out.push({name:"Stripe / tarjeta TPV",ok:!!p.cardReady,detail:p.cardReady?"Configuración disponible":"Falta configuración o validación"});out.push({name:"Datos fiscales",ok:!!p.fiscalReady,detail:p.fiscalReady?"Datos del emisor configurados":"Completa los datos fiscales del emisor"});}catch(e:any){out.push({name:"TPV",ok:false,detail:e?.message||"No se pudo ejecutar el autotest"});}
   try{const n=await backendApi.neuralSelfTest();out.push({name:"HERENCIA Neural",ok:n?.ok!==false,detail:n?.ok===false?(n?.error||"Autotest con incidencias"):"Core Neural responde"});}catch(e:any){out.push({name:"HERENCIA Neural",ok:false,detail:e?.message||"Sin respuesta"});}
+  try{const s=await backendApi.adminSession();out.push({name:"Sesión de Administración",ok:!!s.authenticated,detail:s.authenticated?"Cookie de sesión válida en este navegador":"La sesión no está autenticada"});}catch(e:any){out.push({name:"Sesión de Administración",ok:false,detail:e?.message||"No se pudo validar la sesión"});}
   try{const o=await backendApi.listOrders();out.push({name:"Pedidos",ok:Array.isArray(o.orders),detail:Array.isArray(o.orders)?o.orders.length+" pedidos accesibles desde la base primaria":"Respuesta inválida"});}catch(e:any){out.push({name:"Pedidos",ok:false,detail:e?.message||"No accesible"});}
   out.push({name:"PWA / Service Worker",ok:"serviceWorker" in navigator,detail:"serviceWorker" in navigator?"Navegador compatible con instalación offline":"Navegador sin Service Worker"});
   out.push({name:"Notificaciones navegador",ok:typeof Notification!=="undefined",detail:typeof Notification!=="undefined"?`Soportadas · permiso: ${Notification.permission}`:"No compatibles"});
