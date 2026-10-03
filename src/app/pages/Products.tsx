@@ -12,7 +12,6 @@ import {
   primaryCollectionOf,
   productBelongsToCollection,
 } from "../lib/commerceCatalog";
-import { products as fallbackProducts } from "../data/products";
 
 const normalize = (value: unknown) =>
   String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -36,7 +35,7 @@ function effectivePrice(product: any) {
 export function Products() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [displayProducts, setDisplayProducts] = useState<any[]>(fallbackProducts);
+  const [displayProducts, setDisplayProducts] = useState<any[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
   );
@@ -109,7 +108,7 @@ export function Products() {
           ? collectionResult.collections.filter((item: any) => String(item.status || "active") === "active")
           : [];
 
-        setDisplayProducts(rows.length ? rows : fallbackProducts);
+        setDisplayProducts(rows);
         if (collections.length) setCollectionOptions(collections);
         if (rows.length) backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
@@ -119,9 +118,9 @@ export function Products() {
           const active = Array.isArray(cached)
             ? cached.filter((product: any) => product.status === "active" || product.active !== false)
             : [];
-          setDisplayProducts(active.length ? active : fallbackProducts);
+          setDisplayProducts(active);
         } catch {
-          setDisplayProducts(fallbackProducts);
+          setDisplayProducts([]);
         }
       }
     }
