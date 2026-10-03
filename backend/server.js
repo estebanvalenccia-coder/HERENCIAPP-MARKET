@@ -162,6 +162,49 @@ const adminAuthConfigured = Boolean(
   sessionSecret
 );
 
+const adminTotpSecret = String(process.env.ADMIN_TOTP_SECRET || "")
+  .replace(/\s+/g, "")
+  .toUpperCase();
+
+function decodeBase32(value = "") {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const char of String(value || "").replace(/=+$/g, "")) {
+    const index = alphabet.indexOf(char);
+    if (index < 0) throw new Error("ADMIN_TOTP_SECRET no tiene formato Base32 válido");
+    bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function adminTotpCode(secret, timestamp = Date.now()) {
+  const counter = Math.floor(timestamp / 30000);
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64BE(BigInt(counter));
+  const digest = crypto.createHmac("sha1", decodeBase32(secret)).update(buffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(value % 1000000).padStart(6, "0");
+}
+
+function verifyAdminTotp(code) {
+  if (!adminTotpSecret) return true;
+  const normalized = String(code || "").replace(/\D/g, "");
+  if (!/^\d{6}$/.test(normalized)) return false;
+  return [-1, 0, 1].some((offset) => {
+    const expected = adminTotpCode(adminTotpSecret, Date.now() + offset * 30000);
+    return crypto.timingSafeEqual(Buffer.from(normalized), Buffer.from(expected));
+  });
+}
+
 if (usingDefaultAdminCredentials) {
   console.warn(
     "Admin auth de desarrollo usando credenciales locales por defecto. Producción falla cerrado si faltan variables."
@@ -1409,6 +1452,10 @@ app.get("/api/shipping/availability", async (req, res) => {
   }
 });
 
+app.get("/api/admin/auth-config", (_req, res) => {
+  res.json({ totpRequired: Boolean(adminTotpSecret) });
+});
+
 app.post("/api/admin/login", (req, res) => {
   if (!adminAuthConfigured) {
     return res.status(503).json({
@@ -1416,10 +1463,14 @@ app.post("/api/admin/login", (req, res) => {
     });
   }
 
-  const { username, password } = req.body || {};
+  const { username, password, otp } = req.body || {};
 
   if (username !== adminUsername || password !== adminPassword) {
     return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+  }
+
+  if (!verifyAdminTotp(otp)) {
+    return res.status(401).json({ error: "Código de verificación incorrecto" });
   }
 
   res.setHeader(
