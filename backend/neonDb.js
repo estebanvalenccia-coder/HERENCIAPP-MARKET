@@ -323,8 +323,8 @@ export async function insertNeonOrder(order = {}) {
       Number(order.subtotal || 0),
       Number(order.shipping || 0),
       Number(order.total || 0),
-      order.items || [],
-      order.metadata || {},
+      JSON.stringify(order.items || []),
+      JSON.stringify(order.metadata || {}),
       order.stripe_payment_intent_id ?? null,
       order.tracking_estado ?? "pendiente",
       order.tracking_tiempo ?? null,
@@ -346,7 +346,7 @@ export async function patchNeonOrder(id, patch = {}) {
   ]);
   const entries = Object.entries(patch).filter(([key]) => allowed.has(key));
   if (!entries.length) return null;
-  const values = entries.map(([, value]) => value);
+  const values = entries.map(([key, value]) =>\n    (key === "items" || key === "metadata") ? JSON.stringify(value ?? (key === "items" ? [] : {})) : value\n  );
   const assignments = entries.map(([key], index) => `${key} = $${index + 1}`);
   values.push(String(id));
   const result = await neonPool.query(
