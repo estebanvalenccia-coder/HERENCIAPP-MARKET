@@ -346,7 +346,11 @@ export async function patchNeonOrder(id, patch = {}) {
   ]);
   const entries = Object.entries(patch).filter(([key]) => allowed.has(key));
   if (!entries.length) return null;
-  const values = entries.map(([key, value]) =>\n    (key === "items" || key === "metadata") ? JSON.stringify(value ?? (key === "items" ? [] : {})) : value\n  );
+  const values = entries.map(([key, value]) =>
+    (key === "items" || key === "metadata")
+      ? JSON.stringify(value ?? (key === "items" ? [] : {}))
+      : value
+  );
   const assignments = entries.map(([key], index) => `${key} = $${index + 1}`);
   values.push(String(id));
   const result = await neonPool.query(
