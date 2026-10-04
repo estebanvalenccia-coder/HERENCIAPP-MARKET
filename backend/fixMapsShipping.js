@@ -1,9 +1,14 @@
 import express from "express";
 
 const STORE_ADDRESS = String(process.env.STORE_ADDRESS || "").trim();
-const BASE_SHIPPING_EUR = Number(process.env.SHIPPING_BASE_PRICE || 5);
-const STEP_KM = Number(process.env.SHIPPING_STEP_KM || 3);
-const STEP_PRICE_EUR = Number(process.env.SHIPPING_STEP_PRICE || 3);
+const SHIPPING_TIERS = [
+  { maxKm: 3, price: 3.9 },
+  { maxKm: 6, price: 4.9 },
+  { maxKm: 9, price: 5.9 },
+  { maxKm: 12, price: 6.9 },
+  { maxKm: 15, price: 7.9 },
+  { maxKm: 20, price: 9.9 },
+];
 
 function normalizeText(value) {
   return String(value || "").trim();
@@ -18,10 +23,15 @@ function normalizeAddress({ address = "", city = "", postalCode = "", province =
 
 export function calculateShippingPrice(distanceKm) {
   const km = Number(distanceKm || 0);
-  if (!Number.isFinite(km) || km < 0) return BASE_SHIPPING_EUR;
+  if (!Number.isFinite(km) || km < 0) return SHIPPING_TIERS[0].price;
 
-  const extraBlocks = Math.max(0, Math.ceil(km / STEP_KM) - 1);
-  return Number((BASE_SHIPPING_EUR + extraBlocks * STEP_PRICE_EUR).toFixed(2));
+  const tier = SHIPPING_TIERS.find(({ maxKm }) => km <= maxKm);
+  if (!tier) {
+    const error = new Error("La dirección está fuera del radio de reparto de 20 km");
+    error.statusCode = 400;
+    throw error;
+  }
+  return tier.price;
 }
 
 export async function calculateDistanceWithGoogleMaps(destination) {
@@ -96,9 +106,9 @@ export async function calculateShippingQuote(address = {}) {
     durationText: result.durationText,
     destination: result.destination,
     pricing: {
-      basePrice: BASE_SHIPPING_EUR,
-      stepKm: STEP_KM,
-      stepPrice: STEP_PRICE_EUR,
+      model: "distance_tiers",
+      tiers: SHIPPING_TIERS,
+      freeShippingFrom: 49,
     },
   };
 }
