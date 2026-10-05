@@ -1515,6 +1515,14 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
     if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
     const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
     if (!prompt) return res.status(400).json({ error: "Prompt obligatorio" });
+    const references = Array.isArray(req.body?.references) ? req.body.references.slice(0, 5) : [];
+    const referenceParts = [];
+    for (const reference of references) {
+      try {
+        const parsed = parseImageDataUrl(String(reference?.image || reference || ""));
+        referenceParts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.buffer.toString("base64") } });
+      } catch {}
+    }
 
     const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
     const response = await fetch(
