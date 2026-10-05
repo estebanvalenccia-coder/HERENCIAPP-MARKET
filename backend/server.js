@@ -5920,7 +5920,7 @@ app.post("/api/ai/plant-description", async (req, res) => {
 
   const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
 {
-  "description": "descripción botánica y comercial breve de 55 a 85 palabras: explica qué planta es, familia u origen cuando sea relevante, su rasgo visual o de crecimiento más característico y termina con un resumen práctico de luz, riego, humedad y una advertencia de toxicidad/mascotas solo cuando corresponda",
+  "description": "45 a 70 palabras. OBLIGATORIO: empieza con el nombre de la especie y qué tipo/familia de planta es; describe 1-2 rasgos botánicos distintivos reales; termina con luz, riego y humedad recomendados y, si procede, toxicidad para mascotas. NO uses relleno comercial genérico. Ejemplo de estilo: 'Monstera deliciosa es una planta tropical trepadora de la familia Araceae, conocida por sus grandes hojas verdes que desarrollan características perforaciones al madurar. De crecimiento vigoroso y aspecto exuberante, es ideal para interiores. Prefiere luz indirecta, riego moderado y humedad ambiental media-alta. Es fácil de cuidar, pero tóxica si las mascotas ingieren sus hojas.'",
   "scientificName": "nombre científico correcto",
   "difficulty": "Fácil, Media o Avanzada",
   "toxicity": "toxicidad breve para personas y mascotas, sin alarmismo",
@@ -5949,12 +5949,12 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Genera una ficha específica sobre la planta "${plantName}". La descripción debe sonar como una ficha botánica premium, no como publicidad genérica: menciona rasgos reales de esa especie y termina con cuidados esenciales en una frase natural. Evita frases vacías como "aporta frescura", "ideal para cualquier espacio" o "perfecta para tu hogar". No inventes propiedades médicas ni datos dudosos. ${
+          content: `Genera una ficha específica sobre "${plantName}". Sigue ESTRICTAMENTE el estilo del ejemplo del sistema. La descripción debe identificar la especie, aportar información botánica concreta y acabar con cuidados esenciales. Está PROHIBIDO responder con una descripción de una sola frase o con frases genéricas como "planta exótica", "interiores modernos", "aporta un toque tropical", "aporta frescura", "ideal para cualquier espacio", "elegante" o "perfecta para tu hogar". No inventes propiedades médicas ni datos dudosos. ${
             baseDescription ? `Información adicional: ${baseDescription}` : ""
           }`,
         },
       ],
-      temperature: 0.7,
+      temperature: 0.35,
     }),
   });
 
