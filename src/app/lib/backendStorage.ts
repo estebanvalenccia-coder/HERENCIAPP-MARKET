@@ -303,8 +303,14 @@ export const backendApi = {
     prompt: string;
     format?: "portrait" | "square" | "landscape";
     referenceImages?: string[];
+    referenceUrls?: string[];
   }) {
-    return request<{ image: string; model?: string }>("/api/admin/ai/product-image", {
+    return request<{
+      image: string;
+      model?: string;
+      referencesUsed?: number;
+      format?: string;
+    }>("/api/admin/ai/product-image", {
       method: "POST",
       body: JSON.stringify(payload),
     });
