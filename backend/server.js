@@ -1570,14 +1570,14 @@ app.post("/api/internal/e2e/product-image", async (req, res) => {
   }
 
   try {
-    const baseUrl = \`http://127.0.0.1:\${port}\`;
-    const adminCookie = \`admin_session=\${encodeURIComponent(createAdminToken())}\`;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const adminCookie = `admin_session=${encodeURIComponent(createAdminToken())}`;
     const prompt = String(
       req.body?.prompt ||
       "Fotografía de catálogo extremadamente fotorrealista de una Monstera deliciosa madura y saludable, proporciones botánicas reales, pequeñas imperfecciones naturales en algunas hojas, maceta de cerámica acanalada crema mate, interior mediterráneo cálido y vivido con pared marfil, madera natural y luz lateral real de ventana, sombras físicamente coherentes, textura fotográfica real, lente 50 mm, profundidad de campo natural. Evita aspecto CGI, render 3D, plástico, hojas perfectas o simétricas y decoración artificial."
     ).slice(0, 3000);
 
-    const generationResponse = await fetch(\`\${baseUrl}/api/admin/ai/product-image\`, {
+    const generationResponse = await fetch(`${baseUrl}/api/admin/ai/product-image`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1599,7 +1599,7 @@ app.post("/api/internal/e2e/product-image", async (req, res) => {
       });
     }
 
-    const uploadResponse = await fetch(\`\${baseUrl}/api/admin/media\`, {
+    const uploadResponse = await fetch(`${baseUrl}/api/admin/media`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
