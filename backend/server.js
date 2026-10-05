@@ -1637,6 +1637,25 @@ app.post("/api/internal/e2e/product-image", async (req, res) => {
   }
 });
 
+
+app.get("/api/internal/e2e/product-image/:token", async (req, res) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/internal/e2e/product-image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://www.herenciamarket.es",
+        "x-herencia-e2e-token": String(req.params?.token || ""),
+      },
+      body: JSON.stringify({}),
+    });
+    const text = await response.text();
+    res.status(response.status).type("application/json").send(text);
+  } catch (error) {
+    res.status(502).json({ ok: false, stage: "bridge", error: error?.message || "Prueba E2E fallida" });
+  }
+});
+
 app.post("/api/admin/ai/classify-product-image", requireAdmin, async (req, res) => {
   try {
     const apiKey = serverGeminiKey();
