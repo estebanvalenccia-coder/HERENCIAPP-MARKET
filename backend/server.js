@@ -1515,6 +1515,14 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
     if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
     const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
     if (!prompt) return res.status(400).json({ error: "Prompt obligatorio" });
+    const references = Array.isArray(req.body?.references) ? req.body.references.slice(0, 5) : [];
+    const referenceParts = [];
+    for (const reference of references) {
+      try {
+        const parsed = parseImageDataUrl(String(reference?.image || reference || ""));
+        referenceParts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.buffer.toString("base64") } });
+      } catch {}
+    }
 
     const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
     const response = await fetch(
@@ -1524,7 +1532,7 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
         signal: AbortSignal.timeout(Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000)),
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${prompt}\n\nGenera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }] }],
+          contents: [{ parts: [{ text: `${prompt}\n\nUsa las imágenes adjuntas solo como referencias visuales de interiorismo, iluminación, paleta, materiales, encuadre y maceta. No copies la especie vegetal de la referencia si es distinta del producto. Genera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }, ...referenceParts] }],
         }),
       }
     );
