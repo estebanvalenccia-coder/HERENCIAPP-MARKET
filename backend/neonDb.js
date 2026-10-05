@@ -745,7 +745,15 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
       [productId,collections[i],i]
     );
   }
-  const images=Array.isArray(input.images)&&input.images.length?input.images:(input.image?[input.image]:[]);
+  const images=(Array.isArray(input.images)&&input.images.length?input.images:(input.image?[input.image]:[])).slice(0,8);
+  for(const img of images){
+    const url=typeof img==="string"?img:img?.url;
+    if(/^data:image\//i.test(String(url||""))){
+      const error=new Error("No se permite guardar imágenes Base64 en el catálogo. Usa una URL de Cloudflare R2.");
+      error.statusCode=400;
+      throw error;
+    }
+  }
   await neonPool.query("delete from commerce_product_images where product_id=$1",[productId]);
   for(let i=0;i<images.length;i++){
     const img=images[i];const url=typeof img==="string"?img:img?.url;if(!url)continue;
@@ -765,8 +773,6 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
       );
     }
   }
-  const all=await listNeonCommerceProducts({includeArchived:true});
-  await upsertNeonStorageValue("adminProducts",JSON.stringify(all));
   return getNeonCommerceProduct(productId,{includeArchived:true});
 }
 
@@ -774,8 +780,6 @@ export async function archiveNeonCommerceProduct(id, { permanent = false } = {})
   if (!neonPool) throw new Error("Neon no está configurado");
   if (permanent) await neonPool.query("delete from commerce_products where id=$1",[String(id)]);
   else await neonPool.query("update commerce_products set status='archived',updated_at=now() where id=$1",[String(id)]);
-  const all=await listNeonCommerceProducts({includeArchived:true});
-  await upsertNeonStorageValue("adminProducts",JSON.stringify(all));
   return true;
 }
 
