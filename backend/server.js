@@ -5903,15 +5903,20 @@ app.post("/api/ai/plant-description", async (req, res) => {
 
   const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
 {
-  "description": "descripción completa de la planta",
+  "description": "descripción comercial breve y contundente, 20 a 35 palabras, máximo 2 frases",
+  "scientificName": "nombre científico correcto",
+  "difficulty": "Fácil, Media o Avanzada",
+  "toxicity": "toxicidad breve para personas y mascotas, sin alarmismo",
+  "petSafe": false,
+  "humidity": "humedad ambiental recomendada",
   "care": {
-    "water": "instrucciones de riego",
-    "light": "requisitos de luz",
-    "temperature": "temperatura ideal",
-    "fertilizer": "guía de fertilización"
+    "water": "riego breve, práctico y específico",
+    "light": "luz recomendada de forma breve",
+    "temperature": "rango de temperatura ideal",
+    "fertilizer": "fertilización breve y práctica"
   },
-  "benefits": ["beneficio", "beneficio", "beneficio", "beneficio"],
-  "tips": "consejos adicionales del experto"
+  "benefits": ["máximo 3 beneficios breves"],
+  "tips": "1 o 2 consejos útiles y concretos"
 }
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
@@ -5927,7 +5932,7 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Genera información completa sobre la planta "${plantName}". ${
+          content: `Genera una ficha comercial y de cuidados concisa sobre la planta "${plantName}". No inventes propiedades médicas ni datos dudosos. ${
             baseDescription ? `Información adicional: ${baseDescription}` : ""
           }`,
         },
