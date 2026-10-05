@@ -5920,7 +5920,7 @@ app.post("/api/ai/plant-description", async (req, res) => {
 
   const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
 {
-  "description": "descripción comercial breve y contundente, 20 a 35 palabras, máximo 2 frases",
+  "description": "descripción botánica y comercial breve de 55 a 85 palabras: explica qué planta es, familia u origen cuando sea relevante, su rasgo visual o de crecimiento más característico y termina con un resumen práctico de luz, riego, humedad y una advertencia de toxicidad/mascotas solo cuando corresponda",
   "scientificName": "nombre científico correcto",
   "difficulty": "Fácil, Media o Avanzada",
   "toxicity": "toxicidad breve para personas y mascotas, sin alarmismo",
@@ -5949,7 +5949,7 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Genera una ficha comercial y de cuidados concisa sobre la planta "${plantName}". No inventes propiedades médicas ni datos dudosos. ${
+          content: `Genera una ficha específica sobre la planta "${plantName}". La descripción debe sonar como una ficha botánica premium, no como publicidad genérica: menciona rasgos reales de esa especie y termina con cuidados esenciales en una frase natural. Evita frases vacías como "aporta frescura", "ideal para cualquier espacio" o "perfecta para tu hogar". No inventes propiedades médicas ni datos dudosos. ${
             baseDescription ? `Información adicional: ${baseDescription}` : ""
           }`,
         },
