@@ -1532,7 +1532,7 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
         signal: AbortSignal.timeout(Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000)),
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${prompt}\n\nGenera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }] }],
+          contents: [{ parts: [{ text: `${prompt}\n\nUsa las imágenes adjuntas solo como referencias visuales de interiorismo, iluminación, paleta, materiales, encuadre y maceta. No copies la especie vegetal de la referencia si es distinta del producto. Genera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }, ...referenceParts] }],
         }),
       }
     );
