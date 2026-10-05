@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Home, Images, Sparkles, Sun } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
@@ -64,6 +64,50 @@ export function AdminPlantVisualStudio({
   onGeneratedImage,
 }: Props) {
   const [generating, setGenerating] = useState(false);
+  const [references, setReferences] = useState<Array<{ name: string; url: string }>>([]);
+  const [selectedReferenceUrl, setSelectedReferenceUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    backendApi
+      .listCommerceProducts({ collection: "plantas", status: "active" })
+      .then((result) => {
+        if (cancelled) return;
+        const products = Array.isArray(result.products) ? result.products : [];
+        const preferredNames = [
+          "zamioculca",
+          "palma areca",
+          "calathea orbifolia",
+          "philodendron brasil",
+          "begonia maculata",
+        ];
+
+        const rows = products
+          .map((product: any) => ({
+            name: String(product?.name || "Producto Herencia"),
+            url: String(product?.image || product?.images?.[0] || "").trim(),
+          }))
+          .filter((item) => /^https:\/\//i.test(item.url));
+
+        const preferred = preferredNames
+          .map((name) => rows.find((item) => item.name.toLowerCase().includes(name)))
+          .filter(Boolean) as Array<{ name: string; url: string }>;
+
+        const merged = [...preferred, ...rows].filter(
+          (item, index, all) => item.url && all.findIndex((candidate) => candidate.url === item.url) === index
+        ).slice(0, 6);
+
+        setReferences(merged);
+        setSelectedReferenceUrl((current) => current || merged[0]?.url || "");
+      })
+      .catch(() => {
+        if (!cancelled) setReferences([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function generateGallery() {
     const name = plantName.trim();
@@ -91,6 +135,7 @@ export function AdminPlantVisualStudio({
         const result = await backendApi.generateAdminProductImage({
           prompt: promptFor(generationStyle, name, index),
           format: "portrait",
+          referenceUrls: selectedReferenceUrl ? [selectedReferenceUrl] : [],
         });
 
         if (!result.image) throw new Error("La IA no devolvió una imagen");
@@ -177,15 +222,56 @@ export function AdminPlantVisualStudio({
           Máximo 8 imágenes.
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => void generateGallery()}
-          disabled={generating || !plantName.trim() || selectedCount >= 8}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground disabled:opacity-50"
-        >
-          <Sparkles className="h-4 w-4" />
-          {generating ? "Generando galería…" : "Generar imágenes con IA"}
-        </button>
+        <>
+          {references.length > 0 && (
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">
+                  Escenario de referencia
+                </p>
+                <span className="text-[10px] text-muted-foreground">Tus productos actuales</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {references.map((reference) => {
+                  const selected = selectedReferenceUrl === reference.url;
+                  return (
+                    <button
+                      key={reference.url}
+                      type="button"
+                      onClick={() => setSelectedReferenceUrl(reference.url)}
+                      className={`overflow-hidden rounded-xl border text-left transition ${
+                        selected ? "border-primary ring-2 ring-primary/10" : "border-border"
+                      }`}
+                      title={reference.name}
+                    >
+                      <img
+                        src={reference.url}
+                        alt={reference.name}
+                        className="aspect-square w-full object-cover"
+                      />
+                      <span className="block truncate px-2 py-1.5 text-[10px] font-bold">
+                        {reference.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                La IA usa esta foto como guía del rincón, luz y maceta; no copia la planta.
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void generateGallery()}
+            disabled={generating || !plantName.trim() || selectedCount >= 8}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            {generating ? "Generando galería…" : "Generar imágenes con IA"}
+          </button>
+        </>
       )}
     </div>
   );
