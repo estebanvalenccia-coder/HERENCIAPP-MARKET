@@ -1599,7 +1599,8 @@ app.post("/api/internal/e2e/product-image", async (req, res) => {
       });
     }
 
-    const uploadResponse = await fetch(`${baseUrl}/api/admin/media`, {
+    const publicGateway = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : baseUrl;
+    const uploadResponse = await fetch(`${publicGateway}/api/admin/media`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
