@@ -1556,52 +1556,6 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
 
 
 
-app.get("/api/internal/reference-e2e/:token", async (req, res) => {
-  const expected = String(process.env.HERENCIA_E2E_TEST_TOKEN || "");
-  const received = String(req.params?.token || "");
-  const a = Buffer.from(expected);
-  const b = Buffer.from(received);
-  if (!expected || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(404).json({ error: "Not found" });
-  try {
-    const referenceUrl = "https://pub-1c4cf3b6baa9405abeee73ed244034c7.r2.dev/builder/1791236776897-7318adf2-e2e-herencia-monstera-fotorealista.png";
-    const referenceResponse = await fetch(referenceUrl, { signal: AbortSignal.timeout(15000) });
-    if (!referenceResponse.ok) throw new Error(`Referencia HTTP ${referenceResponse.status}`);
-    const referenceMime = referenceResponse.headers.get("content-type") || "image/png";
-    const referenceBuffer = Buffer.from(await referenceResponse.arrayBuffer());
-    const referenceDataUrl = `data:${referenceMime};base64,${referenceBuffer.toString("base64")}`;
-
-    const baseUrl = `http://127.0.0.1:${port}`;
-    const cookie = `admin_session=${encodeURIComponent(createAdminToken())}`;
-    const generationResponse = await fetch(`${baseUrl}/api/admin/ai/product-image`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: "https://www.herenciamarket.es" },
-      body: JSON.stringify({
-        prompt: "Fotografía comercial fotorrealista de una Zamioculca zamiifolia real y botánicamente fiel. Conserva de la referencia únicamente el universo visual: iluminación natural, tonos crema, material de maceta, interiorismo, encuadre y calidad fotográfica. No copies la Monstera de referencia. Evita CGI, plástico, simetría artificial, hojas duplicadas o deformadas.",
-        references: [{ image: referenceDataUrl }]
-      }),
-    });
-    const generationText = await generationResponse.text();
-    let generation = {};
-    try { generation = JSON.parse(generationText); } catch {}
-    if (!generationResponse.ok || !generation?.image) return res.status(502).json({ ok:false, stage:"gemini-reference", status:generationResponse.status, error:generation?.error || generationText });
-
-    const publicBase = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : baseUrl;
-    const uploadResponse = await fetch(`${publicBase}/api/admin/media`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie, Origin: "https://www.herenciamarket.es" },
-      body: JSON.stringify({ dataUrl: generation.image, filename: "e2e-reference-zamioculca.png" }),
-    });
-    const uploadText = await uploadResponse.text();
-    let upload = {};
-    try { upload = JSON.parse(uploadText); } catch {}
-    if (!uploadResponse.ok || !upload?.media?.url) return res.status(502).json({ ok:false, stage:"r2", status:uploadResponse.status, error:upload?.error || uploadText });
-
-    return res.json({ ok:true, referenceBytes:referenceBuffer.length, generationStatus:generationResponse.status, uploadStatus:uploadResponse.status, model:generation.model || null, media:upload.media });
-  } catch (error) {
-    return res.status(502).json({ ok:false, stage:"reference-e2e", error:error?.message || "fallo" });
-  }
-});
-
 app.post("/api/admin/ai/classify-product-image", requireAdmin, async (req, res) => {
   try {
     const apiKey = serverGeminiKey();
