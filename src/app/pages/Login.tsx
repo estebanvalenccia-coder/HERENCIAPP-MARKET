@@ -20,19 +20,10 @@ function GoogleLogo() {
   );
 }
 
-function FacebookLogo() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="#1877F2"/>
-      <path fill="#fff" d="M13.36 20v-7h2.35l.35-2.73h-2.7V8.53c0-.79.22-1.33 1.35-1.33h1.44V4.76c-.25-.03-1.1-.1-2.09-.1-2.07 0-3.49 1.26-3.49 3.58v2.03H8.23V13h2.34v7h2.79Z"/>
-    </svg>
-  );
-}
-
 export function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<"google" | "facebook" | null>(null);
+  const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [formData, setFormData] = useState({ name:"", email:"", phone:"", address:"", password:"" });
   const navigate = useNavigate();
@@ -56,7 +47,7 @@ export function Login() {
     if (savedUser?.email) setFormData(prev => ({ ...prev, name:savedUser.name||"", email:savedUser.email||"", phone:savedUser.phone||"", address:savedUser.address||"" }));
   }, []);
 
-  const handleSocialLogin = (provider: "google" | "facebook") => {
+  const handleSocialLogin = (provider: "google") => {
     setSocialLoading(provider);
     window.location.assign(`/api/customer/oauth/${provider}`);
   };
@@ -118,10 +109,6 @@ export function Login() {
             <button type="button" disabled={socialLoading !== null} onClick={()=>handleSocialLogin("google")} className={socialButtonClass}>
               <GoogleLogo />
               <span>{socialLoading === "google" ? "Conectando con Google…" : "Continuar con Google"}</span>
-            </button>
-            <button type="button" disabled={socialLoading !== null} onClick={()=>handleSocialLogin("facebook")} className={socialButtonClass}>
-              <FacebookLogo />
-              <span>{socialLoading === "facebook" ? "Conectando con Facebook…" : "Continuar con Facebook"}</span>
             </button>
           </div>
 
