@@ -1513,8 +1513,90 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
   try {
     const apiKey = serverGeminiKey();
     if (!apiKey) return res.status(503).json({ error: "Gemini no está configurado en el servidor" });
+
     const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
     if (!prompt) return res.status(400).json({ error: "Prompt obligatorio" });
+
+    const requestedFormat = String(req.body?.format || "portrait");
+    const format = ["portrait", "square", "landscape"].includes(requestedFormat)
+      ? requestedFormat
+      : "portrait";
+    const formatInstruction =
+      format === "portrait"
+        ? "vertical 4:5"
+        : format === "landscape"
+          ? "horizontal 4:3"
+          : "cuadrada 1:1";
+
+    const referenceImages = Array.isArray(req.body?.referenceImages)
+      ? req.body.referenceImages.slice(0, 2)
+      : [];
+    const referenceUrls = Array.isArray(req.body?.referenceUrls)
+      ? req.body.referenceUrls.slice(0, 2)
+      : [];
+    const referenceParts = [];
+    for (const image of referenceImages) {
+      try {
+        const parsed = parseImageDataUrl(String(image || ""));
+        referenceParts.push({
+          inlineData: {
+            mimeType: parsed.mimeType,
+            data: parsed.buffer.toString("base64"),
+          },
+        });
+      } catch {
+        // Una referencia inválida no debe impedir generar la fotografía.
+      }
+    }
+
+    const r2PublicBase = String(process.env.R2_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+    if (r2PublicBase && referenceParts.length < 2) {
+      let baseUrl = null;
+      try {
+        baseUrl = new URL(r2PublicBase);
+      } catch {
+        baseUrl = null;
+      }
+
+      for (const candidateValue of referenceUrls) {
+        if (!baseUrl || referenceParts.length >= 2) break;
+        try {
+          const candidate = new URL(String(candidateValue || ""));
+          const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
+          const allowedPath =
+            !normalizedBasePath ||
+            normalizedBasePath === "/" ||
+            candidate.pathname === normalizedBasePath ||
+            candidate.pathname.startsWith(`${normalizedBasePath}/`);
+          if (candidate.protocol !== "https:" || candidate.origin !== baseUrl.origin || !allowedPath) {
+            continue;
+          }
+
+          const referenceResponse = await fetch(candidate.toString(), {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!referenceResponse.ok) continue;
+
+          const mimeType = String(referenceResponse.headers.get("content-type") || "")
+            .split(";")[0]
+            .trim()
+            .toLowerCase();
+          if (!mimeType.startsWith("image/")) continue;
+
+          const buffer = Buffer.from(await referenceResponse.arrayBuffer());
+          if (!buffer.length || buffer.length > 6 * 1024 * 1024) continue;
+
+          referenceParts.push({
+            inlineData: {
+              mimeType,
+              data: buffer.toString("base64"),
+            },
+          });
+        } catch {
+          // Solo se aceptan referencias del CDN R2 configurado.
+        }
+      }
+    }
 
     const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
     const response = await fetch(
@@ -1524,7 +1606,14 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
         signal: AbortSignal.timeout(Number(process.env.AI_IMAGE_TIMEOUT_MS || 45000)),
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${prompt}\n\nGenera una sola fotografía cuadrada de ecommerce, sin texto, logos, marcas de agua ni personas.` }] }],
+          contents: [{
+            parts: [
+              ...referenceParts,
+              {
+                text: `${prompt}\n\nGenera una sola fotografía de ecommerce en formato ${formatInstruction}, sin texto, logos, marcas de agua ni personas. Si hay imágenes de referencia, conserva su lenguaje visual, iluminación, materiales, maceta y sensación de espacio; cambia solo lo necesario para representar correctamente el producto solicitado.`,
+              },
+            ],
+          }],
         }),
       }
     );
@@ -1540,6 +1629,8 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
     res.json({
       image: `data:${inlineData.mimeType || inlineData.mime_type || "image/png"};base64,${inlineData.data}`,
       model,
+      referencesUsed: referenceParts.length,
+      format,
     });
   } catch (error) {
     res.status(502).json({ error: error?.message || "No se pudo generar la imagen" });

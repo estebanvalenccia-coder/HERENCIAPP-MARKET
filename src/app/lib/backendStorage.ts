@@ -299,6 +299,23 @@ export const backendApi = {
     }>("/api/ready");
   },
 
+  async generateAdminProductImage(payload: {
+    prompt: string;
+    format?: "portrait" | "square" | "landscape";
+    referenceImages?: string[];
+    referenceUrls?: string[];
+  }) {
+    return request<{
+      image: string;
+      model?: string;
+      referencesUsed?: number;
+      format?: string;
+    }>("/api/admin/ai/product-image", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
 
   async listCommerceCollections(params?: { includeArchived?: boolean }) {
     const search = new URLSearchParams();

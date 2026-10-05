@@ -4,6 +4,10 @@ import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
 import {
+  AdminPlantVisualStudio,
+  type HerenciaVisualStyle,
+} from "./AdminPlantVisualStudio";
+import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
   isPlantCareProduct,
@@ -79,6 +83,8 @@ type SelectedImage = {
   id: string;
   file?: File;
   remoteUrl?: string;
+  generatedDataUrl?: string;
+  generatedStyle?: HerenciaVisualStyle;
   preview: string;
 };
 
@@ -112,6 +118,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   );
   const [saving, setSaving] = useState(false);
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
+  const [visualStyle, setVisualStyle] = useState<HerenciaVisualStyle>("automatico");
 
   useEffect(() => {
     let cancelled = false;
@@ -288,6 +295,21 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     );
   }
 
+  function handleGeneratedImage(dataUrl: string, generatedStyle: HerenciaVisualStyle) {
+    setSelectedImages((current) => {
+      if (current.length >= 8) return current;
+      return [
+        ...current,
+        {
+          id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          generatedDataUrl: dataUrl,
+          generatedStyle,
+          preview: dataUrl,
+        },
+      ];
+    });
+  }
+
   function updateVariant(id: string, patchValue: Partial<VariantDraft>) {
     setVariants((current) =>
       current.map((variant) => (variant.id === id ? { ...variant, ...patchValue } : variant))
@@ -312,6 +334,17 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       for (const image of selectedImages) {
         if (image.remoteUrl) {
           imageUrls.push(image.remoteUrl);
+          continue;
+        }
+
+        if (image.generatedDataUrl) {
+          const uploaded = await backendApi.uploadSiteMedia({
+            dataUrl: image.generatedDataUrl,
+            filename: `herencia-ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.png`,
+          });
+          const url = String(uploaded.media?.url || "");
+          if (!url) throw new Error("Cloudflare R2 no devolvió URL para una imagen generada");
+          imageUrls.push(url);
           continue;
         }
 
@@ -405,6 +438,13 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           leadTimeDays: formData.leadTimeDays
             ? Math.max(0, Number(formData.leadTimeDays))
             : null,
+          visualStyle: plantLike ? visualStyle : null,
+          visualIdentity: plantLike
+            ? visualStyle === "mis-fotos"
+              ? "original-user-photos"
+              : "herencia"
+            : null,
+          originalPhotosUntouched: plantLike ? visualStyle === "mis-fotos" : false,
         },
       };
 
@@ -441,6 +481,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       setSelectedImages([]);
       setImageUrlInput("");
       setVariants([]);
+      setVisualStyle("automatico");
       setTimeout(onBack, 250);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo crear el artículo");
@@ -508,6 +549,16 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 </div>
                 <span className="rounded-full bg-muted px-3 py-1 text-xs font-black">{selectedImages.length}/8</span>
               </div>
+
+              {plantLike && (
+                <AdminPlantVisualStudio
+                  plantName={formData.name}
+                  style={visualStyle}
+                  onStyleChange={setVisualStyle}
+                  selectedCount={selectedImages.length}
+                  onGeneratedImage={handleGeneratedImage}
+                />
+              )}
 
               {selectedImages.length > 0 ? (
                 <div className="space-y-3">
