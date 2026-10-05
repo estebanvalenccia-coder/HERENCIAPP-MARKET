@@ -5800,11 +5800,28 @@ function groqModel(model) {
 }
 
 async function getAiSettings() {
+  let stored = {};
   try {
-    return parseStoredJson(await readStorageValue("aiSettings"), {});
+    stored = parseStoredJson(await readStorageValue("aiSettings"), {});
   } catch {
-    return {};
+    stored = {};
   }
+
+  const provider = stored.provider === "openai" ? "openai" : "groq";
+  const envApiKey =
+    provider === "openai"
+      ? String(process.env.OPENAI_API_KEY || "").trim()
+      : String(process.env.GROQ_API_KEY || "").trim();
+
+  return {
+    ...stored,
+    enabled: stored.enabled !== false && Boolean(stored.apiKey || envApiKey),
+    apiKey: String(stored.apiKey || envApiKey).trim(),
+    provider,
+    model:
+      String(stored.model || "").trim() ||
+      (provider === "groq" ? String(process.env.GROQ_MODEL || "").trim() : ""),
+  };
 }
 
 app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
