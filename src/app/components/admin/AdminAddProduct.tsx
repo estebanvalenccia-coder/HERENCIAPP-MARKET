@@ -42,6 +42,10 @@ const initialForm = {
   toxicity: "",
   water: "",
   temperature: "",
+  humidity: "",
+  fertilizer: "",
+  plantTips: "",
+  plantBenefits: "",
 
   material: "",
   color: "",
@@ -179,6 +183,10 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         water: String(aiPatch.water || "").trim(),
         light: String(aiPatch.light || formData.light || "").trim(),
         temperature: String(aiPatch.temperature || "").trim(),
+        humidity: String(aiPatch.plantProfile?.humidity || "").trim(),
+        fertilizer: String(aiPatch.plantProfile?.care?.fertilizer || "").trim(),
+        plantTips: String(aiPatch.plantProfile?.tips || "").trim(),
+        plantBenefits: Array.isArray(aiPatch.plantProfile?.benefits) ? aiPatch.plantProfile.benefits.join(" · ") : "",
         seoDescription: String(aiPatch.description || "").trim(),
       });
       toast.success("Ficha de cuidados generada con Groq");
@@ -801,7 +809,15 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
 
           {plantLike && (
             <section className="rounded-2xl border border-border p-5">
-              <h3 className="text-lg font-black">5. Datos de planta / cultivo</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">5. 🌿 Cuidados de la planta</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Groq los completa automáticamente y puedes editar cualquier dato antes de publicar.</p>
+                </div>
+                <button type="button" onClick={() => void generatePlantInfoFromName()} disabled={generatingPlantInfo || !formData.name.trim()} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50">
+                  {generatingPlantInfo ? "Generando…" : "Regenerar con Groq"}
+                </button>
+              </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="text-sm font-bold">Nombre científico
                   <input value={formData.scientificName} onChange={(e) => patch({ scientificName: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
@@ -834,8 +850,22 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 <label className="text-sm font-bold">Temperatura
                   <input value={formData.temperature} onChange={(e) => patch({ temperature: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
+                <label className="text-sm font-bold">Humedad
+                  <input value={formData.humidity} onChange={(e) => patch({ humidity: e.target.value })} placeholder="Ej: media-alta, 60–70 %" className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
+                <label className="text-sm font-bold">Fertilización
+                  <input value={formData.fertilizer} onChange={(e) => patch({ fertilizer: e.target.value })} placeholder="Ej: cada 4 semanas en primavera y verano" className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
                 <label className="text-sm font-bold">Toxicidad
                   <input value={formData.toxicity} onChange={(e) => patch({ toxicity: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-bold">Consejos
+                  <textarea value={formData.plantTips} onChange={(e) => patch({ plantTips: e.target.value })} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
+                </label>
+                <label className="text-sm font-bold">Beneficios / características destacadas
+                  <textarea value={formData.plantBenefits} onChange={(e) => patch({ plantBenefits: e.target.value })} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
               </div>
               <button
