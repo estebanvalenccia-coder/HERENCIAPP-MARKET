@@ -1531,6 +1531,9 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
     const referenceImages = Array.isArray(req.body?.referenceImages)
       ? req.body.referenceImages.slice(0, 2)
       : [];
+    const referenceUrls = Array.isArray(req.body?.referenceUrls)
+      ? req.body.referenceUrls.slice(0, 2)
+      : [];
     const referenceParts = [];
     for (const image of referenceImages) {
       try {
@@ -1543,6 +1546,55 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
         });
       } catch {
         // Una referencia inválida no debe impedir generar la fotografía.
+      }
+    }
+
+    const r2PublicBase = String(process.env.R2_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+    if (r2PublicBase && referenceParts.length < 2) {
+      let baseUrl = null;
+      try {
+        baseUrl = new URL(r2PublicBase);
+      } catch {
+        baseUrl = null;
+      }
+
+      for (const candidateValue of referenceUrls) {
+        if (!baseUrl || referenceParts.length >= 2) break;
+        try {
+          const candidate = new URL(String(candidateValue || ""));
+          const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
+          const allowedPath =
+            !normalizedBasePath ||
+            normalizedBasePath === "/" ||
+            candidate.pathname === normalizedBasePath ||
+            candidate.pathname.startsWith(`${normalizedBasePath}/`);
+          if (candidate.protocol !== "https:" || candidate.origin !== baseUrl.origin || !allowedPath) {
+            continue;
+          }
+
+          const referenceResponse = await fetch(candidate.toString(), {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!referenceResponse.ok) continue;
+
+          const mimeType = String(referenceResponse.headers.get("content-type") || "")
+            .split(";")[0]
+            .trim()
+            .toLowerCase();
+          if (!mimeType.startsWith("image/")) continue;
+
+          const buffer = Buffer.from(await referenceResponse.arrayBuffer());
+          if (!buffer.length || buffer.length > 6 * 1024 * 1024) continue;
+
+          referenceParts.push({
+            inlineData: {
+              mimeType,
+              data: buffer.toString("base64"),
+            },
+          });
+        } catch {
+          // Solo se aceptan referencias del CDN R2 configurado.
+        }
       }
     }
 
