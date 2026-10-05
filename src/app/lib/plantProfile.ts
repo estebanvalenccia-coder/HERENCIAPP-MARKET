@@ -3,6 +3,11 @@ import { isPlantCareProduct } from "./commerceCatalog";
 
 export type PersistedPlantProfile = {
   description: string;
+  scientificName: string;
+  difficulty: string;
+  toxicity: string;
+  petSafe: boolean | null;
+  humidity: string;
   care: {
     water: string;
     light: string;
@@ -40,6 +45,11 @@ export async function buildPlantProfilePublishPatch(
   });
 
   const care = result?.care && typeof result.care === "object" ? result.care : {};
+  const scientificName = String(result?.scientificName || product?.scientificName || "").trim();
+  const difficulty = String(result?.difficulty || product?.difficulty || "").trim();
+  const toxicity = String(result?.toxicity || product?.toxicity || "").trim();
+  const petSafe = typeof result?.petSafe === "boolean" ? result.petSafe : (typeof product?.petSafe === "boolean" ? product.petSafe : null);
+  const humidity = String(result?.humidity || "").trim();
   const description = String(result?.description || product?.description || "").trim();
   const water = String(care.water || product?.water || "").trim();
   const light = String(care.light || product?.light || "").trim();
@@ -57,6 +67,11 @@ export async function buildPlantProfilePublishPatch(
   const generatedAt = new Date().toISOString();
   const plantProfile: PersistedPlantProfile = {
     description,
+    scientificName,
+    difficulty,
+    toxicity,
+    petSafe,
+    humidity,
     care: { water, light, temperature, fertilizer },
     benefits,
     tips,
@@ -67,9 +82,14 @@ export async function buildPlantProfilePublishPatch(
 
   return {
     description,
+    scientificName,
+    difficulty,
+    toxicity,
+    ...(petSafe !== null ? { petSafe } : {}),
     water,
     light,
     temperature,
+    plantProfile,
     seoDescription: String(product?.seoDescription || "").trim() || description,
     metadata: {
       ...(product?.metadata || {}),
