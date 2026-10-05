@@ -22,7 +22,7 @@ const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
 const legacyUrl = `http://127.0.0.1:${legacyPort}`;
 
-const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","adminProducts","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent"]);
+const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent"]);
 const protectedKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","__backendStorage_test__"]);
 const adminOnly = ["supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
 
@@ -61,6 +61,38 @@ async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin
 async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>maxBytes){const error=new Error("Payload demasiado grande");error.statusCode=413;throw error;}chunks.push(c);}return Buffer.concat(chunks);}
 async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});res.writeHead(r.status,Object.fromEntries(r.headers.entries()));if(r.body){for await(const c of r.body)res.write(c);}res.end();}
+async function normalizeProductMedia(input={}){
+  const next={...input};
+  const sourceImages=Array.isArray(input.images)&&input.images.length?input.images:(input.image?[input.image]:[]);
+  const normalized=[];
+  for(let i=0;i<sourceImages.length;i++){
+    const item=sourceImages[i];
+    const url=typeof item==="string"?item:item?.url;
+    if(!url)continue;
+    if(/^data:image\//i.test(String(url))){
+      if(!hasR2)throw Object.assign(new Error("Las imágenes incrustadas requieren Cloudflare R2. Sube la imagen desde la biblioteca multimedia."),{statusCode:503});
+      const media=await uploadR2Media({dataUrl:String(url),filename:`${String(input.name||"producto")}-${i+1}`});
+      normalized.push(typeof item==="string"?media.url:{...item,url:media.url,path:media.path});
+    }else{
+      normalized.push(item);
+    }
+  }
+  next.images=normalized.slice(0,8);
+  next.image=next.images.length?(typeof next.images[0]==="string"?next.images[0]:next.images[0]?.url||""):"";
+  if(Array.isArray(next.variants)){
+    next.variants=[];
+    for(const variant of input.variants){
+      const copy={...variant};
+      if(/^data:image\//i.test(String(copy.image||""))){
+        if(!hasR2)throw Object.assign(new Error("Las imágenes de variantes incrustadas requieren Cloudflare R2."),{statusCode:503});
+        const media=await uploadR2Media({dataUrl:String(copy.image),filename:`${String(input.name||"producto")}-variante`});
+        copy.image=media.url;
+      }
+      next.variants.push(copy);
+    }
+  }
+  return next;
+}
 
 const child=spawn(process.execPath,["--import","./commerceCore.js","--import","./customerAccessRoutes.js","--import","./fixCors.js","--import","./fixAdminEmail.js","--import","./fixAIBouquet.js","--import","./fixSalesAI.js","--import","./fixTTS.js","--import","./fixMapsShipping.js","server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
 child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.exit(code??1);});
@@ -293,7 +325,8 @@ const server=http.createServer(async(req,res)=>{try{
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const body=await bodyJson(req);
     if(!String(body?.name||"").trim())return json(res,400,{error:"El nombre es obligatorio"});
-    const product=await saveNeonCommerceProduct(body);
+    const normalizedBody=await normalizeProductMedia(body);
+    const product=await saveNeonCommerceProduct(normalizedBody);
     return json(res,201,{product,source:"neon"});
   }
 
@@ -305,7 +338,8 @@ const server=http.createServer(async(req,res)=>{try{
       const current=await getNeonCommerceProduct(id,{includeArchived:true});
       if(!current)return json(res,404,{error:"Producto no encontrado"});
       const body=await bodyJson(req);
-      const product=await saveNeonCommerceProduct({...current,...body,id},{id});
+      const normalizedBody=await normalizeProductMedia({...current,...body,id});
+      const product=await saveNeonCommerceProduct(normalizedBody,{id});
       return json(res,200,{product,source:"neon"});
     }
     if(req.method==="DELETE"){
@@ -316,7 +350,7 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   return await proxy(req,res);
-}catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}return json(res,500,{error:"Hybrid gateway error",message:error?.message||String(error)});}});
+}catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}const status=Number(error?.statusCode||500);return json(res,status,{error:status>=500?"Hybrid gateway error":"Solicitud no válida",message:error?.message||String(error)});}});
 
 server.listen(publicPort,"0.0.0.0",async()=>{
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
