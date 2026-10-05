@@ -114,6 +114,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualBatchCount, setVisualBatchCount] = useState(5);
+  const [visualReferences, setVisualReferences] = useState<SelectedImage[]>([]);
   const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("own");
   const visualOptions = [
     { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
@@ -206,6 +207,37 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function handleVisualReferenceUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = "";
+    if (!files.length) return;
+    const remaining = Math.max(0, 5 - visualReferences.length);
+    if (!remaining) return toast.error("Puedes usar un máximo de 5 referencias maestras");
+    const accepted = files.slice(0, remaining);
+    for (const file of accepted) {
+      if (!file.type.startsWith("image/")) return toast.error(`${file.name}: formato no válido`);
+      if (file.size > 6 * 1024 * 1024) return toast.error(`${file.name}: supera 6 MB`);
+    }
+    try {
+      const references = await Promise.all(accepted.map(async (file) => ({
+        id: `reference-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        preview: await readImagePreview(file),
+      })));
+      setVisualReferences((current) => [...current, ...references].slice(0, 5));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron preparar las referencias");
+    }
+  }
+
+  function removeVisualReference(index: number) {
+    setVisualReferences((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function masterReferences() {
+    return visualReferences.map((reference) => ({ image: reference.preview })).filter((reference) => reference.image.startsWith("data:image/"));
+  }
+
   async function generateHerenciaVisual() {
     if (visualMode === "own") return toast.info("Tus fotos propias se mantienen originales y no pasan por IA");
     if (!formData.name.trim()) return toast.error("Escribe primero el nombre de la planta");
@@ -219,6 +251,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       setGeneratingVisual(true);
       const result = await backendApi.generateProductImage({
         prompt: `Fotografía hiperrealista de catálogo para HERENCIA MARKET. Producto: ${formData.name.trim()}. Escenario: ${scene}. Mantén botánica realista, proporciones naturales, maceta elegante neutra, cámara a altura del producto, composición premium coherente con el resto del catálogo. No texto, no personas, no logos.`,
+        references: masterReferences(),
       });
       if (!result.image) throw new Error("La IA no devolvió imagen");
       const uploaded = await backendApi.uploadSiteMedia({ dataUrl: result.image, filename: `herencia-${formData.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.png` });
@@ -243,7 +276,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       setGeneratingVisual(true);
       for (let index = 0; index < count; index += 1) {
         const scene = visualMode === "clear" ? "Herencia Claro, crema marfil cálido y luz natural suave" : visualMode === "house" ? "Casa Herencia, interior mediterráneo cálido con pared crema y madera natural" : index === 3 ? "Herencia Claro, crema marfil cálido" : "Casa Herencia, interior mediterráneo cálido";
-        const result = await backendApi.generateProductImage({ prompt: `Fotografía hiperrealista de ecommerce de ${formData.name.trim()}. ${scene}. Toma ${shots[index]}. Maceta cerámica crema acanalada. Botánica fiel, proporciones naturales, misma identidad visual Herencia. Sin texto, personas, logos ni marcas de agua.` });
+        const result = await backendApi.generateProductImage({ prompt: `Fotografía hiperrealista de ecommerce de ${formData.name.trim()}. ${scene}. Toma ${shots[index]}. Maceta cerámica crema acanalada. Botánica fiel, proporciones naturales, misma identidad visual Herencia. Sin texto, personas, logos ni marcas de agua.`, references: masterReferences() });
         if (!result.image) throw new Error("No se pudo generar una imagen");
         const uploaded = await backendApi.uploadSiteMedia({ dataUrl: result.image, filename: `herencia-${Date.now()}-${index + 1}.png` });
         const url = String(uploaded.media?.url || "");
@@ -576,6 +609,35 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   </button>
                 ))}
               </div>
+              {visualMode !== "own" && (
+                <div className="mt-4 rounded-2xl border border-border bg-background p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-foreground">Referencias maestras Casa Herencia</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Hasta 5 fotos. Gemini las usa solo para copiar luz, interiorismo, paleta, encuadre y maceta; la especie siempre será la del producto.</p>
+                    </div>
+                    <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-black">{visualReferences.length}/5</span>
+                  </div>
+                  {visualReferences.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                      {visualReferences.map((reference, index) => (
+                        <div key={reference.id} className="relative aspect-square overflow-hidden rounded-xl border border-border bg-muted">
+                          <img src={reference.preview} alt={`Referencia maestra ${index + 1}`} className="h-full w-full object-cover" />
+                          <button type="button" onClick={() => removeVisualReference(index)} className="absolute right-1.5 top-1.5 rounded-full bg-black/65 p-1 text-white"><X className="h-3 w-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {visualReferences.length < 5 && (
+                    <label className="relative mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 px-4 py-3 text-xs font-black text-foreground hover:bg-muted/40">
+                      <Upload className="h-4 w-4" /> {visualReferences.length ? "Añadir otra referencia" : "Subir referencias maestras"}
+                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleVisualReferenceUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                    </label>
+                  )}
+                  <p className="mt-2 text-[11px] text-muted-foreground">Estas referencias no se añaden a la galería del producto ni modifican tus fotos propias.</p>
+                </div>
+              )}
+
               <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
                 {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Genera imágenes coherentes con Casa Herencia / Herencia Claro y añádelas a esta misma galería para revisarlas antes de publicar."}
                 {visualMode !== "own" && (
