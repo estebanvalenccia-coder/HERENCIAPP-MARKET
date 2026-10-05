@@ -107,6 +107,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
   );
   const [saving, setSaving] = useState(false);
+  const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +158,35 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
         ? formData.extraCollections.filter((item) => item !== id)
         : [...formData.extraCollections, id],
     });
+  }
+
+  async function generatePlantInfoFromName() {
+    const plantName = formData.name.trim();
+    if (!plantLike || !plantName || formData.description.trim() || generatingPlantInfo) return;
+    try {
+      setGeneratingPlantInfo(true);
+      const aiPatch: any = await buildPlantProfilePublishPatch({
+        name: plantName,
+        collection: formData.collection,
+        category: formData.category,
+      }, { force: true });
+      patch({
+        description: String(aiPatch.description || "").trim(),
+        scientificName: String(aiPatch.scientificName || "").trim(),
+        difficulty: String(aiPatch.difficulty || formData.difficulty || "Fácil").trim(),
+        toxicity: String(aiPatch.toxicity || "").trim(),
+        petSafe: typeof aiPatch.petSafe === "boolean" ? aiPatch.petSafe : formData.petSafe,
+        water: String(aiPatch.water || "").trim(),
+        light: String(aiPatch.light || formData.light || "").trim(),
+        temperature: String(aiPatch.temperature || "").trim(),
+        seoDescription: String(aiPatch.description || "").trim(),
+      });
+      toast.success("Ficha de cuidados generada con Groq");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo generar la ficha con Groq");
+    } finally {
+      setGeneratingPlantInfo(false);
+    }
   }
 
   async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -554,6 +584,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 <input
                   value={formData.name}
                   onChange={(event) => patch({ name: event.target.value })}
+                  onBlur={() => void generatePlantInfoFromName()}
                   placeholder={
                     service
                       ? "Ej: Mantenimiento mensual de jardín"
@@ -566,6 +597,8 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                   className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
                 />
               </label>
+
+              {plantLike && generatingPlantInfo && <p className="text-xs font-semibold text-primary">Groq está preparando descripción y cuidados…</p>}
 
               <label className="block text-sm font-bold">
                 Descripción
