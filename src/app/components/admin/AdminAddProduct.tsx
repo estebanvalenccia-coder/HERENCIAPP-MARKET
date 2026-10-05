@@ -113,6 +113,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
   const [generatingVisual, setGeneratingVisual] = useState(false);
+  const [visualBatchCount, setVisualBatchCount] = useState(5);
   const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("own");
   const visualOptions = [
     { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
@@ -227,6 +228,31 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       toast.success("Imagen Herencia generada y añadida a la galería");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo generar la imagen Herencia");
+    } finally {
+      setGeneratingVisual(false);
+    }
+  }
+
+  async function generateHerenciaGallery() {
+    if (visualMode === "own") return toast.info("Tus fotos propias no pasan por IA");
+    if (!formData.name.trim()) return toast.error("Escribe primero el nombre de la planta");
+    const count = Math.min(visualBatchCount, Math.max(0, 8 - selectedImages.length));
+    if (!count) return toast.error("La galería ya tiene 8 imágenes");
+    const shots = ["principal frontal","tres cuartos lateral","detalle de hojas","ambiental abierta","detalle de maceta","lateral alternativa","editorial vertical","detalle botánico"];
+    try {
+      setGeneratingVisual(true);
+      for (let index = 0; index < count; index += 1) {
+        const scene = visualMode === "clear" ? "Herencia Claro, crema marfil cálido y luz natural suave" : visualMode === "house" ? "Casa Herencia, interior mediterráneo cálido con pared crema y madera natural" : index === 3 ? "Herencia Claro, crema marfil cálido" : "Casa Herencia, interior mediterráneo cálido";
+        const result = await backendApi.generateProductImage({ prompt: `Fotografía hiperrealista de ecommerce de ${formData.name.trim()}. ${scene}. Toma ${shots[index]}. Maceta cerámica crema acanalada. Botánica fiel, proporciones naturales, misma identidad visual Herencia. Sin texto, personas, logos ni marcas de agua.` });
+        if (!result.image) throw new Error("No se pudo generar una imagen");
+        const uploaded = await backendApi.uploadSiteMedia({ dataUrl: result.image, filename: `herencia-${Date.now()}-${index + 1}.png` });
+        const url = String(uploaded.media?.url || "");
+        if (!url) throw new Error("No se pudo guardar una imagen");
+        setSelectedImages((current) => [...current, { id: `ai-${Date.now()}-${index}`, remoteUrl: url, preview: url }].slice(0, 8));
+      }
+      toast.success(`Galería Herencia generada: ${count} imágenes`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo completar la galería");
     } finally {
       setGeneratingVisual(false);
     }
@@ -553,10 +579,13 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
               <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
                 {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Genera imágenes coherentes con Casa Herencia / Herencia Claro y añádelas a esta misma galería para revisarlas antes de publicar."}
                 {visualMode !== "own" && (
-                  <button type="button" onClick={() => void generateHerenciaVisual()} disabled={generatingVisual || selectedImages.length >= 8}
-                    className="mt-3 block rounded-xl bg-primary px-4 py-2.5 font-black text-primary-foreground disabled:opacity-50">
-                    {generatingVisual ? "Generando imagen…" : "+ Generar imagen Herencia"}
-                  </button>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => void generateHerenciaVisual()} disabled={generatingVisual || selectedImages.length >= 8} className="rounded-xl bg-primary px-4 py-2.5 font-black text-primary-foreground disabled:opacity-50">{generatingVisual ? "Generando…" : "+ 1 imagen"}</button>
+                    <select value={visualBatchCount} onChange={(event) => setVisualBatchCount(Number(event.target.value))} className="rounded-xl border border-border bg-background px-3 py-2.5 font-bold">
+                      {[3, 5, 8].map((count) => <option key={count} value={count}>{count} fotos</option>)}
+                    </select>
+                    <button type="button" onClick={() => void generateHerenciaGallery()} disabled={generatingVisual || selectedImages.length >= 8} className="rounded-xl border border-primary px-4 py-2.5 font-black text-primary disabled:opacity-50">Generar galería</button>
+                  </div>
                 )}
               </div>
             </section>
