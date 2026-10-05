@@ -112,6 +112,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   );
   const [saving, setSaving] = useState(false);
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
+  const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("own");
   const visualOptions = [
     { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
@@ -201,6 +202,33 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       toast.error(error?.message || "No se pudo generar la ficha con Groq");
     } finally {
       setGeneratingPlantInfo(false);
+    }
+  }
+
+  async function generateHerenciaVisual() {
+    if (visualMode === "own") return toast.info("Tus fotos propias se mantienen originales y no pasan por IA");
+    if (!formData.name.trim()) return toast.error("Escribe primero el nombre de la planta");
+    if (selectedImages.length >= 8) return toast.error("La galería ya tiene el máximo de 8 imágenes");
+    const scene = visualMode === "clear"
+      ? "estudio Herencia blanco crema cálido, pared clara mate, suelo claro, luz natural lateral suave, sombras reales, estética editorial minimalista"
+      : visualMode === "house"
+        ? "Casa Herencia mediterránea cálida, pared crema, suelo natural, esquina doméstica elegante, luz natural suave, materiales piedra, madera y fibras naturales"
+        : "elige entre Casa Herencia y Herencia Claro según cuál presente mejor esta especie";
+    try {
+      setGeneratingVisual(true);
+      const result = await backendApi.generateProductImage({
+        prompt: `Fotografía hiperrealista de catálogo para HERENCIA MARKET. Producto: ${formData.name.trim()}. Escenario: ${scene}. Mantén botánica realista, proporciones naturales, maceta elegante neutra, cámara a altura del producto, composición premium coherente con el resto del catálogo. No texto, no personas, no logos.`,
+      });
+      if (!result.image) throw new Error("La IA no devolvió imagen");
+      const uploaded = await backendApi.uploadSiteMedia({ dataUrl: result.image, filename: `herencia-${formData.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.png` });
+      const url = String(uploaded.media?.url || "");
+      if (!url) throw new Error("No se pudo guardar la imagen generada en R2");
+      setSelectedImages((current) => [...current, { id: `ai-${Date.now()}`, remoteUrl: url, preview: url }].slice(0, 8));
+      toast.success("Imagen Herencia generada y añadida a la galería");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo generar la imagen Herencia");
+    } finally {
+      setGeneratingVisual(false);
     }
   }
 
@@ -523,7 +551,13 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 ))}
               </div>
               <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
-                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Preparado para usar las referencias oficiales de Casa Herencia y revisar cada imagen antes de publicar."}
+                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Genera imágenes coherentes con Casa Herencia / Herencia Claro y añádelas a esta misma galería para revisarlas antes de publicar."}
+                {visualMode !== "own" && (
+                  <button type="button" onClick={() => void generateHerenciaVisual()} disabled={generatingVisual || selectedImages.length >= 8}
+                    className="mt-3 block rounded-xl bg-primary px-4 py-2.5 font-black text-primary-foreground disabled:opacity-50">
+                    {generatingVisual ? "Generando imagen…" : "+ Generar imagen Herencia"}
+                  </button>
+                )}
               </div>
             </section>
           )}
