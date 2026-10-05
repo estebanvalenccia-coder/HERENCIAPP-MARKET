@@ -299,7 +299,9 @@ export function ProductDetail() {
   const persistedPlantProfile =
     plantLike && product.plantProfile && typeof product.plantProfile === "object"
       ? product.plantProfile
-      : null;
+      : plantLike && product.metadata?.plantProfile && typeof product.metadata.plantProfile === "object"
+        ? product.metadata.plantProfile
+        : null;
   const hasManualCare = Boolean(product.water || product.light || product.temperature);
   const aiData: any = persistedPlantProfile || (
     plantLike && hasManualCare
@@ -318,6 +320,7 @@ export function ProductDetail() {
   );
 
   const details = [
+    plantLike && (product.scientificName || aiData?.scientificName) && { icon: Leaf, label: "Nombre científico", value: product.scientificName || aiData?.scientificName },
     plantLike && product.size && { icon: Ruler, label: "Tamaño", value: product.size },
     plantLike && product.difficulty && { icon: Leaf, label: "Dificultad", value: product.difficulty },
     plantLike && (product.toxicity || product.petSafe !== undefined) && { icon: PawPrint, label: "Mascotas", value: product.petSafe ? "Apta para mascotas" : product.toxicity || "Consultar" },
