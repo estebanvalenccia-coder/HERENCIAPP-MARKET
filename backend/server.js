@@ -1524,7 +1524,7 @@ app.post("/api/admin/ai/product-image", requireAdmin, async (req, res) => {
       } catch {}
     }
 
-    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-lite-image";
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
