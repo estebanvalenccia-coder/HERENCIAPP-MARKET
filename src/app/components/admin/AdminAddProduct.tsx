@@ -112,6 +112,13 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   );
   const [saving, setSaving] = useState(false);
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
+  const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("own");
+  const visualOptions = [
+    { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
+    { id: "automatic", title: "Automático Herencia", description: "La IA elige el escenario Herencia más adecuado." },
+    { id: "house", title: "Casa Herencia", description: "Misma casa, rincones cálidos y coherentes." },
+    { id: "clear", title: "Herencia Claro", description: "Blanco crema cálido, luz natural y misma identidad." },
+  ] as const;
 
   useEffect(() => {
     let cancelled = false;
@@ -384,6 +391,9 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
           })),
 
         metadata: {
+          visualStyle: plantLike ? visualMode : "own",
+          preserveOriginalImages: visualMode === "own",
+          maxImages: 8,
           tags: formData.tags
             .split(",")
             .map((tag) => tag.trim())
@@ -498,6 +508,25 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
               ))}
             </div>
           </section>
+
+          {plantLike && (
+            <section className="rounded-2xl border border-border bg-muted/20 p-5">
+              <h3 className="text-lg font-black">2. Plantillas visuales Herencia</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Mejora la galería sin cambiar el formulario actual. Tus fotos propias nunca se retocan ni regeneran.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {visualOptions.map((option) => (
+                  <button key={option.id} type="button" onClick={() => setVisualMode(option.id)}
+                    className={`rounded-2xl border p-4 text-left transition ${visualMode === option.id ? "border-primary bg-primary/10 ring-2 ring-primary/15" : "border-border bg-background hover:bg-muted/50"}`}>
+                    <p className="font-black">{option.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</p>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
+                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Preparado para usar las referencias oficiales de Casa Herencia y revisar cada imagen antes de publicar."}
+              </div>
+            </section>
+          )}
 
           <section className="grid gap-6 lg:grid-cols-[360px_1fr]">
             <div>
