@@ -296,12 +296,9 @@ export function Layout() {
             <nav className="flex gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
               {market.navigation.map((item) =>
                 isPlantsNavigationItem(item) ? (
-                  <MarketNavLink
+                  <PlantsMobileNavMenu
                     key={item.href}
-                    href="/productos?coleccion=plantas"
-                    label="Plantas"
                     active={location.pathname === "/productos"}
-                    mobile
                   />
                 ) : (
                   <MarketNavLink
@@ -313,17 +310,6 @@ export function Layout() {
                   />
                 )
               )}
-              <div className="flex shrink-0 items-center gap-1 border-l border-[#e4ded4] pl-2">
-                {PLANT_SUBMENU.map((item) => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    className="shrink-0 rounded-full bg-[#f3f0e9] px-3 py-2 text-xs font-bold text-[#315b42]"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
               {herenciaEnabled ? (
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
@@ -510,6 +496,62 @@ function PlantsNavMenu({ active }: { active: boolean }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PlantsMobileNavMenu({ active }: { active: boolean }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-bold transition ${
+          active ? "bg-[#eef2eb] text-[#244a35]" : "text-[#526158] hover:bg-[#f3f0e9] hover:text-[#244a35]"
+        }`}
+      >
+        Plantas
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open ? (
+        <>
+          <button
+            type="button"
+            aria-label="Cerrar menú de plantas"
+            className="fixed inset-0 z-[70] cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="menu"
+            className="fixed left-4 right-4 top-[170px] z-[80] max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.18)]"
+          >
+            <Link
+              to="/productos?coleccion=plantas"
+              onClick={() => setOpen(false)}
+              className="block rounded-xl px-4 py-3 text-sm font-black text-[#244a35] hover:bg-[#eef2eb]"
+            >
+              Ver todas las plantas
+            </Link>
+            <div className="my-1 border-t border-[#eee8dd]" />
+            {PLANT_SUBMENU.map((item) => (
+              <Link
+                key={item.href}
+                to={item.href}
+                onClick={() => setOpen(false)}
+                role="menuitem"
+                className="block rounded-xl px-4 py-3 text-sm font-bold text-[#526158] transition hover:bg-[#f3f0e9] hover:text-[#244a35]"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
