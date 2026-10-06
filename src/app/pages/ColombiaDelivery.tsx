@@ -195,8 +195,8 @@ export function ColombiaDelivery() {
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.12)_0%,rgba(18,36,26,.18)_28%,rgba(18,36,26,.58)_43%,rgba(18,36,26,.38)_72%,rgba(18,36,26,.16)_100%)]" />
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f4d21f] via-[#184aa5] to-[#c9282d]" />
 
-        <div className="relative mx-auto flex min-h-[560px] max-w-[1536px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
-          <div className="ml-auto w-full max-w-[900px] text-white lg:w-[62%]">
+        <div className="relative mx-auto flex min-h-[590px] max-w-[1536px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
+          <div className="ml-auto w-full max-w-[920px] text-white lg:w-[64%]">
             <p className="inline-flex items-center gap-3 text-[13px] font-black uppercase tracking-[0.34em] text-white/95">
               <span className="text-xl leading-none">{settings.flag}</span>
               <span>{settings.heroKicker || "COLOMBIANÍSIMAS"}</span>
@@ -223,8 +223,8 @@ export function ColombiaDelivery() {
           </div>
         </div>
 
-        <div className="relative mx-auto -mt-[72px] max-w-[1536px] px-5 pb-3 sm:px-8 lg:px-12">
-          <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 md:grid-cols-[245px_1fr] shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur">
+        <div className="relative mx-auto -mt-[64px] max-w-[1536px] px-5 pb-3 sm:px-8 lg:px-12">
+          <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur">
             <div className="flex items-center gap-4 rounded-[20px] px-4 py-3 text-[#183126]">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#52715d] text-white shadow-sm"><MapPin className="h-6 w-6"/></span>
               <div><p className="text-lg font-black">Entrega en Cali</p><p className="text-sm font-semibold text-[#52675a]">y alrededores</p></div>
