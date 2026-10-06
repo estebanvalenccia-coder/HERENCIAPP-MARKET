@@ -12,6 +12,8 @@ export type ColombiaProductOverride = {
   enabled: boolean;
   priceCOP: number;
   label?: string;
+  trackInventoryColombia?: boolean;
+  stockColombia?: number;
 };
 
 export type ColombiaDeliverySettings = {
@@ -47,7 +49,7 @@ export const defaultColombiaDeliverySettings: ColombiaDeliverySettings = {
   recipientPhoneRequired: true,
   surpriseEnabled: true,
   schedulingEnabled: true,
-  paymentEnabled: false,
+  paymentEnabled: true,
   sameDayLabel: "Entrega el mismo día (según disponibilidad)",
   selectedProductIds: [],
   productOverrides: {},
@@ -66,6 +68,7 @@ export function parseColombiaDeliverySettings(raw: string | null): ColombiaDeliv
       ...defaultColombiaDeliverySettings,
       ...incoming,
       selectedProductIds: Array.isArray(incoming.selectedProductIds) ? incoming.selectedProductIds.map(String) : [],
+      paymentEnabled: incoming.paymentEnabled === undefined ? true : Boolean(incoming.paymentEnabled),
       productOverrides: incoming.productOverrides && typeof incoming.productOverrides === "object"
         ? Object.fromEntries(Object.entries(incoming.productOverrides).map(([id, value]: any) => [
             String(id),
@@ -73,6 +76,8 @@ export function parseColombiaDeliverySettings(raw: string | null): ColombiaDeliv
               enabled: value?.enabled !== false,
               priceCOP: Math.max(0, Number(value?.priceCOP || 0)),
               label: value?.label ? String(value.label) : undefined,
+              trackInventoryColombia: Boolean(value?.trackInventoryColombia),
+              stockColombia: Math.max(0, Math.floor(Number(value?.stockColombia || 0))),
             },
           ]))
         : {},
