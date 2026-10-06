@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bookmark, ExternalLink, Heart, Instagram, Sparkles, Users, X } from "lucide-react";
+import { Bookmark, ExternalLink, Heart, Instagram, MessageCircle, Send, Sparkles, Users, X } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -27,6 +27,9 @@ export function Community() {
   const [interactions, setInteractions] = useState<any>({ authenticated: false, likeCounts: {}, liked: [], saved: [] });
   const [community, setCommunity] = useState<any>({ posts: [], stories: [], instagramUrl: "", whatsappUrl: "" });
   const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [openComments, setOpenComments] = useState<string | null>(null);
   const [seenStories, setSeenStories] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("herencia_seen_stories") || "[]"); } catch { return []; } });
 
   useEffect(() => {
@@ -43,7 +46,19 @@ export function Community() {
 
   useEffect(() => {
     backendApi.communityInteractions().then(setInteractions).catch(() => null);
+    backendApi.communityComments().then((result) => setComments(result.comments || [])).catch(() => null);
   }, []);
+
+  const submitComment = async (postId: string) => {
+    if (!interactions.authenticated) { toast("Inicia sesión para comentar"); navigate("/login"); return; }
+    const body = String(commentDrafts[postId] || "").trim();
+    if (!body) return;
+    try {
+      const result = await backendApi.addCommunityComment(postId, body);
+      setComments((current) => [...current, result.comment]);
+      setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+    } catch (error: any) { toast.error(error?.message || "No se pudo publicar el comentario"); }
+  };
 
   const toggle = async (postId: string, kind: "like" | "save") => {
     if (!interactions.authenticated) {
@@ -175,10 +190,27 @@ export function Community() {
                     <Heart className={`h-4 w-4 ${interactions.liked.includes(item.id) ? "fill-current" : ""}`} />
                     {interactions.likeCounts[item.id] || 0}
                   </button>
-                  <button type="button" onClick={() => toggle(item.id, "save")} className={`rounded-full p-2 transition hover:bg-[#f4f0e7] ${interactions.saved.includes(item.id) ? "text-[#173126]" : ""}`} aria-label="Guardar publicación">
-                    <Bookmark className={`h-4 w-4 ${interactions.saved.includes(item.id) ? "fill-current" : ""}`} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => setOpenComments(openComments === item.id ? null : item.id)} className="inline-flex items-center gap-1 rounded-full p-2 transition hover:bg-[#f4f0e7]" aria-label="Comentarios">
+                      <MessageCircle className="h-4 w-4"/><span>{comments.filter((c:any)=>c.postId===item.id).length}</span>
+                    </button>
+                    <button type="button" onClick={() => toggle(item.id, "save")} className={`rounded-full p-2 transition hover:bg-[#f4f0e7] ${interactions.saved.includes(item.id) ? "text-[#173126]" : ""}`} aria-label="Guardar publicación">
+                      <Bookmark className={`h-4 w-4 ${interactions.saved.includes(item.id) ? "fill-current" : ""}`} />
+                    </button>
+                  </div>
                 </div>
+                {openComments === item.id && (
+                  <div className="mt-4 border-t border-[#eee8dd] pt-4">
+                    <div className="max-h-48 space-y-3 overflow-y-auto">
+                      {comments.filter((c:any)=>c.postId===item.id).map((comment:any)=><div key={comment.id} className="rounded-xl bg-[#f7f4ed] px-3 py-2 text-sm"><strong>{comment.author}</strong><p className="mt-1 text-[#657169]">{comment.body}</p></div>)}
+                      {!comments.some((c:any)=>c.postId===item.id) && <p className="text-xs text-[#718076]">Sé la primera persona en comentar.</p>}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <input maxLength={500} value={commentDrafts[item.id] || ""} onChange={(e)=>setCommentDrafts((current)=>({...current,[item.id]:e.target.value}))} onKeyDown={(e)=>{if(e.key==="Enter") submitComment(item.id)}} placeholder="Escribe un comentario…" className="min-w-0 flex-1 rounded-full border border-[#ddd6ca] bg-white px-4 py-2 text-sm outline-none focus:border-[#315b42]"/>
+                      <button type="button" onClick={()=>submitComment(item.id)} className="grid h-10 w-10 place-items-center rounded-full bg-[#173d2a] text-white" aria-label="Publicar comentario"><Send className="h-4 w-4"/></button>
+                    </div>
+                  </div>
+                )}
               </div>
             </article>
           ))}
