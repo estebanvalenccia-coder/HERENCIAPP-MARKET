@@ -59,6 +59,23 @@ function isSalesHandoff(order: Order) {
   return order.metadata?.source === "HERENCIA_SALES_HANDOFF" || order.metadata?.type === "sales_handoff";
 }
 
+function orderCurrency(order: Order) {
+  return String(order.metadata?.currency || (order.metadata?.source === "colombia_checkout" ? "COP" : "EUR")).toUpperCase();
+}
+
+function formatOrderMoney(order: Order, value: number) {
+  const currency = orderCurrency(order);
+  return new Intl.NumberFormat(currency === "COP" ? "es-CO" : "es-ES", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: currency === "COP" ? 0 : 2,
+  }).format(Number(value || 0));
+}
+
+function isOnlineStripeOrder(order: Order) {
+  return ["frontend_checkout", "colombia_checkout"].includes(String(order.metadata?.source || ""));
+}
+
 export function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>("all");
@@ -125,7 +142,7 @@ export function AdminOrders() {
   };
 
   const refundOrder = async (order: Order) => {
-    if (order.metadata?.source !== "frontend_checkout") {
+    if (!isOnlineStripeOrder(order)) {
       return toast.error("El reembolso automático solo está disponible para pedidos online");
     }
 
@@ -136,7 +153,7 @@ export function AdminOrders() {
     if (reason === null) return;
 
     const confirmed = window.confirm(
-      `Se devolverán ${Number(order.total || 0).toFixed(2)} € mediante Stripe y se repondrá el stock. ¿Continuar?`
+      `Se devolverán ${formatOrderMoney(order, Number(order.total || 0))} mediante Stripe y se repondrá el stock correspondiente. ¿Continuar?`
     );
     if (!confirmed) return;
 
@@ -243,6 +260,7 @@ export function AdminOrders() {
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
                       <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
                       {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">HERENCIA SALES</span>}
+                      {order.metadata?.source === "colombia_checkout" && <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-900 font-black">🇨🇴 COLOMBIA · COP</span>}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
@@ -261,7 +279,7 @@ export function AdminOrders() {
                     {expanded && (
                       <div className="mt-4 rounded-xl bg-muted/50 p-4 text-sm space-y-2">
                         <p className="font-semibold">{isSalesHandoff(order) ? "Conversación para atender" : "Detalle para preparar"}</p>
-                        {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>€{Number((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span></div>)}
+                        {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>{formatOrderMoney(order, Number((item.price || 0) * (item.quantity || 1)))}</span></div>)}
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
                         <p><strong>Dirección completa:</strong> {getAddress(order)}</p>
                         {order.metadata?.requestedDate && <p><strong>Fecha solicitada:</strong> {order.metadata.requestedDate}{order.metadata?.requestedTimeSlot ? ` · ${order.metadata.requestedTimeSlot}` : ""}</p>}
@@ -271,7 +289,7 @@ export function AdminOrders() {
                   </div>
 
                   <div className="flex flex-col items-start lg:items-end gap-3">
-                    <div className="text-right"><p className="text-sm text-muted-foreground mb-1">Total</p><p className="text-2xl font-bold text-primary">€{Number(order.total || 0).toFixed(2)}</p></div>
+                    <div className="text-right"><p className="text-sm text-muted-foreground mb-1">Total</p><p className="text-2xl font-bold text-primary">{formatOrderMoney(order, Number(order.total || 0))}</p></div>
                     <div className="flex gap-2">
                       <select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} className="px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                         <option value="pending_bizum_review">Revisar Bizum</option>
@@ -285,7 +303,7 @@ export function AdminOrders() {
                         <option value="cancelled">Cancelado</option>
                         {order.status === "refunded" && <option value="refunded">Reembolsado</option>}
                       </select>
-                      {order.metadata?.source === "frontend_checkout" && ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(order.status) && (
+                      {isOnlineStripeOrder(order) && ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(order.status) && (
                         <button
                           onClick={() => void refundOrder(order)}
                           disabled={refundingOrder === order.id}
