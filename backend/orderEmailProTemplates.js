@@ -1,5 +1,10 @@
-export function formatCurrency(value) {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(value || 0));
+export function formatCurrency(value, currency = "EUR") {
+  const code = String(currency || "EUR").toUpperCase();
+  return new Intl.NumberFormat(code === "COP" ? "es-CO" : "es-ES", {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: code === "COP" ? 0 : 2,
+  }).format(Number(value || 0));
 }
 
 export function escapeHtml(value) {
@@ -30,6 +35,7 @@ export function normalizeOrderForEmail(order = {}) {
     deliveryMethod: order.delivery_method || order.deliveryMethod || "envio",
     status: order.status || "pending",
     date: order.created_at || order.date || new Date().toISOString(),
+    currency: String(metadata.currency || (metadata.source === "colombia_checkout" ? "COP" : "EUR")).toUpperCase(),
     metadata,
   };
 }
@@ -52,7 +58,7 @@ function deliveryLabel(value) {
   return "Entrega por coordinar";
 }
 
-function renderItems(items) {
+function renderItems(items, currency) {
   if (!items.length) {
     return `<tr><td colspan="4" style="padding:18px 0;color:#8b6b61;">No se recibió detalle de productos. Revisa el pedido en el panel.</td></tr>`;
   }
@@ -75,8 +81,8 @@ function renderItems(items) {
           </div>
         </td>
         <td align="center" style="padding:14px 8px;border-bottom:1px solid #f1e7df;font-weight:700;">${quantity}</td>
-        <td align="right" style="padding:14px 8px;border-bottom:1px solid #f1e7df;white-space:nowrap;">${formatCurrency(unitPrice)}</td>
-        <td align="right" style="padding:14px 0;border-bottom:1px solid #f1e7df;font-weight:800;white-space:nowrap;">${formatCurrency(total)}</td>
+        <td align="right" style="padding:14px 8px;border-bottom:1px solid #f1e7df;white-space:nowrap;">${formatCurrency(unitPrice, currency)}</td>
+        <td align="right" style="padding:14px 0;border-bottom:1px solid #f1e7df;font-weight:800;white-space:nowrap;">${formatCurrency(total, currency)}</td>
       </tr>`;
   }).join("");
 }
@@ -128,14 +134,14 @@ export function renderOrderEmailPro(order, recipientType = "customer") {
               <th align="right" style="padding:0 8px 10px;color:#8b6b61;font-size:12px;text-transform:uppercase;">Unidad</th>
               <th align="right" style="padding:0 0 10px;color:#8b6b61;font-size:12px;text-transform:uppercase;">Total</th>
             </tr>
-            ${renderItems(o.items)}
+            ${renderItems(o.items, o.currency)}
           </table>
 
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#2b1712;color:#fff;border-radius:22px;padding:20px;margin-bottom:22px;">
-            <tr><td style="padding:6px 0;color:#f8d8cc;">Subtotal</td><td align="right" style="padding:6px 0;font-weight:800;">${formatCurrency(o.subtotal)}</td></tr>
-            <tr><td style="padding:6px 0;color:#f8d8cc;">Envío</td><td align="right" style="padding:6px 0;font-weight:800;">${formatCurrency(o.shipping)}</td></tr>
-            ${o.discount ? `<tr><td style="padding:6px 0;color:#f8d8cc;">Descuento</td><td align="right" style="padding:6px 0;font-weight:800;">-${formatCurrency(o.discount)}</td></tr>` : ""}
-            <tr><td style="padding:14px 0 0;font-size:19px;font-weight:900;">Total pagado</td><td align="right" style="padding:14px 0 0;font-size:24px;font-weight:900;color:#ffc75f;">${formatCurrency(o.total)}</td></tr>
+            <tr><td style="padding:6px 0;color:#f8d8cc;">Subtotal</td><td align="right" style="padding:6px 0;font-weight:800;">${formatCurrency(o.subtotal, o.currency)}</td></tr>
+            <tr><td style="padding:6px 0;color:#f8d8cc;">Envío</td><td align="right" style="padding:6px 0;font-weight:800;">${formatCurrency(o.shipping, o.currency)}</td></tr>
+            ${o.discount ? `<tr><td style="padding:6px 0;color:#f8d8cc;">Descuento</td><td align="right" style="padding:6px 0;font-weight:800;">-${formatCurrency(o.discount, o.currency)}</td></tr>` : ""}
+            <tr><td style="padding:14px 0 0;font-size:19px;font-weight:900;">Total pagado</td><td align="right" style="padding:14px 0 0;font-size:24px;font-weight:900;color:#ffc75f;">${formatCurrency(o.total, o.currency)}</td></tr>
           </table>
 
           <div style="background:#fff1f5;border:1px solid #ffd7e2;border-radius:20px;padding:18px;color:#5f332c;line-height:1.6;font-size:14px;">
