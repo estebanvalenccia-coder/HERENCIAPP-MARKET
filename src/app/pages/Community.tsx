@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Heart, Instagram, MessageCircle, Sparkles, Users } from "lucide-react";
-import { backendStorage } from "../lib/backendStorage";
+import { Bookmark, ExternalLink, Heart, Instagram, Sparkles, Users } from "lucide-react";
+import { backendApi, backendStorage } from "../lib/backendStorage";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
 const updates = [
   {
@@ -21,6 +23,8 @@ const updates = [
 ];
 
 export function Community() {
+  const navigate = useNavigate();
+  const [interactions, setInteractions] = useState<any>({ authenticated: false, likeCounts: {}, liked: [], saved: [] });
   const [community, setCommunity] = useState<any>({ posts: [], instagramUrl: "", whatsappUrl: "" });
 
   useEffect(() => {
@@ -35,8 +39,38 @@ export function Community() {
     return () => window.removeEventListener("backend-storage", load);
   }, []);
 
+  useEffect(() => {
+    backendApi.communityInteractions().then(setInteractions).catch(() => null);
+  }, []);
+
+  const toggle = async (postId: string, kind: "like" | "save") => {
+    if (!interactions.authenticated) {
+      toast("Inicia sesión para participar en Comunidad");
+      navigate("/login");
+      return;
+    }
+    try {
+      if (kind === "like") {
+        const result = await backendApi.toggleCommunityLike(postId);
+        setInteractions((current: any) => ({
+          ...current,
+          liked: result.liked ? [...new Set([...current.liked, postId])] : current.liked.filter((id: string) => id !== postId),
+          likeCounts: { ...current.likeCounts, [postId]: result.count },
+        }));
+      } else {
+        const result = await backendApi.toggleCommunitySave(postId);
+        setInteractions((current: any) => ({
+          ...current,
+          saved: result.saved ? [...new Set([...current.saved, postId])] : current.saved.filter((id: string) => id !== postId),
+        }));
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar la interacción");
+    }
+  };
+
   const publishedPosts = community.posts.filter((post: any) => post?.published);
-  const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ title: post.title, description: post.text, image: post.imageUrl })) : updates;
+  const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ id: post.id, title: post.title, description: post.text, image: post.imageUrl })) : updates.map((post, index) => ({ ...post, id: `demo-${index}` }));
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
@@ -69,9 +103,14 @@ export function Community() {
               <div className="p-6">
                 <h3 className="text-xl font-medium">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-[#6d776f]">{item.description}</p>
-                <div className="mt-5 flex items-center gap-4 text-sm text-[#718076]">
-                  <span className="inline-flex items-center gap-1.5"><Heart className="h-4 w-4" /> Próximamente</span>
-                  <span className="inline-flex items-center gap-1.5"><MessageCircle className="h-4 w-4" /> Comunidad</span>
+                <div className="mt-5 flex items-center justify-between gap-4 text-sm text-[#718076]">
+                  <button type="button" onClick={() => toggle(item.id, "like")} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition hover:bg-[#f4f0e7] ${interactions.liked.includes(item.id) ? "text-rose-600" : ""}`} aria-label="Me gusta">
+                    <Heart className={`h-4 w-4 ${interactions.liked.includes(item.id) ? "fill-current" : ""}`} />
+                    {interactions.likeCounts[item.id] || 0}
+                  </button>
+                  <button type="button" onClick={() => toggle(item.id, "save")} className={`rounded-full p-2 transition hover:bg-[#f4f0e7] ${interactions.saved.includes(item.id) ? "text-[#173126]" : ""}`} aria-label="Guardar publicación">
+                    <Bookmark className={`h-4 w-4 ${interactions.saved.includes(item.id) ? "fill-current" : ""}`} />
+                  </button>
                 </div>
               </div>
             </article>
@@ -102,8 +141,8 @@ export function Community() {
           </a>
         </div>
 
-        <div className="mt-8 rounded-[28px] border border-dashed border-[#d8d2c5] bg-[#f7f4ed] p-6 text-sm leading-6 text-[#657169]">
-          <strong className="text-[#173126]">Siguiente etapa:</strong> corazones, guardados y comentarios vinculados a cuentas de Herencia. Se activarán cuando exista la capa de persistencia y permisos necesaria para que las interacciones sean reales y privadas.
+        <div className="mt-8 rounded-[28px] border border-[#d8d2c5] bg-[#f7f4ed] p-6 text-sm leading-6 text-[#657169]">
+          <strong className="text-[#173126]">Participa con tu cuenta Herencia:</strong> los corazones y publicaciones guardadas quedan asociados a tu usuario. Puedes crear la cuenta con email o continuar con Google desde el acceso de clientes.
         </div>
       </section>
     </div>
