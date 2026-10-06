@@ -118,10 +118,45 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("automatic");
   const visualOptions = [
     { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
-    { id: "automatic", title: "Automático Herencia", description: "La IA elige el escenario Herencia más adecuado." },
-    { id: "house", title: "Casa Herencia", description: "Misma casa, rincones cálidos y coherentes." },
-    { id: "clear", title: "Herencia Claro", description: "Blanco crema cálido, luz natural y misma identidad." },
+    { id: "automatic", title: "Automático Herencia", description: "Usa Casa Herencia como identidad principal y conserva el mismo lenguaje visual." },
+    { id: "house", title: "Casa Herencia", description: "Fondo oficial Herencia: crema cálido, madera, luz dorada y sombras de ventana." },
+    { id: "clear", title: "Herencia Claro", description: "Versión limpia en marfil cálido manteniendo luz y materiales Herencia." },
   ] as const;
+
+  const HERENCIA_HOUSE_MASTER_PROMPT = `
+IDENTIDAD VISUAL MAESTRA — CASA HERENCIA.
+Esta instrucción NO es inspiración opcional: es el aspecto obligatorio de la imagen.
+
+La escena debe parecer fotografiada dentro de la misma Casa Herencia de todo el catálogo:
+- pared crema / beige marfil muy cálida, mate y luminosa;
+- luz natural dorada entrando lateralmente por una ventana real;
+- sombras lineales de marco/persiana de ventana claramente visibles sobre pared, suelo y parcialmente sobre el producto;
+- suelo o superficie cálida en madera clara, piedra crema o material natural;
+- detalles secundarios muy discretos de madera, cerámica artesanal, fibras vegetales/ratán y alguna vegetación desenfocada;
+- maceta principal neutra en crema, arena o piedra, preferiblemente cerámica mate o acanalada;
+- ambiente doméstico premium, mediterráneo-orgánico, sereno y elegante;
+- profundidad fotográfica real, no render 3D;
+- temperatura de color cálida, sin blancos fríos, sin tonos azulados, sin luces LED;
+- composición comercial limpia: la planta domina el encuadre y el fondo nunca compite con ella.
+
+MUY IMPORTANTE:
+Todas las imágenes deben sentirse como diferentes fotografías de LA MISMA CASA y LA MISMA SESIÓN DE MARCA.
+No inventes un salón distinto, una arquitectura distinta o una paleta distinta en cada generación.
+No uses fondos oscuros, grises fríos, blancos clínicos, colores fuertes, neón ni decoración recargada.
+No uses fondos de estudio genéricos cuando el modo sea Casa Herencia.
+No añadas texto, logos, marcas de agua ni personas.
+
+FOTOGRAFÍA:
+fotorealismo editorial de ecommerce premium; óptica equivalente 50–85 mm; luz lateral natural; sombras físicamente coherentes; texturas reales en hojas, madera, cerámica y pared; pequeñas imperfecciones naturales; nada plástico ni artificial.
+
+BOTÁNICA:
+la especie debe ser fiel y reconocible; hojas, nervaduras, tallos, variegación y porte correctos; nada duplicado, fusionado o imposible.
+`.trim();
+
+  const HERENCIA_CLEAR_MASTER_PROMPT = `
+IDENTIDAD VISUAL — HERENCIA CLARO.
+Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textura mineral muy sutil, superficie crema o piedra clara, luz natural lateral dorada y sombras suaves reales. Mantener la misma temperatura, macetas neutras y fotorealismo editorial de Casa Herencia, pero con un escenario más limpio y minimalista. Sin texto, logos, personas, marcas de agua ni apariencia de render.
+`.trim();
 
   useEffect(() => {
     let cancelled = false;
@@ -255,15 +290,15 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     if (visualMode === "own") return toast.info("Tus fotos propias se mantienen originales y no pasan por IA");
     if (!formData.name.trim()) return toast.error("Escribe primero el nombre de la planta");
     if (selectedImages.length >= 8) return toast.error("La galería ya tiene el máximo de 8 imágenes");
-    const scene = visualMode === "clear"
-      ? "estudio Herencia blanco crema cálido, pared clara mate, suelo claro, luz natural lateral suave, sombras reales, estética editorial minimalista"
-      : visualMode === "house"
-        ? "Casa Herencia mediterránea cálida, pared crema, suelo natural, esquina doméstica elegante, luz natural suave, materiales piedra, madera y fibras naturales"
-        : "elige entre Casa Herencia y Herencia Claro según cuál presente mejor esta especie";
+    const scenePrompt = visualMode === "clear" ? HERENCIA_CLEAR_MASTER_PROMPT : HERENCIA_HOUSE_MASTER_PROMPT;
     try {
       setGeneratingVisual(true);
       const result = await backendApi.generateProductImage({
-        prompt: `Fotografía hiperrealista de catálogo para HERENCIA MARKET. Producto: ${formData.name.trim()}. Escenario: ${scene}. Mantén botánica realista, proporciones naturales, maceta elegante neutra, cámara a altura del producto, composición premium coherente con el resto del catálogo. No texto, no personas, no logos.`,
+        prompt: `${scenePrompt}
+
+PRODUCTO: ${formData.name.trim()}.
+TOMA: principal de catálogo, cámara a la altura del producto, planta grande y protagonista ocupando aproximadamente 70–85% del área útil.
+Mantén proporciones naturales y una maceta Herencia neutra. La imagen final debe poder colocarse junto a las fotografías existentes de Palma Areca, Calathea Orbifolia, Philodendron Brasil, Zamioculca y Begonia maculata sin que parezca otra marca u otra casa.`,
         references: masterReferences(),
       });
       if (!result.image) throw new Error("La IA no devolvió imagen");
@@ -288,8 +323,15 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     try {
       setGeneratingVisual(true);
       for (let index = 0; index < count; index += 1) {
-        const scene = visualMode === "clear" ? "Herencia Claro, crema marfil cálido y luz natural suave" : visualMode === "house" ? "Casa Herencia, interior mediterráneo cálido con pared crema y madera natural" : index === 3 ? "Herencia Claro, crema marfil cálido" : "Casa Herencia, interior mediterráneo cálido";
-        const result = await backendApi.generateProductImage({ prompt: `Fotografía hiperrealista de ecommerce de ${formData.name.trim()}. ${scene}. Toma ${shots[index]}. Maceta cerámica crema acanalada. Botánica fiel, proporciones naturales, misma identidad visual Herencia. Sin texto, personas, logos ni marcas de agua.`, references: masterReferences() });
+        const scenePrompt = visualMode === "clear" ? HERENCIA_CLEAR_MASTER_PROMPT : HERENCIA_HOUSE_MASTER_PROMPT;
+        const result = await backendApi.generateProductImage({
+          prompt: `${scenePrompt}
+
+PRODUCTO: ${formData.name.trim()}.
+TOMA: ${shots[index]}.
+Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas las imágenes de esta galería. Cambia únicamente el encuadre, distancia o ángulo indicado. La planta debe seguir siendo protagonista y el fondo debe conservar pared crema cálida, madera/material natural, luz dorada lateral y sombras de ventana coherentes. Botánica fiel y proporciones naturales.`,
+          references: masterReferences(),
+        });
         if (!result.image) throw new Error("No se pudo generar una imagen");
         const uploaded = await backendApi.uploadSiteMedia({ dataUrl: result.image, filename: `herencia-${Date.now()}-${index + 1}.png` });
         const url = String(uploaded.media?.url || "");
@@ -652,7 +694,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
               )}
 
               <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
-                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Genera imágenes coherentes con Casa Herencia / Herencia Claro y añádelas a esta misma galería para revisarlas antes de publicar."}
+                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Casa Herencia usa como estándar el fondo crema cálido, madera, luz dorada lateral y sombras de ventana del catálogo actual. Las referencias maestras sirven para reforzar todavía más esa continuidad."}
                 {visualMode !== "own" && (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void generateHerenciaVisual()} disabled={generatingVisual || selectedImages.length >= 8} className="rounded-xl bg-primary px-4 py-2.5 font-black text-primary-foreground disabled:opacity-50">{generatingVisual ? "Generando…" : "+ 1 imagen"}</button>
