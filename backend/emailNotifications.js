@@ -5,8 +5,13 @@ function deliveryLabelForEmail(value) {
   return "Entrega por coordinar";
 }
 
-function money(value) {
-  return `€${Number(value || 0).toFixed(2)}`;
+function money(value, currency = "EUR") {
+  const code = String(currency || "EUR").toUpperCase();
+  return new Intl.NumberFormat(code === "COP" ? "es-CO" : "es-ES", {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: code === "COP" ? 0 : 2,
+  }).format(Number(value || 0));
 }
 
 function safe(value = "") {
@@ -22,22 +27,24 @@ function safe(value = "") {
 function orderText(order, customer = false) {
   const metadata = order.metadata || {};
   const address = metadata.shippingAddress || {};
+  const currency = metadata.currency || (metadata.source === "colombia_checkout" ? "COP" : "EUR");
   const items = (order.items || [])
-    .map((item) => `- ${item.name} x${item.quantity || 1}: ${money(Number(item.price || 0) * Number(item.quantity || 1))}`)
+    .map((item) => `- ${item.name} x${item.quantity || 1}: ${money(Number(item.price || 0) * Number(item.quantity || 1), currency)}`)
     .join("\n");
 
-  return `${customer ? "Gracias por tu compra en Herencia Floristería" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${deliveryLabelForEmail(order.delivery_method)}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal)}\nEnvío: ${money(order.shipping)}\nTotal: ${money(order.total)}\n\nNotas:\n${metadata.notes || ""}\n`;
+  return `${customer ? "Gracias por tu compra en Herencia Floristería" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${deliveryLabelForEmail(order.delivery_method)}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal, currency)}\nEnvío: ${money(order.shipping, currency)}\nTotal: ${money(order.total, currency)}\n\nNotas:\n${metadata.notes || ""}\n`;
 }
 
 function orderHtml(order, customer = false) {
   const metadata = order.metadata || {};
   const address = metadata.shippingAddress || {};
+  const currency = metadata.currency || (metadata.source === "colombia_checkout" ? "COP" : "EUR");
   const items = (order.items || []).map((item) => `
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid #e8eee2;">
         <strong>${safe(item.name)}</strong><br><span style="color:#70806b;font-size:13px;">Cantidad: ${item.quantity || 1}</span>
       </td>
-      <td style="padding:12px 0;border-bottom:1px solid #e8eee2;text-align:right;font-weight:700;">${money(Number(item.price || 0) * Number(item.quantity || 1))}</td>
+      <td style="padding:12px 0;border-bottom:1px solid #e8eee2;text-align:right;font-weight:700;">${money(Number(item.price || 0) * Number(item.quantity || 1), currency)}</td>
     </tr>`).join("");
 
   const title = customer ? "Gracias por tu compra" : "Nuevo pedido recibido";
@@ -68,8 +75,8 @@ function orderHtml(order, customer = false) {
         <table style="width:100%;border-collapse:collapse;">${items}</table>
 
         <div style="margin-top:22px;padding:18px;background:#2f6b3f;color:white;border-radius:16px;">
-          <p style="margin:0;line-height:1.8;"><strong>Subtotal:</strong> ${money(order.subtotal)}<br><strong>Envío:</strong> ${money(order.shipping)}</p>
-          <p style="margin:10px 0 0;font-size:26px;font-weight:800;">Total: ${money(order.total)}</p>
+          <p style="margin:0;line-height:1.8;"><strong>Subtotal:</strong> ${money(order.subtotal, currency)}<br><strong>Envío:</strong> ${money(order.shipping, currency)}</p>
+          <p style="margin:10px 0 0;font-size:26px;font-weight:800;">Total: ${money(order.total, currency)}</p>
         </div>
 
         ${metadata.notes ? `<div style="margin-top:20px;padding:16px;background:#f7faf4;border-radius:14px;"><strong>Notas:</strong><br>${safe(metadata.notes)}</div>` : ""}
@@ -106,7 +113,7 @@ async function sendEmail({ to, subject, text, html }) {
 export async function notifyOrder(order) {
   await sendEmail({
     to: process.env.STORE_EMAIL || "herenciafloristeria@gmail.com",
-    subject: `🌿 Nuevo pedido - ${money(order.total)}`,
+    subject: `🌿 Nuevo pedido - ${money(order.total, order?.metadata?.currency || (order?.metadata?.source === "colombia_checkout" ? "COP" : "EUR"))}`,
     text: orderText(order, false),
     html: orderHtml(order, false),
   });
