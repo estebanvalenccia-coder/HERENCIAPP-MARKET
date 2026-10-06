@@ -91,6 +91,11 @@ export function AdminSettings() {
     findGift: false,
     surpriseMe: false,
   });
+  const [herenciaAccess, setHerenciaAccess] = useState({
+    visitorDailyLimit: 2,
+    customerDailyLimit: 5,
+    vipPlantSpend: 50,
+  });
   const [theme, setTheme] = useState({
     primaryColor: "#2d5f3f",
     secondaryColor: "#7fa88f",
@@ -165,6 +170,11 @@ export function AdminSettings() {
         searchByPhoto: Boolean(settings.features?.searchByPhoto),
         findGift: Boolean(settings.features?.findGift),
         surpriseMe: Boolean(settings.features?.surpriseMe),
+      });
+      setHerenciaAccess({
+        visitorDailyLimit: Math.max(1, Number(settings.access?.visitorDailyLimit || 2)),
+        customerDailyLimit: Math.max(1, Number(settings.access?.customerDailyLimit || 5)),
+        vipPlantSpend: Math.max(1, Number(settings.access?.vipPlantSpend || 50)),
       });
     }
 
@@ -285,6 +295,7 @@ export function AdminSettings() {
         mode: herenciaMode,
         useIntegrated: herenciaMode === "integrated",
         features: herenciaFeatures,
+        access: herenciaAccess,
       };
       backendStorage.setItem("herenciaSettings", JSON.stringify(settings));
       window.dispatchEvent(new Event("storage"));
@@ -373,6 +384,7 @@ export function AdminSettings() {
         mode: herenciaMode,
         useIntegrated: herenciaMode === "integrated",
         features: herenciaFeatures,
+        access: herenciaAccess,
       }));
       backendStorage.setItem("customTheme", JSON.stringify(theme));
       backendStorage.setItem("menuIcons", JSON.stringify(menuIcons));
@@ -422,6 +434,11 @@ export function AdminSettings() {
           searchByPhoto: Boolean(settings.features?.searchByPhoto),
           findGift: Boolean(settings.features?.findGift),
           surpriseMe: Boolean(settings.features?.surpriseMe),
+        });
+        setHerenciaAccess({
+          visitorDailyLimit: Math.max(1, Number(settings.access?.visitorDailyLimit || 2)),
+          customerDailyLimit: Math.max(1, Number(settings.access?.customerDailyLimit || 5)),
+          vipPlantSpend: Math.max(1, Number(settings.access?.vipPlantSpend || 50)),
         });
       }
 
@@ -705,6 +722,48 @@ export function AdminSettings() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-sm font-semibold text-foreground">Límites de uso</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Se guardan en el backend por visitante o cliente. Los cambios afectan a Herenc(IA) sin tocar código.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Visitante / día
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={herenciaAccess.visitorDailyLimit}
+                  onChange={(e) => setHerenciaAccess((current) => ({ ...current, visitorDailyLimit: Math.max(1, Number(e.target.value || 1)) }))}
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs font-semibold text-muted-foreground">
+                Cliente / día
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={herenciaAccess.customerDailyLimit}
+                  onChange={(e) => setHerenciaAccess((current) => ({ ...current, customerDailyLimit: Math.max(1, Number(e.target.value || 1)) }))}
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs font-semibold text-muted-foreground">
+                VIP desde € en plantas
+                <input
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={herenciaAccess.vipPlantSpend}
+                  onChange={(e) => setHerenciaAccess((current) => ({ ...current, vipPlantSpend: Math.max(1, Number(e.target.value || 1)) }))}
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
             </div>
           </div>
 
