@@ -374,13 +374,17 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
 
 PRODUCTO: ${formData.name.trim()}.
 
-CREA UNA SOLA IMAGEN FINAL EN FORMATO COLLAGE HORIZONTAL 3:2, SIN TEXTO, SIN RÓTULOS Y SIN MARCOS DECORATIVOS.
-COMPOSICIÓN EXACTA:
-- izquierda: una fotografía principal grande ocupando aproximadamente 55–60% del ancho;
-- derecha: cuadrícula limpia de 2 columnas x 3 filas con SEIS fotografías de detalle;
-- separaciones blancas o crema muy finas y uniformes.
+CREA UNA SOLA IMAGEN FINAL CUADRADA 1:1 TIPO COLLAGE EDITORIAL, SIN TEXTO, SIN RÓTULOS Y SIN MARCOS DECORATIVOS.
+MUY IMPORTANTE: GALERÍA y COLLAGE son funciones distintas. Esta función debe devolver UNA ÚNICA IMAGEN 1:1 que ya contiene varias fotografías maquetadas dentro de ella; NO devuelvas fotos individuales.
+COMPOSICIÓN COMO LA REFERENCIA VISUAL DEL COLLAGE DE HERENCIA:
+- una fotografía principal grande de la planta completa ocupando la mayor parte del lienzo;
+- alrededor, entre 5 y 7 recuadros secundarios de distintos tamaños con acercamientos y vistas complementarias;
+- incluir detalles de hoja, nervaduras/textura, reverso de hoja cuando corresponda, brote/tallo, base/sustrato y al menos otra vista completa de la misma planta;
+- composición asimétrica pero ordenada, premium y editorial, aprovechando todo el cuadrado;
+- separaciones blancas o crema muy finas y uniformes entre fotografías;
+- el resultado completo debe ser un único archivo cuadrado 1:1.
 
-Las siete vistas representan EXACTAMENTE EL MISMO EJEMPLAR, la MISMA variedad y la MISMA maceta. No inventes siete plantas distintas.
+Todas las vistas representan EXACTAMENTE EL MISMO EJEMPLAR, la MISMA variedad y la MISMA maceta. No inventes siete plantas distintas.
 Vistas de detalle: hoja completa, textura/nervaduras, reverso de hoja cuando corresponda, porte completo, brote/tallo y un detalle botánico característico de la especie.
 Todas deben parecer fotografías reales de una misma sesión comercial: cámara profesional, exposición natural, textura auténtica, pequeñas imperfecciones orgánicas y profundidad óptica real. PROHIBIDO CGI, render 3D, hojas plásticas, simetría perfecta, HDR, sobresaturación, bokeh falso, duplicaciones o morfología imposible.
 El collage completo debe sentirse como una ficha editorial premium de vivero/ecommerce, no como arte generado por IA.`,
