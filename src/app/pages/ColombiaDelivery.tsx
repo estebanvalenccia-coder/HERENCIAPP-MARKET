@@ -14,6 +14,7 @@ import {
   Truck,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { StripeCheckout } from "../components/StripeCheckout";
 import {
   defaultColombiaDeliverySettings,
   parseColombiaDeliverySettings,
@@ -55,6 +56,9 @@ export function ColombiaDelivery() {
   const [surprise, setSurprise] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryTime, setDeliveryTime] = useState("09:00–13:00");
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
+  const [showStripe, setShowStripe] = useState(false);
 
   useEffect(() => {
     const loadSettings = () => {
@@ -107,6 +111,14 @@ export function ColombiaDelivery() {
     if (!product) return;
     if (!recipientName.trim() || !address.trim() || (settings.recipientPhoneRequired && !recipientPhone.trim())) {
       window.alert("Completa los datos del destinatario y la dirección.");
+      return;
+    }
+    if (settings.paymentEnabled && (!buyerName.trim() || !buyerEmail.trim())) {
+      window.alert("Completa tu nombre y email para el pago.");
+      return;
+    }
+    if (settings.paymentEnabled) {
+      setShowStripe(true);
       return;
     }
 
@@ -298,14 +310,65 @@ export function ColombiaDelivery() {
                 <div className="flex justify-between border-t border-[#ddd7cb] pt-2 text-base"><span className="font-black">Total</span><b>{moneyCOP(totalCOP)}</b></div>
                 <p className="text-right text-xs text-[#718076]">≈ {moneyEUR(totalEUR)}</p>
               </div>
+              {settings.paymentEnabled && (
+                <div className="mt-4 grid gap-2">
+                  <input value={buyerName} onChange={(e)=>setBuyerName(e.target.value)} placeholder="Tu nombre (quien compra)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                  <input type="email" value={buyerEmail} onChange={(e)=>setBuyerEmail(e.target.value)} placeholder="Tu email para el recibo" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                </div>
+              )}
               <button onClick={submit} disabled={!product} className="mt-4 w-full rounded-xl bg-[#315b42] px-4 py-3 font-black text-white disabled:opacity-50">
-                {settings.paymentEnabled ? "Pagar y confirmar" : "Confirmar por WhatsApp"}
+                {settings.paymentEnabled ? "Pagar en COP con Stripe" : "Confirmar por WhatsApp"}
               </button>
-              <p className="mt-2 text-center text-[11px] text-[#829087]">{settings.paymentEnabled ? "Pago seguro y confirmación del pedido." : "Confirmamos disponibilidad antes del cobro."}</p>
+              <p className="mt-2 text-center text-[11px] text-[#829087]">{settings.paymentEnabled ? "El cobro llega a la misma cuenta Stripe de Herencia, presentado en COP." : "Confirmamos disponibilidad antes del cobro."}</p>
             </StepCard>
           </div>
         </div>
       </section>
+
+      {showStripe && product && zone && (
+        <section className="mx-auto max-w-3xl px-5 py-12 sm:px-8">
+          <StripeCheckout
+            amount={totalCOP}
+            currency="cop"
+            items={[{
+              id: String(product.id),
+              name: product.name,
+              price: productCOP,
+              quantity: 1,
+            }]}
+            customerName={buyerName}
+            customerEmail={buyerEmail}
+            paymentMethod="tarjeta"
+            deliveryMethod="envio"
+            subtotal={productCOP}
+            shipping={Number(zone.feeCOP || 0)}
+            metadata={{
+              checkoutMarket: "colombia",
+              currency: "COP",
+              deliveryZoneId: zone.id,
+              recipientName: recipientName.trim(),
+              recipientPhone: recipientPhone.trim(),
+              phone: recipientPhone.trim(),
+              giftMessage: giftMessage.trim(),
+              occasion,
+              surprise,
+              requestedDate: deliveryDate || null,
+              requestedTimeSlot: deliveryDate ? deliveryTime : null,
+              shippingAddress: {
+                address: address.trim(),
+                city: zone.name,
+                postalCode: "",
+                province: "Valle del Cauca",
+                references: references.trim(),
+              },
+            }}
+            onCancel={() => setShowStripe(false)}
+            onSuccess={({ orderId, paymentIntentId, status }) => {
+              window.location.href = `/pedido-confirmado?orderId=${encodeURIComponent(orderId)}&paymentIntentId=${encodeURIComponent(paymentIntentId)}&status=${encodeURIComponent(status)}`;
+            }}
+          />
+        </section>
+      )}
     </div>
   );
 }

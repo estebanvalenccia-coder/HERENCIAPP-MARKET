@@ -15,6 +15,7 @@ export function AdminInternationalDelivery() {
   const [settings, setSettings] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
   const [products, setProducts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
   const [tab, setTab] = useState<Tab>("general");
   const selected = useMemo(() => new Set(settings.selectedProductIds.map(String)), [settings.selectedProductIds]);
 
@@ -23,6 +24,9 @@ export function AdminInternationalDelivery() {
     backendApi.listCommerceProducts({ includeArchived: true })
       .then(({ products }) => setProducts(Array.isArray(products) ? products.filter((p:any) => !p?.deletedAt) : []))
       .catch(() => setProducts([]));
+    backendApi.listOrders()
+      .then(({ orders }) => setOrders((Array.isArray(orders) ? orders : []).filter((order:any) => order?.metadata?.source === "colombia_checkout")))
+      .catch(() => setOrders([]));
   }, []);
 
   const save = async () => {
@@ -57,6 +61,8 @@ export function AdminInternationalDelivery() {
         [id]: {
           enabled: settings.productOverrides[id]?.enabled !== false,
           priceCOP: Number(settings.productOverrides[id]?.priceCOP || 0),
+          trackInventoryColombia: Boolean(settings.productOverrides[id]?.trackInventoryColombia),
+          stockColombia: Math.max(0, Math.floor(Number(settings.productOverrides[id]?.stockColombia || 0))),
           ...patch,
         },
       },
@@ -102,7 +108,7 @@ export function AdminInternationalDelivery() {
               <ToggleCard label="Entrega sorpresa" checked={settings.surpriseEnabled} onChange={(checked)=>setSettings({...settings,surpriseEnabled:checked})} detail="Ocultar precio al destinatario." />
               <ToggleCard label="Fecha y horario" checked={settings.schedulingEnabled} onChange={(checked)=>setSettings({...settings,schedulingEnabled:checked})} detail="Permitir programar la entrega." />
             </div>
-            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Actívalo solo cuando el cobro internacional esté conectado y probado." />
+            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Cobra pedidos Colombia en COP usando la misma cuenta Stripe de Herencia." />
             <div className="grid gap-4 lg:grid-cols-2">
               <label><span className="mb-2 block text-sm font-bold">Título principal</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Cobertura visible</span><input value={settings.regionLabel} onChange={(e)=>setSettings({...settings,regionLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
@@ -154,6 +160,13 @@ export function AdminInternationalDelivery() {
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <input type="number" min="0" step="100" value={override?.priceCOP || ""} onChange={(e)=>patchProduct(id,{priceCOP:Number(e.target.value)})} placeholder="Precio COP" className="rounded-xl border bg-background px-3 py-2 text-sm" />
                         <input value={override?.label || ""} onChange={(e)=>patchProduct(id,{label:e.target.value})} placeholder="Nombre Colombia" className="rounded-xl border bg-background px-3 py-2 text-sm" />
+                        <label className="col-span-2 flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs font-bold">
+                          <input type="checkbox" checked={Boolean(override?.trackInventoryColombia)} onChange={(e)=>patchProduct(id,{trackInventoryColombia:e.target.checked})} />
+                          Controlar stock Colombia independientemente
+                        </label>
+                        {override?.trackInventoryColombia && (
+                          <input type="number" min="0" step="1" value={override?.stockColombia ?? 0} onChange={(e)=>patchProduct(id,{stockColombia:Math.max(0,Math.floor(Number(e.target.value||0)))})} placeholder="Stock Colombia" className="col-span-2 rounded-xl border bg-background px-3 py-2 text-sm" />
+                        )}
                       </div>
                     )}
                   </div>
@@ -163,7 +176,35 @@ export function AdminInternationalDelivery() {
           </div>
         )}
 
-        {tab === "orders" && <Placeholder title="Pedidos Colombia" text="Aquí aparecerán los pedidos internacionales cuando conectemos el checkout/pago Colombia al sistema de pedidos real." />}
+        {tab === "orders" && (
+          <div className="mt-6">
+            <h3 className="text-xl font-bold">Pedidos Colombia</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Pedidos reales cobrados por Stripe y gestionados desde Herencia.</p>
+            <div className="mt-5 space-y-3">
+              {orders.length === 0 ? (
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Todavía no hay pedidos Colombia.</div>
+              ) : orders.map((order:any) => (
+                <div key={order.id} className="rounded-2xl border p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black">#{String(order.id).slice(0,8)}</span>
+                        <span className="rounded-full bg-yellow-100 px-2 py-1 text-[10px] font-black text-yellow-900">🇨🇴 COP</span>
+                        <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold">{order.status}</span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold">{order.customerName} · {order.customerEmail}</p>
+                      <p className="text-xs text-muted-foreground">{order.metadata?.recipientName ? `Entrega a ${order.metadata.recipientName}` : "Destinatario Colombia"} · {order.metadata?.deliveryZoneName || ""}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Total</p>
+                      <p className="text-xl font-black">{new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(Number(order.total||0))}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {tab === "partners" && <Placeholder title="Aliados locales" text="Preparado para gestionar floristerías, repartidores o proveedores de Cali y Candelaria." />}
         {tab === "cards" && <Placeholder title="Tarjetas y mensajes" text="La experiencia pública ya permite mensajes y ocasiones. Aquí podremos añadir diseños de tarjetas por ocasión." />}
       </div>
