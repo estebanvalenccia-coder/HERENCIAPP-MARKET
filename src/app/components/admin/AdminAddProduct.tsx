@@ -155,11 +155,17 @@ fotorealismo editorial de ecommerce premium; óptica equivalente 50–85 mm; luz
 
 BOTÁNICA:
 la especie debe ser fiel y reconocible; hojas, nervaduras, tallos, variegación y porte correctos; nada duplicado, fusionado o imposible.
+
+REALISMO FOTOGRÁFICO OBLIGATORIO:
+Debe parecer una fotografía real tomada con una cámara profesional, nunca una ilustración ni un render. Conserva pequeñas imperfecciones naturales: variación sutil entre hojas, bordes no perfectamente simétricos, textura orgánica real, ligeras marcas naturales y orientación irregular creíble. La maceta debe mostrar textura física auténtica y contacto realista con la superficie. Usa exposición fotográfica natural, rango dinámico moderado, profundidad de campo óptica y sombras físicamente coherentes.
+
+PROHIBIDO:
+apariencia CGI o 3D, plástico, hojas enceradas artificiales, simetría perfecta, patrones repetidos, HDR excesivo, sobresaturación, halos, bokeh artificial, iluminación de estudio imposible, superficies excesivamente pulidas, arquitectura perfecta de render, decoración irreal, tallos u hojas flotantes, duplicadas o fusionadas. No embellecer la planta hasta hacerla botánicamente inverosímil.
 `.trim();
 
   const HERENCIA_CLEAR_MASTER_PROMPT = `
 IDENTIDAD VISUAL — HERENCIA CLARO.
-Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textura mineral muy sutil, superficie crema o piedra clara, luz natural lateral dorada y sombras suaves reales. Mantener la misma temperatura, macetas neutras y fotorealismo editorial de Casa Herencia, pero con un escenario más limpio y minimalista. Sin texto, logos, personas, marcas de agua ni apariencia de render.
+Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textura mineral muy sutil, superficie crema o piedra clara, luz natural lateral dorada y sombras suaves reales. Mantener la misma temperatura, macetas neutras y fotorealismo editorial de Casa Herencia, pero con un escenario más limpio y minimalista. Debe parecer una fotografía comercial real tomada con cámara: textura orgánica, pequeñas imperfecciones naturales, exposición normal y profundidad óptica. Sin texto, logos, personas, marcas de agua, CGI, 3D, plástico, HDR exagerado ni apariencia de render.
 `.trim();
 
   useEffect(() => {
@@ -354,6 +360,52 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
     }
   }
 
+  async function generateHerenciaCollage() {
+    if (visualMode === "own") return toast.info("Tus fotos propias no pasan por IA");
+    if (!formData.name.trim()) return toast.error("Escribe primero el nombre de la planta");
+    if (selectedImages.length >= 8) return toast.error("La galería ya tiene el máximo de 8 imágenes");
+    const scenePrompt = visualMode === "clear" ? HERENCIA_CLEAR_MASTER_PROMPT : HERENCIA_HOUSE_MASTER_PROMPT;
+    try {
+      setVisualError("");
+      setVisualProgress("Generando collage fotográfico realista…");
+      setGeneratingVisual(true);
+      const result = await backendApi.generateProductImage({
+        prompt: `${scenePrompt}
+
+PRODUCTO: ${formData.name.trim()}.
+
+CREA UNA SOLA IMAGEN FINAL EN FORMATO COLLAGE HORIZONTAL 3:2, SIN TEXTO, SIN RÓTULOS Y SIN MARCOS DECORATIVOS.
+COMPOSICIÓN EXACTA:
+- izquierda: una fotografía principal grande ocupando aproximadamente 55–60% del ancho;
+- derecha: cuadrícula limpia de 2 columnas x 3 filas con SEIS fotografías de detalle;
+- separaciones blancas o crema muy finas y uniformes.
+
+Las siete vistas representan EXACTAMENTE EL MISMO EJEMPLAR, la MISMA variedad y la MISMA maceta. No inventes siete plantas distintas.
+Vistas de detalle: hoja completa, textura/nervaduras, reverso de hoja cuando corresponda, porte completo, brote/tallo y un detalle botánico característico de la especie.
+Todas deben parecer fotografías reales de una misma sesión comercial: cámara profesional, exposición natural, textura auténtica, pequeñas imperfecciones orgánicas y profundidad óptica real. PROHIBIDO CGI, render 3D, hojas plásticas, simetría perfecta, HDR, sobresaturación, bokeh falso, duplicaciones o morfología imposible.
+El collage completo debe sentirse como una ficha editorial premium de vivero/ecommerce, no como arte generado por IA.`,
+        references: masterReferences(),
+      });
+      if (!result.image) throw new Error("La IA no devolvió el collage");
+      const uploaded = await backendApi.uploadSiteMedia({
+        dataUrl: result.image,
+        filename: `herencia-collage-${formData.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.png`,
+      });
+      const url = String(uploaded.media?.url || "");
+      if (!url) throw new Error("No se pudo guardar el collage en R2");
+      setSelectedImages((current) => [...current, { id: `collage-${Date.now()}`, remoteUrl: url, preview: url }].slice(0, 8));
+      setVisualProgress("Collage generado y añadido sin eliminar ninguna foto.");
+      toast.success("Collage Herencia añadido a la galería");
+    } catch (error: any) {
+      const message = error?.message || "No se pudo generar el collage";
+      setVisualError(message);
+      setVisualProgress("");
+      toast.error(message);
+    } finally {
+      setGeneratingVisual(false);
+    }
+  }
+
   async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files || []);
     event.currentTarget.value = "";
@@ -411,6 +463,25 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
       },
     ].slice(0, 8));
     setImageUrlInput("");
+  }
+
+  function setPrimaryImage(index: number) {
+    if (index <= 0 || index >= selectedImages.length) return;
+    setSelectedImages((current) => {
+      const next = [...current];
+      const [primary] = next.splice(index, 1);
+      next.unshift(primary);
+      return next;
+    });
+    setVariants((current) =>
+      current.map((variant) => {
+        if (variant.imageIndex === null) return variant;
+        if (variant.imageIndex === index) return { ...variant, imageIndex: 0 };
+        if (variant.imageIndex < index) return { ...variant, imageIndex: variant.imageIndex + 1 };
+        return variant;
+      })
+    );
+    toast.success("Imagen principal actualizada");
   }
 
   function moveImage(index: number, direction: -1 | 1) {
@@ -721,6 +792,7 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
                         {[3, 5, 8].map((count) => <option key={count} value={count}>{count} fotos</option>)}
                       </select>
                       <button type="button" onClick={() => void generateHerenciaGallery()} disabled={generatingVisual || !formData.name.trim() || selectedImages.length >= 8} className="rounded-xl border border-primary px-4 py-2.5 font-black text-primary disabled:cursor-not-allowed disabled:opacity-40">Generar galería</button>
+                      <button type="button" onClick={() => void generateHerenciaCollage()} disabled={generatingVisual || !formData.name.trim() || selectedImages.length >= 8} className="rounded-xl border border-primary bg-primary/5 px-4 py-2.5 font-black text-primary disabled:cursor-not-allowed disabled:opacity-40">Generar collage</button>
                     </div>
                     {!formData.name.trim() && (
                       <p className="mt-2 font-bold text-amber-700">Escribe primero el nombre del producto en “Información principal”.</p>
@@ -767,7 +839,10 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
                         </div>
                         <div className="flex items-center justify-between gap-2 p-2">
                           <span className="text-[11px] font-black">{index === 0 ? "Principal" : `Foto ${index + 1}`}</span>
-                          <div className="flex gap-1">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {index > 0 && (
+                              <button type="button" onClick={() => setPrimaryImage(index)} className="rounded border border-primary px-2 py-1 text-[10px] font-black text-primary">⭐ Principal</button>
+                            )}
                             <button type="button" disabled={index === 0} onClick={() => moveImage(index, -1)} className="rounded border border-border px-2 py-1 text-xs disabled:opacity-30">←</button>
                             <button type="button" disabled={index === selectedImages.length - 1} onClick={() => moveImage(index, 1)} className="rounded border border-border px-2 py-1 text-xs disabled:opacity-30">→</button>
                           </div>
