@@ -15,6 +15,7 @@ export function AdminInternationalDelivery() {
   const [settings, setSettings] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
   const [products, setProducts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
   const [tab, setTab] = useState<Tab>("general");
   const selected = useMemo(() => new Set(settings.selectedProductIds.map(String)), [settings.selectedProductIds]);
 
@@ -23,6 +24,9 @@ export function AdminInternationalDelivery() {
     backendApi.listCommerceProducts({ includeArchived: true })
       .then(({ products }) => setProducts(Array.isArray(products) ? products.filter((p:any) => !p?.deletedAt) : []))
       .catch(() => setProducts([]));
+    backendApi.listOrders()
+      .then(({ orders }) => setOrders((Array.isArray(orders) ? orders : []).filter((order:any) => order?.metadata?.source === "colombia_checkout")))
+      .catch(() => setOrders([]));
   }, []);
 
   const save = async () => {
@@ -172,7 +176,35 @@ export function AdminInternationalDelivery() {
           </div>
         )}
 
-        {tab === "orders" && <Placeholder title="Pedidos Colombia" text="Aquí aparecerán los pedidos internacionales cuando conectemos el checkout/pago Colombia al sistema de pedidos real." />}
+        {tab === "orders" && (
+          <div className="mt-6">
+            <h3 className="text-xl font-bold">Pedidos Colombia</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Pedidos reales cobrados por Stripe y gestionados desde Herencia.</p>
+            <div className="mt-5 space-y-3">
+              {orders.length === 0 ? (
+                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Todavía no hay pedidos Colombia.</div>
+              ) : orders.map((order:any) => (
+                <div key={order.id} className="rounded-2xl border p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black">#{String(order.id).slice(0,8)}</span>
+                        <span className="rounded-full bg-yellow-100 px-2 py-1 text-[10px] font-black text-yellow-900">🇨🇴 COP</span>
+                        <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold">{order.status}</span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold">{order.customerName} · {order.customerEmail}</p>
+                      <p className="text-xs text-muted-foreground">{order.metadata?.recipientName ? `Entrega a ${order.metadata.recipientName}` : "Destinatario Colombia"} · {order.metadata?.deliveryZoneName || ""}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Total</p>
+                      <p className="text-xl font-black">{new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(Number(order.total||0))}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {tab === "partners" && <Placeholder title="Aliados locales" text="Preparado para gestionar floristerías, repartidores o proveedores de Cali y Candelaria." />}
         {tab === "cards" && <Placeholder title="Tarjetas y mensajes" text="La experiencia pública ya permite mensajes y ocasiones. Aquí podremos añadir diseños de tarjetas por ocasión." />}
       </div>
