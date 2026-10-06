@@ -2009,6 +2009,65 @@ app.post("/api/customer/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+const COMMUNITY_REACTIONS_KEY = "communityReactions";
+
+async function loadCommunityReactions() {
+  return parseStoredJson(await readStorageValue(COMMUNITY_REACTIONS_KEY), { likes: {}, saves: {} });
+}
+
+app.get("/api/community/interactions", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const session = getCustomerSession(req);
+    const data = await loadCommunityReactions();
+    const likeCounts = {};
+    for (const [postId, users] of Object.entries(data.likes || {})) likeCounts[postId] = Array.isArray(users) ? users.length : 0;
+    const customerId = session?.customerId || "";
+    const liked = customerId ? Object.entries(data.likes || {}).filter(([, users]) => Array.isArray(users) && users.includes(customerId)).map(([postId]) => postId) : [];
+    const saved = customerId ? Object.entries(data.saves || {}).filter(([, users]) => Array.isArray(users) && users.includes(customerId)).map(([postId]) => postId) : [];
+    res.json({ authenticated: Boolean(session), likeCounts, liked, saved });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudieron cargar las interacciones" });
+  }
+});
+
+app.post("/api/community/posts/:postId/like", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const postId = cleanText(req.params.postId, 120);
+    if (!postId) return res.status(400).json({ error: "Publicación no válida" });
+    const data = await loadCommunityReactions();
+    data.likes ||= {};
+    const users = new Set(Array.isArray(data.likes[postId]) ? data.likes[postId] : []);
+    const customerId = req.customerSession.customerId;
+    if (users.has(customerId)) users.delete(customerId); else users.add(customerId);
+    data.likes[postId] = [...users];
+    await upsertStorageValue(COMMUNITY_REACTIONS_KEY, JSON.stringify(data));
+    res.json({ liked: users.has(customerId), count: users.size });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar Me gusta" });
+  }
+});
+
+app.post("/api/community/posts/:postId/save", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const postId = cleanText(req.params.postId, 120);
+    if (!postId) return res.status(400).json({ error: "Publicación no válida" });
+    const data = await loadCommunityReactions();
+    data.saves ||= {};
+    const users = new Set(Array.isArray(data.saves[postId]) ? data.saves[postId] : []);
+    const customerId = req.customerSession.customerId;
+    if (users.has(customerId)) users.delete(customerId); else users.add(customerId);
+    data.saves[postId] = [...users];
+    await upsertStorageValue(COMMUNITY_REACTIONS_KEY, JSON.stringify(data));
+    res.json({ saved: users.has(customerId) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo guardar la publicación" });
+  }
+});
+
+
 
 
 app.patch("/api/customer/profile", requireCustomer, async (req, res) => {
