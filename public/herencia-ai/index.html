@@ -10,6 +10,11 @@
 <link rel="manifest" href="/herencia-ai/site.webmanifest">
 <style>
 :root{--verde:#4B6B1F;--verde-dark:#2f4a13;--verde-claro:#cbe7a3;--bg:#eef4e8;--white:#ffffff;--dark:#1f1f1f;--radius:20px;--shadow:0 8px 28px rgba(0,0,0,0.25);}*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Poppins',sans-serif;background:var(--bg);display:flex;justify-content:center;padding:20px 10px;}.chat-app{width:95%;max-width:850px;height:90vh;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;border:2px solid rgba(0,0,0,0.15);}.header{padding:14px 20px;border-bottom:1px solid #e1e1e1;display:flex;align-items:center;gap:14px;background:white;}.header img{height:48px;}.header-title{font-weight:600;font-size:1.15rem;color:var(--verde-dark);}.messages{flex:1;padding:20px;overflow-y:auto;background:url('https://i.pinimg.com/736x/82/bd/fb/82bdfbe631ffcf89855572048839f2c1.jpg');background-size:cover;position:relative;}.messages::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.8);pointer-events:none;}.messages-inner{position:relative;z-index:9;}.msg{max-width:75%;padding:12px 16px;margin-bottom:16px;border-radius:16px;font-size:0.95rem;box-shadow:0 2px 6px rgba(0,0,0,0.15);white-space:pre-wrap;}.msg.bot{background:var(--verde);color:white;border-bottom-left-radius:6px;}.msg.user{background:var(--white);border:1px solid #dcdcdc;margin-left:auto;border-bottom-right-radius:6px;}.msg img{width:100%;border-radius:14px;margin-top:10px;}.typing{color:var(--verde-dark);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-size:0.85rem;}.typing span{width:6px;height:6px;background:var(--verde);border-radius:999px;animation:blink 1.2s infinite ease-in-out;}.typing span:nth-child(2){animation-delay:0.15s;}.typing span:nth-child(3){animation-delay:0.30s;}@keyframes blink{0%,100%{opacity:.3;transform:translateY(0);}50%{opacity:1;transform:translateY(-3px);}}.input-area{position:sticky;bottom:0;z-index:999;background:var(--white);padding:12px 14px;border-top:1px solid #e1e1e1;display:flex;flex-direction:column;gap:10px;}.input-row{display:flex;align-items:center;gap:10px;}.input-box{flex:1;display:flex;align-items:center;background:#fff;border-radius:var(--radius);border:1px solid #dcdcdc;padding:8px 14px;box-shadow:0 2px 4px rgba(0,0,0,0.08) inset;}.input-box input{flex:1;border:none;outline:none;font-size:0.95rem;background:transparent;}.input-box input::placeholder{color:#999;}.mic-btn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:white;border:1px solid #dcdcdc;font-size:1.1rem;cursor:pointer;box-shadow:0 3px 6px rgba(0,0,0,0.18);}.send-btn{background:var(--verde);color:white;border:none;border-radius:var(--radius);padding:10px 18px;font-size:0.92rem;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer;box-shadow:var(--shadow);}.send-btn:hover{background:var(--verde-dark);}.second-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;}.btn-small{background:var(--verde);color:white;border:none;border-radius:var(--radius);padding:10px 16px;font-size:0.85rem;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,0.15);}.btn-small:hover{background:var(--verde-dark);}.btn-whatsapp{background:#25D366 !important;}.btn-map{background:#325ea8 !important;}#photoInput{display:none;}
+
+.optional-actions{display:none;gap:8px;flex-wrap:wrap;padding:0 14px 12px;background:var(--white);}
+.optional-action{border:1px solid #dce3d7;background:#f7faf4;color:#29431a;border-radius:999px;padding:9px 13px;font-size:.82rem;font-weight:600;cursor:pointer;}
+.optional-action:hover{background:#edf5e7;}
+#photoInput{display:none;}
 </style>
 </head>
 <body>
@@ -19,10 +24,18 @@
   <div class="input-area">
     <div class="input-row"><div class="input-box"><input id="userInput" type="text" placeholder="Escribe tu pregunta aquí..." /></div><button class="send-btn" id="sendBtn">Enviar <i class="fa-solid fa-paper-plane"></i></button></div>
   </div>
+  <div class="optional-actions" id="optionalActions">
+    <button class="optional-action" data-feature="createBouquet" data-prompt="Quiero crear un ramo. Ayúdame a elegir flores, estilo y presupuesto.">💐 Crear un ramo</button>
+    <button class="optional-action" data-feature="findPlant" data-prompt="Ayúdame a encontrar la planta ideal para mí.">🌿 Encontrar una planta</button>
+    <button class="optional-action" data-feature="searchByPhoto" id="searchByPhotoBtn">📷 Buscar por foto</button>
+    <button class="optional-action" data-feature="findGift" data-prompt="Ayúdame a encontrar un regalo ideal en Herencia Market.">🎁 Buscar un regalo</button>
+    <button class="optional-action" data-feature="surpriseMe" data-prompt="Sorpréndeme con una recomendación de Herencia Market.">✨ Sorpréndeme</button>
+    <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" />
+  </div>
   <footer style="text-align:center;font-size:0.75rem;padding:12px;"><a href="/terminos">Aviso legal</a> | <a href="/privacidad">Política de privacidad</a> | <a href="/cookies">Política de cookies</a></footer>
 </div>
 <div id="cookieBanner" style="font-size:0.75rem;text-align:center;padding:8px;">Este sitio utiliza cookies técnicas. Consulta la <a href="/privacidad">política de privacidad</a> y la <a href="/cookies">política de cookies</a>. <button id="acceptCookies">Aceptar</button></div>
 <script>if(localStorage.getItem('cookiesAccepted')){document.getElementById('cookieBanner').style.display='none';}document.getElementById('acceptCookies').onclick=function(){localStorage.setItem('cookiesAccepted','true');document.getElementById('cookieBanner').style.display='none';};</script>
-<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-send-only-access-v1"></script>
+<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-admin-features-v2"></script>
 </body>
 </html>
