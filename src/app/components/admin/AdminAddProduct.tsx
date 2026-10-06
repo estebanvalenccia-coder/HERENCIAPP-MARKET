@@ -115,7 +115,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualBatchCount, setVisualBatchCount] = useState(5);
   const [visualReferences, setVisualReferences] = useState<SelectedImage[]>([]);
-  const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("own");
+  const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("automatic");
   const visualOptions = [
     { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
     { id: "automatic", title: "Automático Herencia", description: "La IA elige el escenario Herencia más adecuado." },
@@ -204,6 +204,19 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
       toast.error(error?.message || "No se pudo generar la ficha con Groq");
     } finally {
       setGeneratingPlantInfo(false);
+    }
+  }
+
+  async function handleNameBlur() {
+    await generatePlantInfoFromName();
+    if (
+      plantLike &&
+      visualMode !== "own" &&
+      formData.name.trim() &&
+      selectedImages.length === 0 &&
+      !generatingVisual
+    ) {
+      await generateHerenciaGallery();
     }
   }
 
@@ -663,6 +676,27 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 <span className="rounded-full bg-muted px-3 py-1 text-xs font-black">{selectedImages.length}/8</span>
               </div>
 
+              {plantLike && (
+                <div className="mb-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-black">✨ Imágenes IA automáticas</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Al escribir el nombre de la planta y salir del campo, Herencia genera automáticamente una galería con IA. También puedes regenerarla aquí.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void generateHerenciaGallery()}
+                      disabled={generatingVisual || !formData.name.trim() || selectedImages.length >= 8}
+                      className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground disabled:opacity-50"
+                    >
+                      {generatingVisual ? "Generando…" : "Generar con IA"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {selectedImages.length > 0 ? (
                 <div className="space-y-3">
                   <div className="relative h-72 overflow-hidden rounded-2xl border border-border bg-muted">
@@ -746,7 +780,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
                 <input
                   value={formData.name}
                   onChange={(event) => patch({ name: event.target.value })}
-                  onBlur={() => void generatePlantInfoFromName()}
+                  onBlur={() => void handleNameBlur()}
                   placeholder={
                     service
                       ? "Ej: Mantenimiento mensual de jardín"
