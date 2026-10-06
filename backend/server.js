@@ -6173,7 +6173,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`,
+        Authorization: `Bearer ${groqApiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -6212,23 +6212,18 @@ app.post("/api/ai/plant-description", async (req, res) => {
 
   const { plantName, baseDescription = "" } = req.body;
 
-  const settings = await getAiSettings();
+  // Product plant descriptions always use the dedicated Groq configuration.
+  // Do not inherit the generic admin AI provider: that setting can point to
+  // OpenAI for other features and previously made this endpoint return 400
+  // even while GROQ_API_KEY was correctly configured in Railway.
+  const groqApiKey = String(process.env.GROQ_API_KEY || "").trim();
+  const model = groqModel(process.env.GROQ_MODEL);
 
-  if (!settings.enabled || !settings.apiKey) {
-    return res.status(400).json({ error: "IA no configurada en backend" });
+  if (!groqApiKey) {
+    return res.status(400).json({ error: "Groq no configurado en backend" });
   }
 
-  const provider = settings.provider === "openai" ? "openai" : "groq";
-
-  const endpoint =
-    provider === "groq"
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-
-  const model =
-    provider === "groq"
-      ? groqModel(settings.model)
-      : "gpt-4o-mini";
+  const endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
   const systemPrompt = `Eres un experto en botánica y cuidado de plantas. Genera información detallada en español sobre plantas SOLO en formato JSON válido con esta estructura exacta:
 {
