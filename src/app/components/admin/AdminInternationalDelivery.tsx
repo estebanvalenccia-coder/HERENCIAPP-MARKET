@@ -75,7 +75,7 @@ export function AdminInternationalDelivery() {
     setSettings({ ...settings, selectedProductIds: [...next] });
   };
 
-  const patchZone = (index:number, patch:any) => {
+  const moveProduct = (id:string, direction:-1|1) => {\n    const selectedIds = settings.selectedProductIds.map(String);\n    const currentOrder = [...settings.productOrder.filter(x=>selectedIds.includes(String(x))), ...selectedIds.filter(x=>!settings.productOrder.includes(x))];\n    const index=currentOrder.indexOf(id), target=index+direction; if(index<0||target<0||target>=currentOrder.length) return;\n    [currentOrder[index],currentOrder[target]]=[currentOrder[target],currentOrder[index]];\n    setSettings({...settings,productOrder:currentOrder});\n  };\n\n  const moveCategory = (index:number, direction:-1|1) => { const target=index+direction; if(target<0||target>=settings.categories.length)return; const next=[...settings.categories]; [next[index],next[target]]=[next[target],next[index]]; setSettings({...settings,categories:next}); };\n\n  const patchZone = (index:number, patch:any) => {
     const zones = settings.zones.map((zone, i) => i === index ? { ...zone, ...patch } : zone);
     setSettings({ ...settings, zones });
   };
@@ -209,6 +209,10 @@ export function AdminInternationalDelivery() {
         {tab === "catalog" && (
           <div className="mt-6">
             <h3 className="text-xl font-bold">Regalos con esencia caleña · productos publicados</h3>\n            <p className="mt-1 text-sm text-muted-foreground">Elige aquí qué productos aparecen en Colombianísimas y en “Los más populares en Cali”. Puedes publicarlos o retirarlos con un clic y definir nombre, precio y stock para Colombia.</p>
+            <div className="mt-5 rounded-2xl border bg-muted/20 p-4">
+              <div className="flex items-center justify-between gap-3"><div><h4 className="font-bold">Categorías de “Regalos con esencia caleña”</h4><p className="text-xs text-muted-foreground">Activa, ordena, renombra y asigna una imagen a cada círculo.</p></div><button onClick={()=>setSettings({...settings,categories:[...settings.categories,{id:`categoria-${Date.now()}`,name:"Nueva categoría",enabled:true}]})} className="rounded-xl border px-3 py-2 text-xs font-bold">+ Categoría</button></div>
+              <div className="mt-4 space-y-2">{settings.categories.map((item,index)=><div key={item.id} className="grid gap-2 rounded-xl border bg-background p-3 md:grid-cols-[auto_1fr_1.4fr_auto] md:items-center"><input type="checkbox" checked={item.enabled} onChange={e=>setSettings({...settings,categories:settings.categories.map((x,i)=>i===index?{...x,enabled:e.target.checked}:x)})}/><input value={item.name} onChange={e=>setSettings({...settings,categories:settings.categories.map((x,i)=>i===index?{...x,name:e.target.value}:x)})} className="rounded-lg border px-3 py-2 text-sm"/><input value={item.imageUrl||""} onChange={e=>setSettings({...settings,categories:settings.categories.map((x,i)=>i===index?{...x,imageUrl:e.target.value}:x)})} placeholder="URL imagen de categoría (opcional)" className="rounded-lg border px-3 py-2 text-sm"/><div className="flex gap-1"><button onClick={()=>moveCategory(index,-1)} className="rounded-lg border px-2 py-1">↑</button><button onClick={()=>moveCategory(index,1)} className="rounded-lg border px-2 py-1">↓</button><button onClick={()=>setSettings({...settings,categories:settings.categories.filter((_,i)=>i!==index)})} className="rounded-lg border px-2 py-1 text-destructive">×</button></div></div>)}</div>
+            </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {products.map((product:any)=>{
                 const id=String(product.id);
@@ -218,7 +222,7 @@ export function AdminInternationalDelivery() {
                   <div key={id} className={`rounded-2xl border p-3 transition ${active?"border-primary bg-primary/5":"bg-card"}`}>
                     <button onClick={()=>toggleProduct(id)} className="flex w-full items-center gap-3 text-left">
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-muted">{product.image && <img src={product.image} alt="" className="h-full w-full object-cover" />}</div>
-                      <div className="min-w-0 flex-1"><p className="truncate font-bold">{product.name}</p><p className="text-xs text-muted-foreground">{active?"Disponible en Colombia":"No seleccionado"}</p></div>
+                      <div className="min-w-0 flex-1"><p className="truncate font-bold">{product.name}</p><p className="text-xs text-muted-foreground">{active?"Disponible en Colombia":"No seleccionado"}</p></div>{active && <div className="flex gap-1"><button type="button" onClick={(e)=>{e.stopPropagation();moveProduct(id,-1)}} className="rounded-lg border px-2 py-1 text-xs" title="Subir">↑</button><button type="button" onClick={(e)=>{e.stopPropagation();moveProduct(id,1)}} className="rounded-lg border px-2 py-1 text-xs" title="Bajar">↓</button></div>}
                     </button>
                     {active && (
                       <div className="mt-3 grid grid-cols-2 gap-2">
