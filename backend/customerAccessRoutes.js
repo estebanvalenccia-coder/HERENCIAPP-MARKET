@@ -96,19 +96,64 @@ function installRoutes(app) {
     try {
       const email = normalizeEmail(req.body?.email);
       if (!validEmail(email)) return res.status(400).json({ error: "Email no válido" });
+
       const accounts = await readStorage(db, ACCOUNTS_KEY, []);
       const registered = accounts.some((item) => normalizeEmail(item.email) === email);
+
       let paidOrders;
       if (hasNeon()) {
         paidOrders = await listNeonOrders({ email, statuses: PAID_STATUSES, limit: 2000 });
       } else {
-        const { data, error } = await db.from("orders").select("total,status").eq("customer_email", email).in("status", PAID_STATUSES);
+        const { data, error } = await db
+          .from("orders")
+          .select("total,status,items")
+          .eq("customer_email", email)
+          .in("status", PAID_STATUSES);
         if (error) throw error;
         paidOrders = data || [];
       }
-      const totalPaid = Number((paidOrders || []).reduce((sum, order) => sum + Number(order.total || 0), 0).toFixed(2));
-      res.json({ registered, totalPaid, isVip: totalPaid >= 50 });
-    } catch (error) { res.status(500).json({ error: error.message || "No se pudo comprobar el cliente" }); }
+
+      const totalPaid = Number(
+        (paidOrders || []).reduce((sum, order) => sum + Number(order.total || 0), 0).toFixed(2)
+      );
+
+      const plantPattern = /\b(planta|plantas|monstera|pothos|potos|ficus|cactus|suculenta|orqu[ií]dea|palmera|bonsai|calathea|alocasia|philodendron|sansevieria|zamioculca|strelitzia|pachira|kentia|areca|dracaena|begonia|pilea)\b/i;
+      const plantSpend = Number(
+        (paidOrders || []).reduce((orderSum, order) => {
+          const items = Array.isArray(order?.items) ? order.items : [];
+          return orderSum + items.reduce((itemSum, item) => {
+            const haystack = [
+              item?.name,
+              item?.title,
+              item?.productName,
+              item?.category,
+              item?.type,
+              ...(Array.isArray(item?.collections) ? item.collections : []),
+            ].filter(Boolean).join(" ");
+
+            const isPlant =
+              String(item?.type || "").toLowerCase() === "plant" ||
+              String(item?.category || "").toLowerCase() === "plantas" ||
+              plantPattern.test(haystack);
+
+            if (!isPlant) return itemSum;
+            const qty = Math.max(1, Number(item?.quantity || item?.qty || 1));
+            const unit = Number(item?.price || item?.unitPrice || 0);
+            return itemSum + Math.max(0, qty * unit);
+          }, 0);
+        }, 0).toFixed(2)
+      );
+
+      res.json({
+        registered,
+        totalPaid,
+        plantSpend,
+        isVip: plantSpend >= 50,
+        vipMinimumPlantSpend: 50,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "No se pudo comprobar el cliente" });
+    }
   });
 
   app.post("/api/customer/password/forgot", async (req, res) => {
