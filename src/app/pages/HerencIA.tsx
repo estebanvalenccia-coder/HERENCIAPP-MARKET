@@ -246,9 +246,9 @@ export function HerencIA() {
     <div
       className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-6 sm:px-5 lg:py-[60px]"
       style={{
-        backgroundImage: "linear-gradient(90deg, rgba(46,64,31,.05), rgba(145,84,26,.02)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2560&q=100')",
+        backgroundImage: "linear-gradient(90deg, rgba(46,64,31,.05), rgba(145,84,26,.02)), url('https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?auto=format&fit=crop&w=2560&q=95')",
         backgroundSize: "cover",
-        backgroundPosition: "center 58%",
+        backgroundPosition: "center center",
               backgroundBlendMode: "normal",
         backgroundAttachment: "fixed",
       }}
