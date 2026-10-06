@@ -389,6 +389,7 @@ Vistas de detalle: hoja completa, textura/nervaduras, reverso de hoja cuando cor
 Todas deben parecer fotografías reales de una misma sesión comercial: cámara profesional, exposición natural, textura auténtica, pequeñas imperfecciones orgánicas y profundidad óptica real. PROHIBIDO CGI, render 3D, hojas plásticas, simetría perfecta, HDR, sobresaturación, bokeh falso, duplicaciones o morfología imposible.
 El collage completo debe sentirse como una ficha editorial premium de vivero/ecommerce, no como arte generado por IA.`,
         references: masterReferences(),
+        outputType: "collage",
       });
       if (!result.image) throw new Error("La IA no devolvió el collage");
       const uploaded = await backendApi.uploadSiteMedia({
