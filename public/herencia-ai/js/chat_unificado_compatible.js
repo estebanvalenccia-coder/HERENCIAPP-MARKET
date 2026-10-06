@@ -96,9 +96,57 @@ async function apiFetch(urlPath, body, pin=null){
 }
 
 // ================= CHAT =================
+function herenciaUsageState(){
+  const vip = localStorage.getItem("herencia-ia-vip") === "1";
+  const identity = localStorage.getItem("herencia-ia-active-identity") || "visitor";
+  const limit = Math.max(1, Number(localStorage.getItem("herencia-ia-daily-limit") || 2));
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `herencia-ia-usage:${day}:${identity}`;
+  const used = Math.max(0, Number(localStorage.getItem(key) || 0));
+  return { vip, identity, limit, key, used };
+}
+
+function applyHerenciaUsageState(){
+  const input = $("userInput");
+  const send = $("sendBtn");
+  if(!input || !send) return;
+
+  const state = herenciaUsageState();
+  const exhausted = !state.vip && state.used >= state.limit;
+  input.disabled = exhausted;
+  send.disabled = exhausted;
+  send.style.opacity = exhausted ? "0.5" : "1";
+  send.style.cursor = exhausted ? "not-allowed" : "pointer";
+  input.placeholder = exhausted
+    ? "Has alcanzado tu límite diario de Herenc(IA)"
+    : "Escribe tu pregunta aquí...";
+}
+
+function consumeHerenciaUsage(){
+  const state = herenciaUsageState();
+  if(state.vip){
+    try{ window.parent?.postMessage({ type:"HERENCIA_IA_USAGE_CHANGED", used:state.used, vip:true }, window.location.origin); }catch(_){}
+    return;
+  }
+
+  const next = state.used + 1;
+  localStorage.setItem(state.key, String(next));
+  applyHerenciaUsageState();
+  try{
+    window.parent?.postMessage({ type:"HERENCIA_IA_USAGE_CHANGED", used:next, limit:state.limit, vip:false }, window.location.origin);
+  }catch(_){}
+}
+
 async function sendChat(){
   const input = $("userInput");
   if(!input) return;
+
+  const access = herenciaUsageState();
+  if(!access.vip && access.used >= access.limit){
+    applyHerenciaUsageState();
+    addMsg("bot", "Has alcanzado tu límite de mensajes de hoy. Vuelve mañana o supera 50 € en compras pagadas de plantas para seguir usando Herenc(IA).");
+    return;
+  }
 
   const message = (input.value || "").trim();
   input.value = "";
@@ -111,8 +159,11 @@ async function sendChat(){
 
   try{
     const user = getSessionUser();
-    const data = await apiFetch("/api/herencia-ai/chat", { message, user, lang });
+    const email = localStorage.getItem("herencia-ia-active-email") || "";
+    const data = await apiFetch("/api/herencia-ai/chat", { message, user, email, lang });
+    if(data?.error) throw new Error(data.error);
     addMsg("bot", (data.reply || "").trim());
+    consumeHerenciaUsage();
   }catch(_){
     addMsg("bot", "⚠️ Error de conexión con Herenc(IA).");
   }finally{
@@ -128,6 +179,7 @@ function wireSend(){
       sendChat();
     }
   });
+  applyHerenciaUsageState();
 }
 
 // ================= MIC (walkie / toggle) =================
@@ -908,15 +960,6 @@ function injectWatermark(){
 
 // ================= INIT =================
 wireSend();
-wireMic();
-wireSpeaker();
-wireDiagMenu();
-wireTranslate();
-wirePhoto();
-wireScanner();
-if (location.hostname === "localhost") {
-  wireDevMenu();
-}
 injectWatermark();
 
 addMsg("bot", "🌿 Hola, soy Herenc(IA). ¿Qué planta quieres cuidar hoy?");
