@@ -9,7 +9,7 @@ import {
   type ColombiaDeliverySettings,
 } from "../../lib/internationalDelivery";
 
-type Tab = "general" | "zones" | "catalog" | "orders" | "partners" | "cards";
+type Tab = "general" | "design" | "zones" | "catalog" | "orders" | "partners" | "cards";
 
 export function AdminInternationalDelivery() {
   const [settings, setSettings] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
@@ -88,6 +88,7 @@ export function AdminInternationalDelivery() {
         <div className="mt-6 flex flex-wrap gap-2 border-b pb-4">
           {[
             ["general","General",Settings2],
+            ["design","Diseño y portada",ImageIcon],
             ["zones","Zonas de entrega",MapPinned],
             ["catalog","Catálogo",Boxes],
             ["orders","Pedidos",Boxes],
@@ -117,6 +118,37 @@ export function AdminInternationalDelivery() {
               <label><span className="mb-2 block text-sm font-bold">Texto del botón principal</span><input value={settings.heroCtaLabel} onChange={(e)=>setSettings({...settings,heroCtaLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Imagen de portada (URL)</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Texto de entrega rápida</span><input value={settings.sameDayLabel} onChange={(e)=>setSettings({...settings,sameDayLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+            </div>
+          </div>
+        )}
+
+        {tab === "design" && (
+          <div className="mt-6 space-y-5">
+            <div>
+              <h3 className="text-xl font-bold">Diseño de Colombianísimas</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Controla la portada que aparece en Cali sin tocar código. La plantilla, botones y productos siguen siendo componentes reales.</p>
+            </div>
+            <div className="overflow-hidden rounded-3xl border bg-muted">
+              <div className="relative aspect-[16/6] min-h-[240px]">
+                {settings.heroImageUrl ? <img src={settings.heroImageUrl} alt="Vista previa de portada Cali" className="absolute inset-0 h-full w-full object-cover" /> : null}
+                <div className="absolute inset-0 bg-black/30" />
+                <div className="absolute inset-x-0 bottom-0 p-6 text-white">
+                  <p className="text-xs font-black uppercase tracking-[.28em]">🇨🇴 {settings.heroKicker}</p>
+                  <p className="mt-2 max-w-3xl text-3xl font-bold">{settings.headline}</p>
+                  <p className="mt-2 max-w-2xl text-sm">{settings.description}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Foto de fondo · URL</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} placeholder="https://..." className="w-full rounded-xl border bg-background px-4 py-3" /><span className="mt-1 block text-xs text-muted-foreground">Pega aquí la URL de la nueva imagen y verás la vista previa arriba.</span></label>
+              <label><span className="mb-2 block text-sm font-bold">Sello</span><input value={settings.heroKicker} onChange={(e)=>setSettings({...settings,heroKicker:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label><span className="mb-2 block text-sm font-bold">Botón principal</span><input value={settings.heroCtaLabel} onChange={(e)=>setSettings({...settings,heroCtaLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Título</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Descripción</span><textarea rows={3} value={settings.description} onChange={(e)=>setSettings({...settings,description:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+            </div>
+            <div className="rounded-2xl border bg-card p-4">
+              <p className="font-bold">Organización de la sección</p>
+              <p className="mt-1 text-sm text-muted-foreground">Las zonas se administran en “Zonas de entrega” y los productos de “Los más populares en Cali” se seleccionan y ordenan desde “Catálogo”. Así puedes cambiar el contenido manteniendo el diseño de la plantilla.</p>
             </div>
           </div>
         )}
