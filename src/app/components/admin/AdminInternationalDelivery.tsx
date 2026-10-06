@@ -75,7 +75,25 @@ export function AdminInternationalDelivery() {
     setSettings({ ...settings, selectedProductIds: [...next] });
   };
 
-  const moveProduct = (id:string, direction:-1|1) => {\n    const selectedIds = settings.selectedProductIds.map(String);\n    const currentOrder = [...settings.productOrder.filter(x=>selectedIds.includes(String(x))), ...selectedIds.filter(x=>!settings.productOrder.includes(x))];\n    const index=currentOrder.indexOf(id), target=index+direction; if(index<0||target<0||target>=currentOrder.length) return;\n    [currentOrder[index],currentOrder[target]]=[currentOrder[target],currentOrder[index]];\n    setSettings({...settings,productOrder:currentOrder});\n  };\n\n  const moveCategory = (index:number, direction:-1|1) => { const target=index+direction; if(target<0||target>=settings.categories.length)return; const next=[...settings.categories]; [next[index],next[target]]=[next[target],next[index]]; setSettings({...settings,categories:next}); };\n\n  const patchZone = (index:number, patch:any) => {
+  const moveProduct = (id:string, direction:-1|1) => {
+    const selectedIds = settings.selectedProductIds.map(String);
+    const currentOrder = [...settings.productOrder.filter(x=>selectedIds.includes(String(x))), ...selectedIds.filter(x=>!settings.productOrder.includes(x))];
+    const index = currentOrder.indexOf(id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= currentOrder.length) return;
+    [currentOrder[index], currentOrder[target]] = [currentOrder[target], currentOrder[index]];
+    setSettings({ ...settings, productOrder: currentOrder });
+  };
+
+  const moveCategory = (index:number, direction:-1|1) => {
+    const target = index + direction;
+    if (target < 0 || target >= settings.categories.length) return;
+    const next = [...settings.categories];
+    [next[index], next[target]] = [next[target], next[index]];
+    setSettings({ ...settings, categories: next });
+  };
+
+  const patchZone = (index:number, patch:any) => {
     const zones = settings.zones.map((zone, i) => i === index ? { ...zone, ...patch } : zone);
     setSettings({ ...settings, zones });
   };
