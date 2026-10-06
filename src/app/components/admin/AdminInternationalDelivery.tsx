@@ -77,7 +77,7 @@ export function AdminInternationalDelivery() {
             <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Globe2 className="h-6 w-6" /></div>
             <div>
               <p className="text-xs font-black uppercase tracking-[.18em] text-muted-foreground">Herencia internacional</p>
-              <h2 className="text-2xl font-bold">Colombia · Cali, Candelaria y alrededores</h2>
+              <h2 className="text-2xl font-bold">Colombia · Cali, Candelaria, Palmira y alrededores</h2>
             </div>
           </div>
           <button onClick={save} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-50">
