@@ -84,6 +84,13 @@ export function AdminSettings() {
   const [herenciaUrl, setHerenciaUrl] = useState("");
   const [herenciaEnabled, setHerenciaEnabled] = useState(true);
   const [herenciaMode, setHerenciaMode] = useState<"integrated" | "external">("integrated");
+  const [herenciaFeatures, setHerenciaFeatures] = useState({
+    createBouquet: false,
+    findPlant: false,
+    searchByPhoto: false,
+    findGift: false,
+    surpriseMe: false,
+  });
   const [theme, setTheme] = useState({
     primaryColor: "#2d5f3f",
     secondaryColor: "#7fa88f",
@@ -152,6 +159,13 @@ export function AdminSettings() {
       setHerenciaUrl(settings.url || "");
       setHerenciaEnabled(settings.enabled !== false);
       setHerenciaMode(settings.mode === "external" || settings.useIntegrated === false ? "external" : "integrated");
+      setHerenciaFeatures({
+        createBouquet: Boolean(settings.features?.createBouquet),
+        findPlant: Boolean(settings.features?.findPlant),
+        searchByPhoto: Boolean(settings.features?.searchByPhoto),
+        findGift: Boolean(settings.features?.findGift),
+        surpriseMe: Boolean(settings.features?.surpriseMe),
+      });
     }
 
     const savedTheme = backendStorage.getItem("customTheme");
@@ -270,6 +284,7 @@ export function AdminSettings() {
         enabled: herenciaEnabled,
         mode: herenciaMode,
         useIntegrated: herenciaMode === "integrated",
+        features: herenciaFeatures,
       };
       backendStorage.setItem("herenciaSettings", JSON.stringify(settings));
       window.dispatchEvent(new Event("storage"));
@@ -355,6 +370,9 @@ export function AdminSettings() {
       backendStorage.setItem("herenciaSettings", JSON.stringify({
         url: herenciaUrl,
         enabled: herenciaEnabled,
+        mode: herenciaMode,
+        useIntegrated: herenciaMode === "integrated",
+        features: herenciaFeatures,
       }));
       backendStorage.setItem("customTheme", JSON.stringify(theme));
       backendStorage.setItem("menuIcons", JSON.stringify(menuIcons));
@@ -396,7 +414,15 @@ export function AdminSettings() {
       if (savedHerencia) {
         const settings = JSON.parse(savedHerencia);
         setHerenciaUrl(settings.url || "");
-        setHerenciaEnabled(settings.enabled || false);
+        setHerenciaEnabled(settings.enabled !== false);
+        setHerenciaMode(settings.mode === "external" || settings.useIntegrated === false ? "external" : "integrated");
+        setHerenciaFeatures({
+          createBouquet: Boolean(settings.features?.createBouquet),
+          findPlant: Boolean(settings.features?.findPlant),
+          searchByPhoto: Boolean(settings.features?.searchByPhoto),
+          findGift: Boolean(settings.features?.findGift),
+          surpriseMe: Boolean(settings.features?.surpriseMe),
+        });
       }
 
       const savedStripe = backendStorage.getItem("stripeSettings");
@@ -645,6 +671,42 @@ export function AdminSettings() {
               </p>
             </div>
           )}
+
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-sm font-semibold text-foreground">Funciones opcionales del chat</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Están desactivadas por defecto. Puedes encenderlas cuando quieras sin tocar código.
+            </p>
+            <div className="mt-4 space-y-2">
+              {[
+                ["createBouquet", "Crear un ramo"],
+                ["findPlant", "Encontrar una planta"],
+                ["searchByPhoto", "Buscar por foto"],
+                ["findGift", "Buscar un regalo"],
+                ["surpriseMe", "Sorpréndeme"],
+              ].map(([key, label]) => {
+                const enabled = Boolean(herenciaFeatures[key as keyof typeof herenciaFeatures]);
+                return (
+                  <div key={key} className="flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2">
+                    <span className="text-sm font-medium text-foreground">{label}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setHerenciaFeatures((current) => ({
+                          ...current,
+                          [key]: !current[key as keyof typeof current],
+                        }))
+                      }
+                      className={`relative h-6 w-12 rounded-full transition-colors ${enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+                      aria-pressed={enabled}
+                    >
+                      <div className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${enabled ? "translate-x-6" : ""}`} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
             <div>
