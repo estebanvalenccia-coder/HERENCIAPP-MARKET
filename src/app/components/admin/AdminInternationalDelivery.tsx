@@ -57,6 +57,8 @@ export function AdminInternationalDelivery() {
         [id]: {
           enabled: settings.productOverrides[id]?.enabled !== false,
           priceCOP: Number(settings.productOverrides[id]?.priceCOP || 0),
+          trackInventoryColombia: Boolean(settings.productOverrides[id]?.trackInventoryColombia),
+          stockColombia: Math.max(0, Math.floor(Number(settings.productOverrides[id]?.stockColombia || 0))),
           ...patch,
         },
       },
@@ -102,7 +104,7 @@ export function AdminInternationalDelivery() {
               <ToggleCard label="Entrega sorpresa" checked={settings.surpriseEnabled} onChange={(checked)=>setSettings({...settings,surpriseEnabled:checked})} detail="Ocultar precio al destinatario." />
               <ToggleCard label="Fecha y horario" checked={settings.schedulingEnabled} onChange={(checked)=>setSettings({...settings,schedulingEnabled:checked})} detail="Permitir programar la entrega." />
             </div>
-            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Actívalo solo cuando el cobro internacional esté conectado y probado." />
+            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Cobra pedidos Colombia en COP usando la misma cuenta Stripe de Herencia." />
             <div className="grid gap-4 lg:grid-cols-2">
               <label><span className="mb-2 block text-sm font-bold">Título principal</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Cobertura visible</span><input value={settings.regionLabel} onChange={(e)=>setSettings({...settings,regionLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
@@ -154,6 +156,13 @@ export function AdminInternationalDelivery() {
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <input type="number" min="0" step="100" value={override?.priceCOP || ""} onChange={(e)=>patchProduct(id,{priceCOP:Number(e.target.value)})} placeholder="Precio COP" className="rounded-xl border bg-background px-3 py-2 text-sm" />
                         <input value={override?.label || ""} onChange={(e)=>patchProduct(id,{label:e.target.value})} placeholder="Nombre Colombia" className="rounded-xl border bg-background px-3 py-2 text-sm" />
+                        <label className="col-span-2 flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs font-bold">
+                          <input type="checkbox" checked={Boolean(override?.trackInventoryColombia)} onChange={(e)=>patchProduct(id,{trackInventoryColombia:e.target.checked})} />
+                          Controlar stock Colombia independientemente
+                        </label>
+                        {override?.trackInventoryColombia && (
+                          <input type="number" min="0" step="1" value={override?.stockColombia ?? 0} onChange={(e)=>patchProduct(id,{stockColombia:Math.max(0,Math.floor(Number(e.target.value||0)))})} placeholder="Stock Colombia" className="col-span-2 rounded-xl border bg-background px-3 py-2 text-sm" />
+                        )}
                       </div>
                     )}
                   </div>
