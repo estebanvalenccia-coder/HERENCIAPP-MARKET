@@ -355,6 +355,16 @@ export function ProductDetail() {
               {product.onSale && <div className="absolute right-6 top-6 rounded-full bg-primary px-4 py-2 font-bold text-primary-foreground shadow-lg">¡OFERTA!</div>}
             </div>
 
+            {plantLike && galleryImages.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-foreground">🌿 Cada ejemplar es único.</span>{" "}
+                  Las imágenes son orientativas. Seleccionaremos para ti uno de nuestros mejores ejemplares,
+                  lo más parecido posible al mostrado.
+                </p>
+              </div>
+            )}
+
             {detailConfig.showGalleryThumbnails !== false && galleryImages.length > 1 && (
               <div className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-5">
                 {galleryImages.map((imageUrl, index) => (
