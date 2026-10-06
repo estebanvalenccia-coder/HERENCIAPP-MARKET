@@ -77,6 +77,7 @@ export function HerencIA() {
   const navigate = useNavigate();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [enabled, setEnabled] = useState(true);
+  const [backgroundUrl, setBackgroundUrl] = useState("");
   const [access, setAccess] = useState<AccessState | null>(null);
   const [groq, setGroq] = useState<{ ok: boolean; model?: string } | null>(null);
   const [catalog, setCatalog] = useState<Product[]>([]);
@@ -95,6 +96,7 @@ export function HerencIA() {
     try {
       const s = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}");
       setEnabled(s.enabled !== false);
+      setBackgroundUrl(String(s.backgroundUrl || ""));
     } catch {}
   }, []);
 
@@ -246,7 +248,7 @@ export function HerencIA() {
     <div
       className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-6 sm:px-5 lg:py-[60px]"
       style={{
-        backgroundImage: "linear-gradient(90deg, rgba(46,64,31,.05), rgba(145,84,26,.02)), url('https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?auto=format&fit=crop&w=2560&q=95')",
+        backgroundImage: "linear-gradient(90deg, rgba(46,64,31,.03), rgba(145,84,26,.02)), url(\"" + (backgroundUrl || "https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?auto=format&fit=crop&w=2560&q=95") + "\")",
         backgroundSize: "cover",
         backgroundPosition: "center center",
               backgroundBlendMode: "normal",
