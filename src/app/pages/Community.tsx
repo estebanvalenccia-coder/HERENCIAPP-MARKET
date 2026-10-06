@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { ExternalLink, Heart, Instagram, MessageCircle, Sparkles, Users } from "lucide-react";
+import { backendStorage } from "../lib/backendStorage";
 
 const updates = [
   {
@@ -19,6 +21,23 @@ const updates = [
 ];
 
 export function Community() {
+  const [community, setCommunity] = useState<any>({ posts: [], instagramUrl: "", whatsappUrl: "" });
+
+  useEffect(() => {
+    const load = () => {
+      try {
+        const parsed = JSON.parse(backendStorage.getItem("communityContent") || "{}");
+        setCommunity({ posts: Array.isArray(parsed.posts) ? parsed.posts : [], instagramUrl: parsed.instagramUrl || "", whatsappUrl: parsed.whatsappUrl || "" });
+      } catch {}
+    };
+    load();
+    window.addEventListener("backend-storage", load);
+    return () => window.removeEventListener("backend-storage", load);
+  }, []);
+
+  const publishedPosts = community.posts.filter((post: any) => post?.published);
+  const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ title: post.title, description: post.text, image: post.imageUrl })) : updates;
+
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
       <section className="border-b border-[#e8e2d8] bg-[#f4f0e7]">
@@ -44,7 +63,7 @@ export function Community() {
           <span className="hidden text-sm text-[#718076] sm:block">Contenido seleccionado por Herencia</span>
         </div>
         <div className="grid gap-5 md:grid-cols-3">
-          {updates.map((item) => (
+          {visibleUpdates.map((item: any) => (
             <article key={item.title} className="overflow-hidden rounded-[28px] border border-[#e4ded2] bg-white shadow-[0_12px_36px_rgba(39,61,45,0.06)]">
               <img src={item.image} alt="" className="aspect-[4/3] w-full object-cover" />
               <div className="p-6">
@@ -62,7 +81,7 @@ export function Community() {
 
       <section className="mx-auto max-w-7xl px-5 pb-16 sm:px-8 lg:px-10">
         <div className="grid gap-5 lg:grid-cols-2">
-          <a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" className="group rounded-[28px] border border-[#e4ded2] bg-white p-7 transition hover:-translate-y-0.5 hover:shadow-lg">
+          <a href={community.instagramUrl || "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer" className="group rounded-[28px] border border-[#e4ded2] bg-white p-7 transition hover:-translate-y-0.5 hover:shadow-lg">
             <div className="flex items-start justify-between gap-4">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#f1ede4]"><Instagram className="h-6 w-6" /></div>
               <ExternalLink className="h-5 w-5 text-[#718076]" />
@@ -72,7 +91,7 @@ export function Community() {
             <span className="mt-6 inline-flex text-sm font-black text-[#315b42]">Abrir Instagram</span>
           </a>
 
-          <a href="https://wa.me/" target="_blank" rel="noopener noreferrer" className="group rounded-[28px] border border-[#e4ded2] bg-[#173d2a] p-7 text-white transition hover:-translate-y-0.5 hover:shadow-lg">
+          <a href={community.whatsappUrl || "https://wa.me/"} target="_blank" rel="noopener noreferrer" className="group rounded-[28px] border border-[#e4ded2] bg-[#173d2a] p-7 text-white transition hover:-translate-y-0.5 hover:shadow-lg">
             <div className="flex items-start justify-between gap-4">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10"><Users className="h-6 w-6" /></div>
               <ExternalLink className="h-5 w-5 text-white/60" />

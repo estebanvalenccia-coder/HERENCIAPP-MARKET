@@ -37,6 +37,7 @@ import {
   ScanLine,
   BarChart3,
   Bot,
+  MessageCircleHeart,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -75,6 +76,7 @@ import { AdminInventoryLocations } from "../components/admin/AdminInventoryLocat
 import { AdminInventoryLots } from "../components/admin/AdminInventoryLots";
 import { AdminAnalytics } from "../components/admin/AdminAnalytics";
 import { AdminHerenciaSales } from "../components/admin/AdminHerenciaSales";
+import { AdminCommunity } from "../components/admin/AdminCommunity";
 
 type AdminSection =
   | "dashboard"
@@ -93,6 +95,7 @@ type AdminSection =
   | "flower-costs"
   | "bouquet-catalog"
   | "content"
+  | "community"
   | "delivery"
   | "neural"
   | "audit"
@@ -384,6 +387,7 @@ export function AdminDashboard() {
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "bouquet-catalog" as AdminSection, label: "Flores del creador", icon: Flower2, badge: "EDITAR" },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
+    { id: "community" as AdminSection, label: "Comunidad / Novedades", icon: MessageCircleHeart, badge: "NUEVO" },
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
     { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
@@ -921,6 +925,8 @@ export function AdminDashboard() {
               onManageCollections={() => setCurrentSection("collections")}
             />
           )}
+
+          {currentSection === "community" && <AdminCommunity />}
 
           {currentSection === "delivery" && <AdminDeliveryPanel />}
 
