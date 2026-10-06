@@ -147,8 +147,15 @@ app.use((req, res, next) => {
   next();
 });
 
-const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
-const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+function readEnvCompat(name) {
+  const direct = process.env[name];
+  if (direct !== undefined && direct !== "") return String(direct);
+  const compatibleKey = Object.keys(process.env).find((key) => key.trim() === name);
+  return compatibleKey ? String(process.env[compatibleKey] || "") : "";
+}
+
+const adminUsername = readEnvCompat("ADMIN_USERNAME").trim();
+const adminPassword = readEnvCompat("ADMIN_PASSWORD");
 const sessionSecret = String(
   process.env.ADMIN_SESSION_SECRET || (!isProduction ? process.env.JWT_SECRET || "" : "")
 );
@@ -195,7 +202,7 @@ function verifyAdminTotp(code) {
   if (!adminTotpSecret) return true;
   const normalized = String(code || "").replace(/\D/g, "");
   if (!/^\d{6}$/.test(normalized)) return false;
-  return [-1, 0, 1].some((offset) => {
+  return [-2, -1, 0, 1, 2].some((offset) => {
     const expected = adminTotpCode(adminTotpSecret, Date.now() + offset * 30000);
     return crypto.timingSafeEqual(Buffer.from(normalized), Buffer.from(expected));
   });
@@ -1474,13 +1481,26 @@ app.post("/api/admin/login", (req, res) => {
   }
 
   const { username, password, otp } = req.body || {};
+  const normalizedUsername = String(username || "").trim();
+  const submittedPassword = String(password || "");
 
-  if (username !== adminUsername || password !== adminPassword) {
-    return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+  const usernameOk = normalizedUsername === adminUsername;
+  const passwordOk =
+    submittedPassword === adminPassword ||
+    submittedPassword.trim() === adminPassword.trim();
+
+  if (!usernameOk || !passwordOk) {
+    return res.status(401).json({
+      error: "Usuario o contraseña incorrectos",
+      field: !usernameOk ? "username" : "password",
+    });
   }
 
   if (!verifyAdminTotp(otp)) {
-    return res.status(401).json({ error: "Código de verificación incorrecto" });
+    return res.status(401).json({
+      error: "Código de verificación incorrecto",
+      field: "otp",
+    });
   }
 
   res.setHeader(
