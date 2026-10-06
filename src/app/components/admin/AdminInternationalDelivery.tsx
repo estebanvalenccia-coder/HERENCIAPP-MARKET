@@ -15,6 +15,7 @@ export function AdminInternationalDelivery() {
   const [settings, setSettings] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
   const [products, setProducts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploadingHero, setUploadingHero] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [tab, setTab] = useState<Tab>("general");
   const selected = useMemo(() => new Set(settings.selectedProductIds.map(String)), [settings.selectedProductIds]);
@@ -39,6 +40,32 @@ export function AdminInternationalDelivery() {
       toast.error(error?.message || "No se pudo guardar");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadHero = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Selecciona una imagen válida");
+    if (file.size > 12 * 1024 * 1024) return toast.error("La imagen supera 12 MB");
+    setUploadingHero(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+        reader.readAsDataURL(file);
+      });
+      const uploaded = await backendApi.uploadSiteMedia({ dataUrl, filename: `colombianisimas-hero-${Date.now()}.${file.name.split(".").pop() || "jpg"}` });
+      const url = String(uploaded.media?.url || "");
+      if (!url) throw new Error("No se pudo guardar la imagen");
+      setSettings((current) => ({ ...current, heroImageUrl: url }));
+      toast.success("Portada subida. Pulsa Guardar y publicar.");
+    } catch (error:any) {
+      toast.error(error?.message || "No se pudo subir la portada");
+    } finally {
+      setUploadingHero(false);
     }
   };
 
@@ -140,7 +167,8 @@ export function AdminInternationalDelivery() {
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Foto de fondo · URL</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} placeholder="https://..." className="w-full rounded-xl border bg-background px-4 py-3" /><span className="mt-1 block text-xs text-muted-foreground">Pega aquí la URL de la nueva imagen y verás la vista previa arriba.</span></label>
+              <div className="lg:col-span-2 rounded-2xl border bg-card p-4"><span className="mb-2 block text-sm font-bold">Subir foto de portada</span><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground"><ImageIcon className="h-4 w-4"/>{uploadingHero ? "Subiendo…" : "Subir foto"}<input type="file" accept="image/*" className="hidden" disabled={uploadingHero} onChange={uploadHero}/></label><p className="mt-2 text-xs text-muted-foreground">Se guarda en la biblioteca multimedia de Herencia y queda lista para Colombianísimas.</p></div>
+              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">O usar URL de fondo</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} placeholder="https://..." className="w-full rounded-xl border bg-background px-4 py-3" /><span className="mt-1 block text-xs text-muted-foreground">Pega aquí la URL de la nueva imagen y verás la vista previa arriba.</span></label>
               <label><span className="mb-2 block text-sm font-bold">Sello</span><input value={settings.heroKicker} onChange={(e)=>setSettings({...settings,heroKicker:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Botón principal</span><input value={settings.heroCtaLabel} onChange={(e)=>setSettings({...settings,heroCtaLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Título</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
