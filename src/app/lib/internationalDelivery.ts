@@ -23,6 +23,8 @@ export type ColombiaDeliverySettings = {
   regionLabel: string;
   headline: string;
   description: string;
+  heroKicker: string;
+  heroCtaLabel: string;
   heroImageUrl: string;
   giftMessageEnabled: boolean;
   recipientPhoneRequired: boolean;
@@ -42,8 +44,10 @@ export const defaultColombiaDeliverySettings: ColombiaDeliverySettings = {
   country: "Colombia",
   flag: "🇨🇴",
   regionLabel: "Cali, Candelaria y alrededores",
-  headline: "Ahora también en Cali, Colombia",
-  description: "Envía plantas, flores y regalos a tus seres queridos en Cali, Candelaria y alrededores.",
+  headline: "Cali, flores que hablan desde el corazón",
+  description: "Envía plantas, flores y regalos a tus seres queridos en Cali, Candelaria y alrededores. Tradición, color y vida en cada entrega.",
+  heroKicker: "COLOMBIANÍSIMAS",
+  heroCtaLabel: "Enviar un regalo a Cali",
   heroImageUrl: "https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1800&q=85",
   giftMessageEnabled: true,
   recipientPhoneRequired: true,

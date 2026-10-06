@@ -187,20 +187,39 @@ export function ColombiaDelivery() {
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
       <section className="relative overflow-hidden">
-        <img src={settings.heroImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/95 via-[#102b20]/72 to-[#102b20]/10" />
-        <div className="relative mx-auto flex min-h-[520px] max-w-7xl items-center px-5 py-16 sm:px-8 lg:px-10">
-          <div className="max-w-2xl text-white">
-            <p className="text-sm font-black uppercase tracking-[0.25em] text-white/75">{settings.flag} Herencia internacional</p>
-            <h1 className="mt-4 text-5xl font-medium leading-tight sm:text-6xl">{settings.headline}</h1>
-            <p className="mt-6 max-w-xl text-lg leading-8 text-white/90">{settings.description}</p>
-            <button onClick={() => document.getElementById("catalogo-colombia")?.scrollIntoView({ behavior:"smooth" })} className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-black text-white shadow-lg transition hover:bg-[#234832]">
-              Enviar un regalo a Cali <ChevronRight className="h-4 w-4" />
+        <img src={settings.heroImageUrl} alt="Herencia Colombia en Cali" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/95 via-[#102b20]/70 to-[#102b20]/18" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f4d21f] via-[#184aa5] to-[#c9282d]" />
+        <div className="relative mx-auto flex min-h-[560px] max-w-7xl items-center px-5 pb-24 pt-16 sm:px-8 lg:px-10">
+          <div className="max-w-3xl text-white">
+            <p className="inline-flex items-center gap-3 text-sm font-black uppercase tracking-[0.28em] text-white/90">
+              <span>{settings.flag}</span><span>{settings.heroKicker || "COLOMBIANÍSIMAS"}</span>
+            </p>
+            <h1 className="mt-4 max-w-3xl text-5xl font-medium leading-[1.02] sm:text-6xl lg:text-7xl">{settings.headline}</h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/90">{settings.description}</p>
+            <button onClick={() => document.getElementById("catalogo-colombia")?.scrollIntoView({ behavior:"smooth" })} className="mt-8 inline-flex items-center gap-2 rounded-full border border-white/20 bg-[#315b42] px-6 py-3.5 font-black text-white shadow-[0_16px_40px_rgba(0,0,0,.24)] transition hover:-translate-y-0.5 hover:bg-[#234832]">
+              {settings.heroCtaLabel || "Enviar un regalo a Cali"} <ChevronRight className="h-4 w-4" />
             </button>
-            <div className="mt-8 flex flex-wrap gap-5 text-sm font-bold text-white/85">
-              <span className="inline-flex items-center gap-2"><Gift className="h-4 w-4"/>Plantas y regalos</span>
-              <span className="inline-flex items-center gap-2"><Truck className="h-4 w-4"/>{settings.sameDayLabel}</span>
-              <span className="inline-flex items-center gap-2"><Heart className="h-4 w-4"/>Mensajes personalizados</span>
+            <div className="mt-8 flex flex-wrap gap-3 text-sm font-bold text-white/90">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Gift className="h-4 w-4"/>Plantas y flores frescas</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Truck className="h-4 w-4"/>{settings.sameDayLabel}</span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Heart className="h-4 w-4"/>Mensajes desde el corazón</span>
+            </div>
+          </div>
+        </div>
+        <div className="relative mx-auto -mt-16 max-w-7xl px-5 pb-2 sm:px-8 lg:px-10">
+          <div className="grid gap-3 rounded-[28px] border border-[#e4ded4] bg-[#fffdf9]/95 p-3 shadow-[0_24px_70px_rgba(31,62,44,0.18)] backdrop-blur md:grid-cols-[220px_1fr]">
+            <div className="flex items-center gap-3 rounded-2xl bg-[#315b42] px-5 py-4 text-white">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/15"><MapPin className="h-5 w-5"/></span>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-white/70">Entrega local</p><p className="font-black">{settings.regionLabel}</p></div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {settings.zones.filter((z)=>z.enabled).slice(0,3).map((z)=>(
+                <button key={z.id} onClick={()=>{setZoneId(z.id);document.getElementById("catalogo-colombia")?.scrollIntoView({behavior:"smooth"});}} className="group flex items-center justify-between rounded-2xl border border-[#e5dfd4] bg-white px-4 py-3 text-left transition hover:border-[#315b42]/40 hover:bg-[#f3f7f2]">
+                  <div><p className="font-black">{z.name}</p><p className="mt-0.5 text-xs font-semibold text-[#315b42]">{z.eta}</p><p className="mt-0.5 text-[11px] text-[#7b877e]">{z.note}</p></div>
+                  <ChevronRight className="h-4 w-4 text-[#78907e] transition group-hover:translate-x-0.5"/>
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -222,8 +241,8 @@ export function ColombiaDelivery() {
           <div>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Catálogo Colombia</p>
-                <h2 className="mt-2 text-3xl font-medium">Regalos populares en Cali</h2>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Nuestra selección en Cali</p>
+                <h2 className="mt-2 text-3xl font-medium">Regalos con esencia caleña</h2>
               </div>
               <span className="text-sm font-bold text-[#6c786f]">{filteredProducts.length} opciones</span>
             </div>

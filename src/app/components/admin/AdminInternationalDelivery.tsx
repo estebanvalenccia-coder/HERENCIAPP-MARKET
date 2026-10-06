@@ -110,9 +110,11 @@ export function AdminInternationalDelivery() {
             </div>
             <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Cobra pedidos Colombia en COP usando la misma cuenta Stripe de Herencia." />
             <div className="grid gap-4 lg:grid-cols-2">
-              <label><span className="mb-2 block text-sm font-bold">Título principal</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label><span className="mb-2 block text-sm font-bold">Sello sobre la portada</span><input value={settings.heroKicker} onChange={(e)=>setSettings({...settings,heroKicker:e.target.value})} placeholder="COLOMBIANÍSIMAS" className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Cobertura visible</span><input value={settings.regionLabel} onChange={(e)=>setSettings({...settings,regionLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Título principal</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Descripción</span><textarea value={settings.description} onChange={(e)=>setSettings({...settings,description:e.target.value})} rows={3} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+              <label><span className="mb-2 block text-sm font-bold">Texto del botón principal</span><input value={settings.heroCtaLabel} onChange={(e)=>setSettings({...settings,heroCtaLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Imagen de portada (URL)</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">Texto de entrega rápida</span><input value={settings.sameDayLabel} onChange={(e)=>setSettings({...settings,sameDayLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
             </div>
@@ -122,17 +124,20 @@ export function AdminInternationalDelivery() {
         {tab === "zones" && (
           <div className="mt-6">
             <div className="flex items-center justify-between gap-3">
-              <div><h3 className="text-xl font-bold">Zonas y domicilios</h3><p className="text-sm text-muted-foreground">Gestiona precio en COP, equivalente en EUR y tiempos.</p></div>
+              <div><h3 className="text-xl font-bold">Zonas, precio y tiempo de entrega</h3><p className="text-sm text-muted-foreground">Aquí decides exactamente lo que verá el cliente: zona, domicilio y tiempo estimado.</p></div>
               <button onClick={() => setSettings({...settings,zones:[...settings.zones,{id:`zona-${Date.now()}`,name:"Nueva zona",enabled:true,feeEUR:0,feeCOP:0,eta:"A confirmar",note:""}]})} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Plus className="h-4 w-4"/>Añadir zona</button>
             </div>
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 hidden grid-cols-[auto_1.2fr_.6fr_.6fr_1fr_1.4fr_auto] gap-3 px-4 text-[11px] font-black uppercase tracking-wide text-muted-foreground xl:grid">
+              <span>Activo</span><span>Zona</span><span>Precio COP</span><span>EUR aprox.</span><span>Tiempo de entrega</span><span>Nota visible</span><span />
+            </div>
+            <div className="mt-2 space-y-3">
               {settings.zones.map((zone,index)=>(
                 <div key={zone.id} className="grid gap-3 rounded-2xl border p-4 xl:grid-cols-[auto_1.2fr_.6fr_.6fr_1fr_1.4fr_auto] xl:items-center">
                   <input type="checkbox" checked={zone.enabled} onChange={(e)=>patchZone(index,{enabled:e.target.checked})} />
                   <input value={zone.name} onChange={(e)=>patchZone(index,{name:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
                   <input type="number" min="0" step="100" value={zone.feeCOP} onChange={(e)=>patchZone(index,{feeCOP:Number(e.target.value)})} className="rounded-xl border bg-background px-3 py-2" placeholder="COP" />
                   <input type="number" min="0" step="0.1" value={zone.feeEUR} onChange={(e)=>patchZone(index,{feeEUR:Number(e.target.value)})} className="rounded-xl border bg-background px-3 py-2" placeholder="EUR" />
-                  <input value={zone.eta} onChange={(e)=>patchZone(index,{eta:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
+                  <input value={zone.eta} onChange={(e)=>patchZone(index,{eta:e.target.value})} placeholder="Ej. Hoy · 2–4 h" aria-label="Tiempo de entrega visible" className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2 font-semibold text-primary" />
                   <input value={zone.note} onChange={(e)=>patchZone(index,{note:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
                   <button onClick={()=>setSettings({...settings,zones:settings.zones.filter((_,i)=>i!==index)})} className="rounded-xl p-2 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4"/></button>
                 </div>
