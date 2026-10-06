@@ -2034,6 +2034,146 @@ app.post("/api/customer/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+const HERENCIA_IA_USAGE_PREFIX = "herenciaIaUsageV3";
+
+function herenciaIaToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function herenciaIaRules() {
+  const raw = await readStorageValue("herenciaSettings");
+  const parsed = parseStoredJson(raw, {});
+  const access = parsed?.access || {};
+  return {
+    visitorDailyLimit: Math.max(1, Math.min(100, Number(access.visitorDailyLimit || 2))),
+    customerDailyLimit: Math.max(1, Math.min(100, Number(access.customerDailyLimit || 5))),
+    vipPlantSpend: Math.max(1, Number(access.vipPlantSpend || 50)),
+  };
+}
+
+function herenciaIaPlantItem(item) {
+  const haystack = [
+    item?.name,
+    item?.title,
+    item?.productName,
+    item?.category,
+    item?.type,
+    ...(Array.isArray(item?.collections) ? item.collections : []),
+  ].filter(Boolean).join(" ");
+
+  return (
+    String(item?.type || "").toLowerCase() === "plant" ||
+    String(item?.category || "").toLowerCase() === "plantas" ||
+    /\b(planta|plantas|monstera|pothos|potos|ficus|cactus|suculenta|orqu[ií]dea|palmera|bonsai|calathea|alocasia|philodendron|sansevieria|zamioculca|strelitzia|pachira|kentia|areca|dracaena|begonia|pilea)\b/i.test(haystack)
+  );
+}
+
+async function herenciaIaPlantSpend(email) {
+  if (!email) return 0;
+  let orders = [];
+  if (hasNeon()) {
+    orders = await listNeonOrders({ email, statuses: PAID_STATUSES, limit: 2000 });
+  } else if (supabase) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("items,status")
+      .eq("customer_email", email)
+      .in("status", PAID_STATUSES);
+    if (error) throw error;
+    orders = data || [];
+  }
+
+  return Number(
+    orders.reduce((orderSum, order) => {
+      const items = Array.isArray(order?.items) ? order.items : [];
+      return orderSum + items.reduce((itemSum, item) => {
+        if (!herenciaIaPlantItem(item)) return itemSum;
+        const qty = Math.max(1, Number(item?.quantity || item?.qty || 1));
+        const unit = Math.max(0, Number(item?.price || item?.unitPrice || 0));
+        return itemSum + qty * unit;
+      }, 0);
+    }, 0).toFixed(2)
+  );
+}
+
+async function herenciaIaAccessState(req, res) {
+  const rules = await herenciaIaRules();
+  const session = getCustomerSession(req);
+  const visitorId = session ? "" : getVisitorId(req, res);
+  const identity = session ? `customer:${session.customerId}` : `visitor:${visitorId}`;
+  const email = session ? normalizeCustomerEmail(session.email) : "";
+  const registered = Boolean(session);
+  const plantSpend = registered ? await herenciaIaPlantSpend(email) : 0;
+  const vip = registered && plantSpend >= rules.vipPlantSpend;
+  const dailyLimit = registered ? rules.customerDailyLimit : rules.visitorDailyLimit;
+  const storageKey = `${HERENCIA_IA_USAGE_PREFIX}:${herenciaIaToday()}:${crypto.createHash("sha256").update(identity).digest("hex").slice(0,24)}`;
+  const used = Math.max(0, Number(parseStoredJson(await readStorageValue(storageKey), { used: 0 })?.used || 0));
+  const remaining = vip ? null : Math.max(0, dailyLimit - used);
+
+  return {
+    storageKey,
+    public: {
+      authenticated: registered,
+      email,
+      role: vip ? "vip" : registered ? "customer" : "visitor",
+      vip,
+      plantSpend,
+      vipPlantSpend: rules.vipPlantSpend,
+      dailyLimit,
+      used,
+      remaining,
+      unlimited: vip,
+      date: herenciaIaToday(),
+    },
+  };
+}
+
+app.get("/api/herencia-ai/access", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const state = await herenciaIaAccessState(req, res);
+    res.json({ ok: true, ...state.public });
+  } catch (error) {
+    console.error("HerencIA access:", error?.message || error);
+    res.status(500).json({ error: "No se pudo comprobar el acceso a Herenc(IA)" });
+  }
+});
+
+app.post("/api/herencia-ai/consume", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const state = await herenciaIaAccessState(req, res);
+    if (state.public.vip) {
+      return res.json({ ok: true, ...state.public });
+    }
+
+    if (Number(state.public.remaining || 0) <= 0) {
+      return res.status(429).json({
+        error: "Has alcanzado tu límite diario de Herenc(IA).",
+        ...state.public,
+      });
+    }
+
+    const nextUsed = Number(state.public.used || 0) + 1;
+    await upsertStorageValue(state.storageKey, JSON.stringify({
+      used: nextUsed,
+      date: state.public.date,
+      role: state.public.role,
+      updatedAt: new Date().toISOString(),
+    }));
+
+    res.json({
+      ok: true,
+      ...state.public,
+      used: nextUsed,
+      remaining: Math.max(0, Number(state.public.dailyLimit || 0) - nextUsed),
+    });
+  } catch (error) {
+    console.error("HerencIA consume:", error?.message || error);
+    res.status(500).json({ error: "No se pudo registrar el uso de Herenc(IA)" });
+  }
+});
+
 const COMMUNITY_REACTIONS_KEY = "communityReactions";
 
 async function loadCommunityReactions() {
