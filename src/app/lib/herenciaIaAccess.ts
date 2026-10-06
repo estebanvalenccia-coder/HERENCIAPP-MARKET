@@ -1,37 +1,43 @@
 export const HERENCIA_IA_ACCESS_RULES = {
   visitorDailyLimit: 2,
   registeredCustomerDailyLimit: 5,
-  vipMinimumSpend: 50,
+  vipMinimumPlantSpend: 50,
 };
 
-export function getHerenciaIaDailyLimit(email?: string) {
-  return email ? HERENCIA_IA_ACCESS_RULES.registeredCustomerDailyLimit : HERENCIA_IA_ACCESS_RULES.visitorDailyLimit;
+export function getHerenciaIaDailyLimit(registered = false) {
+  return registered
+    ? HERENCIA_IA_ACCESS_RULES.registeredCustomerDailyLimit
+    : HERENCIA_IA_ACCESS_RULES.visitorDailyLimit;
 }
 
-export function isHerenciaIaVip(totalPaid: number) {
-  return Number(totalPaid || 0) >= HERENCIA_IA_ACCESS_RULES.vipMinimumSpend;
+export function isHerenciaIaVip(plantSpend: number) {
+  return Number(plantSpend || 0) >= HERENCIA_IA_ACCESS_RULES.vipMinimumPlantSpend;
 }
 
 export function getHerenciaIaAccessMessage({
   email,
-  totalPaid = 0,
+  registered = false,
+  plantSpend = 0,
   remainingMessages = 0,
 }: {
   email?: string;
-  totalPaid?: number;
+  registered?: boolean;
+  plantSpend?: number;
   remainingMessages?: number;
 }) {
+  if (isHerenciaIaVip(plantSpend)) {
+    return "Acceso VIP sin límite diario: has superado 50 € en compras pagadas de plantas.";
+  }
+
   if (remainingMessages <= 0) {
-    return "Has consumido tus mensajes de Herenc(IA) de hoy. Vuelve mañana para seguir usando el asistente.";
+    return "Has consumido tus mensajes de Herenc(IA) de hoy. Vuelve mañana o supera 50 € en compras pagadas de plantas para seguir usándola.";
   }
 
-  if (!email) {
-    return "Acceso de visitante disponible.";
+  if (!email) return "Acceso de visitante disponible.";
+
+  if (!registered) {
+    return "Ese correo no figura todavía como cliente registrado. Se aplica el límite de visitante.";
   }
 
-  if (isHerenciaIaVip(totalPaid)) {
-    return "Acceso VIP disponible. Gracias por ser uno de nuestros mejores clientes.";
-  }
-
-  return "Acceso de cliente disponible.";
+  return "Acceso de cliente registrado disponible.";
 }
