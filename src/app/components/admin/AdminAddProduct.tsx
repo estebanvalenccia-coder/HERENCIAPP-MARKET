@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
-import { backendApi } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { COLOMBIA_DELIVERY_STORAGE_KEY, parseColombiaDeliverySettings } from "../../lib/internationalDelivery";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
 import {
   COMMERCE_COLLECTIONS,
@@ -111,6 +112,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
   );
   const [saving, setSaving] = useState(false);
+  const [publishDestination, setPublishDestination] = useState<"main" | "colombia" | "both">("main");
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualError, setVisualError] = useState("");
@@ -587,7 +589,17 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
         }
       }
 
-      await backendApi.createCommerceProduct(finalPayload);
+      const created:any = await backendApi.createCommerceProduct({ ...finalPayload, metadata: { ...(finalPayload.metadata || {}), publishDestination } });
+      const createdProduct = created?.product || created?.data?.product || created;
+      const createdId = String(createdProduct?.id || "");
+      if ((publishDestination === "colombia" || publishDestination === "both") && createdId) {
+        const colombia = parseColombiaDeliverySettings(backendStorage.getItem(COLOMBIA_DELIVERY_STORAGE_KEY));
+        if (!colombia.selectedProductIds.map(String).includes(createdId)) {
+          const next = { ...colombia, selectedProductIds: [...colombia.selectedProductIds.map(String), createdId] };
+          const saved = await backendStorage.setItem(COLOMBIA_DELIVERY_STORAGE_KEY, JSON.stringify(next));
+          if (!saved.ok) throw new Error(saved.error || "El producto se creó, pero no pudo añadirse a Colombianísimas");
+        }
+      }
 
       window.dispatchEvent(new Event("backend-storage"));
       toast.success(
@@ -618,7 +630,7 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
         Volver al catálogo
       </button>
 
-      <div className="rounded-3xl border border-border bg-card p-5 sm:p-8">
+      <div className="mb-5 rounded-3xl border border-primary/20 bg-primary/5 p-5"><p className="text-sm font-black uppercase tracking-[.16em] text-primary">¿Dónde quieres venderlo?</p><div className="mt-3 grid gap-3 sm:grid-cols-3">{[["main","Herencia principal","Solo catálogo de Barcelona"],["colombia","Colombianísimas","Solo experiencia Cali / Colombia"],["both","En ambos","Herencia principal + Colombianísimas"]].map(([id,title,detail]) => (<button key={id} type="button" onClick={()=>setPublishDestination(id as any)} className={`rounded-2xl border p-4 text-left transition ${publishDestination===id?"border-primary bg-background ring-2 ring-primary/15":"bg-background hover:border-primary/40"}`}><span className="block font-bold">{title}</span><span className="mt-1 block text-xs text-muted-foreground">{detail}</span></button>))}</div></div>\n\n      <div className="rounded-3xl border border-border bg-card p-5 sm:p-8">
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">
