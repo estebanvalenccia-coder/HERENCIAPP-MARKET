@@ -43,9 +43,9 @@ export const defaultColombiaDeliverySettings: ColombiaDeliverySettings = {
   enabled: true,
   country: "Colombia",
   flag: "🇨🇴",
-  regionLabel: "Cali, Candelaria y alrededores",
+  regionLabel: "Cali, Candelaria, Palmira y alrededores",
   headline: "Cali, flores que hablan desde el corazón",
-  description: "Envía plantas, flores y regalos a tus seres queridos en Cali, Candelaria y alrededores. Tradición, color y vida en cada entrega.",
+  description: "Envía plantas, flores y regalos a tus seres queridos en Cali, Candelaria, Palmira y alrededores. Tradición, color y vida en cada entrega.",
   heroKicker: "COLOMBIANÍSIMAS",
   heroCtaLabel: "Enviar un regalo a Cali",
   heroImageUrl: "https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1800&q=85",
@@ -60,7 +60,8 @@ export const defaultColombiaDeliverySettings: ColombiaDeliverySettings = {
   zones: [
     { id: "cali", name: "Cali (urbano)", enabled: true, feeEUR: 2.3, feeCOP: 9900, eta: "Hoy o mañana", note: "Cobertura urbana" },
     { id: "candelaria", name: "Candelaria", enabled: true, feeEUR: 3, feeCOP: 12900, eta: "1–2 días", note: "Candelaria y sectores cercanos" },
-    { id: "alrededores", name: "Alrededores", enabled: true, feeEUR: 3.5, feeCOP: 14900, eta: "2–3 días", note: "Palmira, Jamundí, Yumbo y otras zonas bajo confirmación" },
+    { id: "palmira", name: "Palmira", enabled: true, feeEUR: 3.2, feeCOP: 13900, eta: "1–2 días", note: "Palmira urbana y sectores cercanos" },
+    { id: "alrededores", name: "Alrededores", enabled: true, feeEUR: 3.5, feeCOP: 14900, eta: "2–3 días", note: "Jamundí, Yumbo y otras zonas bajo confirmación" },
   ],
 };
 
