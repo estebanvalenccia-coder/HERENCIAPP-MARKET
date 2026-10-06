@@ -1258,9 +1258,14 @@ app.post(
         } else {
           let inventoryOrder = updatedOrder;
           try {
-            await consumeCommerceStockReservation(updatedOrder.id);
-            const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
-            inventoryOrder = inventoryResult.order || updatedOrder;
+            if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
+              const inventoryResult = await commitColombiaOrderInventory(updatedOrder);
+              inventoryOrder = inventoryResult.order || updatedOrder;
+            } else {
+              await consumeCommerceStockReservation(updatedOrder.id);
+              const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
+              inventoryOrder = inventoryResult.order || updatedOrder;
+            }
           } catch (inventoryError) {
             console.error("Webhook pagado con incidencia de inventario:", inventoryError?.message || inventoryError);
             await addAutomationNotification({
@@ -3479,7 +3484,8 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   let nextMetadata = previousOrder.metadata || {};
   const isTpvOrder = String(nextMetadata.source || "").startsWith("TPV_ADMIN");
-  const isOnlineOrder = String(nextMetadata.source || "") === "frontend_checkout";
+  const isOnlineOrder = ["frontend_checkout", "colombia_checkout"].includes(String(nextMetadata.source || ""));
+  const isColombiaOrder = String(nextMetadata.source || "") === "colombia_checkout";
 
   if (
     status === "cancelled" &&
@@ -3529,8 +3535,12 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   ) {
     try {
       if (nextMetadata.inventoryCommittedAt && !nextMetadata.inventoryRestockedAt) {
-        await restockCommerceCoreStock(previousOrder.items || []);
-        await restockOnlineOrderInventory(previousOrder);
+        if (isColombiaOrder) {
+          await restockColombiaOrderInventory(previousOrder);
+        } else {
+          await restockCommerceCoreStock(previousOrder.items || []);
+          await restockOnlineOrderInventory(previousOrder);
+        }
         nextMetadata = {
           ...nextMetadata,
           inventoryRestockedAt: new Date().toISOString(),
@@ -3615,7 +3625,7 @@ app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
     const order = await getOrderPrimary(orderId);
 
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
-    if (String(order?.metadata?.source || "") !== "frontend_checkout") {
+    if (!["frontend_checkout", "colombia_checkout"].includes(String(order?.metadata?.source || ""))) {
       return res.status(400).json({ error: "Este reembolso está reservado para pedidos de la tienda online" });
     }
     if (order.status === "refunded" || order?.metadata?.refundedAt) {
@@ -3643,8 +3653,12 @@ app.post("/api/orders/:id/refund", requireAdmin, async (req, res) => {
 
     let metadata = order.metadata || {};
     if (metadata.inventoryCommittedAt && !metadata.inventoryRestockedAt) {
-      await restockCommerceCoreStock(order.items || []);
-      await restockOnlineOrderInventory(order);
+      if (String(metadata.source || "") === "colombia_checkout") {
+        await restockColombiaOrderInventory(order);
+      } else {
+        await restockCommerceCoreStock(order.items || []);
+        await restockOnlineOrderInventory(order);
+      }
       metadata = {
         ...metadata,
         inventoryRestockedAt: new Date().toISOString(),
@@ -6134,6 +6148,79 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   res.json({ result: JSON.parse(cleanContent) });
 });
 
+
+async function loadColombiaCheckoutConfig() {
+  return parseStoredJson(await readStorageValue("internationalDeliverySettings"), {});
+}
+
+async function commitColombiaOrderInventory(order) {
+  if (!order || String(order?.metadata?.source || "") !== "colombia_checkout") {
+    return { skipped: true, reason: "not_colombia_checkout", order };
+  }
+  const freshOrder = await getOrderPrimary(order.id);
+  if (!freshOrder) throw new Error("Pedido Colombia no encontrado");
+  if (freshOrder?.metadata?.inventoryCommittedAt) {
+    return { skipped: true, reason: "already_committed", order: freshOrder };
+  }
+
+  const config = await loadColombiaCheckoutConfig();
+  const overrides = { ...(config.productOverrides || {}) };
+
+  for (const item of Array.isArray(freshOrder.items) ? freshOrder.items : []) {
+    const id = String(item?.id || "");
+    const qty = Math.max(0, Math.floor(Number(item?.quantity || 0)));
+    if (!id || !qty) continue;
+    const current = { ...(overrides[id] || {}) };
+    if (!current.trackInventoryColombia) continue;
+    const stock = Math.max(0, Math.floor(Number(current.stockColombia || 0)));
+    if (stock < qty) throw new Error(`Stock Colombia insuficiente para ${item.name || id}. Disponible: ${stock}`);
+    current.stockColombia = stock - qty;
+    overrides[id] = current;
+  }
+
+  await upsertStorageValue("internationalDeliverySettings", JSON.stringify({
+    ...config,
+    productOverrides: overrides,
+  }));
+
+  const committedAt = new Date().toISOString();
+  const nextMetadata = {
+    ...(freshOrder.metadata || {}),
+    inventoryCommittedAt: committedAt,
+    inventoryCommitSource: "colombia_payment",
+  };
+  const updated = await patchOrderPrimary(freshOrder.id, { metadata: nextMetadata });
+  return { committed: true, order: updated };
+}
+
+async function restockColombiaOrderInventory(order) {
+  if (
+    !order ||
+    String(order?.metadata?.source || "") !== "colombia_checkout" ||
+    !order?.metadata?.inventoryCommittedAt ||
+    order?.metadata?.inventoryRestockedAt
+  ) return { skipped: true };
+
+  const config = await loadColombiaCheckoutConfig();
+  const overrides = { ...(config.productOverrides || {}) };
+
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    const id = String(item?.id || "");
+    const qty = Math.max(0, Math.floor(Number(item?.quantity || 0)));
+    if (!id || !qty) continue;
+    const current = { ...(overrides[id] || {}) };
+    if (!current.trackInventoryColombia) continue;
+    current.stockColombia = Math.max(0, Math.floor(Number(current.stockColombia || 0))) + qty;
+    overrides[id] = current;
+  }
+
+  await upsertStorageValue("internationalDeliverySettings", JSON.stringify({
+    ...config,
+    productOverrides: overrides,
+  }));
+  return { restored: true };
+}
+
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
   if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
 
@@ -6153,6 +6240,139 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
     if (customerEmail && !isValidEmail(customerEmail)) {
       return res.status(400).json({ error: "Email inválido" });
+    }
+
+    const checkoutMarket = String(metadata?.checkoutMarket || "").toLowerCase();
+    if (checkoutMarket === "colombia") {
+      const normalizedCurrency = String(currency || "").toLowerCase();
+      if (normalizedCurrency !== "cop") {
+        return res.status(400).json({ error: "Los pedidos de Colombia deben cobrarse en COP" });
+      }
+
+      const config = await loadColombiaCheckoutConfig();
+      if (!config?.enabled) return res.status(409).json({ error: "Herencia Colombia no está activa" });
+      if (!config?.paymentEnabled) return res.status(409).json({ error: "El pago online de Colombia está desactivado" });
+
+      const zoneId = String(metadata?.deliveryZoneId || "").trim();
+      const zone = (Array.isArray(config.zones) ? config.zones : []).find(
+        (entry) => String(entry?.id || "") === zoneId && entry?.enabled !== false
+      );
+      if (!zone) return res.status(409).json({ error: "Zona de entrega Colombia no disponible" });
+
+      const catalog = await loadAuthoritativeProducts();
+      const byId = new Map((Array.isArray(catalog) ? catalog : []).map((product) => [String(product?.id ?? ""), product]));
+      const selectedIds = new Set((Array.isArray(config.selectedProductIds) ? config.selectedProductIds : []).map(String));
+      const authoritativeItems = [];
+
+      for (const raw of items) {
+        const id = String(raw?.id ?? "").trim();
+        const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
+        if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
+        const product = byId.get(id);
+        if (!product || product.active === false || product.deletedAt) {
+          return res.status(409).json({ error: `Producto no disponible en Colombia: ${raw?.name || id}` });
+        }
+        if (selectedIds.size && !selectedIds.has(id)) {
+          return res.status(409).json({ error: `Producto no habilitado para Colombia: ${product.name}` });
+        }
+
+        const override = config.productOverrides?.[id] || {};
+        if (override.enabled === false) {
+          return res.status(409).json({ error: `Producto no disponible en Colombia: ${product.name}` });
+        }
+        const priceCOP = Math.max(0, Math.round(Number(override.priceCOP || 0)));
+        if (!priceCOP) {
+          return res.status(409).json({ error: `Configura el precio COP de ${product.name} en Administración` });
+        }
+        if (override.trackInventoryColombia) {
+          const stock = Math.max(0, Math.floor(Number(override.stockColombia || 0)));
+          if (quantity > stock) {
+            return res.status(409).json({ error: `Stock Colombia insuficiente para ${product.name}. Disponible: ${stock}` });
+          }
+        }
+
+        authoritativeItems.push({
+          id,
+          name: String(override.label || product.name || "Producto"),
+          sku: String(product.sku || ""),
+          category: String(product.category || ""),
+          price: priceCOP,
+          quantity,
+          image: product.image || undefined,
+          trackInventoryColombia: Boolean(override.trackInventoryColombia),
+        });
+      }
+
+      const subtotalCOP = authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const shippingCOP = Math.max(0, Math.round(Number(zone.feeCOP || 0)));
+      const totalCOP = subtotalCOP + shippingCOP;
+      const totalMinor = Math.round(totalCOP * 100);
+      if (!Number.isFinite(totalMinor) || totalMinor < 50) {
+        return res.status(400).json({ error: "Importe Colombia inválido para Stripe" });
+      }
+
+      const orderId = crypto.randomUUID();
+      const secureMetadata = {
+        ...metadata,
+        source: "colombia_checkout",
+        checkoutMarket: "colombia",
+        currency: "COP",
+        deliveryZoneId: zoneId,
+        deliveryZoneName: String(zone.name || ""),
+        pricingValidatedAt: new Date().toISOString(),
+        pricingSource: "backend_colombia_catalog_and_zone",
+      };
+
+      try {
+        await insertOrderPrimary({
+          id: orderId,
+          customer_email: customerEmail || null,
+          customer_name: customerName || null,
+          payment_method: "tarjeta",
+          delivery_method: "envio",
+          status: "payment_pending",
+          subtotal: subtotalCOP,
+          shipping: shippingCOP,
+          total: totalCOP,
+          items: authoritativeItems,
+          metadata: secureMetadata,
+        });
+
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: totalMinor,
+          currency: "cop",
+          receipt_email: customerEmail || undefined,
+          metadata: { orderId, requestedPaymentMethod: "tarjeta", checkoutMarket: "colombia" },
+          payment_method_types: ["card"],
+        });
+        await patchOrderPrimary(orderId, { stripe_payment_intent_id: paymentIntent.id });
+
+        return res.json({
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+          orderId,
+          totals: { subtotal: subtotalCOP, discount: 0, shipping: shippingCOP, total: totalCOP },
+          shippingQuote: {
+            ok: true,
+            price: shippingCOP,
+            currency: "COP",
+            destination: String(zone.name || ""),
+            distanceKm: 0,
+            distanceText: String(zone.note || ""),
+            durationText: String(zone.eta || ""),
+            origin: "Herencia Colombia",
+          },
+        });
+      } catch (error) {
+        await patchOrderPrimary(orderId, {
+          status: "payment_error",
+          metadata: { ...secureMetadata, stripeError: error.message },
+        }).catch(() => null);
+        return res.status(error.statusCode || 500).json({
+          error: error.message || "Error al crear el pago Colombia en Stripe",
+          code: error.code || "stripe_error",
+        });
+      }
     }
 
     const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
@@ -6630,9 +6850,14 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   if (isPaid) {
     let inventoryOrder = updatedOrder;
     try {
-      const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
-      inventoryOrder = inventoryResult.order || updatedOrder;
-      await consumeCommerceStockReservation(updatedOrder.id);
+      if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
+        const inventoryResult = await commitColombiaOrderInventory(updatedOrder);
+        inventoryOrder = inventoryResult.order || updatedOrder;
+      } else {
+        const inventoryResult = await commitOnlineOrderInventory(updatedOrder);
+        inventoryOrder = inventoryResult.order || updatedOrder;
+        await consumeCommerceStockReservation(updatedOrder.id);
+      }
     } catch (inventoryError) {
       console.error("Pago confirmado pero falló el compromiso de inventario:", inventoryError?.message || inventoryError);
       await addAutomationNotification({
