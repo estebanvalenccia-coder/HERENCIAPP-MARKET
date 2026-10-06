@@ -195,13 +195,13 @@ export function ColombiaDelivery() {
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.70)_0%,rgba(18,36,26,.42)_38%,rgba(18,36,26,.18)_68%,rgba(18,36,26,.28)_100%)]" />
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f4d21f] via-[#184aa5] to-[#c9282d]" />
 
-        <div className="relative mx-auto flex min-h-[510px] max-w-[1440px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
-          <div className="ml-auto w-full max-w-[820px] text-white lg:w-[64%]">
+        <div className="relative mx-auto flex min-h-[560px] max-w-[1536px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
+          <div className="ml-auto w-full max-w-[900px] text-white lg:w-[62%]">
             <p className="inline-flex items-center gap-3 text-[13px] font-black uppercase tracking-[0.34em] text-white/95">
               <span className="text-xl leading-none">{settings.flag}</span>
               <span>{settings.heroKicker || "COLOMBIANÍSIMAS"}</span>
             </p>
-            <h1 className="mt-4 max-w-[800px] font-serif text-5xl font-medium leading-[.98] tracking-[-.03em] sm:text-6xl lg:text-[72px]">
+            <h1 className="mt-4 max-w-[900px] font-serif text-5xl font-medium leading-[.98] tracking-[-.035em] sm:text-6xl lg:text-[76px]">
               {settings.headline}
             </h1>
             <p className="mt-6 max-w-[720px] text-lg leading-7 text-white/92">
@@ -223,7 +223,7 @@ export function ColombiaDelivery() {
           </div>
         </div>
 
-        <div className="relative mx-auto -mt-[72px] max-w-[1440px] px-5 pb-3 sm:px-8 lg:px-12">
+        <div className="relative mx-auto -mt-[72px] max-w-[1536px] px-5 pb-3 sm:px-8 lg:px-12">
           <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur md:grid-cols-[245px_1fr]">
             <div className="flex items-center gap-4 rounded-[20px] px-4 py-3 text-[#183126]">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#52715d] text-white shadow-sm"><MapPin className="h-6 w-6"/></span>
@@ -249,7 +249,7 @@ export function ColombiaDelivery() {
         </div>
       </section>
 
-      <section id="catalogo-colombia" className="mx-auto max-w-[1440px] px-5 pb-12 pt-8 sm:px-8 lg:px-12">
+      <section id="catalogo-colombia" className="mx-auto max-w-[1536px] px-5 pb-12 pt-8 sm:px-8 lg:px-12">
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.26em] text-[#807d73]">Nuestras categorías en Cali</p>
@@ -258,13 +258,13 @@ export function ColombiaDelivery() {
           <button onClick={()=>setCategory("Todas")} className="hidden text-sm font-black text-[#22372c] sm:inline-flex">Ver todas las categorías <ChevronRight className="ml-1 h-4 w-4"/></button>
         </div>
 
-        <div className="mt-6 flex gap-5 overflow-x-auto pb-4">
+        <div className="mt-6 grid grid-cols-3 gap-5 overflow-x-auto pb-4 sm:grid-cols-5 lg:grid-cols-10">
           {categories.filter((item)=>item!=="Todas").map((item)=>{
             const sample=visibleProducts.find((p)=>categoryOf(p)===item);
             const image=sample?.image || sample?.images?.[0]?.url || sample?.images?.[0];
             return (
               <button key={item} onClick={()=>setCategory(item)} className="group min-w-[92px] text-center">
-                <span className={`mx-auto block h-[88px] w-[88px] overflow-hidden rounded-[30px] border bg-[#f0e7d9] shadow-sm transition group-hover:-translate-y-1 ${category===item?"border-[#315b42] ring-2 ring-[#315b42]/15":"border-[#eadfce]"}`}>
+                <span className={`mx-auto block h-[92px] w-[92px] overflow-hidden rounded-[30px] border bg-[#f0e7d9] shadow-sm transition group-hover:-translate-y-1 ${category===item?"border-[#315b42] ring-2 ring-[#315b42]/15":"border-[#eadfce]"}`}>
                   {image ? <img src={image} alt={item} className="h-full w-full object-cover"/> : <span className="grid h-full w-full place-items-center"><Gift className="h-7 w-7 text-[#6f7f73]"/></span>}
                 </span>
                 <span className="mt-2 block text-sm font-bold text-[#28352d]">{item}</span>
