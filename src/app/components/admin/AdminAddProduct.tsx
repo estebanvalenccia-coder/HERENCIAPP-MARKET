@@ -724,13 +724,13 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
                     <div>
                       <p className="text-sm font-black">✨ Imágenes IA automáticas</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Al escribir el nombre de la planta y salir del campo, Herencia genera automáticamente una galería con IA. También puedes regenerarla aquí.
+                        Escribe el nombre de la planta en “Información principal”. Herencia puede generar la galería al salir del campo o al pulsar este botón.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => void generateHerenciaGallery()}
-                      disabled={generatingVisual || !formData.name.trim() || selectedImages.length >= 8}
+                      disabled={generatingVisual || selectedImages.length >= 8}
                       className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground disabled:opacity-50"
                     >
                       {generatingVisual ? "Generando…" : "Generar con IA"}
