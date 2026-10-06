@@ -299,36 +299,70 @@ async function addHerenciaProductToCart(product, goCheckout){
   }
 }
 
+let herenciaServerAccess = null;
+
+async function refreshServerAccess(){
+  try{
+    const r = await fetch("/api/herencia-ai/access", { credentials:"include" });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.error || "No se pudo comprobar el acceso");
+    herenciaServerAccess = data;
+    try{
+      window.parent?.postMessage({ type:"HERENCIA_IA_ACCESS", access:data }, window.location.origin);
+    }catch(_){}
+    applyHerenciaUsageState();
+    updateAccessSidebar();
+    return data;
+  }catch(_){
+    herenciaServerAccess = null;
+    applyHerenciaUsageState();
+    updateAccessSidebar();
+    return null;
+  }
+}
+
+async function consumeServerUsage(){
+  const r = await fetch("/api/herencia-ai/consume", {
+    method:"POST",
+    credentials:"include",
+    headers:{"Content-Type":"application/json"},
+    body:"{}"
+  });
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw Object.assign(new Error(data?.error || "Límite diario alcanzado"), { access:data, status:r.status });
+  herenciaServerAccess = data;
+  try{
+    window.parent?.postMessage({ type:"HERENCIA_IA_ACCESS", access:data }, window.location.origin);
+  }catch(_){}
+  applyHerenciaUsageState();
+  updateAccessSidebar();
+  return data;
+}
+
 function updateAccessSidebar(){
   const el=$("accessSidebar");
   if(!el) return;
-  const state=herenciaUsageState();
-  if(state.vip){
-    el.textContent="Acceso VIP · uso diario ilimitado.";
+  const state=herenciaServerAccess;
+  if(!state){
+    el.textContent="Comprobando tu acceso a Herenc(IA)…";
     return;
   }
-  const remaining=Math.max(0,state.limit-state.used);
-  el.textContent=`Te quedan ${remaining} de ${state.limit} mensajes hoy.`;
+  if(state.vip || state.unlimited){
+    el.textContent=`Acceso VIP · uso diario ilimitado. Compras de plantas: ${Number(state.plantSpend||0).toFixed(2)} €.`;
+    return;
+  }
+  const role = state.authenticated ? "Cliente registrado" : "Visitante";
+  el.textContent=`${role} · te quedan ${Math.max(0,Number(state.remaining||0))} de ${Number(state.dailyLimit||0)} mensajes hoy.`;
 }
 
 // ================= CHAT =================
-function herenciaUsageState(){
-  const vip = localStorage.getItem("herencia-ia-vip") === "1";
-  const identity = localStorage.getItem("herencia-ia-active-identity") || "visitor";
-  const limit = Math.max(1, Number(localStorage.getItem("herencia-ia-daily-limit") || 2));
-  const day = new Date().toISOString().slice(0, 10);
-  const key = `herencia-ia-usage:${day}:${identity}`;
-  const used = Math.max(0, Number(localStorage.getItem(key) || 0));
-  return { vip, identity, limit, key, used };
-}
-
 function applyHerenciaUsageState(){
   const input = $("userInput");
   const send = $("sendBtn");
   if(!input || !send) return;
 
-  const state = herenciaUsageState();
-  const exhausted = !state.vip && state.used >= state.limit;
+  const state = herenciaServerAccess;
+  const exhausted = Boolean(state && !state.unlimited && Number(state.remaining||0) <= 0);
   input.disabled = exhausted;
   send.disabled = exhausted;
   send.style.opacity = exhausted ? "0.5" : "1";
@@ -338,44 +372,27 @@ function applyHerenciaUsageState(){
     : "Escribe tu pregunta aquí...";
 }
 
-function consumeHerenciaUsage(){
-  const state = herenciaUsageState();
-  if(state.vip){
-    try{ window.parent?.postMessage({ type:"HERENCIA_IA_USAGE_CHANGED", used:state.used, vip:true }, window.location.origin); }catch(_){}
-    return;
-  }
-
-  const next = state.used + 1;
-  localStorage.setItem(state.key, String(next));
-  applyHerenciaUsageState();
-  try{
-    window.parent?.postMessage({ type:"HERENCIA_IA_USAGE_CHANGED", used:next, limit:state.limit, vip:false }, window.location.origin);
-  }catch(_){}
-}
-
 async function sendChat(){
   const input = $("userInput");
   if(!input) return;
 
-  const access = herenciaUsageState();
-  if(!access.vip && access.used >= access.limit){
+  const latestAccess = herenciaServerAccess || await refreshServerAccess();
+  if(latestAccess && !latestAccess.unlimited && Number(latestAccess.remaining||0) <= 0){
     applyHerenciaUsageState();
-    addMsg("bot", "Has alcanzado tu límite de mensajes de hoy. Vuelve mañana o supera 50 € en compras pagadas de plantas para seguir usando Herenc(IA).");
+    addMsg("bot", `Has alcanzado tu límite de hoy. Vuelve mañana o supera ${Number(latestAccess.vipPlantSpend||50).toFixed(0)} € en compras pagadas de plantas para tener uso ilimitado.`);
     return;
   }
 
   const message = (input.value || "").trim();
-  input.value = "";
-  input.focus();
-
   if(!message) return;
 
+  input.value = "";
+  input.focus();
   addMsg("user", message);
   showTyping(true);
 
   try{
     const user = getSessionUser();
-    const email = localStorage.getItem("herencia-ia-active-email") || "";
 
     let data = null;
     try{
@@ -387,23 +404,31 @@ async function sendChat(){
           message,
           history:[],
           catalog:compactCatalog(),
-          conversationId:user,
-          customerEmail:email
+          conversationId:user
         })
       });
       data = await response.json();
       if(!response.ok) throw new Error(data?.error || "Sales chat unavailable");
     }catch(_){
-      data = await apiFetch("/api/herencia-ai/chat", { message, user, email, lang });
+      data = await apiFetch("/api/herencia-ai/chat", { message, user, lang });
     }
 
     if(data?.error) throw new Error(data.error);
+
+    await consumeServerUsage();
+
     addMsg("bot", (data.reply || "").trim());
     if(Array.isArray(data.productIds) && data.productIds.length) renderProductCards(data.productIds);
-    consumeHerenciaUsage();
-    updateAccessSidebar();
-  }catch(_){
-    addMsg("bot", "⚠️ Error de conexión con Herenc(IA).");
+  }catch(error){
+    if(error?.status === 429){
+      const access = error.access || {};
+      herenciaServerAccess = { ...herenciaServerAccess, ...access };
+      applyHerenciaUsageState();
+      updateAccessSidebar();
+      addMsg("bot", access?.error || "Has alcanzado tu límite diario de Herenc(IA).");
+    }else{
+      addMsg("bot", "⚠️ Error de conexión con Herenc(IA). Tu mensaje no se ha descontado.");
+    }
   }finally{
     showTyping(false);
   }
@@ -419,6 +444,7 @@ function wireSend(){
   });
   applyHerenciaUsageState();
   updateAccessSidebar();
+  void refreshServerAccess();
 }
 
 // ================= MIC (walkie / toggle) =================
