@@ -2067,6 +2067,71 @@ app.post("/api/community/posts/:postId/save", requireCustomer, async (req, res) 
   }
 });
 
+const COMMUNITY_COMMENTS_KEY = "communityComments";
+async function loadCommunityComments() {
+  return parseStoredJson(await readStorageValue(COMMUNITY_COMMENTS_KEY), []);
+}
+
+app.get("/api/community/comments", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const postId = cleanText(req.query.postId, 120);
+    const comments = await loadCommunityComments();
+    const visible = comments.filter((item) => item.status !== "hidden" && (!postId || item.postId === postId))
+      .slice(-500).map(({ customerId, email, ...item }) => item);
+    res.json({ comments: visible });
+  } catch (error) { res.status(500).json({ error: error.message || "No se pudieron cargar los comentarios" }); }
+});
+
+app.post("/api/community/posts/:postId/comments", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const postId = cleanText(req.params.postId, 120);
+    const body = cleanText(req.body?.body, 500);
+    if (!postId || body.length < 1) return res.status(400).json({ error: "Escribe un comentario" });
+    const accounts = await loadCustomerAccounts();
+    const account = accounts.find((item) => item.id === req.customerSession.customerId);
+    if (!account) return res.status(401).json({ error: "Cuenta no válida" });
+    const comments = await loadCommunityComments();
+    const recent = comments.filter((item) => item.customerId === account.id && Date.now() - new Date(item.createdAt).getTime() < 60_000);
+    if (recent.length >= 5) return res.status(429).json({ error: "Espera un momento antes de comentar de nuevo" });
+    const comment = { id: crypto.randomUUID(), postId, customerId: account.id, email: account.email, author: cleanText(account.name, 80) || "Cliente Herencia", body, status: "visible", createdAt: new Date().toISOString() };
+    comments.push(comment);
+    await upsertStorageValue(COMMUNITY_COMMENTS_KEY, JSON.stringify(comments.slice(-5000)));
+    const { customerId, email, ...safe } = comment;
+    res.status(201).json({ comment: safe });
+  } catch (error) { res.status(500).json({ error: error.message || "No se pudo publicar el comentario" }); }
+});
+
+app.get("/api/admin/community/comments", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try { res.json({ comments: (await loadCommunityComments()).slice(-1000).reverse() }); }
+  catch (error) { res.status(500).json({ error: error.message || "No se pudieron cargar los comentarios" }); }
+});
+
+app.patch("/api/admin/community/comments/:id", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const comments = await loadCommunityComments();
+    const index = comments.findIndex((item) => item.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Comentario no encontrado" });
+    const status = req.body?.status === "hidden" ? "hidden" : "visible";
+    comments[index] = { ...comments[index], status, moderatedAt: new Date().toISOString() };
+    await upsertStorageValue(COMMUNITY_COMMENTS_KEY, JSON.stringify(comments));
+    res.json({ comment: comments[index] });
+  } catch (error) { res.status(500).json({ error: error.message || "No se pudo moderar el comentario" }); }
+});
+
+app.delete("/api/admin/community/comments/:id", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const comments = await loadCommunityComments();
+    await upsertStorageValue(COMMUNITY_COMMENTS_KEY, JSON.stringify(comments.filter((item) => item.id !== req.params.id)));
+    res.json({ ok: true });
+  } catch (error) { res.status(500).json({ error: error.message || "No se pudo eliminar el comentario" }); }
+});
+
+
 
 
 

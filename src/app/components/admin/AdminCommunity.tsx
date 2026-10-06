@@ -54,9 +54,11 @@ export function AdminCommunity() {
   const [content, setContent] = useState<CommunityContent>(readCommunity);
   const [saving, setSaving] = useState(false);
   const [uploadingStory, setUploadingStory] = useState<string | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
 
   useEffect(() => {
     const sync = () => setContent(readCommunity());
+    backendStorage.adminCommunityComments().then((result) => setComments(result.comments || [])).catch(() => null);
     window.addEventListener("backend-storage", sync);
     return () => window.removeEventListener("backend-storage", sync);
   }, []);
@@ -101,6 +103,20 @@ export function AdminCommunity() {
     } finally {
       setUploadingStory(null);
     }
+  };
+
+  const moderateComment = async (id: string, status: "visible" | "hidden") => {
+    try {
+      const result = await backendStorage.moderateCommunityComment(id, status);
+      setComments((current) => current.map((item) => item.id === id ? result.comment : item));
+    } catch (error: any) { toast.error(error?.message || "No se pudo moderar"); }
+  };
+  const deleteComment = async (id: string) => {
+    try {
+      await backendStorage.deleteCommunityComment(id);
+      setComments((current) => current.filter((item) => item.id !== id));
+      toast.success("Comentario eliminado");
+    } catch (error: any) { toast.error(error?.message || "No se pudo eliminar"); }
   };
 
   const addPost = () => {
@@ -204,6 +220,30 @@ export function AdminCommunity() {
             </article>
           ))}
           {!content.stories.length && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground lg:col-span-2">No hay historias. Crea una y publícala cuando esté lista.</div>}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-primary">Moderación</p>
+          <h3 className="mt-1 text-xl font-bold">Comentarios de la comunidad</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{comments.length} comentarios recientes. Puedes ocultarlos o eliminarlos.</p>
+        </div>
+        <div className="mt-5 max-h-[520px] space-y-3 overflow-y-auto">
+          {comments.map((comment) => (
+            <div key={comment.id} className="rounded-2xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><strong className="text-sm">{comment.author}</strong><p className="text-xs text-muted-foreground">{comment.email} · {new Date(comment.createdAt).toLocaleString("es-ES")}</p></div>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${comment.status==="hidden"?"bg-amber-50 text-amber-700":"bg-emerald-50 text-emerald-700"}`}>{comment.status==="hidden"?"Oculto":"Visible"}</span>
+              </div>
+              <p className="mt-3 text-sm">{comment.body}</p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button onClick={()=>moderateComment(comment.id,comment.status==="hidden"?"visible":"hidden")} className="rounded-lg border px-3 py-2 text-xs font-bold">{comment.status==="hidden"?"Mostrar":"Ocultar"}</button>
+                <button onClick={()=>deleteComment(comment.id)} className="rounded-lg p-2 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4"/></button>
+              </div>
+            </div>
+          ))}
+          {!comments.length && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Todavía no hay comentarios.</div>}
         </div>
       </section>
 
