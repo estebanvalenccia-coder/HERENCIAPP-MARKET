@@ -53,6 +53,7 @@ function readCommunity(): CommunityContent {
 export function AdminCommunity() {
   const [content, setContent] = useState<CommunityContent>(readCommunity);
   const [saving, setSaving] = useState(false);
+  const [uploadingStory, setUploadingStory] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => setContent(readCommunity());
@@ -87,6 +88,20 @@ export function AdminCommunity() {
     ...current,
     stories: current.stories.filter((story) => story.id !== id),
   }));
+
+  const uploadStoryMedia = async (id: string, file?: File) => {
+    if (!file) return;
+    try {
+      setUploadingStory(id);
+      const result = await backendStorage.uploadSiteMediaFile(file);
+      patchStory(id, { mediaUrl: result.media.url });
+      toast.success("Imagen de historia subida");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo subir la imagen");
+    } finally {
+      setUploadingStory(null);
+    }
+  };
 
   const addPost = () => {
     setContent((current) => ({
@@ -170,7 +185,11 @@ export function AdminCommunity() {
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
                   <input value={story.title} onChange={(e)=>patchStory(story.id,{title:e.target.value})} className="w-full rounded-lg border bg-background px-3 py-2 font-semibold" placeholder="Título"/>
-                  <input value={story.mediaUrl} onChange={(e)=>patchStory(story.id,{mediaUrl:e.target.value})} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="URL de foto o vídeo"/>
+                  <input value={story.mediaUrl} onChange={(e)=>patchStory(story.id,{mediaUrl:e.target.value})} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="URL de imagen"/>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold hover:bg-muted">
+                    {uploadingStory === story.id ? "Subiendo…" : "Subir imagen"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="hidden" disabled={uploadingStory === story.id} onChange={(e)=>uploadStoryMedia(story.id,e.target.files?.[0])}/>
+                  </label>
                   <textarea value={story.text} onChange={(e)=>patchStory(story.id,{text:e.target.value})} className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Texto opcional"/>
                   <input value={story.linkUrl} onChange={(e)=>patchStory(story.id,{linkUrl:e.target.value})} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Enlace opcional"/>
                   <label className="block text-xs text-muted-foreground">Caduca

@@ -26,7 +26,8 @@ export function Community() {
   const navigate = useNavigate();
   const [interactions, setInteractions] = useState<any>({ authenticated: false, likeCounts: {}, liked: [], saved: [] });
   const [community, setCommunity] = useState<any>({ posts: [], stories: [], instagramUrl: "", whatsappUrl: "" });
-  const [activeStory, setActiveStory] = useState<any>(null);
+  const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null);
+  const [seenStories, setSeenStories] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("herencia_seen_stories") || "[]"); } catch { return []; } });
 
   useEffect(() => {
     const load = () => {
@@ -75,6 +76,27 @@ export function Community() {
     if (!story.expiresAt) return true;
     return new Date(story.expiresAt).getTime() > Date.now();
   });
+  const openStory = (index: number) => {
+    const story = activeStories[index];
+    if (!story) return;
+    setActiveStoryIndex(index);
+    setSeenStories((current) => {
+      const next = [...new Set([...current, story.id])];
+      localStorage.setItem("herencia_seen_stories", JSON.stringify(next));
+      return next;
+    });
+  };
+  const activeStory = activeStoryIndex == null ? null : activeStories[activeStoryIndex];
+
+  useEffect(() => {
+    if (!activeStory) return;
+    const timer = window.setTimeout(() => {
+      if (activeStoryIndex != null && activeStoryIndex < activeStories.length - 1) openStory(activeStoryIndex + 1);
+      else setActiveStoryIndex(null);
+    }, 7000);
+    return () => window.clearTimeout(timer);
+  }, [activeStoryIndex, activeStories.length]);
+
   const publishedPosts = community.posts.filter((post: any) => post?.published);
   const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ id: post.id, title: post.title, description: post.text, image: post.imageUrl })) : updates.map((post, index) => ({ ...post, id: `demo-${index}` }));
 
@@ -98,9 +120,9 @@ export function Community() {
       {activeStories.length > 0 && (
         <section className="mx-auto max-w-7xl px-5 pt-8 sm:px-8 lg:px-10">
           <div className="flex gap-5 overflow-x-auto pb-3">
-            {activeStories.map((story: any) => (
-              <button key={story.id} type="button" onClick={() => setActiveStory(story)} className="w-20 shrink-0 text-center">
-                <span className="mx-auto block h-[74px] w-[74px] rounded-full border-[3px] border-[#2f6b45] p-[3px] shadow-sm">
+            {activeStories.map((story: any, index: number) => (
+              <button key={story.id} type="button" onClick={() => openStory(index)} className="w-20 shrink-0 text-center">
+                <span className={`mx-auto block h-[74px] w-[74px] rounded-full border-[3px] p-[3px] shadow-sm transition ${seenStories.includes(story.id) ? "border-[#a8b0aa]" : "border-[#2f6b45]"}`}>
                   <span className="block h-full w-full overflow-hidden rounded-full bg-[#e9e5db]">
                     {story.mediaUrl ? <img src={story.mediaUrl} alt={story.title || "Historia"} className="h-full w-full object-cover"/> : <span className="grid h-full place-items-center text-xs font-bold text-[#315b42]">H</span>}
                   </span>
@@ -115,12 +137,18 @@ export function Community() {
       {activeStory && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4" role="dialog" aria-modal="true">
           <div className="relative w-full max-w-md overflow-hidden rounded-[30px] bg-[#14271d] text-white shadow-2xl">
-            <button type="button" onClick={() => setActiveStory(null)} className="absolute right-4 top-4 z-10 rounded-full bg-black/35 p-2 backdrop-blur" aria-label="Cerrar historia"><X className="h-5 w-5"/></button>
-            <div className="absolute left-4 right-14 top-5 z-10 h-1 overflow-hidden rounded-full bg-white/25"><div className="h-full w-full rounded-full bg-[#6fa57c]"/></div>
+            <button type="button" onClick={() => setActiveStoryIndex(null)} className="absolute right-4 top-4 z-10 rounded-full bg-black/35 p-2 backdrop-blur" aria-label="Cerrar historia"><X className="h-5 w-5"/></button>
+            <div className="absolute left-4 right-14 top-5 z-10 flex gap-1">
+              {activeStories.map((_: any, index: number) => <span key={index} className="h-1 flex-1 overflow-hidden rounded-full bg-white/25"><span className={`block h-full rounded-full bg-[#78a987] ${index <= (activeStoryIndex ?? 0) ? "w-full" : "w-0"}`}/></span>)}
+            </div>
             {activeStory.mediaUrl && <img src={activeStory.mediaUrl} alt="" className="max-h-[72vh] min-h-[420px] w-full object-cover"/>}
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-6 pt-24">
               <h3 className="text-2xl font-semibold">{activeStory.title}</h3>
               {activeStory.text && <p className="mt-2 text-sm leading-6 text-white/85">{activeStory.text}</p>}
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <button type="button" disabled={(activeStoryIndex ?? 0) <= 0} onClick={() => openStory((activeStoryIndex ?? 0) - 1)} className="rounded-full bg-white/15 px-4 py-2 text-sm font-bold disabled:opacity-30">Anterior</button>
+                <button type="button" disabled={(activeStoryIndex ?? 0) >= activeStories.length - 1} onClick={() => openStory((activeStoryIndex ?? 0) + 1)} className="rounded-full bg-white/15 px-4 py-2 text-sm font-bold disabled:opacity-30">Siguiente</button>
+              </div>
               {activeStory.linkUrl && <a href={activeStory.linkUrl} className="mt-4 inline-flex rounded-full bg-white px-4 py-2 text-sm font-bold text-[#173126]">Ver más</a>}
             </div>
           </div>
