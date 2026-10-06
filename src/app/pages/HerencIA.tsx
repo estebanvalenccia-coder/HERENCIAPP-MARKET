@@ -244,26 +244,26 @@ export function HerencIA() {
 
   return (
     <div
-      className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-5 sm:px-5 sm:py-7"
+      className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-6 sm:px-5 lg:py-[60px]"
       style={{
-        backgroundImage: "linear-gradient(90deg, rgba(20,47,30,.06), rgba(120,75,25,.03)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2400&q=96')",
+        backgroundImage: "linear-gradient(90deg, rgba(46,64,31,.05), rgba(145,84,26,.02)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2560&q=100')",
         backgroundSize: "cover",
-        backgroundPosition: "center 46%",
+        backgroundPosition: "center 52%",
               backgroundBlendMode: "normal",
         backgroundAttachment: "fixed",
       }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,247,226,.04),transparent_42%,rgba(255,235,190,.03))]" />
-      <div className="relative mx-auto grid max-w-[1320px] gap-4 lg:grid-cols-[minmax(0,1fr)_292px]">
-        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[1.85rem] border border-[#f2dfad]/65 bg-[#f5ecd7]/[0.14] shadow-[0_30px_85px_rgba(22,43,28,.30)] backdrop-blur-[12px]">
-          <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[#123a27]/76 backdrop-blur-xl px-5 py-4 sm:px-7">
+      <div className="relative mx-auto grid max-w-[1060px] gap-[18px] lg:grid-cols-[minmax(0,1fr)_308px]">
+        <section className="flex min-h-[808px] flex-col overflow-hidden rounded-[28px] border border-[#f2dfad]/70 bg-[rgba(238,226,197,.18)] shadow-[0_26px_70px_rgba(18,38,24,.28)] backdrop-blur-[16px]">
+          <header className="flex min-h-[86px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[rgba(22,62,40,.78)] px-6 py-4 backdrop-blur-xl">
             <div className="flex items-center gap-4">
-              <div className="grid h-[58px] w-[58px] place-items-center rounded-full border border-[#d8bd7a]/35 bg-[#1c5b3a]/80 text-[#efd8a0] shadow-lg">
+              <div className="grid h-[56px] w-[56px] place-items-center rounded-full border border-[#d8bd7a]/35 bg-[#1c5b3a]/80 text-[#efd8a0] shadow-lg">
                 <Leaf className="h-7 w-7" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="font-serif text-[28px] font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
+                  <h1 className="font-serif text-[27px] font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
                   <Sparkles className="h-4 w-4 text-[#d8bd7a]" />
                 </div>
                 <p className="mt-1 text-sm text-white/65">Tu asesora de plantas, decoración y regalos</p>
@@ -280,13 +280,13 @@ export function HerencIA() {
           </header>
 
           <div
-            className="relative flex-1 overflow-y-auto px-5 py-5 sm:px-7 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_18%,rgba(255,244,205,.22),transparent_28%),radial-gradient(circle_at_82%_70%,rgba(255,205,122,.10),transparent_32%)]"
+            className="relative flex-1 overflow-y-auto px-6 py-5 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(90deg,rgba(255,248,220,.12),rgba(83,96,61,.08),rgba(255,229,177,.10))]"
             style={{
-              background: "linear-gradient(180deg, rgba(244,235,210,.24), rgba(229,215,183,.18))",
+              background: "linear-gradient(180deg, rgba(230,222,195,.28), rgba(216,203,171,.24))",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,.20)",
             }}
           >
-            <div className="relative z-10 mx-auto max-w-[880px] space-y-4">
+            <div className="relative z-10 mx-auto max-w-[790px] space-y-4">
               {messages.map(message => {
                 const products = (message.productIds || []).map(pid => productMap.get(pid)).filter(Boolean) as Product[];
                 return (
@@ -295,7 +295,7 @@ export function HerencIA() {
                       {message.role === "assistant" && (
                         <div className="mb-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#d9c99f] bg-[#fffaf0] text-[#315b42] shadow-md"><Leaf className="h-4 w-4" /></div>
                       )}
-                      <div className={`max-w-[86%] rounded-[1.35rem] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[68%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/92 text-[#173126]"}`}>
+                      <div className={`max-w-[86%] rounded-[22px] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[66%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/92 text-[#173126]"}`}>
                         {message.content}
                         <div className={`mt-1 text-right text-[10px] ${message.role === "user" ? "text-white/45" : "text-[#6d786f]/55"}`}>
                           ahora
@@ -307,10 +307,10 @@ export function HerencIA() {
                     </div>
 
                     {products.length > 0 && (
-                      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="ml-[48px] mt-3 grid max-w-[720px] grid-cols-1 gap-3 md:grid-cols-3">
                         {products.slice(0,3).map(product => (
-                          <article key={product.id} className="overflow-hidden rounded-[1.15rem] border border-[#ead9b6]/80 bg-[#fffaf0]/96 shadow-[0_14px_32px_rgba(31,48,34,.18)] backdrop-blur-xl">
-                            <div className="aspect-[1.42/1] bg-[#edf1e8]">
+                          <article key={product.id} className="overflow-hidden rounded-[14px] border border-[#ead9b6]/80 bg-[#fffaf0]/96 shadow-[0_14px_32px_rgba(31,48,34,.18)] backdrop-blur-xl">
+                            <div className="aspect-[1.08/0.78] bg-[#edf1e8]">
                               {product.image ? <img src={product.image} alt={product.name} className="h-full w-full object-cover" /> : null}
                             </div>
                             <div className="p-4">
@@ -340,9 +340,9 @@ export function HerencIA() {
             </div>
           </div>
 
-          <div className="border-t border-white/20 bg-[#f6edd9]/22 px-4 py-3.5 backdrop-blur-xl sm:px-5">
-            <form onSubmit={send} className="mx-auto flex max-w-[900px] items-center gap-3">
-              <div className="flex min-h-[52px] flex-1 items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 px-5 shadow-lg">
+          <div className="border-t border-white/20 bg-[rgba(242,229,202,.26)] px-5 py-3.5 backdrop-blur-xl">
+            <form onSubmit={send} className="mx-auto flex max-w-[820px] items-center gap-3">
+              <div className="flex min-h-[50px] flex-1 items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 px-5 shadow-lg">
                 <input
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -351,7 +351,7 @@ export function HerencIA() {
                   className="w-full bg-transparent text-[15px] text-[#173126] outline-none placeholder:text-[#879086]"
                 />
               </div>
-              <button type="submit" disabled={sending || !input.trim()} className="grid h-[52px] w-[52px] place-items-center rounded-full bg-[#0f5735] p-0 font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50">
+              <button type="submit" disabled={sending || !input.trim()} className="grid h-[50px] w-[50px] place-items-center rounded-full bg-[#0f5735] p-0 font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50">
                 <Send className="h-5 w-5" />
               </button>
             </form>
@@ -359,7 +359,7 @@ export function HerencIA() {
         </section>
 
         <aside className="hidden min-h-[calc(100vh-165px)] flex-col gap-3 lg:flex">
-          <div className="rounded-[1.85rem] border border-[#f0d99d]/40 bg-[#123a27]/80 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.26)] backdrop-blur-xl">
+          <div className="rounded-[26px] border border-[#f0d99d]/40 bg-[#123a27]/80 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.26)] backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-white/10 p-3 text-[#f0d79d]"><Bot className="h-5 w-5" /></div>
               <div><h2 className="font-serif text-xl font-semibold">Tu acceso</h2><p className="text-xs text-white/55">{access?.authenticated ? "Cliente registrado" : "Visitante"}</p></div>
@@ -381,20 +381,20 @@ export function HerencIA() {
             )}
           </div>
 
-          <div className="rounded-[1.85rem] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(151,103,24,.90),rgba(106,67,15,.86))] p-5 text-white shadow-xl backdrop-blur-2xl">
+          <div className="rounded-[26px] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(151,103,24,.90),rgba(106,67,15,.86))] p-5 text-white shadow-xl backdrop-blur-2xl">
             <div className="flex items-center gap-2 text-[#f4dfaa]"><Crown className="h-5 w-5" /><strong>Acceso VIP</strong></div>
             <p className="mt-3 text-sm leading-6 text-white/70">Con {Number(access?.vipPlantSpend || 50).toFixed(0)} € o más en compras pagadas de plantas, Herenc(IA) pasa a uso ilimitado.</p>
             {access?.authenticated ? <p className="mt-3 text-xs font-semibold text-[#f4dfaa]">Llevas {Number(access.plantSpend || 0).toFixed(2)} € en plantas.</p> : null}
           </div>
 
-          <div className="rounded-[1.85rem] border border-[#f0d99d]/35 bg-[#123a27]/82 p-5 text-white shadow-xl backdrop-blur-xl">
+          <div className="rounded-[26px] border border-[#f0d99d]/35 bg-[#123a27]/82 p-5 text-white shadow-xl backdrop-blur-xl">
             <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[#f0d79d]" /><h3 className="font-serif text-lg font-semibold">Compra desde el chat</h3></div>
             <p className="mt-3 text-sm leading-6 text-white/65">Herenc(IA) recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
           </div>
 
-          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[1.85rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
+          <div className="relative min-h-[205px] flex-1 overflow-hidden rounded-[26px] border border-white/25 bg-[url('https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
             <div className="absolute inset-0 bg-gradient-to-t from-[#173b29]/75 via-transparent to-transparent" />
-            <p className="absolute bottom-5 left-5 right-5 font-serif text-2xl leading-tight text-white">Más que plantas, un hogar con vida.</p>
+            <p className="absolute bottom-5 left-5 right-5 font-serif text-[23px] leading-[1.05] text-white">Más que plantas, un hogar con vida.</p>
           </div>
         </aside>
       </div>
