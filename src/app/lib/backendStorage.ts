@@ -1388,7 +1388,7 @@ export const backendApi = {
     return request<any>("/api/neural/graph");
   },
 
-  async generateProductImage(payload: { prompt: string; references?: Array<{ image: string }> }) {
+  async generateProductImage(payload: { prompt: string; references?: Array<{ image: string }>; outputType?: "photo" | "collage" }) {
     return request<{ image: string; model?: string }>("/api/admin/ai/product-image", {
       method: "POST",
       body: JSON.stringify(payload),
