@@ -855,6 +855,18 @@ export const backendApi = {
     return request<{ authenticated: boolean; user: any | null }>("/api/customer/session");
   },
 
+  async communityInteractions() {
+    return request<{ authenticated: boolean; likeCounts: Record<string, number>; liked: string[]; saved: string[] }>("/api/community/interactions");
+  },
+
+  async toggleCommunityLike(postId: string) {
+    return request<{ liked: boolean; count: number }>(`/api/community/posts/${encodeURIComponent(postId)}/like`, { method: "POST" });
+  },
+
+  async toggleCommunitySave(postId: string) {
+    return request<{ saved: boolean }>(`/api/community/posts/${encodeURIComponent(postId)}/save`, { method: "POST" });
+  },
+
   async customerLogout() {
     return request<{ ok: boolean }>("/api/customer/logout", { method: "POST", body: "{}" });
   },
