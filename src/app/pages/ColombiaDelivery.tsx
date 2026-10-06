@@ -51,6 +51,9 @@ export function ColombiaDelivery() {
   const [recipientPhone, setRecipientPhone] = useState("");
   const [address, setAddress] = useState("");
   const [references, setReferences] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [deliveryComments, setDeliveryComments] = useState("");
+  const [buyerPhone, setBuyerPhone] = useState("");
   const [giftMessage, setGiftMessage] = useState("");
   const [occasion, setOccasion] = useState("Cumpleaños");
   const [surprise, setSurprise] = useState(false);
@@ -109,8 +112,8 @@ export function ColombiaDelivery() {
 
   const submit = () => {
     if (!product) return;
-    if (!recipientName.trim() || !address.trim() || (settings.recipientPhoneRequired && !recipientPhone.trim())) {
-      window.alert("Completa los datos del destinatario y la dirección.");
+    if (!recipientName.trim() || !address.trim() || !neighborhood.trim() || (settings.recipientPhoneRequired && !recipientPhone.trim())) {
+      window.alert("Completa destinatario, teléfono, dirección y barrio/vereda.");
       return;
     }
     if (settings.paymentEnabled && (!buyerName.trim() || !buyerEmail.trim())) {
@@ -136,7 +139,9 @@ export function ColombiaDelivery() {
       `👤 Destinatario: ${recipientName.trim()}`,
       `📞 Teléfono: ${recipientPhone.trim() || "No indicado"}`,
       `📍 Dirección: ${address.trim()}`,
+      neighborhood.trim() ? `🏘️ Barrio / vereda: ${neighborhood.trim()}` : "",
       references.trim() ? `🗺️ Referencias: ${references.trim()}` : "",
+      deliveryComments.trim() ? `📝 Comentarios de entrega: ${deliveryComments.trim()}` : "",
       giftMessage.trim() ? `💌 ${occasion}: ${giftMessage.trim()}` : "",
       surprise ? "🎀 Es una sorpresa: no mostrar precio al destinatario." : "",
       deliveryDate ? `📅 Fecha: ${deliveryDate} · ${deliveryTime}` : "",
@@ -159,7 +164,9 @@ export function ColombiaDelivery() {
       recipientName: recipientName.trim(),
       recipientPhone: recipientPhone.trim(),
       address: address.trim(),
+      neighborhood: neighborhood.trim(),
       references: references.trim(),
+      deliveryComments: deliveryComments.trim(),
       occasion,
       giftMessage: giftMessage.trim(),
       surprise,
@@ -276,12 +283,15 @@ export function ColombiaDelivery() {
               ) : <p className="text-sm text-[#718076]">Elige un producto.</p>}
             </StepCard>
 
-            <StepCard number="2" title="Datos del destinatario">
+            <StepCard number="2" title="Dirección y destinatario">
               <div className="grid gap-2">
                 <input value={recipientName} onChange={(e)=>setRecipientName(e.target.value)} placeholder="Nombre del destinatario" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <div className="relative"><Phone className="absolute left-3 top-3 h-4 w-4 text-[#829087]"/><input value={recipientPhone} onChange={(e)=>setRecipientPhone(e.target.value)} placeholder="Teléfono (Colombia)" className="w-full rounded-xl border border-[#ddd7cb] bg-white py-2.5 pl-9 pr-3 text-sm" /></div>
-                <textarea value={address} onChange={(e)=>setAddress(e.target.value)} placeholder="Dirección" rows={2} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <input value={references} onChange={(e)=>setReferences(e.target.value)} placeholder="Referencias (opcional)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                <div className="relative"><Phone className="absolute left-3 top-3 h-4 w-4 text-[#829087]"/><input value={recipientPhone} onChange={(e)=>setRecipientPhone(e.target.value)} placeholder="Teléfono del destinatario" className="w-full rounded-xl border border-[#ddd7cb] bg-white py-2.5 pl-9 pr-3 text-sm" /></div>
+                <input value={neighborhood} onChange={(e)=>setNeighborhood(e.target.value)} placeholder="Barrio / vereda / sector" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                <textarea value={address} onChange={(e)=>setAddress(e.target.value)} placeholder="Dirección completa: calle, carrera, número, apartamento/casa..." rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                <input value={references} onChange={(e)=>setReferences(e.target.value)} placeholder="Referencias: portería, torre, color de casa..." className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                <textarea value={deliveryComments} onChange={(e)=>setDeliveryComments(e.target.value.slice(0,400))} placeholder="Comentarios para la entrega: llamar antes, dejar en portería, no tocar timbre..." rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                <p className="text-right text-[11px] text-[#829087]">{deliveryComments.length}/400</p>
               </div>
             </StepCard>
 
@@ -314,6 +324,7 @@ export function ColombiaDelivery() {
                 <div className="mt-4 grid gap-2">
                   <input value={buyerName} onChange={(e)=>setBuyerName(e.target.value)} placeholder="Tu nombre (quien compra)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
                   <input type="email" value={buyerEmail} onChange={(e)=>setBuyerEmail(e.target.value)} placeholder="Tu email para el recibo" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
+                  <input value={buyerPhone} onChange={(e)=>setBuyerPhone(e.target.value)} placeholder="Tu teléfono / WhatsApp (opcional)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
                 </div>
               )}
               <button onClick={submit} disabled={!product} className="mt-4 w-full rounded-xl bg-[#315b42] px-4 py-3 font-black text-white disabled:opacity-50">
@@ -349,6 +360,9 @@ export function ColombiaDelivery() {
               recipientName: recipientName.trim(),
               recipientPhone: recipientPhone.trim(),
               phone: recipientPhone.trim(),
+              buyerPhone: buyerPhone.trim(),
+              neighborhood: neighborhood.trim(),
+              deliveryInstructions: deliveryComments.trim(),
               giftMessage: giftMessage.trim(),
               occasion,
               surprise,
@@ -356,10 +370,12 @@ export function ColombiaDelivery() {
               requestedTimeSlot: deliveryDate ? deliveryTime : null,
               shippingAddress: {
                 address: address.trim(),
+                neighborhood: neighborhood.trim(),
                 city: zone.name,
                 postalCode: "",
                 province: "Valle del Cauca",
                 references: references.trim(),
+                deliveryComments: deliveryComments.trim(),
               },
             }}
             onCancel={() => setShowStripe(false)}
