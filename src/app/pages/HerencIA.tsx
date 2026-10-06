@@ -1,58 +1,134 @@
-import { useState, useEffect } from "react";
-import { Bot, ExternalLink, Lock, Mail, Sparkles } from "lucide-react";
-import { motion } from "motion/react";
-import { Link } from "react-router";
-import { backendApi, backendStorage } from "../lib/backendStorage";
-import { useNeuralChatBridge } from "../lib/useNeuralChatBridge";
-import { getHerenciaIaAccessMessage, getHerenciaIaDailyLimit } from "../lib/herenciaIaAccess";
+import { useEffect, useState } from "react";
+import { Bot, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { backendStorage } from "../lib/backendStorage";
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
-function getUsageKey(email: string) { const identity = email.trim().toLowerCase() || "visitor"; return `herencia-ia-usage:${todayKey()}:${identity}`; }
-function readUsage(email: string) { return Number(localStorage.getItem(getUsageKey(email)) || 0); }
-function writeUsage(email: string, value: number) { localStorage.setItem(getUsageKey(email), String(value)); }
+type HerenciaSettings = {
+  enabled?: boolean;
+  url?: string;
+  mode?: "integrated" | "external";
+  useIntegrated?: boolean;
+};
 
 export function HerencIA() {
-  const [iaUrl, setIaUrl] = useState("");
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [email, setEmail] = useState("");
-  const [totalPaid, setTotalPaid] = useState(0);
-  const [usedMessages, setUsedMessages] = useState(0);
-  const [accessStarted, setAccessStarted] = useState(false);
-  const [checkingCustomer, setCheckingCustomer] = useState(false);
-  const [automaticStatus, setAutomaticStatus] = useState(false);
-  useNeuralChatBridge(iaUrl, isEnabled && accessStarted);
+  const [settings, setSettings] = useState<HerenciaSettings>({ enabled: true, mode: "integrated", useIntegrated: true });
+  const [groqOk, setGroqOk] = useState<boolean | null>(null);
+  const [groqModel, setGroqModel] = useState("");
 
   useEffect(() => {
-    const settings = backendStorage.getItem("herenciaSettings");
-    if (settings) { const parsed = JSON.parse(settings); setIaUrl(parsed.url || ""); setIsEnabled(parsed.enabled || false); }
-    const savedEmail = localStorage.getItem("herencia-ia-email") || "";
-    setEmail(savedEmail); setUsedMessages(readUsage(savedEmail));
+    const load = () => {
+      try {
+        const parsed = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}");
+        const useIntegrated = parsed.useIntegrated !== false && parsed.mode !== "external";
+        setSettings({
+          enabled: parsed.enabled !== false,
+          url: String(parsed.url || ""),
+          mode: useIntegrated ? "integrated" : "external",
+          useIntegrated,
+        });
+      } catch {
+        setSettings({ enabled: true, mode: "integrated", useIntegrated: true });
+      }
+    };
+    load();
+    window.addEventListener("storage", load);
+    window.addEventListener("backend-storage", load);
+    return () => {
+      window.removeEventListener("storage", load);
+      window.removeEventListener("backend-storage", load);
+    };
   }, []);
 
   useEffect(() => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) { setTotalPaid(0); setAutomaticStatus(false); setCheckingCustomer(false); return; }
-    let cancelled = false; setCheckingCustomer(true);
-    backendApi.getHerenciaIaCustomerStatus(normalizedEmail)
-      .then(({ totalPaid }) => { if (!cancelled) { setTotalPaid(Number(totalPaid || 0)); setAutomaticStatus(true); } })
-      .catch(() => { if (!cancelled) { setTotalPaid(0); setAutomaticStatus(false); } })
-      .finally(() => { if (!cancelled) setCheckingCustomer(false); });
-    return () => { cancelled = true; };
-  }, [email]);
+    if (settings.mode !== "integrated") return;
+    let active = true;
+    setGroqOk(null);
+    fetch("/api/herencia-ai/status", { credentials: "include" })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Estado no disponible");
+        if (active) {
+          setGroqOk(Boolean(data?.ok));
+          setGroqModel(String(data?.model || ""));
+        }
+      })
+      .catch(() => active && setGroqOk(false));
+    return () => { active = false; };
+  }, [settings.mode]);
 
-  const dailyLimit = getHerenciaIaDailyLimit(email);
-  const remainingMessages = Math.max(0, dailyLimit - usedMessages);
-  const canOpenIa = remainingMessages > 0 && !checkingCustomer;
-  const accessMessage = checkingCustomer ? "Comprobando compras pagadas del cliente..." : getHerenciaIaAccessMessage({ email, totalPaid, remainingMessages });
-  const handleEmailChange = (value: string) => { setEmail(value); localStorage.setItem("herencia-ia-email", value); setUsedMessages(readUsage(value)); };
-  const startHerenciaIa = () => { if (!canOpenIa) return; const nextUsage = usedMessages + 1; writeUsage(email, nextUsage); setUsedMessages(nextUsage); setAccessStarted(true); };
+  if (settings.enabled === false) {
+    return (
+      <div className="grid min-h-[70vh] place-items-center bg-[#eef4e8] px-6 text-center">
+        <div className="max-w-md rounded-3xl border border-[#dce8df] bg-white p-8 shadow-sm">
+          <Bot className="mx-auto h-10 w-10 text-[#315b42]" />
+          <h1 className="mt-4 text-2xl font-bold text-[#173126]">Herenc(IA) está desactivada</h1>
+          <p className="mt-2 text-sm text-[#6d776f]">Puedes activarla desde Administración.</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (!isEnabled || !iaUrl) return <div className="min-h-[80vh] flex items-center justify-center px-4"><motion.div initial={{ opacity:0,y:20 }} animate={{ opacity:1,y:0 }} className="text-center max-w-md"><div className="inline-flex items-center justify-center w-20 h-20 bg-primary/10 text-primary rounded-3xl mb-6"><Bot className="w-10 h-10" /></div><h2 className="text-2xl font-bold text-foreground mb-4">Herenc(IA) no está configurado</h2><p className="text-muted-foreground mb-8">El asistente de inteligencia artificial aún no ha sido configurado. Por favor, contacta al administrador.</p><Link to="/" className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl">Volver al inicio</Link></motion.div></div>;
+  const external = settings.mode === "external" && settings.url;
+  const src = external ? settings.url! : "/herencia-ai/index.html";
 
-  if (!accessStarted) return <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/10 px-4 py-12"><div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_420px]">
-    <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl border border-border bg-card p-8 shadow-xl"><div className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary"><Sparkles className="h-4 w-4"/>Acceso controlado</div><h1 className="mb-4 text-4xl font-bold text-foreground">Herenc(IA)</h1><p className="mb-8 max-w-2xl text-lg text-muted-foreground">Tu asistente de flores, plantas, ramos y regalos. Los visitantes tienen 2 mensajes diarios, los clientes 5 y los clientes VIP disfrutan de acceso preferente.</p><div className="grid gap-4 sm:grid-cols-3"><div className="rounded-2xl bg-muted/50 p-5"><p className="text-sm text-muted-foreground">Visitante</p><p className="text-2xl font-bold">2</p><p className="text-xs text-muted-foreground">mensajes/día</p></div><div className="rounded-2xl bg-muted/50 p-5"><p className="text-sm text-muted-foreground">Cliente</p><p className="text-2xl font-bold">5</p><p className="text-xs text-muted-foreground">mensajes/día</p></div><div className="rounded-2xl bg-primary p-5 text-primary-foreground"><p className="text-sm opacity-80">VIP</p><p className="text-2xl font-bold">+50 €</p><p className="text-xs opacity-80">en compras pagadas</p></div></div></motion.div>
-    <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl border border-border bg-card p-6 shadow-xl"><div className="mb-6 flex items-center gap-3"><div className="rounded-2xl bg-primary p-3 text-primary-foreground"><Bot className="h-7 w-7"/></div><div><h2 className="text-xl font-bold">Entrar a Herenc(IA)</h2><p className="text-sm text-muted-foreground">Control de uso diario</p></div></div><label className="mb-4 block"><span className="mb-2 flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4"/>Email de cliente opcional</span><input type="email" value={email} onChange={e=>handleEmailChange(e.target.value)} placeholder="cliente@email.com" className="w-full rounded-2xl border border-border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/50"/><p className="mt-2 text-xs text-muted-foreground">Si no escribes email, entras como visitante con 2 mensajes diarios.</p></label>{email && <div className="mb-4 rounded-2xl bg-muted/50 p-4"><p className="text-sm font-medium">Estado del cliente</p><p className="mt-1 text-sm text-muted-foreground">{checkingCustomer ? "Comprobando pedidos pagados..." : automaticStatus ? `Compras pagadas detectadas: ${totalPaid.toFixed(2)} €` : "No se pudo comprobar el historial de compras. Puedes continuar con el acceso normal de cliente."}</p></div>}<div className={`mb-5 rounded-2xl p-4 ${canOpenIa?"bg-primary/10 text-primary":"bg-destructive/10 text-destructive"}`}><div className="mb-1 flex items-center gap-2 font-semibold">{!canOpenIa&&<Lock className="h-4 w-4"/>}{canOpenIa?"Acceso disponible":"Acceso limitado"}</div><p className="text-sm">{accessMessage}</p><p className="mt-2 text-sm font-medium">Te quedan {remainingMessages} de {dailyLimit} mensajes hoy.</p></div><button onClick={startHerenciaIa} disabled={!canOpenIa} className="w-full rounded-2xl bg-primary px-5 py-4 font-semibold text-primary-foreground disabled:opacity-50">Abrir Herenc(IA)</button></motion.div>
-  </div></div>;
+  return (
+    <div className="min-h-[calc(100vh-120px)] bg-[#eef4e8]">
+      <div className="border-b border-[#dce8df] bg-white/95">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-[#315b42] p-3 text-white"><Bot className="h-6 w-6" /></div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-[#173126]">Herenc(IA)</h1>
+                <Sparkles className="h-4 w-4 text-[#315b42]" />
+              </div>
+              <p className="text-sm text-[#6d776f]">
+                {external ? "Asistente externo conectado por URL" : "App integrada dentro de Herencia Market"}
+              </p>
+            </div>
+          </div>
 
-  return <div className="h-screen flex flex-col"><div className="bg-gradient-to-r from-primary/10 to-secondary/10 border-b border-border"><div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-6"><div className="flex items-center justify-between"><div className="flex items-center gap-4"><div className="bg-primary p-3 rounded-xl"><Bot className="w-8 h-8 text-primary-foreground"/></div><div><h1 className="text-2xl md:text-3xl font-bold">Herenc(IA)</h1><p className="text-sm text-muted-foreground">Te quedan {Math.max(0,dailyLimit-usedMessages)} mensajes hoy</p></div></div><a href={iaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-xl text-sm"><ExternalLink className="w-4 h-4"/>Abrir en nueva pestaña</a></div></div></div><div className="flex-1 overflow-hidden bg-background"><iframe src={iaUrl} className="w-full h-full border-0" title="Herenc(IA) - Asistente de Inteligencia Artificial" allow="microphone; camera; clipboard-write"/></div></div>;
+          <div className="flex items-center gap-3">
+            {!external && (
+              <div className="hidden rounded-full border border-[#dce8df] bg-white px-3 py-1.5 text-xs font-semibold sm:block">
+                {groqOk === null ? (
+                  <span className="flex items-center gap-1.5 text-[#6d776f]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Comprobando Groq</span>
+                ) : groqOk ? (
+                  <span className="text-emerald-700">● Groq conectado{groqModel ? ` · ${groqModel}` : ""}</span>
+                ) : (
+                  <span className="text-amber-700">● Groq no disponible</span>
+                )}
+              </div>
+            )}
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden items-center gap-2 rounded-full border border-[#dce8df] px-4 py-2 text-sm font-semibold text-[#315b42] sm:flex"
+            >
+              <ExternalLink className="h-4 w-4" /> Abrir grande
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl p-2 sm:p-4">
+        {settings.mode === "external" && !settings.url ? (
+          <div className="grid min-h-[680px] place-items-center rounded-3xl border border-[#dce8df] bg-white p-8 text-center">
+            <div className="max-w-md">
+              <Bot className="mx-auto h-10 w-10 text-[#315b42]" />
+              <h2 className="mt-4 text-xl font-bold text-[#173126]">Falta la URL externa</h2>
+              <p className="mt-2 text-sm text-[#6d776f]">Añádela en Administración o cambia a “App integrada”.</p>
+            </div>
+          </div>
+        ) : (
+          <iframe
+            src={src}
+            title="Herenc(IA)"
+            className="h-[calc(100vh-190px)] min-h-[680px] w-full rounded-3xl border border-[#dce8df] bg-white shadow-sm"
+            allow="microphone; camera; clipboard-write"
+          />
+        )}
+      </div>
+    </div>
+  );
 }
