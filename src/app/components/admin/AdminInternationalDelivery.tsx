@@ -208,8 +208,7 @@ export function AdminInternationalDelivery() {
 
         {tab === "catalog" && (
           <div className="mt-6">
-            <h3 className="text-xl font-bold">Catálogo Colombia</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Selecciona productos y define un precio colombiano independiente.</p>
+            <h3 className="text-xl font-bold">Regalos con esencia caleña · productos publicados</h3>\n            <p className="mt-1 text-sm text-muted-foreground">Elige aquí qué productos aparecen en Colombianísimas y en “Los más populares en Cali”. Puedes publicarlos o retirarlos con un clic y definir nombre, precio y stock para Colombia.</p>
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {products.map((product:any)=>{
                 const id=String(product.id);
