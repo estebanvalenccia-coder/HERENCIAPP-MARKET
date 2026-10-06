@@ -148,6 +148,169 @@ async function loadHerenciaFeatureFlags(){
   }
 }
 
+let herenciaSalesCatalog = [];
+
+function normalizeSalesProduct(product){
+  return {
+    ...product,
+    id:String(product?.id ?? ""),
+    name:String(product?.name || "Producto"),
+    description:String(product?.description || ""),
+    category:String(product?.category || ""),
+    type:String(product?.type || ""),
+    price:Math.max(0,Number(product?.salePrice || product?.price || 0)),
+    image:String(product?.image || product?.imageUrl || ""),
+    stock:Math.max(0,Number(product?.stock ?? 0)),
+    trackInventory:product?.trackInventory !== false,
+    active:product?.active !== false,
+    status:String(product?.status || "active")
+  };
+}
+
+async function loadHerenciaSalesCatalog(){
+  try{
+    const r = await fetch("/api/commerce/products", { credentials:"include" });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.error || "Catálogo no disponible");
+    herenciaSalesCatalog = (Array.isArray(data?.products) ? data.products : [])
+      .map(normalizeSalesProduct)
+      .filter(p => p.id && p.active !== false && p.status !== "archived");
+  }catch(_){
+    herenciaSalesCatalog = [];
+  }
+}
+
+function compactCatalog(){
+  return herenciaSalesCatalog.slice(0,120).map(p=>({
+    id:p.id,name:p.name,description:p.description,category:p.category,type:p.type,
+    price:p.price,stock:p.stock,trackInventory:p.trackInventory,image:p.image
+  }));
+}
+
+function findProduct(id){
+  return herenciaSalesCatalog.find(p=>String(p.id)===String(id));
+}
+
+function renderProductCards(productIds){
+  const box = $("messages");
+  if(!box) return;
+  const products = (Array.isArray(productIds)?productIds:[])
+    .map(findProduct).filter(Boolean).slice(0,3);
+  if(!products.length) return;
+
+  const grid = document.createElement("div");
+  grid.className = "product-grid";
+
+  products.forEach(product=>{
+    const card = document.createElement("article");
+    card.className = "product-card";
+
+    const img = document.createElement("img");
+    img.alt = product.name;
+    img.src = product.image || "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=600&q=80";
+    card.appendChild(img);
+
+    const body = document.createElement("div");
+    body.className = "product-body";
+
+    const name = document.createElement("div");
+    name.className = "product-name";
+    name.textContent = product.name;
+
+    const price = document.createElement("div");
+    price.className = "product-price";
+    price.textContent = product.price > 0 ? `desde ${product.price.toFixed(2)} €` : "Consultar";
+
+    const actions = document.createElement("div");
+    actions.className = "product-actions";
+
+    const cart = document.createElement("button");
+    cart.className = "btn-cart";
+    cart.textContent = "Añadir";
+    cart.onclick = ()=> addHerenciaProductToCart(product,false);
+
+    const buy = document.createElement("button");
+    buy.className = "btn-buy";
+    buy.textContent = "Comprar";
+    buy.onclick = ()=> addHerenciaProductToCart(product,true);
+
+    actions.append(cart,buy);
+    body.append(name,price,actions);
+    card.appendChild(body);
+    grid.appendChild(card);
+  });
+
+  box.appendChild(grid);
+  box.parentElement.scrollTop = box.parentElement.scrollHeight;
+}
+
+async function persistCart(cart){
+  const value = JSON.stringify(cart);
+  localStorage.setItem("cart", value);
+  try{
+    await fetch("/api/storage/cart",{
+      method:"PUT",
+      credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({value})
+    });
+  }catch(_){}
+  try{ window.parent?.dispatchEvent(new Event("storage")); }catch(_){}
+}
+
+async function addHerenciaProductToCart(product, goCheckout){
+  let cart=[];
+  try{
+    const parsed=JSON.parse(localStorage.getItem("cart")||"[]");
+    cart=Array.isArray(parsed)?parsed:[];
+  }catch(_){}
+
+  const existing=cart.find(item=>String(item.id)===String(product.id) && item.salesSource==="HERENCIA_IA");
+  const available=product.trackInventory===false ? Number.POSITIVE_INFINITY : Math.max(0,Number(product.stock||0));
+
+  if(product.trackInventory!==false && available<=0){
+    addMsg("bot", "Este producto está agotado ahora mismo. Puedo buscarte otra opción similar.");
+    return;
+  }
+
+  if(existing){
+    if(product.trackInventory!==false && Number(existing.quantity||0)+1>available){
+      addMsg("bot", `Solo quedan ${available} unidades de ${product.name}.`);
+      return;
+    }
+    existing.quantity=Number(existing.quantity||0)+1;
+  }else{
+    cart.push({
+      ...product,
+      quantity:1,
+      price:Number(product.price||0),
+      salesSource:"HERENCIA_IA",
+      lineKey:`${product.id}::herencia-ia`
+    });
+  }
+
+  await persistCart(cart);
+
+  if(goCheckout){
+    addMsg("bot", `${product.name} está listo. Te llevo al pago seguro de Herencia Market.`);
+    try{ window.parent.location.href="/checkout"; }catch(_){ window.location.href="/checkout"; }
+  }else{
+    addMsg("bot", `${product.name} se ha añadido a tu carrito.`);
+  }
+}
+
+function updateAccessSidebar(){
+  const el=$("accessSidebar");
+  if(!el) return;
+  const state=herenciaUsageState();
+  if(state.vip){
+    el.textContent="Acceso VIP · uso diario ilimitado.";
+    return;
+  }
+  const remaining=Math.max(0,state.limit-state.used);
+  el.textContent=`Te quedan ${remaining} de ${state.limit} mensajes hoy.`;
+}
+
 // ================= CHAT =================
 function herenciaUsageState(){
   const vip = localStorage.getItem("herencia-ia-vip") === "1";
@@ -213,10 +376,32 @@ async function sendChat(){
   try{
     const user = getSessionUser();
     const email = localStorage.getItem("herencia-ia-active-email") || "";
-    const data = await apiFetch("/api/herencia-ai/chat", { message, user, email, lang });
+
+    let data = null;
+    try{
+      const response = await fetch("/api/ai/sales-chat", {
+        method:"POST",
+        credentials:"include",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          message,
+          history:[],
+          catalog:compactCatalog(),
+          conversationId:user,
+          customerEmail:email
+        })
+      });
+      data = await response.json();
+      if(!response.ok) throw new Error(data?.error || "Sales chat unavailable");
+    }catch(_){
+      data = await apiFetch("/api/herencia-ai/chat", { message, user, email, lang });
+    }
+
     if(data?.error) throw new Error(data.error);
     addMsg("bot", (data.reply || "").trim());
+    if(Array.isArray(data.productIds) && data.productIds.length) renderProductCards(data.productIds);
     consumeHerenciaUsage();
+    updateAccessSidebar();
   }catch(_){
     addMsg("bot", "⚠️ Error de conexión con Herenc(IA).");
   }finally{
@@ -233,6 +418,7 @@ function wireSend(){
     }
   });
   applyHerenciaUsageState();
+  updateAccessSidebar();
 }
 
 // ================= MIC (walkie / toggle) =================
@@ -1013,7 +1199,9 @@ function injectWatermark(){
 
 // ================= INIT =================
 wireSend();
+void loadHerenciaSalesCatalog();
 void loadHerenciaFeatureFlags();
+updateAccessSidebar();
 injectWatermark();
 
 addMsg("bot", "🌿 Hola, soy Herenc(IA). ¿Qué planta quieres cuidar hoy?");
