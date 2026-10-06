@@ -83,6 +83,8 @@ export function AdminSettings() {
   const [chatboxEnabled, setChatboxEnabled] = useState(false);
   const [herenciaUrl, setHerenciaUrl] = useState("");
   const [herenciaEnabled, setHerenciaEnabled] = useState(true);
+  const [herenciaBackgroundUrl, setHerenciaBackgroundUrl] = useState("");
+  const [herenciaBackgroundUploading, setHerenciaBackgroundUploading] = useState(false);
   const [herenciaMode, setHerenciaMode] = useState<"integrated" | "external">("integrated");
   const [herenciaFeatures, setHerenciaFeatures] = useState({
     createBouquet: false,
@@ -163,6 +165,7 @@ export function AdminSettings() {
       const settings = JSON.parse(savedHerencia);
       setHerenciaUrl(settings.url || "");
       setHerenciaEnabled(settings.enabled !== false);
+      setHerenciaBackgroundUrl(String(settings.backgroundUrl || ""));
       setHerenciaMode(settings.mode === "external" || settings.useIntegrated === false ? "external" : "integrated");
       setHerenciaFeatures({
         createBouquet: Boolean(settings.features?.createBouquet),
@@ -296,6 +299,7 @@ export function AdminSettings() {
         useIntegrated: herenciaMode === "integrated",
         features: herenciaFeatures,
         access: herenciaAccess,
+        backgroundUrl: herenciaBackgroundUrl.trim(),
       };
       backendStorage.setItem("herenciaSettings", JSON.stringify(settings));
       window.dispatchEvent(new Event("storage"));
@@ -305,6 +309,21 @@ export function AdminSettings() {
       console.error("❌ Error al guardar Herenc(IA):", error);
       toast.error("Error al guardar la configuración");
     }
+  };
+
+  const uploadHerenciaBackground = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Selecciona una imagen válida");
+    if (file.size > 12 * 1024 * 1024) return toast.error("La imagen no puede superar 12 MB");
+    setHerenciaBackgroundUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || "")); reader.onerror = () => reject(new Error("No se pudo leer la imagen")); reader.readAsDataURL(file); });
+      const uploaded = await backendApi.uploadSiteMedia({ dataUrl, filename: "herencia-ia-background-" + Date.now() + "." + (file.name.split(".").pop() || "png") });
+      const url = String(uploaded.media?.url || ""); if (!url) throw new Error("No se pudo guardar la imagen en R2");
+      setHerenciaBackgroundUrl(url);
+      const current = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}"); backendStorage.setItem("herenciaSettings", JSON.stringify({ ...current, backgroundUrl: url })); window.dispatchEvent(new Event("storage"));
+      toast.success("Fondo de Herenc(IA) subido y aplicado");
+    } catch (error: any) { toast.error(error?.message || "No se pudo subir el fondo"); } finally { setHerenciaBackgroundUploading(false); }
   };
 
   const saveStripeSettings = () => {
@@ -385,6 +404,7 @@ export function AdminSettings() {
         useIntegrated: herenciaMode === "integrated",
         features: herenciaFeatures,
         access: herenciaAccess,
+        backgroundUrl: herenciaBackgroundUrl.trim(),
       }));
       backendStorage.setItem("customTheme", JSON.stringify(theme));
       backendStorage.setItem("menuIcons", JSON.stringify(menuIcons));
@@ -427,6 +447,7 @@ export function AdminSettings() {
         const settings = JSON.parse(savedHerencia);
         setHerenciaUrl(settings.url || "");
         setHerenciaEnabled(settings.enabled !== false);
+      setHerenciaBackgroundUrl(String(settings.backgroundUrl || ""));
         setHerenciaMode(settings.mode === "external" || settings.useIntegrated === false ? "external" : "integrated");
         setHerenciaFeatures({
           createBouquet: Boolean(settings.features?.createBouquet),
@@ -688,6 +709,17 @@ export function AdminSettings() {
               </p>
             </div>
           )}
+
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-sm font-semibold text-foreground">Apariencia · Fondo de Herenc(IA)</p>
+            <p className="mt-1 text-xs text-muted-foreground">Sube aquí el fondo en alta resolución. Se guarda en Cloudflare R2 y se aplica detrás del chat transparente.</p>
+            {herenciaBackgroundUrl ? <div className="mt-4 overflow-hidden rounded-xl border border-border bg-background"><img src={herenciaBackgroundUrl} alt="Fondo actual de Herenc(IA)" className="h-44 w-full object-cover" /></div> : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <label className="cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">{herenciaBackgroundUploading ? "Subiendo…" : "Subir imagen de fondo"}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={herenciaBackgroundUploading} onChange={uploadHerenciaBackground} /></label>
+              {herenciaBackgroundUrl ? <button type="button" onClick={() => setHerenciaBackgroundUrl("")} className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground">Quitar fondo personalizado</button> : null}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">PNG, JPG o WebP · máximo 12 MB · recomendado 2400 px o más de ancho.</p>
+          </div>
 
           <div className="rounded-xl border border-border bg-muted/30 p-4">
             <p className="text-sm font-semibold text-foreground">Funciones opcionales del chat</p>
