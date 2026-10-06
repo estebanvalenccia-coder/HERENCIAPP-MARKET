@@ -38,6 +38,7 @@ import {
   BarChart3,
   Bot,
   MessageCircleHeart,
+  Globe2,
 } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { motion } from "motion/react";
@@ -77,6 +78,7 @@ import { AdminInventoryLots } from "../components/admin/AdminInventoryLots";
 import { AdminAnalytics } from "../components/admin/AdminAnalytics";
 import { AdminHerenciaSales } from "../components/admin/AdminHerenciaSales";
 import { AdminCommunity } from "../components/admin/AdminCommunity";
+import { AdminInternationalDelivery } from "../components/admin/AdminInternationalDelivery";
 
 type AdminSection =
   | "dashboard"
@@ -96,6 +98,7 @@ type AdminSection =
   | "bouquet-catalog"
   | "content"
   | "community"
+  | "international-delivery"
   | "delivery"
   | "neural"
   | "audit"
@@ -388,6 +391,7 @@ export function AdminDashboard() {
     { id: "bouquet-catalog" as AdminSection, label: "Flores del creador", icon: Flower2, badge: "EDITAR" },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
     { id: "community" as AdminSection, label: "Comunidad / Novedades", icon: MessageCircleHeart, badge: "NUEVO" },
+    { id: "international-delivery" as AdminSection, label: "Colombia / Internacional", icon: Globe2, badge: "🇨🇴" },
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
     { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
@@ -927,6 +931,8 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "community" && <AdminCommunity />}
+
+          {currentSection === "international-delivery" && <AdminInternationalDelivery />}
 
           {currentSection === "delivery" && <AdminDeliveryPanel />}
 
