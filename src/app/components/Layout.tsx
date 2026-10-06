@@ -12,6 +12,7 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
 import { WhatsAppButton } from "./WhatsAppButton";
 import { AccessibilityPanel } from "./AccessibilityPanel";
@@ -26,6 +27,7 @@ export function Layout() {
   const [search, setSearch] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
   const [herenciaEnabled, setHerenciaEnabled] = useState(false);
+  const [colombiaEnabled, setColombiaEnabled] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [cookieConsent, setCookieConsent] = useState<string>(() => {
     try {
@@ -76,6 +78,12 @@ export function Layout() {
         setMaintenanceMode(Boolean(suite.maintenanceMode));
       } catch {
         setMaintenanceMode(false);
+      }
+
+      try {
+        setColombiaEnabled(parseColombiaDeliverySettings(backendStorage.getItem("internationalDeliverySettings")).enabled);
+      } catch {
+        setColombiaEnabled(false);
       }
     };
 
@@ -233,7 +241,21 @@ export function Layout() {
               </nav>
 
               <div className="ml-auto flex items-center gap-1.5">
-                <form onSubmit={submitSearch} className="relative hidden w-[270px] xl:block">
+                {colombiaEnabled ? (
+                  <div className="group relative hidden lg:block">
+                    <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#315b42]/30 bg-white px-4 text-sm font-black text-[#315b42] transition hover:bg-[#f1f6f2]">
+                      <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="pointer-events-none absolute right-0 top-full z-[90] w-72 pt-3 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                      <div className="overflow-hidden rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
+                        <Link to="/" className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-[#f4f1e9]"><span className="text-xl">🇪🇸</span><div><p className="text-sm font-black">Barcelona</p><p className="text-xs text-[#718076]">Plantas y productos locales</p></div></Link>
+                        <Link to="/colombia" className="mt-1 flex items-center gap-3 rounded-xl bg-[#edf4ee] px-3 py-3"><span className="text-xl">🇨🇴</span><div className="flex-1"><p className="text-sm font-black">Cali y Candelaria</p><p className="text-xs text-[#718076]">Regalos y plantas en Colombia</p></div><span className="rounded-full bg-[#315b42] px-2 py-1 text-[9px] font-black text-white">NUEVO</span></Link>
+                        <div className="mt-1 flex items-center gap-3 rounded-xl px-3 py-3 text-[#718076]"><span className="text-xl">🌎</span><div><p className="text-sm font-black">Próximamente</p><p className="text-xs">Más destinos</p></div></div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718076]" />
                   <input
                     value={search}
@@ -317,6 +339,9 @@ export function Layout() {
                   active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                   mobile
                 />
+              ) : null}
+              {colombiaEnabled ? (
+                <MarketNavLink href="/colombia" label="🇨🇴 Cali" active={location.pathname === "/colombia"} mobile />
               ) : null}
             </nav>
           </div>
