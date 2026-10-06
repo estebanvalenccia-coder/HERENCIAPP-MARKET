@@ -95,6 +95,59 @@ async function apiFetch(urlPath, body, pin=null){
   return r.json();
 }
 
+async function loadHerenciaFeatureFlags(){
+  let features = {
+    createBouquet:false,
+    findPlant:false,
+    searchByPhoto:false,
+    findGift:false,
+    surpriseMe:false
+  };
+
+  try{
+    const local = JSON.parse(localStorage.getItem("herenciaSettings") || "{}");
+    features = { ...features, ...(local.features || {}) };
+  }catch(_){}
+
+  try{
+    const response = await fetch("/api/settings/public", { credentials:"include" });
+    const data = await response.json();
+    const remote = data?.settings?.herenciaSettings?.features;
+    if(remote && typeof remote === "object") features = { ...features, ...remote };
+  }catch(_){}
+
+  const wrap = $("optionalActions");
+  if(!wrap) return;
+
+  let any = false;
+  wrap.querySelectorAll("[data-feature]").forEach((button)=>{
+    const key = button.dataset.feature;
+    const enabled = Boolean(features[key]);
+    button.style.display = enabled ? "inline-flex" : "none";
+    if(enabled) any = true;
+  });
+  wrap.style.display = any ? "flex" : "none";
+
+  wrap.querySelectorAll("[data-prompt]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const prompt = String(button.dataset.prompt || "").trim();
+      if(!prompt) return;
+      const input = $("userInput");
+      if(input){
+        input.value = prompt;
+        input.focus();
+      }
+    });
+  });
+
+  const photoBtn = $("searchByPhotoBtn");
+  const photoInput = $("photoInput");
+  if(photoBtn && photoInput){
+    photoBtn.addEventListener("click", ()=> photoInput.click());
+    wirePhoto();
+  }
+}
+
 // ================= CHAT =================
 function herenciaUsageState(){
   const vip = localStorage.getItem("herencia-ia-vip") === "1";
@@ -960,6 +1013,7 @@ function injectWatermark(){
 
 // ================= INIT =================
 wireSend();
+void loadHerenciaFeatureFlags();
 injectWatermark();
 
 addMsg("bot", "🌿 Hola, soy Herenc(IA). ¿Qué planta quieres cuidar hoy?");
