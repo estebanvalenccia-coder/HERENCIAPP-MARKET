@@ -6173,7 +6173,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${groqApiKey}`,
+        Authorization: `Bearer ${settings.apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -6248,7 +6248,7 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`,
+      Authorization: `Bearer ${groqApiKey}`,
     },
     body: JSON.stringify({
       model,
