@@ -244,7 +244,7 @@ export function HerencIA() {
 
   return (
     <div
-      className="relative min-h-[calc(100vh-120px)] px-3 py-5 sm:px-5 sm:py-7"
+      className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-5 sm:px-5 sm:py-7"
       style={{
         backgroundImage: "linear-gradient(90deg, rgba(28,63,39,.12), rgba(238,218,177,.10)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=92')",
         backgroundSize: "cover",
@@ -254,16 +254,16 @@ export function HerencIA() {
       }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_50%,rgba(33,84,49,.20),transparent_24%),radial-gradient(circle_at_92%_48%,rgba(117,91,42,.13),transparent_24%)]" />
-      <div className="relative mx-auto grid max-w-[1380px] gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[2.3rem] border border-[#ead39a]/55 bg-[#173f2b]/38 shadow-[0_30px_90px_rgba(17,49,33,.34)] backdrop-blur-[10px]">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[#123a27]/82 px-5 py-4 sm:px-7">
+      <div className="relative mx-auto grid max-w-[1320px] gap-4 lg:grid-cols-[minmax(0,1fr)_292px]">
+        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[1.85rem] border border-[#d9bd72]/70 bg-[#173f2b]/30 shadow-[0_28px_80px_rgba(17,49,33,.32)] backdrop-blur-[7px]">
+          <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[#123a27]/82 px-5 py-4 sm:px-7">
             <div className="flex items-center gap-4">
-              <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/15 bg-white/10 text-[#efd8a0] shadow-lg">
+              <div className="grid h-[58px] w-[58px] place-items-center rounded-full border border-[#d8bd7a]/35 bg-[#1c5b3a]/80 text-[#efd8a0] shadow-lg">
                 <Leaf className="h-7 w-7" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="font-serif text-2xl font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
+                  <h1 className="font-serif text-[28px] font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
                   <Sparkles className="h-4 w-4 text-[#d8bd7a]" />
                 </div>
                 <p className="mt-1 text-sm text-white/65">Tu asesora de plantas, decoración y regalos</p>
@@ -280,29 +280,38 @@ export function HerencIA() {
           </header>
 
           <div
-            className="relative flex-1 overflow-y-auto px-4 py-6 sm:px-7"
+            className="relative flex-1 overflow-y-auto px-5 py-5 sm:px-7"
             style={{
               backgroundImage: "linear-gradient(180deg, rgba(23,61,42,.16), rgba(245,225,186,.08)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=1800&q=90')",
               backgroundSize: "cover",
               backgroundPosition: "center",
             }}
           >
-            <div className="mx-auto max-w-4xl space-y-5">
+            <div className="mx-auto max-w-[880px] space-y-4">
               {messages.map(message => {
                 const products = (message.productIds || []).map(pid => productMap.get(pid)).filter(Boolean) as Product[];
                 return (
                   <div key={message.id}>
-                    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[86%] rounded-[1.65rem] px-5 py-4 text-[15px] leading-7 shadow-xl backdrop-blur-xl sm:max-w-[72%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/95 text-[#173126]"}`}>
+                    <div className={`flex items-end gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                      {message.role === "assistant" && (
+                        <div className="mb-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#d9c99f] bg-[#fffaf0] text-[#315b42] shadow-md"><Leaf className="h-4 w-4" /></div>
+                      )}
+                      <div className={`max-w-[86%] rounded-[1.35rem] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[68%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/95 text-[#173126]"}`}>
                         {message.content}
+                        <div className={`mt-1 text-right text-[10px] ${message.role === "user" ? "text-white/45" : "text-[#6d786f]/55"}`}>
+                          ahora
+                        </div>
                       </div>
+                      {message.role === "user" && (
+                        <div className="mb-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/15 bg-[#174b31] text-white shadow-md"><Bot className="h-4 w-4" /></div>
+                      )}
                     </div>
 
                     {products.length > 0 && (
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         {products.slice(0,3).map(product => (
-                          <article key={product.id} className="overflow-hidden rounded-[1.6rem] border border-[#ead9b6]/70 bg-[#fffaf0]/96 shadow-[0_16px_38px_rgba(31,48,34,.18)] backdrop-blur-xl">
-                            <div className="aspect-[4/3] bg-[#edf1e8]">
+                          <article key={product.id} className="overflow-hidden rounded-[1.15rem] border border-[#ead9b6]/80 bg-[#fffaf0]/96 shadow-[0_14px_32px_rgba(31,48,34,.18)] backdrop-blur-xl">
+                            <div className="aspect-[1.42/1] bg-[#edf1e8]">
                               {product.image ? <img src={product.image} alt={product.name} className="h-full w-full object-cover" /> : null}
                             </div>
                             <div className="p-4">
@@ -332,9 +341,9 @@ export function HerencIA() {
             </div>
           </div>
 
-          <div className="border-t border-white/15 bg-[#153e2b]/72 px-4 py-4 backdrop-blur-xl sm:px-6">
-            <form onSubmit={send} className="mx-auto flex max-w-4xl items-center gap-3">
-              <div className="flex min-h-14 flex-1 items-center rounded-full border border-white/25 bg-[#fffaf0]/96 px-5 shadow-lg">
+          <div className="border-t border-white/15 bg-[#153e2b]/76 px-4 py-3.5 backdrop-blur-xl sm:px-5">
+            <form onSubmit={send} className="mx-auto flex max-w-[900px] items-center gap-3">
+              <div className="flex min-h-[52px] flex-1 items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 px-5 shadow-lg">
                 <input
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -343,37 +352,48 @@ export function HerencIA() {
                   className="w-full bg-transparent text-[15px] text-[#173126] outline-none placeholder:text-[#879086]"
                 />
               </div>
-              <button type="submit" disabled={sending || !input.trim()} className="flex min-h-14 items-center gap-2 rounded-full bg-[#d6bb7a] px-5 font-bold text-[#173126] shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50">
-                Enviar <Send className="h-4 w-4" />
+              <button type="submit" disabled={sending || !input.trim()} className="grid h-[52px] w-[52px] place-items-center rounded-full bg-[#174b31] p-0 font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50">
+                <Send className="h-5 w-5" />
               </button>
             </form>
           </div>
         </section>
 
-        <aside className="hidden min-h-[calc(100vh-165px)] flex-col gap-4 lg:flex">
-          <div className="rounded-[2rem] border border-[#ead39a]/35 bg-[#123a27]/86 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.26)] backdrop-blur-xl">
+        <aside className="hidden min-h-[calc(100vh-165px)] flex-col gap-3 lg:flex">
+          <div className="rounded-[1.7rem] border border-[#ead39a]/35 bg-[#123a27]/86 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.26)] backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-white/10 p-3 text-[#f0d79d]"><Bot className="h-5 w-5" /></div>
               <div><h2 className="font-serif text-xl font-semibold">Tu acceso</h2><p className="text-xs text-white/55">{access?.authenticated ? "Cliente registrado" : "Visitante"}</p></div>
             </div>
             <div className="mt-5 rounded-2xl bg-white/10 p-4">
               <p className="text-3xl font-black text-[#f4e0af]">{access?.unlimited ? "∞" : Math.max(0, Number(access?.remaining || 0))}</p>
-              <p className="mt-1 text-sm text-white/65">{access?.unlimited ? "mensajes sin límite" : `de ${Number(access?.dailyLimit || 0)} mensajes disponibles hoy`}</p>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-[#f1dfb4] transition-all"
+                  style={{ width: access?.unlimited ? "100%" : `${Math.max(0, Math.min(100, (Number(access?.remaining || 0) / Math.max(1, Number(access?.dailyLimit || 1))) * 100))}%` }}
+                />
+              </div>
+              <p className="mt-2 text-sm text-white/65">{access?.unlimited ? "mensajes sin límite" : `de ${Number(access?.dailyLimit || 0)} mensajes disponibles hoy`}</p>
             </div>
+            {!access?.authenticated && (
+              <button onClick={() => navigate("/login")} className="mt-4 w-full rounded-full bg-[#fff1cf] px-4 py-2.5 text-sm font-bold text-[#173126]">
+                Inicia sesión para más mensajes →
+              </button>
+            )}
           </div>
 
-          <div className="rounded-[2rem] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(117,88,32,.82),rgba(80,61,27,.74))] p-5 text-white shadow-xl backdrop-blur-2xl">
+          <div className="rounded-[1.7rem] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(145,103,28,.88),rgba(102,68,19,.82))] p-5 text-white shadow-xl backdrop-blur-2xl">
             <div className="flex items-center gap-2 text-[#f4dfaa]"><Crown className="h-5 w-5" /><strong>Acceso VIP</strong></div>
             <p className="mt-3 text-sm leading-6 text-white/70">Con {Number(access?.vipPlantSpend || 50).toFixed(0)} € o más en compras pagadas de plantas, Herenc(IA) pasa a uso ilimitado.</p>
             {access?.authenticated ? <p className="mt-3 text-xs font-semibold text-[#f4dfaa]">Llevas {Number(access.plantSpend || 0).toFixed(2)} € en plantas.</p> : null}
           </div>
 
-          <div className="rounded-[2rem] border border-[#ead39a]/30 bg-[#123a27]/88 p-5 text-white shadow-xl backdrop-blur-xl">
+          <div className="rounded-[1.7rem] border border-[#ead39a]/30 bg-[#123a27]/88 p-5 text-white shadow-xl backdrop-blur-xl">
             <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[#f0d79d]" /><h3 className="font-serif text-lg font-semibold">Compra desde el chat</h3></div>
             <p className="mt-3 text-sm leading-6 text-white/65">Herenc(IA) recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
           </div>
 
-          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[2rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
+          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[1.7rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
             <div className="absolute inset-0 bg-gradient-to-t from-[#173b29]/75 via-transparent to-transparent" />
             <p className="absolute bottom-5 left-5 right-5 font-serif text-2xl leading-tight text-white">Más que plantas, un hogar con vida.</p>
           </div>
