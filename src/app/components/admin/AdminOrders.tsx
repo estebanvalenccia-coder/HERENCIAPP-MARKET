@@ -46,9 +46,12 @@ function getPhone(order: Order) {
 function getAddress(order: Order) {
   const address = order.metadata?.shippingAddress || {};
   if (order.metadata?.source === "HERENCIA_SALES_HANDOFF") return "Consulta comercial · entrega por definir";
-  return [address.address, `${address.postalCode || ""} ${address.city || ""}`.trim(), address.province]
-    .filter(Boolean)
-    .join(" · ") || "Dirección no indicada";
+  return [
+    address.address,
+    address.neighborhood || order.metadata?.neighborhood,
+    `${address.postalCode || ""} ${address.city || ""}`.trim(),
+    address.province,
+  ].filter(Boolean).join(" · ") || "Dirección no indicada";
 }
 
 function isFloresAdminRequest(order: Order) {
@@ -282,8 +285,13 @@ export function AdminOrders() {
                         {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>{formatOrderMoney(order, Number((item.price || 0) * (item.quantity || 1)))}</span></div>)}
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
                         <p><strong>Dirección completa:</strong> {getAddress(order)}</p>
+                        {order.metadata?.shippingAddress?.references && <p><strong>Referencias:</strong> {order.metadata.shippingAddress.references}</p>}
+                        {order.metadata?.deliveryInstructions && <p><strong>Comentarios de entrega:</strong> {order.metadata.deliveryInstructions}</p>}
+                        {order.metadata?.recipientName && <p><strong>Destinatario:</strong> {order.metadata.recipientName} · {order.metadata.recipientPhone || order.metadata.phone || "Sin teléfono"}</p>}
+                        {order.metadata?.buyerPhone && <p><strong>Teléfono comprador:</strong> {order.metadata.buyerPhone}</p>}
+                        {order.metadata?.giftMessage && <p><strong>Tarjeta:</strong> {order.metadata.occasion ? `${order.metadata.occasion}: ` : ""}{order.metadata.giftMessage}</p>}
+                        {order.metadata?.surprise && <p><strong>🎀 Sorpresa:</strong> no mostrar precio al destinatario</p>}
                         {order.metadata?.requestedDate && <p><strong>Fecha solicitada:</strong> {order.metadata.requestedDate}{order.metadata?.requestedTimeSlot ? ` · ${order.metadata.requestedTimeSlot}` : ""}</p>}
-                        {order.metadata?.deliveryInstructions && <p><strong>Instrucciones de entrega:</strong> {order.metadata.deliveryInstructions}</p>}
                       </div>
                     )}
                   </div>
