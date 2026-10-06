@@ -867,6 +867,26 @@ export const backendApi = {
     return request<{ saved: boolean }>(`/api/community/posts/${encodeURIComponent(postId)}/save`, { method: "POST" });
   },
 
+  async communityComments(postId = "") {
+    return request<{ comments: any[] }>(`/api/community/comments${postId ? `?postId=${encodeURIComponent(postId)}` : ""}`);
+  },
+
+  async addCommunityComment(postId: string, body: string) {
+    return request<{ comment: any }>(`/api/community/posts/${encodeURIComponent(postId)}/comments`, { method: "POST", body: JSON.stringify({ body }) });
+  },
+
+  async adminCommunityComments() {
+    return request<{ comments: any[] }>("/api/admin/community/comments");
+  },
+
+  async moderateCommunityComment(id: string, status: "visible" | "hidden") {
+    return request<{ comment: any }>(`/api/admin/community/comments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+  },
+
+  async deleteCommunityComment(id: string) {
+    return request<{ ok: boolean }>(`/api/admin/community/comments/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
   async customerLogout() {
     return request<{ ok: boolean }>("/api/customer/logout", { method: "POST", body: "{}" });
   },
