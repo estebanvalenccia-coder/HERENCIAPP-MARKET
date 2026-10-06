@@ -229,8 +229,8 @@ export function ColombiaDelivery() {
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#52715d] text-white shadow-sm"><MapPin className="h-6 w-6"/></span>
               <div><p className="text-lg font-black">Entrega en Cali</p><p className="text-sm font-semibold text-[#52675a]">y alrededores</p></div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {settings.zones.filter((z)=>z.enabled).slice(0,3).map((z,index)=>(
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {settings.zones.filter((z)=>z.enabled).slice(0,4).map((z,index)=>(
                 <button
                   key={z.id}
                   onClick={()=>{setZoneId(z.id);document.getElementById("catalogo-colombia")?.scrollIntoView({behavior:"smooth"});}}
