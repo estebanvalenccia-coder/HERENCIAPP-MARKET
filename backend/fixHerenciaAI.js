@@ -53,6 +53,15 @@ Idioma: ${lang}. Modo: ${mode}.`;
   return clamp(json?.choices?.[0]?.message?.content || "", 6000);
 }
 
+function statusHandler(_req, res) {
+  res.json({
+    ok: Boolean(process.env.GROQ_API_KEY),
+    provider: "groq",
+    model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+    integrated: true,
+  });
+}
+
 async function chatHandler(req, res) {
   if (!rateLimit(req, res)) return;
   const message = clamp(req.body?.message, 3000);
@@ -79,6 +88,12 @@ async function diagnosisHandler(req, res) {
 }
 
 const originalPost = express.application.post;
+const originalGet = express.application.get;
+express.application.get = function patchedHerenciaAiGet(path, ...handlers) {
+  if (path === "/api/herencia-ai/status") return originalGet.call(this, path, statusHandler);
+  return originalGet.call(this, path, ...handlers);
+};
+
 express.application.post = function patchedHerenciaAiPost(path, ...handlers) {
   if (path === "/api/herencia-ai/chat") return originalPost.call(this, path, express.json({ limit: "2mb" }), chatHandler);
   if (path === "/api/herencia-ai/diagnosis") return originalPost.call(this, path, express.json({ limit: "4mb" }), diagnosisHandler);
@@ -90,6 +105,7 @@ express.application.listen = function patchedHerenciaAiListen(...args) {
   const app = this;
   const stack = app?._router?.stack || [];
   const paths = new Set(stack.map((layer) => layer?.route?.path).filter(Boolean));
+  if (!paths.has("/api/herencia-ai/status")) app.get("/api/herencia-ai/status", statusHandler);
   if (!paths.has("/api/herencia-ai/chat")) app.post("/api/herencia-ai/chat", express.json({ limit: "2mb" }), chatHandler);
   if (!paths.has("/api/herencia-ai/diagnosis")) app.post("/api/herencia-ai/diagnosis", express.json({ limit: "4mb" }), diagnosisHandler);
   return originalListen.apply(this, args);
