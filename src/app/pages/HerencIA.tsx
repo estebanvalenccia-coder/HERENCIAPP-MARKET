@@ -239,7 +239,7 @@ export function HerencIA() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-120px)] bg-[#eef4e8]">
+    <div className="min-h-[calc(100vh-120px)] bg-[radial-gradient(circle_at_top_left,_#eff5e9,_#e5efdf_45%,_#f4ede0)]">
       <div className="border-b border-[#dce8df] bg-white/95">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
@@ -281,7 +281,7 @@ export function HerencIA() {
         <iframe
           src={src}
           title="Herenc(IA)"
-          className="h-[calc(100vh-190px)] min-h-[680px] w-full rounded-3xl border border-[#dce8df] bg-white shadow-sm"
+          className="h-[calc(100vh-190px)] min-h-[680px] w-full rounded-[2rem] border-0 bg-transparent shadow-none"
           allow="microphone; camera; clipboard-write"
         />
       </div>
