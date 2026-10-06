@@ -190,9 +190,9 @@ export function ColombiaDelivery() {
         <img
           src={settings.heroImageUrl}
           alt="Herencia Colombia en Cali"
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[50%_42%]"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.70)_0%,rgba(18,36,26,.42)_38%,rgba(18,36,26,.18)_68%,rgba(18,36,26,.28)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.12)_0%,rgba(18,36,26,.18)_28%,rgba(18,36,26,.58)_43%,rgba(18,36,26,.38)_72%,rgba(18,36,26,.16)_100%)]" />
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f4d21f] via-[#184aa5] to-[#c9282d]" />
 
         <div className="relative mx-auto flex min-h-[560px] max-w-[1536px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
@@ -214,7 +214,7 @@ export function ColombiaDelivery() {
               {settings.heroCtaLabel || "Enviar un regalo a Cali"} <ChevronRight className="h-5 w-5" />
             </button>
 
-            <div className="mt-7 grid max-w-[760px] grid-cols-2 gap-x-5 gap-y-3 rounded-[24px] border border-white/10 bg-[#20150f]/50 px-5 py-4 text-sm font-semibold text-white/95 backdrop-blur-md sm:grid-cols-4">
+            <div className="mt-7 grid max-w-[820px] grid-cols-2 gap-x-5 gap-y-3 rounded-[24px] border border-white/10 bg-[#20150f]/50 px-5 py-4 text-sm font-semibold text-white/95 backdrop-blur-md sm:grid-cols-4">
               <span className="inline-flex items-center gap-2"><Gift className="h-5 w-5"/>Plantas y flores frescas</span>
               <span className="inline-flex items-center gap-2"><Truck className="h-5 w-5"/>Entrega el mismo día</span>
               <span className="inline-flex items-center gap-2"><PackageCheck className="h-5 w-5"/>Regalos personalizados</span>
@@ -224,7 +224,7 @@ export function ColombiaDelivery() {
         </div>
 
         <div className="relative mx-auto -mt-[72px] max-w-[1536px] px-5 pb-3 sm:px-8 lg:px-12">
-          <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur md:grid-cols-[245px_1fr]">
+          <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 md:grid-cols-[245px_1fr] shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur">
             <div className="flex items-center gap-4 rounded-[20px] px-4 py-3 text-[#183126]">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#52715d] text-white shadow-sm"><MapPin className="h-6 w-6"/></span>
               <div><p className="text-lg font-black">Entrega en Cali</p><p className="text-sm font-semibold text-[#52675a]">y alrededores</p></div>
