@@ -82,7 +82,8 @@ export function AdminSettings() {
   const [chatboxUrl, setChatboxUrl] = useState("");
   const [chatboxEnabled, setChatboxEnabled] = useState(false);
   const [herenciaUrl, setHerenciaUrl] = useState("");
-  const [herenciaEnabled, setHerenciaEnabled] = useState(false);
+  const [herenciaEnabled, setHerenciaEnabled] = useState(true);
+  const [herenciaMode, setHerenciaMode] = useState<"integrated" | "external">("integrated");
   const [theme, setTheme] = useState({
     primaryColor: "#2d5f3f",
     secondaryColor: "#7fa88f",
@@ -149,7 +150,8 @@ export function AdminSettings() {
     if (savedHerencia) {
       const settings = JSON.parse(savedHerencia);
       setHerenciaUrl(settings.url || "");
-      setHerenciaEnabled(settings.enabled || false);
+      setHerenciaEnabled(settings.enabled !== false);
+      setHerenciaMode(settings.mode === "external" || settings.useIntegrated === false ? "external" : "integrated");
     }
 
     const savedTheme = backendStorage.getItem("customTheme");
@@ -266,6 +268,8 @@ export function AdminSettings() {
       const settings = {
         url: herenciaUrl,
         enabled: herenciaEnabled,
+        mode: herenciaMode,
+        useIntegrated: herenciaMode === "integrated",
       };
       backendStorage.setItem("herenciaSettings", JSON.stringify(settings));
       window.dispatchEvent(new Event("storage"));
@@ -579,33 +583,81 @@ export function AdminSettings() {
       <div className="bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-6">
           <Bot className="w-5 h-5 text-primary" />
-          <h3 className="text-xl font-bold text-foreground">Herenc(IA) (Página dedicada)</h3>
+          <h3 className="text-xl font-bold text-foreground">Herenc(IA)</h3>
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              URL de Herenc(IA)
-            </label>
-            <input
-              type="url"
-              value={herenciaUrl}
-              onChange={(e) => setHerenciaUrl(e.target.value)}
-              placeholder="https://tu-ia-herencia.com"
-              className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              Aparecerá como botón en el menú principal
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <p className="text-sm font-semibold text-foreground">Origen de la aplicación</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Elige la app integrada en Herencia Market o conserva una URL externa como alternativa.
             </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setHerenciaMode("integrated")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                  herenciaMode === "integrated"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-foreground hover:bg-accent"
+                }`}
+              >
+                App integrada
+              </button>
+              <button
+                type="button"
+                onClick={() => setHerenciaMode("external")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                  herenciaMode === "external"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-foreground hover:bg-accent"
+                }`}
+              >
+                Usar URL
+              </button>
+            </div>
           </div>
 
+          {herenciaMode === "integrated" ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+              <p className="font-bold text-emerald-800">App integrada seleccionada</p>
+              <p className="mt-1 text-xs text-emerald-700">
+                Se abre dentro de Herencia Market y utiliza GROQ_API_KEY desde Railway. La clave nunca se expone al navegador.
+              </p>
+              <a href="/ia" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 font-semibold text-emerald-800">
+                <ExternalLink className="h-4 w-4" /> Probar /ia
+              </a>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                URL externa de Herenc(IA)
+              </label>
+              <input
+                type="url"
+                value={herenciaUrl}
+                onChange={(e) => setHerenciaUrl(e.target.value)}
+                placeholder="https://tu-ia-herencia.com"
+                className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Solo se utiliza cuando seleccionas “Usar URL”.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
-            <span className="text-sm font-medium text-foreground">Activar Herenc(IA)</span>
+            <div>
+              <span className="text-sm font-medium text-foreground">Activar Herenc(IA)</span>
+              <p className="text-xs text-muted-foreground">Controla si aparece y puede abrirse desde la tienda.</p>
+            </div>
             <button
+              type="button"
               onClick={() => setHerenciaEnabled(!herenciaEnabled)}
               className={`relative w-12 h-6 rounded-full transition-colors ${
                 herenciaEnabled ? "bg-primary" : "bg-muted-foreground/30"
               }`}
+              aria-pressed={herenciaEnabled}
             >
               <div
                 className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -614,18 +666,6 @@ export function AdminSettings() {
               />
             </button>
           </div>
-
-          {herenciaUrl && (
-            <a
-              href={herenciaUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Abrir Herenc(IA)
-            </a>
-          )}
 
           <button
             onClick={saveHerenciaSettings}
