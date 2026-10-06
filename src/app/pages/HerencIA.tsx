@@ -246,17 +246,17 @@ export function HerencIA() {
     <div
       className="relative min-h-[calc(100vh-120px)] overflow-hidden px-3 py-5 sm:px-5 sm:py-7"
       style={{
-        backgroundImage: "linear-gradient(90deg, rgba(28,63,39,.12), rgba(238,218,177,.10)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=92')",
+        backgroundImage: "linear-gradient(90deg, rgba(18,48,31,.04), rgba(255,239,203,.02)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=94')",
         backgroundSize: "cover",
         backgroundPosition: "center",
               backgroundBlendMode: "normal",
         backgroundAttachment: "fixed",
       }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_50%,rgba(33,84,49,.20),transparent_24%),radial-gradient(circle_at_92%_48%,rgba(117,91,42,.13),transparent_24%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,247,226,.04),transparent_42%,rgba(255,235,190,.03))]" />
       <div className="relative mx-auto grid max-w-[1320px] gap-4 lg:grid-cols-[minmax(0,1fr)_292px]">
-        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[1.85rem] border border-[#d9bd72]/70 bg-[#173f2b]/30 shadow-[0_28px_80px_rgba(17,49,33,.32)] backdrop-blur-[7px]">
-          <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[#123a27]/82 px-5 py-4 sm:px-7">
+        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[1.85rem] border border-[#d9bd72]/65 bg-white/[0.035] shadow-[0_28px_80px_rgba(17,49,33,.28)] backdrop-blur-[2px]">
+          <header className="flex min-h-[88px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[#123a27]/88 px-5 py-4 sm:px-7">
             <div className="flex items-center gap-4">
               <div className="grid h-[58px] w-[58px] place-items-center rounded-full border border-[#d8bd7a]/35 bg-[#1c5b3a]/80 text-[#efd8a0] shadow-lg">
                 <Leaf className="h-7 w-7" />
@@ -282,9 +282,10 @@ export function HerencIA() {
           <div
             className="relative flex-1 overflow-y-auto px-5 py-5 sm:px-7"
             style={{
-              backgroundImage: "linear-gradient(180deg, rgba(23,61,42,.16), rgba(245,225,186,.08)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=1800&q=90')",
+              backgroundImage: "linear-gradient(180deg, rgba(14,45,29,.05), rgba(255,239,203,.025)), url('https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1800&q=94')",
               backgroundSize: "cover",
-              backgroundPosition: "center",
+              backgroundPosition: "center 52%",
+              backgroundColor: "#d9d1b8",
             }}
           >
             <div className="mx-auto max-w-[880px] space-y-4">
@@ -296,7 +297,7 @@ export function HerencIA() {
                       {message.role === "assistant" && (
                         <div className="mb-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#d9c99f] bg-[#fffaf0] text-[#315b42] shadow-md"><Leaf className="h-4 w-4" /></div>
                       )}
-                      <div className={`max-w-[86%] rounded-[1.35rem] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[68%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/95 text-[#173126]"}`}>
+                      <div className={`max-w-[86%] rounded-[1.35rem] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[68%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/92 text-[#173126]"}`}>
                         {message.content}
                         <div className={`mt-1 text-right text-[10px] ${message.role === "user" ? "text-white/45" : "text-[#6d786f]/55"}`}>
                           ahora
@@ -341,7 +342,7 @@ export function HerencIA() {
             </div>
           </div>
 
-          <div className="border-t border-white/15 bg-[#153e2b]/76 px-4 py-3.5 backdrop-blur-xl sm:px-5">
+          <div className="border-t border-white/20 bg-[#123a27]/62 px-4 py-3.5 backdrop-blur-md sm:px-5">
             <form onSubmit={send} className="mx-auto flex max-w-[900px] items-center gap-3">
               <div className="flex min-h-[52px] flex-1 items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 px-5 shadow-lg">
                 <input
@@ -393,7 +394,7 @@ export function HerencIA() {
             <p className="mt-3 text-sm leading-6 text-white/65">Herenc(IA) recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
           </div>
 
-          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[1.7rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
+          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[1.7rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
             <div className="absolute inset-0 bg-gradient-to-t from-[#173b29]/75 via-transparent to-transparent" />
             <p className="absolute bottom-5 left-5 right-5 font-serif text-2xl leading-tight text-white">Más que plantas, un hogar con vida.</p>
           </div>
