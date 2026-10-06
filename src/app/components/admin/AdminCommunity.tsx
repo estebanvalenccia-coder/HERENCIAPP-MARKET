@@ -10,6 +10,11 @@ export type CommunityPost = {
   imageUrl: string;
   published: boolean;
   createdAt: string;
+  type?: "novedad" | "evento" | "taller";
+  publishAt?: string;
+  eventDate?: string;
+  linkUrl?: string;
+  linkLabel?: string;
 };
 
 export type CommunityStory = {
@@ -129,6 +134,7 @@ export function AdminCommunity() {
         imageUrl: "",
         published: false,
         createdAt: new Date().toISOString(),
+        type: "novedad", publishAt: "", eventDate: "", linkUrl: "", linkLabel: "",
       }, ...current.posts],
     }));
   };
@@ -258,6 +264,19 @@ export function AdminCommunity() {
                 <input value={post.title} onChange={(e)=>patchPost(post.id,{title:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3 font-semibold" placeholder="Título"/>
                 <textarea value={post.text} onChange={(e)=>patchPost(post.id,{text:e.target.value})} className="min-h-24 w-full rounded-xl border bg-background px-4 py-3 text-sm" placeholder="Escribe la novedad…"/>
                 <input value={post.imageUrl} onChange={(e)=>patchPost(post.id,{imageUrl:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3 text-sm" placeholder="URL de imagen"/>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Tipo
+                    <select value={post.type || "novedad"} onChange={(e)=>patchPost(post.id,{type:e.target.value as CommunityPost["type"]})} className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm"><option value="novedad">Novedad</option><option value="evento">Evento</option><option value="taller">Taller</option></select>
+                  </label>
+                  <label className="text-xs font-semibold text-muted-foreground">Publicar desde
+                    <input type="datetime-local" value={post.publishAt?.slice(0,16) || ""} onChange={(e)=>patchPost(post.id,{publishAt:e.target.value})} className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm"/>
+                  </label>
+                  {(post.type==="evento" || post.type==="taller") && <label className="text-xs font-semibold text-muted-foreground md:col-span-2">Fecha del evento/taller
+                    <input type="datetime-local" value={post.eventDate?.slice(0,16) || ""} onChange={(e)=>patchPost(post.id,{eventDate:e.target.value})} className="mt-1 w-full rounded-xl border bg-background px-3 py-2 text-sm"/>
+                  </label>}
+                  <input value={post.linkUrl || ""} onChange={(e)=>patchPost(post.id,{linkUrl:e.target.value})} className="rounded-xl border bg-background px-3 py-2 text-sm" placeholder="Enlace a producto/categoría"/>
+                  <input value={post.linkLabel || ""} onChange={(e)=>patchPost(post.id,{linkLabel:e.target.value})} className="rounded-xl border bg-background px-3 py-2 text-sm" placeholder="Texto del botón (Ver producto…)"/>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarClock className="h-4 w-4"/>{new Date(post.createdAt).toLocaleString("es-ES")}</div>
                   <div className="flex gap-2">

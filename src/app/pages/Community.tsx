@@ -112,8 +112,8 @@ export function Community() {
     return () => window.clearTimeout(timer);
   }, [activeStoryIndex, activeStories.length]);
 
-  const publishedPosts = community.posts.filter((post: any) => post?.published);
-  const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ id: post.id, title: post.title, description: post.text, image: post.imageUrl })) : updates.map((post, index) => ({ ...post, id: `demo-${index}` }));
+  const publishedPosts = community.posts.filter((post: any) => post?.published && (!post.publishAt || new Date(post.publishAt).getTime() <= Date.now()));
+  const visibleUpdates = publishedPosts.length ? publishedPosts.map((post: any) => ({ id: post.id, title: post.title, description: post.text, image: post.imageUrl, type: post.type || "novedad", eventDate: post.eventDate, linkUrl: post.linkUrl, linkLabel: post.linkLabel })) : updates.map((post, index) => ({ ...post, id: `demo-${index}` }));
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
@@ -183,8 +183,13 @@ export function Community() {
             <article key={item.title} className="overflow-hidden rounded-[28px] border border-[#e4ded2] bg-white shadow-[0_12px_36px_rgba(39,61,45,0.06)]">
               <img src={item.image} alt="" className="aspect-[4/3] w-full object-cover" />
               <div className="p-6">
-                <h3 className="text-xl font-medium">{item.title}</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-xl font-medium">{item.title}</h3>
+                  {item.type && item.type !== "novedad" && <span className="rounded-full bg-[#e6eee7] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#315b42]">{item.type}</span>}
+                </div>
                 <p className="mt-2 text-sm leading-6 text-[#6d776f]">{item.description}</p>
+                {item.eventDate && <p className="mt-3 text-xs font-bold uppercase tracking-wider text-[#315b42]">{new Date(item.eventDate).toLocaleString("es-ES",{dateStyle:"medium",timeStyle:"short"})}</p>}
+                {item.linkUrl && <a href={item.linkUrl} className="mt-4 inline-flex rounded-full border border-[#315b42] px-4 py-2 text-xs font-black text-[#315b42] hover:bg-[#315b42] hover:text-white">{item.linkLabel || "Ver más"}</a>}
                 <div className="mt-5 flex items-center justify-between gap-4 text-sm text-[#718076]">
                   <button type="button" onClick={() => toggle(item.id, "like")} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition hover:bg-[#f4f0e7] ${interactions.liked.includes(item.id) ? "text-rose-600" : ""}`} aria-label="Me gusta">
                     <Heart className={`h-4 w-4 ${interactions.liked.includes(item.id) ? "fill-current" : ""}`} />
