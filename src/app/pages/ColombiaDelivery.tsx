@@ -186,38 +186,62 @@ export function ColombiaDelivery() {
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
-      <section className="relative overflow-hidden">
-        <img src={settings.heroImageUrl} alt="Herencia Colombia en Cali" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/95 via-[#102b20]/70 to-[#102b20]/18" />
+      <section className="relative overflow-hidden bg-[#193628]">
+        <img
+          src={settings.heroImageUrl}
+          alt="Herencia Colombia en Cali"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.70)_0%,rgba(18,36,26,.42)_38%,rgba(18,36,26,.18)_68%,rgba(18,36,26,.28)_100%)]" />
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f4d21f] via-[#184aa5] to-[#c9282d]" />
-        <div className="relative mx-auto flex min-h-[560px] max-w-7xl items-center px-5 pb-24 pt-16 sm:px-8 lg:px-10">
-          <div className="max-w-3xl text-white">
-            <p className="inline-flex items-center gap-3 text-sm font-black uppercase tracking-[0.28em] text-white/90">
-              <span>{settings.flag}</span><span>{settings.heroKicker || "COLOMBIANÍSIMAS"}</span>
+
+        <div className="relative mx-auto flex min-h-[510px] max-w-[1440px] items-center px-5 pb-28 pt-14 sm:px-8 lg:px-12">
+          <div className="ml-auto w-full max-w-[820px] text-white lg:w-[64%]">
+            <p className="inline-flex items-center gap-3 text-[13px] font-black uppercase tracking-[0.34em] text-white/95">
+              <span className="text-xl leading-none">{settings.flag}</span>
+              <span>{settings.heroKicker || "COLOMBIANÍSIMAS"}</span>
             </p>
-            <h1 className="mt-4 max-w-3xl text-5xl font-medium leading-[1.02] sm:text-6xl lg:text-7xl">{settings.headline}</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/90">{settings.description}</p>
-            <button onClick={() => document.getElementById("catalogo-colombia")?.scrollIntoView({ behavior:"smooth" })} className="mt-8 inline-flex items-center gap-2 rounded-full border border-white/20 bg-[#315b42] px-6 py-3.5 font-black text-white shadow-[0_16px_40px_rgba(0,0,0,.24)] transition hover:-translate-y-0.5 hover:bg-[#234832]">
-              {settings.heroCtaLabel || "Enviar un regalo a Cali"} <ChevronRight className="h-4 w-4" />
+            <h1 className="mt-4 max-w-[800px] font-serif text-5xl font-medium leading-[.98] tracking-[-.03em] sm:text-6xl lg:text-[72px]">
+              {settings.headline}
+            </h1>
+            <p className="mt-6 max-w-[720px] text-lg leading-7 text-white/92">
+              {settings.description}
+            </p>
+            <button
+              onClick={() => document.getElementById("catalogo-colombia")?.scrollIntoView({ behavior:"smooth" })}
+              className="mt-7 inline-flex items-center gap-3 rounded-full border border-white/35 bg-[#155438] px-7 py-4 text-base font-black text-white shadow-[0_16px_36px_rgba(0,0,0,.28)] transition hover:-translate-y-0.5 hover:bg-[#10452f]"
+            >
+              {settings.heroCtaLabel || "Enviar un regalo a Cali"} <ChevronRight className="h-5 w-5" />
             </button>
-            <div className="mt-8 flex flex-wrap gap-3 text-sm font-bold text-white/90">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Gift className="h-4 w-4"/>Plantas y flores frescas</span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Truck className="h-4 w-4"/>{settings.sameDayLabel}</span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-4 py-2 backdrop-blur"><Heart className="h-4 w-4"/>Mensajes desde el corazón</span>
+
+            <div className="mt-7 grid max-w-[760px] grid-cols-2 gap-x-5 gap-y-3 rounded-[24px] border border-white/10 bg-[#20150f]/50 px-5 py-4 text-sm font-semibold text-white/95 backdrop-blur-md sm:grid-cols-4">
+              <span className="inline-flex items-center gap-2"><Gift className="h-5 w-5"/>Plantas y flores frescas</span>
+              <span className="inline-flex items-center gap-2"><Truck className="h-5 w-5"/>Entrega el mismo día</span>
+              <span className="inline-flex items-center gap-2"><PackageCheck className="h-5 w-5"/>Regalos personalizados</span>
+              <span className="inline-flex items-center gap-2"><Heart className="h-5 w-5"/>Mensajes desde el corazón</span>
             </div>
           </div>
         </div>
-        <div className="relative mx-auto -mt-16 max-w-7xl px-5 pb-2 sm:px-8 lg:px-10">
-          <div className="grid gap-3 rounded-[28px] border border-[#e4ded4] bg-[#fffdf9]/95 p-3 shadow-[0_24px_70px_rgba(31,62,44,0.18)] backdrop-blur md:grid-cols-[220px_1fr]">
-            <div className="flex items-center gap-3 rounded-2xl bg-[#315b42] px-5 py-4 text-white">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/15"><MapPin className="h-5 w-5"/></span>
-              <div><p className="text-xs font-bold uppercase tracking-wider text-white/70">Entrega local</p><p className="font-black">{settings.regionLabel}</p></div>
+
+        <div className="relative mx-auto -mt-[72px] max-w-[1440px] px-5 pb-3 sm:px-8 lg:px-12">
+          <div className="grid gap-3 rounded-[26px] border border-[#e7dfd4] bg-[#fffdf9]/97 p-3 shadow-[0_20px_60px_rgba(45,39,28,.16)] backdrop-blur md:grid-cols-[245px_1fr]">
+            <div className="flex items-center gap-4 rounded-[20px] px-4 py-3 text-[#183126]">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#52715d] text-white shadow-sm"><MapPin className="h-6 w-6"/></span>
+              <div><p className="text-lg font-black">Entrega en Cali</p><p className="text-sm font-semibold text-[#52675a]">y alrededores</p></div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {settings.zones.filter((z)=>z.enabled).slice(0,3).map((z)=>(
-                <button key={z.id} onClick={()=>{setZoneId(z.id);document.getElementById("catalogo-colombia")?.scrollIntoView({behavior:"smooth"});}} className="group flex items-center justify-between rounded-2xl border border-[#e5dfd4] bg-white px-4 py-3 text-left transition hover:border-[#315b42]/40 hover:bg-[#f3f7f2]">
-                  <div><p className="font-black">{z.name}</p><p className="mt-0.5 text-xs font-semibold text-[#315b42]">{z.eta}</p><p className="mt-0.5 text-[11px] text-[#7b877e]">{z.note}</p></div>
-                  <ChevronRight className="h-4 w-4 text-[#78907e] transition group-hover:translate-x-0.5"/>
+              {settings.zones.filter((z)=>z.enabled).slice(0,3).map((z,index)=>(
+                <button
+                  key={z.id}
+                  onClick={()=>{setZoneId(z.id);document.getElementById("catalogo-colombia")?.scrollIntoView({behavior:"smooth"});}}
+                  className={`group flex min-h-[78px] items-center justify-between rounded-[18px] border px-5 py-3 text-left transition ${index===0?"border-[#6f9a7e] bg-[#f6faf6]":"border-[#e5ddd2] bg-[#fffdf9] hover:border-[#9ab29f]"}`}
+                >
+                  <div>
+                    <p className="font-black text-[#2a302b]">{z.name}</p>
+                    <p className="mt-0.5 text-sm font-semibold text-[#3d4e43]">{z.eta}</p>
+                    <p className="mt-0.5 text-[11px] text-[#8b877f]">{z.note}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-[#3b493f] transition group-hover:translate-x-0.5"/>
                 </button>
               ))}
             </div>
@@ -225,69 +249,63 @@ export function ColombiaDelivery() {
         </div>
       </section>
 
-      <section id="catalogo-colombia" className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
-        <div className="grid gap-8 lg:grid-cols-[220px_1fr_310px]">
-          <aside className="rounded-3xl border border-[#e4dfd4] bg-white p-5 shadow-sm">
-            <p className="font-black">Explora por categoría</p>
-            <div className="mt-4 space-y-1">
-              {categories.map((item) => (
-                <button key={item} onClick={() => setCategory(item)} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-bold transition ${category === item ? "bg-[#eef3ec] text-[#315b42]" : "hover:bg-[#f6f3ec]"}`}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          </aside>
-
+      <section id="catalogo-colombia" className="mx-auto max-w-[1440px] px-5 pb-12 pt-8 sm:px-8 lg:px-12">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Nuestra selección en Cali</p>
-                <h2 className="mt-2 text-3xl font-medium">Regalos con esencia caleña</h2>
-              </div>
-              <span className="text-sm font-bold text-[#6c786f]">{filteredProducts.length} opciones</span>
-            </div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredProducts.map((item) => {
-                const selected = String(item.id) === productId;
-                const itemOverride = settings.productOverrides[String(item.id)];
-                const itemEUR = Number(item.onSale && item.salePrice ? item.salePrice : item.price || 0);
-                const itemCOP = Number(itemOverride?.priceCOP || Math.round(itemEUR * 4300 / 100) * 100);
-                return (
-                  <button key={item.id} onClick={() => setProductId(String(item.id))} className={`overflow-hidden rounded-3xl border bg-white text-left shadow-sm transition ${selected ? "border-[#315b42] ring-2 ring-[#315b42]/20" : "border-[#e4dfd4] hover:-translate-y-1"}`}>
-                    <div className="relative h-52 bg-[#f0ede6]">
-                      <img src={item.image || item.images?.[0]?.url || item.images?.[0]} alt={item.name} className="h-full w-full object-cover" />
-                      <span className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/95 shadow"><Heart className="h-4 w-4"/></span>
-                    </div>
-                    <div className="p-4">
-                      <p className="font-black">{itemOverride?.label || item.name}</p>
-                      <p className="mt-1 text-sm font-black">{moneyCOP(itemCOP)}</p>
-                      <p className="text-xs text-[#718076]">≈ {moneyEUR(itemEUR)}</p>
-                      <span className={`mt-4 inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-black ${selected ? "bg-[#315b42] text-white" : "bg-[#eef3ec] text-[#315b42]"}`}>
-                        {selected ? <><Check className="mr-1 h-4 w-4"/>Seleccionado</> : "Añadir al regalo"}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <p className="text-[11px] font-black uppercase tracking-[0.26em] text-[#807d73]">Nuestras categorías en Cali</p>
+            <h2 className="mt-2 font-serif text-3xl font-semibold tracking-[-.02em] text-[#173126] sm:text-4xl">Regalos con esencia caleña</h2>
           </div>
-
-          <aside className="h-fit rounded-3xl border border-[#e0dbd0] bg-white p-5 shadow-sm lg:sticky lg:top-24">
-            <p className="font-black">Zonas de entrega</p>
-            <div className="mt-4 space-y-3">
-              {settings.zones.filter((z) => z.enabled).map((z) => (
-                <button key={z.id} onClick={() => setZoneId(z.id)} className={`w-full rounded-2xl border p-4 text-left transition ${zoneId === z.id ? "border-[#315b42] bg-[#f1f6f2]" : "border-[#e5e1d8]"}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-black">{z.name}</span>
-                    <span className="text-sm font-black">{moneyCOP(z.feeCOP)}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-[#6c786f]">≈ {moneyEUR(z.feeEUR)} · {z.eta}</p>
-                  <p className="mt-1 text-[11px] text-[#829087]">{z.note}</p>
-                </button>
-              ))}
-            </div>
-          </aside>
+          <button onClick={()=>setCategory("Todas")} className="hidden text-sm font-black text-[#22372c] sm:inline-flex">Ver todas las categorías <ChevronRight className="ml-1 h-4 w-4"/></button>
         </div>
+
+        <div className="mt-6 flex gap-5 overflow-x-auto pb-4">
+          {categories.filter((item)=>item!=="Todas").map((item)=>{
+            const sample=visibleProducts.find((p)=>categoryOf(p)===item);
+            const image=sample?.image || sample?.images?.[0]?.url || sample?.images?.[0];
+            return (
+              <button key={item} onClick={()=>setCategory(item)} className="group min-w-[92px] text-center">
+                <span className={`mx-auto block h-[88px] w-[88px] overflow-hidden rounded-[30px] border bg-[#f0e7d9] shadow-sm transition group-hover:-translate-y-1 ${category===item?"border-[#315b42] ring-2 ring-[#315b42]/15":"border-[#eadfce]"}`}>
+                  {image ? <img src={image} alt={item} className="h-full w-full object-cover"/> : <span className="grid h-full w-full place-items-center"><Gift className="h-7 w-7 text-[#6f7f73]"/></span>}
+                </span>
+                <span className="mt-2 block text-sm font-bold text-[#28352d]">{item}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-7 flex items-end justify-between gap-4">
+          <div>
+            <h3 className="font-serif text-3xl font-semibold tracking-[-.02em] text-[#173126]">Los más populares en Cali</h3>
+            <p className="mt-1 text-sm text-[#6f796f]">{category==="Todas"?"Selección disponible para entrega en Colombia":category}</p>
+          </div>
+          {category!=="Todas" && <button onClick={()=>setCategory("Todas")} className="text-sm font-black text-[#22372c]">Ver todo <ChevronRight className="ml-1 inline h-4 w-4"/></button>}
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+          {filteredProducts.map((item) => {
+            const selected = String(item.id) === productId;
+            const itemOverride = settings.productOverrides[String(item.id)];
+            const itemEUR = Number(item.onSale && item.salePrice ? item.salePrice : item.price || 0);
+            const itemCOP = Number(itemOverride?.priceCOP || Math.round(itemEUR * 4300 / 100) * 100);
+            return (
+              <button key={item.id} onClick={() => setProductId(String(item.id))} className={`group overflow-hidden rounded-[18px] border bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md ${selected ? "border-[#315b42] ring-2 ring-[#315b42]/15" : "border-[#e8e1d6]"}`}>
+                <div className="relative aspect-[4/3] bg-[#f0ede6]">
+                  <img src={item.image || item.images?.[0]?.url || item.images?.[0]} alt={item.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]" />
+                  <span className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#314138] shadow"><Heart className="h-4 w-4"/></span>
+                </div>
+                <div className="p-4">
+                  <p className="line-clamp-1 font-black text-[#28342d]">{itemOverride?.label || item.name}</p>
+                  <div className="mt-2 flex items-end justify-between gap-2">
+                    <div><p className="font-black text-[#173126]">{moneyCOP(itemCOP)}</p><p className="text-[11px] text-[#7d877f]">≈ {moneyEUR(itemEUR)}</p></div>
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-black ${selected?"bg-[#315b42] text-white":"bg-[#edf3ed] text-[#315b42]"}`}>{selected?"Elegido":"Elegir"}</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredProducts.length===0 && <div className="mt-6 rounded-3xl border border-dashed border-[#d9d1c5] bg-white p-10 text-center text-sm text-[#748077]">No hay productos publicados en esta categoría todavía.</div>}
       </section>
 
       <section className="border-y border-[#e3ded3] bg-[#f5f2eb]">
