@@ -15,6 +15,8 @@ interface StripeCheckoutProps {
   subtotal?: number;
   shipping?: number;
   metadata?: any;
+  currency?: "eur" | "cop";
+  items?: any[];
 }
 
 const alternativePaymentBadges = [
@@ -36,6 +38,8 @@ export function StripeCheckout({
   subtotal = 0,
   shipping = 0,
   metadata = {},
+  currency = "eur",
+  items: providedItems,
 }: StripeCheckoutProps) {
   const [stripe, setStripe] = useState<Stripe | null>(null);
   const [elements, setElements] = useState<StripeElements | null>(null);
@@ -49,6 +53,11 @@ export function StripeCheckout({
   const orderIdRef = useRef<string>("");
   const paymentIntentIdRef = useRef<string>("");
   const isBizum = paymentMethod === "bizum";
+  const formattedAmount = new Intl.NumberFormat(currency === "cop" ? "es-CO" : "es-ES", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    maximumFractionDigits: currency === "cop" ? 0 : 2,
+  }).format(amount);
 
   useEffect(() => {
     const initStripe = async () => {
@@ -64,7 +73,8 @@ export function StripeCheckout({
         const stripeInstance = await loadStripe(publishableKey);
         if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
-        const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+        const storedCart = JSON.parse(backendStorage.getItem("cart") || "[]");
+        const cart = Array.isArray(providedItems) && providedItems.length ? providedItems : storedCart;
         if (!Array.isArray(cart) || !cart.length) throw new Error("El carrito está vacío");
 
         const paymentIntentResponse = await backendApi.createPaymentIntent({
@@ -75,7 +85,7 @@ export function StripeCheckout({
           subtotal,
           shipping,
           items: cart,
-          currency: "eur",
+          currency,
           paymentMethod,
           metadata: {
             ...metadata,
@@ -177,9 +187,11 @@ export function StripeCheckout({
 
         await backendApi.confirmStripeOrder({ orderId, paymentIntentId });
 
-        const cartResult = await backendStorage.setItem("cart", JSON.stringify([]));
-        if (!cartResult.ok) {
-          console.warn("El pago se procesó, pero no se pudo limpiar el carrito remoto:", cartResult.error);
+        if (!Array.isArray(providedItems) || !providedItems.length) {
+          const cartResult = await backendStorage.setItem("cart", JSON.stringify([]));
+          if (!cartResult.ok) {
+            console.warn("El pago se procesó, pero no se pudo limpiar el carrito remoto:", cartResult.error);
+          }
         }
 
         if (paymentIntent.status === "succeeded") {
@@ -290,10 +302,10 @@ export function StripeCheckout({
         <div className="pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-4">
             <span className="text-foreground font-medium">Total a pagar:</span>
-            <span className="text-2xl font-bold text-primary">€{amount.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-primary">{formattedAmount}</span>
           </div>
           <div className="flex gap-3">
-            <button type="submit" disabled={loading || initializing || showError} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">{loading ? "Procesando..." : `Pagar €${amount.toFixed(2)}`}</button>
+            <button type="submit" disabled={loading || initializing || showError} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">{loading ? "Procesando..." : `Pagar ${formattedAmount}`}</button>
             <button type="button" onClick={onCancel} disabled={loading} className="px-6 py-3 bg-muted text-foreground rounded-xl hover:bg-accent transition-colors disabled:opacity-50">Cancelar</button>
           </div>
         </div>
