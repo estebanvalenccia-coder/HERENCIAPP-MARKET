@@ -720,22 +720,39 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
 
               {plantLike && (
                 <div className="mb-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-black">✨ Imágenes IA automáticas</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Escribe el nombre de la planta en “Información principal”. Herencia puede generar la galería al salir del campo o al pulsar este botón.
-                      </p>
-                    </div>
+                  <p className="text-sm font-black">✨ Creador de fotos Herencia</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Escribe aquí la planta que quieres fotografiar. Este campo también completa automáticamente el nombre del producto.
+                  </p>
+
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={formData.name}
+                      onChange={(e) => patch({ name: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void generateHerenciaGallery();
+                        }
+                      }}
+                      placeholder="Ej: Calathea Orbifolia"
+                      className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-bold outline-none focus:border-primary"
+                    />
                     <button
                       type="button"
                       onClick={() => void generateHerenciaGallery()}
-                      disabled={generatingVisual || selectedImages.length >= 8}
-                      className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground disabled:opacity-50"
+                      disabled={generatingVisual || !formData.name.trim() || selectedImages.length >= 8}
+                      className="rounded-xl bg-primary px-4 py-2.5 text-xs font-black text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {generatingVisual ? "Generando…" : "Generar con IA"}
+                      {generatingVisual ? "Generando fotos…" : "Generar galería IA"}
                     </button>
                   </div>
+
+                  {!formData.name.trim() && (
+                    <p className="mt-2 text-[11px] font-bold text-muted-foreground">
+                      Escribe primero el nombre de la planta para activar la generación.
+                    </p>
+                  )}
                 </div>
               )}
 
