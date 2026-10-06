@@ -303,9 +303,6 @@ export function HerencIA() {
                           ahora
                         </div>
                       </div>
-                      {message.role === "user" && (
-                        
-                      )}
                     </div>
 
                     {products.length > 0 && (
