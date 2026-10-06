@@ -293,7 +293,7 @@ export function Layout() {
               </div>
             </div>
 
-            <nav className="flex gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
+            <nav className="flex items-center gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
               {market.navigation.map((item) =>
                 isPlantsNavigationItem(item) ? (
                   <PlantsMobileNavMenu
@@ -458,10 +458,12 @@ const PLANT_SUBMENU = [
 ];
 
 function isPlantsNavigationItem(item: { label?: string; href?: string }) {
-  return (
-    String(item?.label || "").trim().toLowerCase() === "plantas" ||
-    String(item?.href || "").toLowerCase().includes("coleccion=plantas")
-  );
+  const label = String(item?.label || "").trim().toLowerCase();
+  const href = String(item?.href || "").toLowerCase();
+  // Only the parent "Plantas" item owns the flyout. Category links such as
+  // Interior/Exterior also contain coleccion=plantas and must not be rendered
+  // as duplicate plant menus in the header.
+  return label === "plantas" || /[?&]categoria=plantas(?:&|$)/.test(href);
 }
 
 function PlantsNavMenu({ active }: { active: boolean }) {
