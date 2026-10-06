@@ -92,9 +92,9 @@ export function ColombiaDelivery() {
     return (base.length ? base : products)
       .filter((p) => settings.productOverrides[String(p.id)]?.enabled !== false)
       .slice(0, 24);
-  }, [products, settings.selectedProductIds, settings.productOverrides]);
+  }, [products, settings.selectedProductIds, settings.productOverrides, settings.productOrder]);
 
-  const categories = useMemo(() => ["Todas", ...Array.from(new Set(visibleProducts.map(categoryOf)))], [visibleProducts]);
+  const categories = useMemo(() => ["Todas", ...settings.categories.filter(item=>item.enabled).map(item=>item.name)], [settings.categories]);
   const filteredProducts = useMemo(
     () => category === "Todas" ? visibleProducts : visibleProducts.filter((p) => categoryOf(p) === category),
     [visibleProducts, category]
@@ -283,7 +283,7 @@ export function ColombiaDelivery() {
           {category!=="Todas" && <button onClick={()=>setCategory("Todas")} className="text-sm font-black text-[#22372c]">Ver todo <ChevronRight className="ml-1 inline h-4 w-4"/></button>}
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {filteredProducts.map((item) => {
             const selected = String(item.id) === productId;
             const itemOverride = settings.productOverrides[String(item.id)];
