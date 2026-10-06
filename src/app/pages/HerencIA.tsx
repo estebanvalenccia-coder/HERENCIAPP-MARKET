@@ -254,8 +254,8 @@ export function HerencIA() {
       }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,247,226,.04),transparent_42%,rgba(255,235,190,.03))]" />
-      <div className="relative mx-auto grid max-w-[1200px] gap-[18px] lg:grid-cols-[minmax(0,1fr)_308px]">
-        <section className="flex min-h-[808px] flex-col overflow-hidden rounded-[28px] border border-[#f2dfad]/70 bg-[rgba(238,226,197,.18)] shadow-[0_26px_70px_rgba(18,38,24,.28)] backdrop-blur-[16px]">
+      <div className="relative mx-auto grid w-full max-w-[1200px] gap-[18px] lg:grid-cols-[minmax(0,874px)_308px]">
+        <section className="flex h-[808px] min-h-0 flex-col overflow-hidden rounded-[28px] border border-[#f2dfad]/70 bg-[rgba(238,226,197,.16)] shadow-[0_26px_70px_rgba(18,38,24,.28)] backdrop-blur-[12px]">
           <header className="flex min-h-[86px] flex-wrap items-center justify-between gap-4 border-b border-white/15 bg-[rgba(22,62,40,.78)] px-6 py-4 backdrop-blur-xl">
             <div className="flex items-center gap-4">
               <div className="grid h-[56px] w-[56px] place-items-center rounded-full border border-[#d8bd7a]/35 bg-[#1c5b3a]/80 text-[#efd8a0] shadow-lg">
@@ -280,9 +280,9 @@ export function HerencIA() {
           </header>
 
           <div
-            className="relative flex-1 overflow-y-auto px-6 py-5 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(90deg,rgba(255,248,220,.12),rgba(83,96,61,.08),rgba(255,229,177,.10))]"
+            className="relative flex-1 overflow-y-auto px-6 py-5 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(90deg,rgba(255,248,220,.08),rgba(83,96,61,.05),rgba(255,229,177,.07))]"
             style={{
-              background: "linear-gradient(180deg, rgba(230,222,195,.28), rgba(216,203,171,.24))",
+              background: "linear-gradient(180deg, rgba(230,222,195,.18), rgba(216,203,171,.15))",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,.20)",
             }}
           >
@@ -358,7 +358,7 @@ export function HerencIA() {
           </div>
         </section>
 
-        <aside className="hidden min-h-[calc(100vh-165px)] flex-col gap-3 lg:flex">
+        <aside className="hidden h-[808px] min-h-0 flex-col gap-3 lg:flex">
           <div className="rounded-[26px] border border-[#f0d99d]/40 bg-[#123a27]/80 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.26)] backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-white/10 p-3 text-[#f0d79d]"><UserRound className="h-5 w-5" /></div>
