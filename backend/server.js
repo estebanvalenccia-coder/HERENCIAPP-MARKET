@@ -2035,6 +2035,7 @@ app.post("/api/customer/logout", (_req, res) => {
 });
 
 const HERENCIA_IA_USAGE_PREFIX = "herenciaIaUsageV3";
+const HERENCIA_IA_PAID_STATUSES = ["paid", "confirmed", "preparing", "ready", "delivered", "completed"];
 
 function herenciaIaToday() {
   return new Date().toISOString().slice(0, 10);
@@ -2072,13 +2073,13 @@ async function herenciaIaPlantSpend(email) {
   if (!email) return 0;
   let orders = [];
   if (hasNeon()) {
-    orders = await listNeonOrders({ email, statuses: PAID_STATUSES, limit: 2000 });
+    orders = await listNeonOrders({ email, statuses: HERENCIA_IA_PAID_STATUSES, limit: 2000 });
   } else if (supabase) {
     const { data, error } = await supabase
       .from("orders")
       .select("items,status")
       .eq("customer_email", email)
-      .in("status", PAID_STATUSES);
+      .in("status", HERENCIA_IA_PAID_STATUSES);
     if (error) throw error;
     orders = data || [];
   }
