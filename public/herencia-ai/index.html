@@ -6,184 +6,65 @@
 <title>HERENC(IA) — Tu amiga plantil</title>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
 <link rel="manifest" href="/herencia-ai/site.webmanifest">
 <style>
-:root{
-  --verde:#254d36;
-  --verde-2:#3e6b4d;
-  --verde-claro:#dfe9dc;
-  --crema:#f8f3e8;
-  --crema-2:#fffdf8;
-  --tinta:#183126;
-  --muted:#6f796f;
-  --line:#dfe6db;
-  --shadow:0 24px 70px rgba(24,49,38,.18);
-}
+:root{--forest:#163f2b;--forest2:#255a3a;--sage:#dfe9d9;--sage2:#eef4e9;--cream:#f7f1e7;--paper:#fffdf8;--ink:#173126;--muted:#6d786f;--line:rgba(22,63,43,.12);--gold:#c7a86a;--shadow:0 28px 80px rgba(24,49,38,.16)}
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:'Poppins',sans-serif;color:var(--tinta)}
-body{
-  background:
-    linear-gradient(rgba(246,242,231,.78),rgba(238,244,232,.86)),
-    url('https://images.unsplash.com/photo-1614594575810-9b3e3c99f8b2?auto=format&fit=crop&w=1800&q=85') center/cover fixed;
-  padding:18px;
-}
-.chat-shell{
-  max-width:1180px;
-  margin:0 auto;
-  min-height:88vh;
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 300px;
-  gap:18px;
-}
-.chat-app{
-  min-height:88vh;
-  background:rgba(255,253,248,.94);
-  border:1px solid rgba(37,77,54,.12);
-  border-radius:30px;
-  box-shadow:var(--shadow);
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-  backdrop-filter:blur(12px);
-}
-.header{
-  padding:18px 22px;
-  border-bottom:1px solid var(--line);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  background:linear-gradient(90deg,rgba(255,255,255,.96),rgba(245,249,242,.96));
-}
-.header-left{display:flex;align-items:center;gap:14px}
-.header img{height:52px;width:auto}
-.header-title{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:1.35rem;color:var(--tinta)}
-.header-subtitle{font-size:.78rem;color:var(--muted);margin-top:3px}
-.header-badge{font-size:.75rem;background:#eef5eb;border:1px solid #d8e5d5;color:#315b42;padding:8px 12px;border-radius:999px;white-space:nowrap}
-.messages{
-  flex:1;
-  padding:26px 24px;
-  overflow-y:auto;
-  background:
-    radial-gradient(circle at 90% 5%,rgba(151,184,136,.12),transparent 34%),
-    radial-gradient(circle at 5% 95%,rgba(210,188,139,.14),transparent 28%),
-    #fbfaf6;
-}
+html,body{margin:0;min-height:100%;font-family:'DM Sans',sans-serif;color:var(--ink)}
+body{min-height:100vh;padding:18px;background:radial-gradient(circle at 14% 8%,rgba(255,255,255,.92),transparent 28%),radial-gradient(circle at 87% 15%,rgba(223,233,217,.86),transparent 32%),linear-gradient(145deg,#eef4e8 0%,#f7f2e8 48%,#e7efe1 100%);overflow-x:hidden}
+body::before,body::after{content:"";position:fixed;border-radius:999px;pointer-events:none;opacity:.42}
+body::before{width:260px;height:260px;left:-100px;bottom:-80px;background:radial-gradient(circle,#aac19f 0%,rgba(170,193,159,0) 72%)}
+body::after{width:320px;height:320px;right:-120px;top:-100px;background:radial-gradient(circle,#d9c99f 0%,rgba(217,201,159,0) 72%)}
+.chat-shell{position:relative;z-index:1;max-width:1260px;margin:0 auto;min-height:calc(100vh - 36px);display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px}
+.chat-app{min-height:calc(100vh - 36px);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.78);border-radius:34px;background:rgba(255,253,248,.88);box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.header{position:relative;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(255,255,255,.97),rgba(246,250,243,.94))}
+.header::after{content:"";position:absolute;right:18px;bottom:-1px;width:180px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.45}
+.header-left{display:flex;align-items:center;gap:15px}
+.logo-wrap{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(145deg,#fff,#eef5ea);border:1px solid rgba(22,63,43,.10);box-shadow:0 10px 25px rgba(22,63,43,.10)}
+.header img{height:45px;width:auto}
+.header-title{font-family:'Playfair Display',serif;font-weight:700;font-size:1.52rem;letter-spacing:-.02em;color:var(--forest)}
+.header-subtitle{font-size:.79rem;color:var(--muted);margin-top:4px}
+.header-badge{display:flex;align-items:center;gap:7px;font-size:.74rem;font-weight:700;color:var(--forest);padding:9px 13px;border-radius:999px;background:rgba(236,244,232,.92);border:1px solid rgba(37,90,58,.13);box-shadow:0 6px 18px rgba(37,90,58,.07);white-space:nowrap}
+.header-badge::before{content:"✦";color:var(--gold)}
+.messages{position:relative;flex:1;padding:30px 28px 26px;overflow-y:auto;background:linear-gradient(rgba(255,253,248,.74),rgba(255,253,248,.91)),url('https://images.unsplash.com/photo-1614594575810-9b3e3c99f8b2?auto=format&fit=crop&w=1800&q=82') center/cover}
+.messages::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 90% 8%,rgba(103,140,94,.11),transparent 28%),radial-gradient(circle at 8% 94%,rgba(199,168,106,.10),transparent 30%);pointer-events:none}
 .messages-inner{position:relative;z-index:2}
-.msg{
-  max-width:min(74%,700px);
-  padding:14px 17px;
-  margin-bottom:16px;
-  border-radius:22px;
-  font-size:.95rem;
-  line-height:1.55;
-  box-shadow:0 8px 24px rgba(37,77,54,.08);
-  white-space:pre-wrap;
-}
-.msg.bot{
-  background:#ffffff;
-  color:var(--tinta);
-  border:1px solid #e4e8df;
-  border-bottom-left-radius:7px;
-}
-.msg.user{
-  background:linear-gradient(135deg,#dbe5cf,#cbdcbf);
-  color:#173126;
-  margin-left:auto;
-  border-bottom-right-radius:7px;
-}
-.typing{color:var(--verde);display:none;align-items:center;gap:6px;font-size:.82rem;margin:4px 0 12px}
-.typing span{width:6px;height:6px;background:var(--verde);border-radius:999px;animation:blink 1.2s infinite ease-in-out}
+.msg{position:relative;max-width:min(72%,720px);padding:15px 18px;margin-bottom:16px;border-radius:23px;font-size:.95rem;line-height:1.55;white-space:pre-wrap;animation:messageIn .24s ease-out}
+@keyframes messageIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.msg.bot{background:rgba(255,255,255,.96);color:var(--ink);border:1px solid rgba(22,63,43,.10);border-bottom-left-radius:8px;box-shadow:0 10px 30px rgba(24,49,38,.08)}
+.msg.bot::before{content:"✦";position:absolute;left:-10px;top:-9px;width:25px;height:25px;display:grid;place-items:center;border-radius:999px;background:var(--forest);color:#fff;font-size:.66rem;box-shadow:0 6px 15px rgba(22,63,43,.18)}
+.msg.user{margin-left:auto;color:#143322;background:linear-gradient(135deg,#dce9d2 0%,#cbdcbc 100%);border:1px solid rgba(49,91,66,.10);border-bottom-right-radius:8px;box-shadow:0 10px 30px rgba(24,49,38,.08)}
+.typing{position:relative;z-index:2;color:var(--forest2);display:none;align-items:center;gap:6px;font-size:.82rem;margin:4px 0 12px}
+.typing span{width:6px;height:6px;background:var(--forest2);border-radius:999px;animation:blink 1.2s infinite ease-in-out}
 .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
 @keyframes blink{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
-.product-grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
-  margin:4px 0 18px;
-}
-.product-card{
-  background:#fff;
-  border:1px solid #e2e8df;
-  border-radius:18px;
-  overflow:hidden;
-  box-shadow:0 8px 24px rgba(37,77,54,.07);
-}
-.product-card img{width:100%;height:130px;object-fit:cover;background:#f1f4ed}
-.product-body{padding:12px}
-.product-name{font-size:.86rem;font-weight:700;color:var(--tinta);min-height:38px}
-.product-price{font-size:.9rem;font-weight:800;margin-top:5px}
-.product-actions{display:flex;gap:7px;margin-top:10px}
-.product-actions button{
-  flex:1;border:none;border-radius:999px;padding:8px 9px;font-size:.74rem;font-weight:700;cursor:pointer
-}
-.btn-cart{background:#eef4ea;color:#315b42;border:1px solid #dce6d7!important}
-.btn-buy{background:var(--verde);color:white}
-.input-area{
-  padding:14px 16px 16px;
-  border-top:1px solid var(--line);
-  background:rgba(255,255,255,.97);
-}
-.input-row{display:flex;align-items:center;gap:10px}
-.input-box{
-  flex:1;display:flex;align-items:center;background:#fbfbf8;border:1px solid #dfe5dc;
-  border-radius:999px;padding:0 17px;min-height:48px
-}
-.input-box input{width:100%;border:none;outline:none;background:transparent;font-size:.94rem;color:var(--tinta)}
-.send-btn{
-  border:none;border-radius:999px;padding:13px 20px;background:var(--verde);color:white;
-  font-weight:700;cursor:pointer;box-shadow:0 8px 18px rgba(37,77,54,.2)
-}
-.send-btn:hover{background:#1d3f2c}
-.send-btn:disabled{opacity:.45;cursor:not-allowed}
-.optional-actions{display:none;gap:8px;flex-wrap:wrap;padding:0 16px 14px;background:white}
-.optional-action{border:1px solid #dce3d7;background:#f7faf4;color:#29431a;border-radius:999px;padding:9px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+.product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:4px 0 18px}
+.product-card{background:rgba(255,255,255,.97);border:1px solid rgba(22,63,43,.10);border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(37,77,54,.09)}
+.product-card img{width:100%;height:140px;object-fit:cover;background:#f1f4ed}
+.product-body{padding:13px}.product-name{font-size:.86rem;font-weight:800;color:var(--ink);min-height:38px}.product-price{font-size:.91rem;font-weight:800;margin-top:5px;color:var(--forest)}
+.product-actions{display:flex;gap:7px;margin-top:10px}.product-actions button{flex:1;border:none;border-radius:999px;padding:9px 10px;font-size:.74rem;font-weight:800;cursor:pointer}
+.btn-cart{background:#eef4ea;color:#315b42;border:1px solid #dce6d7!important}.btn-buy{background:var(--forest);color:white}
+.optional-actions{display:none;gap:8px;flex-wrap:wrap;padding:12px 18px 0;background:rgba(255,255,255,.98)}
+.optional-action{border:1px solid #dce3d7;background:#f7faf4;color:#29431a;border-radius:999px;padding:9px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
 #photoInput{display:none}
-.sidebar{
-  min-height:88vh;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-.side-card{
-  border:1px solid rgba(37,77,54,.13);
-  background:rgba(255,253,248,.94);
-  border-radius:26px;
-  padding:18px;
-  box-shadow:0 18px 50px rgba(24,49,38,.12);
-  backdrop-filter:blur(10px)
-}
-.side-card h3{font-family:Georgia,'Times New Roman',serif;margin:0 0 8px;font-size:1.12rem}
-.side-card p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.5}
-.vip-card{background:linear-gradient(150deg,#f7ecd0,#fff9eb)}
-.vip-card strong{display:block;font-size:1.1rem;margin-bottom:6px}
-.side-photo{
-  flex:1;min-height:240px;border-radius:26px;overflow:hidden;position:relative;
-  background:url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85') center/cover;
-  box-shadow:0 18px 50px rgba(24,49,38,.15)
-}
-.side-photo::after{content:'Más que plantas, un hogar con vida.';position:absolute;left:16px;right:16px;bottom:16px;color:white;font-family:Georgia,'Times New Roman',serif;font-size:1.25rem;text-shadow:0 2px 16px rgba(0,0,0,.45)}
-.footer-links{text-align:center;font-size:.72rem;padding:10px 16px 14px;color:var(--muted)}
-.footer-links a{color:var(--verde);text-decoration:none}
+.input-area{padding:16px 18px 18px;border-top:1px solid var(--line);background:rgba(255,255,255,.98)}
+.input-row{display:flex;align-items:center;gap:10px}
+.input-box{flex:1;display:flex;align-items:center;background:#fbfbf8;border:1px solid #dfe5dc;border-radius:999px;padding:0 18px;min-height:52px;box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.input-box input{width:100%;border:none;outline:none;background:transparent;font-size:.95rem;color:var(--ink)}
+.send-btn{border:none;border-radius:999px;padding:14px 21px;background:linear-gradient(135deg,var(--forest),#245f3e);color:white;font-weight:800;cursor:pointer;box-shadow:0 10px 22px rgba(37,77,54,.20)}
+.send-btn:hover{transform:translateY(-1px)}.send-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.sidebar{min-height:calc(100vh - 36px);display:flex;flex-direction:column;gap:14px}
+.side-card{border:1px solid rgba(22,63,43,.10);background:rgba(255,253,248,.9);border-radius:26px;padding:19px;box-shadow:0 18px 50px rgba(24,49,38,.11);backdrop-filter:blur(14px)}
+.side-card h3{font-family:'Playfair Display',serif;margin:0 0 8px;font-size:1.16rem;color:var(--forest)}.side-card p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.55}
+.vip-card{background:linear-gradient(145deg,#fff5d9,#fffdf7);border-color:rgba(199,168,106,.28)}.vip-card strong{display:block;font-family:'Playfair Display',serif;color:#6a5222;font-size:1.1rem;margin-bottom:6px}
+.side-photo{flex:1;min-height:280px;border-radius:28px;overflow:hidden;position:relative;background:linear-gradient(rgba(18,42,29,.04),rgba(18,42,29,.30)),url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85') center/cover;box-shadow:0 18px 50px rgba(24,49,38,.15)}
+.side-photo::before{content:"HERENCIA";position:absolute;left:17px;top:17px;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.82);color:var(--forest);font-size:.66rem;font-weight:800;letter-spacing:.16em;backdrop-filter:blur(8px)}
+.side-photo::after{content:'Más que plantas, un hogar con vida.';position:absolute;left:18px;right:18px;bottom:18px;color:white;font-family:'Playfair Display',serif;font-size:1.35rem;line-height:1.05;text-shadow:0 3px 18px rgba(0,0,0,.45)}
+.footer-links{text-align:center;font-size:.71rem;padding:10px 16px 15px;color:var(--muted);background:rgba(255,255,255,.97)}.footer-links a{color:var(--forest);text-decoration:none;font-weight:600}
 #cookieBanner{display:none!important}
-@media(max-width:900px){
-  body{padding:8px}
-  .chat-shell{grid-template-columns:1fr}
-  .sidebar{display:none}
-  .chat-app{min-height:92vh;border-radius:22px}
-  .product-grid{grid-template-columns:1fr 1fr}
-  .msg{max-width:88%}
-  .header-badge{display:none}
-}
-@media(max-width:560px){
-  .product-grid{grid-template-columns:1fr}
-  .header{padding:14px}
-  .header img{height:44px}
-  .header-title{font-size:1.12rem}
-  .messages{padding:18px 14px}
-  .send-btn{padding:12px 16px}
-}
+@media(max-width:900px){body{padding:8px}.chat-shell{grid-template-columns:1fr}.sidebar{display:none}.chat-app{min-height:92vh;border-radius:24px}.product-grid{grid-template-columns:1fr 1fr}.msg{max-width:88%}.header-badge{display:none}}
+@media(max-width:560px){.product-grid{grid-template-columns:1fr}.header{padding:14px}.logo-wrap{width:50px;height:50px}.header img{height:39px}.header-title{font-size:1.2rem}.messages{padding:20px 15px}.send-btn{padding:13px 16px}.msg{max-width:91%}}
 </style>
 </head>
 <body>
@@ -191,13 +72,13 @@ body{
   <main class="chat-app">
     <div class="header">
       <div class="header-left">
-        <img src="https://herenciafloristeria.es/assets/full-logo-DV4tgILq.png" alt="Herencia Market">
+        <div class="logo-wrap"><img src="https://herenciafloristeria.es/assets/full-logo-DV4tgILq.png" alt="Herencia Market"></div>
         <div>
           <div class="header-title">Herenc(IA) 🌿</div>
           <div class="header-subtitle">Tu asesora de plantas, decoración y regalos</div>
         </div>
       </div>
-      <div class="header-badge">✦ Con conocimiento de Herencia Market</div>
+      <div class="header-badge">Con conocimiento de Herencia Market</div>
     </div>
 
     <div class="messages">
@@ -243,6 +124,6 @@ body{
   </aside>
 </div>
 <script>if(localStorage.getItem('cookiesAccepted')){document.getElementById('cookieBanner').style.display='none';}document.getElementById('acceptCookies').onclick=function(){localStorage.setItem('cookiesAccepted','true');document.getElementById('cookieBanner').style.display='none';};</script>
-<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-sales-beauty-v3"></script>
+<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-luxury-chat-v4"></script>
 </body>
 </html>
