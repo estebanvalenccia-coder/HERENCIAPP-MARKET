@@ -69,9 +69,38 @@ export function parseColombiaDeliverySettings(raw: string | null): ColombiaDeliv
   if (!raw) return defaultColombiaDeliverySettings;
   try {
     const incoming = JSON.parse(raw) || {};
+    const legacyHeadline = String(incoming.headline || "") === "Ahora también en Cali, Colombia";
+    const legacyDescription = String(incoming.description || "") === "Envía plantas, flores y regalos a tus seres queridos en Cali, Candelaria y alrededores.";
+    const legacyRegion = String(incoming.regionLabel || "") === "Cali, Candelaria y alrededores";
+
+    const parsedZones = Array.isArray(incoming.zones) && incoming.zones.length
+      ? incoming.zones.map((zone: any, index: number) => ({
+          id: String(zone.id || `zone-${index + 1}`),
+          name: String(zone.name || "Zona"),
+          enabled: zone.enabled !== false,
+          feeEUR: Math.max(0, Number(zone.feeEUR || 0)),
+          feeCOP: Math.max(0, Number(zone.feeCOP || 0)),
+          eta: String(zone.eta || "A confirmar"),
+          note: String(zone.note || ""),
+        }))
+      : [...defaultColombiaDeliverySettings.zones];
+
+    // Migra automáticamente la configuración antigua que ya estaba guardada
+    // antes de añadir Palmira como zona independiente.
+    if (!parsedZones.some((zone: ColombiaDeliveryZone) => zone.id === "palmira")) {
+      const palmira = defaultColombiaDeliverySettings.zones.find((zone) => zone.id === "palmira");
+      const surroundingsIndex = parsedZones.findIndex((zone: ColombiaDeliveryZone) => zone.id === "alrededores");
+      if (palmira) parsedZones.splice(surroundingsIndex >= 0 ? surroundingsIndex : parsedZones.length, 0, { ...palmira });
+    }
+
     return {
       ...defaultColombiaDeliverySettings,
       ...incoming,
+      regionLabel: legacyRegion ? defaultColombiaDeliverySettings.regionLabel : String(incoming.regionLabel || defaultColombiaDeliverySettings.regionLabel),
+      headline: legacyHeadline ? defaultColombiaDeliverySettings.headline : String(incoming.headline || defaultColombiaDeliverySettings.headline),
+      description: legacyDescription ? defaultColombiaDeliverySettings.description : String(incoming.description || defaultColombiaDeliverySettings.description),
+      heroKicker: String(incoming.heroKicker || defaultColombiaDeliverySettings.heroKicker),
+      heroCtaLabel: String(incoming.heroCtaLabel || defaultColombiaDeliverySettings.heroCtaLabel),
       selectedProductIds: Array.isArray(incoming.selectedProductIds) ? incoming.selectedProductIds.map(String) : [],
       paymentEnabled: incoming.paymentEnabled === undefined ? true : Boolean(incoming.paymentEnabled),
       productOverrides: incoming.productOverrides && typeof incoming.productOverrides === "object"
@@ -86,17 +115,7 @@ export function parseColombiaDeliverySettings(raw: string | null): ColombiaDeliv
             },
           ]))
         : {},
-      zones: Array.isArray(incoming.zones) && incoming.zones.length
-        ? incoming.zones.map((zone: any, index: number) => ({
-            id: String(zone.id || `zone-${index + 1}`),
-            name: String(zone.name || "Zona"),
-            enabled: zone.enabled !== false,
-            feeEUR: Math.max(0, Number(zone.feeEUR || 0)),
-            feeCOP: Math.max(0, Number(zone.feeCOP || 0)),
-            eta: String(zone.eta || "A confirmar"),
-            note: String(zone.note || ""),
-          }))
-        : defaultColombiaDeliverySettings.zones,
+      zones: parsedZones,
     };
   } catch {
     return defaultColombiaDeliverySettings;
