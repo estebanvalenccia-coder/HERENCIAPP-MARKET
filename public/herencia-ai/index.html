@@ -9,33 +9,240 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <link rel="manifest" href="/herencia-ai/site.webmanifest">
 <style>
-:root{--verde:#4B6B1F;--verde-dark:#2f4a13;--verde-claro:#cbe7a3;--bg:#eef4e8;--white:#ffffff;--dark:#1f1f1f;--radius:20px;--shadow:0 8px 28px rgba(0,0,0,0.25);}*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Poppins',sans-serif;background:var(--bg);display:flex;justify-content:center;padding:20px 10px;}.chat-app{width:95%;max-width:850px;height:90vh;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;border:2px solid rgba(0,0,0,0.15);}.header{padding:14px 20px;border-bottom:1px solid #e1e1e1;display:flex;align-items:center;gap:14px;background:white;}.header img{height:48px;}.header-title{font-weight:600;font-size:1.15rem;color:var(--verde-dark);}.messages{flex:1;padding:20px;overflow-y:auto;background:url('https://i.pinimg.com/736x/82/bd/fb/82bdfbe631ffcf89855572048839f2c1.jpg');background-size:cover;position:relative;}.messages::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0.8);pointer-events:none;}.messages-inner{position:relative;z-index:9;}.msg{max-width:75%;padding:12px 16px;margin-bottom:16px;border-radius:16px;font-size:0.95rem;box-shadow:0 2px 6px rgba(0,0,0,0.15);white-space:pre-wrap;}.msg.bot{background:var(--verde);color:white;border-bottom-left-radius:6px;}.msg.user{background:var(--white);border:1px solid #dcdcdc;margin-left:auto;border-bottom-right-radius:6px;}.msg img{width:100%;border-radius:14px;margin-top:10px;}.typing{color:var(--verde-dark);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-size:0.85rem;}.typing span{width:6px;height:6px;background:var(--verde);border-radius:999px;animation:blink 1.2s infinite ease-in-out;}.typing span:nth-child(2){animation-delay:0.15s;}.typing span:nth-child(3){animation-delay:0.30s;}@keyframes blink{0%,100%{opacity:.3;transform:translateY(0);}50%{opacity:1;transform:translateY(-3px);}}.input-area{position:sticky;bottom:0;z-index:999;background:var(--white);padding:12px 14px;border-top:1px solid #e1e1e1;display:flex;flex-direction:column;gap:10px;}.input-row{display:flex;align-items:center;gap:10px;}.input-box{flex:1;display:flex;align-items:center;background:#fff;border-radius:var(--radius);border:1px solid #dcdcdc;padding:8px 14px;box-shadow:0 2px 4px rgba(0,0,0,0.08) inset;}.input-box input{flex:1;border:none;outline:none;font-size:0.95rem;background:transparent;}.input-box input::placeholder{color:#999;}.mic-btn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:white;border:1px solid #dcdcdc;font-size:1.1rem;cursor:pointer;box-shadow:0 3px 6px rgba(0,0,0,0.18);}.send-btn{background:var(--verde);color:white;border:none;border-radius:var(--radius);padding:10px 18px;font-size:0.92rem;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer;box-shadow:var(--shadow);}.send-btn:hover{background:var(--verde-dark);}.second-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;}.btn-small{background:var(--verde);color:white;border:none;border-radius:var(--radius);padding:10px 16px;font-size:0.85rem;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,0.15);}.btn-small:hover{background:var(--verde-dark);}.btn-whatsapp{background:#25D366 !important;}.btn-map{background:#325ea8 !important;}#photoInput{display:none;}
-
-.optional-actions{display:none;gap:8px;flex-wrap:wrap;padding:0 14px 12px;background:var(--white);}
-.optional-action{border:1px solid #dce3d7;background:#f7faf4;color:#29431a;border-radius:999px;padding:9px 13px;font-size:.82rem;font-weight:600;cursor:pointer;}
-.optional-action:hover{background:#edf5e7;}
-#photoInput{display:none;}
+:root{
+  --verde:#254d36;
+  --verde-2:#3e6b4d;
+  --verde-claro:#dfe9dc;
+  --crema:#f8f3e8;
+  --crema-2:#fffdf8;
+  --tinta:#183126;
+  --muted:#6f796f;
+  --line:#dfe6db;
+  --shadow:0 24px 70px rgba(24,49,38,.18);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:'Poppins',sans-serif;color:var(--tinta)}
+body{
+  background:
+    linear-gradient(rgba(246,242,231,.78),rgba(238,244,232,.86)),
+    url('https://images.unsplash.com/photo-1614594575810-9b3e3c99f8b2?auto=format&fit=crop&w=1800&q=85') center/cover fixed;
+  padding:18px;
+}
+.chat-shell{
+  max-width:1180px;
+  margin:0 auto;
+  min-height:88vh;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 300px;
+  gap:18px;
+}
+.chat-app{
+  min-height:88vh;
+  background:rgba(255,253,248,.94);
+  border:1px solid rgba(37,77,54,.12);
+  border-radius:30px;
+  box-shadow:var(--shadow);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  backdrop-filter:blur(12px);
+}
+.header{
+  padding:18px 22px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  background:linear-gradient(90deg,rgba(255,255,255,.96),rgba(245,249,242,.96));
+}
+.header-left{display:flex;align-items:center;gap:14px}
+.header img{height:52px;width:auto}
+.header-title{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:1.35rem;color:var(--tinta)}
+.header-subtitle{font-size:.78rem;color:var(--muted);margin-top:3px}
+.header-badge{font-size:.75rem;background:#eef5eb;border:1px solid #d8e5d5;color:#315b42;padding:8px 12px;border-radius:999px;white-space:nowrap}
+.messages{
+  flex:1;
+  padding:26px 24px;
+  overflow-y:auto;
+  background:
+    radial-gradient(circle at 90% 5%,rgba(151,184,136,.12),transparent 34%),
+    radial-gradient(circle at 5% 95%,rgba(210,188,139,.14),transparent 28%),
+    #fbfaf6;
+}
+.messages-inner{position:relative;z-index:2}
+.msg{
+  max-width:min(74%,700px);
+  padding:14px 17px;
+  margin-bottom:16px;
+  border-radius:22px;
+  font-size:.95rem;
+  line-height:1.55;
+  box-shadow:0 8px 24px rgba(37,77,54,.08);
+  white-space:pre-wrap;
+}
+.msg.bot{
+  background:#ffffff;
+  color:var(--tinta);
+  border:1px solid #e4e8df;
+  border-bottom-left-radius:7px;
+}
+.msg.user{
+  background:linear-gradient(135deg,#dbe5cf,#cbdcbf);
+  color:#173126;
+  margin-left:auto;
+  border-bottom-right-radius:7px;
+}
+.typing{color:var(--verde);display:none;align-items:center;gap:6px;font-size:.82rem;margin:4px 0 12px}
+.typing span{width:6px;height:6px;background:var(--verde);border-radius:999px;animation:blink 1.2s infinite ease-in-out}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.product-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin:4px 0 18px;
+}
+.product-card{
+  background:#fff;
+  border:1px solid #e2e8df;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 8px 24px rgba(37,77,54,.07);
+}
+.product-card img{width:100%;height:130px;object-fit:cover;background:#f1f4ed}
+.product-body{padding:12px}
+.product-name{font-size:.86rem;font-weight:700;color:var(--tinta);min-height:38px}
+.product-price{font-size:.9rem;font-weight:800;margin-top:5px}
+.product-actions{display:flex;gap:7px;margin-top:10px}
+.product-actions button{
+  flex:1;border:none;border-radius:999px;padding:8px 9px;font-size:.74rem;font-weight:700;cursor:pointer
+}
+.btn-cart{background:#eef4ea;color:#315b42;border:1px solid #dce6d7!important}
+.btn-buy{background:var(--verde);color:white}
+.input-area{
+  padding:14px 16px 16px;
+  border-top:1px solid var(--line);
+  background:rgba(255,255,255,.97);
+}
+.input-row{display:flex;align-items:center;gap:10px}
+.input-box{
+  flex:1;display:flex;align-items:center;background:#fbfbf8;border:1px solid #dfe5dc;
+  border-radius:999px;padding:0 17px;min-height:48px
+}
+.input-box input{width:100%;border:none;outline:none;background:transparent;font-size:.94rem;color:var(--tinta)}
+.send-btn{
+  border:none;border-radius:999px;padding:13px 20px;background:var(--verde);color:white;
+  font-weight:700;cursor:pointer;box-shadow:0 8px 18px rgba(37,77,54,.2)
+}
+.send-btn:hover{background:#1d3f2c}
+.send-btn:disabled{opacity:.45;cursor:not-allowed}
+.optional-actions{display:none;gap:8px;flex-wrap:wrap;padding:0 16px 14px;background:white}
+.optional-action{border:1px solid #dce3d7;background:#f7faf4;color:#29431a;border-radius:999px;padding:9px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+#photoInput{display:none}
+.sidebar{
+  min-height:88vh;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.side-card{
+  border:1px solid rgba(37,77,54,.13);
+  background:rgba(255,253,248,.94);
+  border-radius:26px;
+  padding:18px;
+  box-shadow:0 18px 50px rgba(24,49,38,.12);
+  backdrop-filter:blur(10px)
+}
+.side-card h3{font-family:Georgia,'Times New Roman',serif;margin:0 0 8px;font-size:1.12rem}
+.side-card p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.5}
+.vip-card{background:linear-gradient(150deg,#f7ecd0,#fff9eb)}
+.vip-card strong{display:block;font-size:1.1rem;margin-bottom:6px}
+.side-photo{
+  flex:1;min-height:240px;border-radius:26px;overflow:hidden;position:relative;
+  background:url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=85') center/cover;
+  box-shadow:0 18px 50px rgba(24,49,38,.15)
+}
+.side-photo::after{content:'Más que plantas, un hogar con vida.';position:absolute;left:16px;right:16px;bottom:16px;color:white;font-family:Georgia,'Times New Roman',serif;font-size:1.25rem;text-shadow:0 2px 16px rgba(0,0,0,.45)}
+.footer-links{text-align:center;font-size:.72rem;padding:10px 16px 14px;color:var(--muted)}
+.footer-links a{color:var(--verde);text-decoration:none}
+#cookieBanner{display:none!important}
+@media(max-width:900px){
+  body{padding:8px}
+  .chat-shell{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .chat-app{min-height:92vh;border-radius:22px}
+  .product-grid{grid-template-columns:1fr 1fr}
+  .msg{max-width:88%}
+  .header-badge{display:none}
+}
+@media(max-width:560px){
+  .product-grid{grid-template-columns:1fr}
+  .header{padding:14px}
+  .header img{height:44px}
+  .header-title{font-size:1.12rem}
+  .messages{padding:18px 14px}
+  .send-btn{padding:12px 16px}
+}
 </style>
 </head>
 <body>
-<div class="chat-app">
-  <div class="header"><img src="https://herenciafloristeria.es/assets/full-logo-DV4tgILq.png" alt="Herencia Logo"><div class="header-title">HERENC(IA) — Tu amiga plantil 🌿</div></div>
-  <div class="messages"><div class="messages-inner" id="messages"></div><div class="typing" id="typingIndicator" style="display:none;"><span></span><span></span><span></span><p>Herenc(IA) está pensando…</p></div></div>
-  <div class="input-area">
-    <div class="input-row"><div class="input-box"><input id="userInput" type="text" placeholder="Escribe tu pregunta aquí..." /></div><button class="send-btn" id="sendBtn">Enviar <i class="fa-solid fa-paper-plane"></i></button></div>
-  </div>
-  <div class="optional-actions" id="optionalActions">
-    <button class="optional-action" data-feature="createBouquet" data-prompt="Quiero crear un ramo. Ayúdame a elegir flores, estilo y presupuesto.">💐 Crear un ramo</button>
-    <button class="optional-action" data-feature="findPlant" data-prompt="Ayúdame a encontrar la planta ideal para mí.">🌿 Encontrar una planta</button>
-    <button class="optional-action" data-feature="searchByPhoto" id="searchByPhotoBtn">📷 Buscar por foto</button>
-    <button class="optional-action" data-feature="findGift" data-prompt="Ayúdame a encontrar un regalo ideal en Herencia Market.">🎁 Buscar un regalo</button>
-    <button class="optional-action" data-feature="surpriseMe" data-prompt="Sorpréndeme con una recomendación de Herencia Market.">✨ Sorpréndeme</button>
-    <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" />
-  </div>
-  <footer style="text-align:center;font-size:0.75rem;padding:12px;"><a href="/terminos">Aviso legal</a> | <a href="/privacidad">Política de privacidad</a> | <a href="/cookies">Política de cookies</a></footer>
+<div class="chat-shell">
+  <main class="chat-app">
+    <div class="header">
+      <div class="header-left">
+        <img src="https://herenciafloristeria.es/assets/full-logo-DV4tgILq.png" alt="Herencia Market">
+        <div>
+          <div class="header-title">Herenc(IA) 🌿</div>
+          <div class="header-subtitle">Tu asesora de plantas, decoración y regalos</div>
+        </div>
+      </div>
+      <div class="header-badge">✦ Con conocimiento de Herencia Market</div>
+    </div>
+
+    <div class="messages">
+      <div class="messages-inner" id="messages"></div>
+      <div class="typing" id="typingIndicator"><span></span><span></span><span></span><p>Herenc(IA) está pensando…</p></div>
+    </div>
+
+    <div class="optional-actions" id="optionalActions">
+      <button class="optional-action" data-feature="createBouquet" data-prompt="Quiero crear un ramo. Ayúdame a elegir flores, estilo y presupuesto.">💐 Crear un ramo</button>
+      <button class="optional-action" data-feature="findPlant" data-prompt="Ayúdame a encontrar la planta ideal para mí.">🌿 Encontrar una planta</button>
+      <button class="optional-action" data-feature="searchByPhoto" id="searchByPhotoBtn">📷 Buscar por foto</button>
+      <button class="optional-action" data-feature="findGift" data-prompt="Ayúdame a encontrar un regalo ideal en Herencia Market.">🎁 Buscar un regalo</button>
+      <button class="optional-action" data-feature="surpriseMe" data-prompt="Sorpréndeme con una recomendación de Herencia Market.">✨ Sorpréndeme</button>
+      <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" />
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <div class="input-box"><input id="userInput" type="text" placeholder="Escribe tu pregunta aquí..." /></div>
+        <button class="send-btn" id="sendBtn">Enviar <i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </div>
+
+    <div class="footer-links">
+      <a href="/terminos">Aviso legal</a> · <a href="/privacidad">Privacidad</a> · <a href="/cookies">Cookies</a>
+    </div>
+  </main>
+
+  <aside class="sidebar">
+    <div class="side-card">
+      <h3>Tu acceso</h3>
+      <p id="accessSidebar">Herenc(IA) controla automáticamente tus mensajes diarios según tu cuenta.</p>
+    </div>
+    <div class="side-card vip-card">
+      <strong>👑 Acceso VIP</strong>
+      <p>Con más de 50 € en compras pagadas de plantas, el uso diario de Herenc(IA) es ilimitado.</p>
+    </div>
+    <div class="side-card">
+      <h3>Compra desde el chat</h3>
+      <p>Herenc(IA) puede recomendar productos reales. Cuando encuentres uno, podrás añadirlo al carrito o ir directamente al pago seguro de Herencia Market.</p>
+    </div>
+    <div class="side-photo"></div>
+  </aside>
 </div>
-<div id="cookieBanner" style="font-size:0.75rem;text-align:center;padding:8px;">Este sitio utiliza cookies técnicas. Consulta la <a href="/privacidad">política de privacidad</a> y la <a href="/cookies">política de cookies</a>. <button id="acceptCookies">Aceptar</button></div>
 <script>if(localStorage.getItem('cookiesAccepted')){document.getElementById('cookieBanner').style.display='none';}document.getElementById('acceptCookies').onclick=function(){localStorage.setItem('cookiesAccepted','true');document.getElementById('cookieBanner').style.display='none';};</script>
-<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-admin-features-v2"></script>
+<script type="module" src="/herencia-ai/js/chat_unificado_compatible.js?v=20261006-sales-beauty-v3"></script>
 </body>
 </html>
