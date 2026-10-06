@@ -83,6 +83,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     { label: "Dulce", href: "/dulce" },
     { label: "Moda", href: "/moda" },
     { label: "Nosotros", href: "/nosotros" },
+    { label: "Comunidad", href: "/comunidad" },
     { label: "Contacto", href: "/contacto" },
   ],
   home: {
@@ -268,11 +269,18 @@ function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
     const href = String(item?.href || "").toLowerCase();
     return label === "plantas" || href.includes("coleccion=plantas");
   });
-  if (hasPlants) return merged;
+  const hasCommunity = merged.some((item) => String(item?.href || "").split("?")[0] === "/comunidad");
+  let ensured = merged;
+  if (!hasCommunity) {
+    const contactIndex = ensured.findIndex((item) => String(item?.href || "").split("?")[0] === "/contacto");
+    const community: SiteLink = { label: "Comunidad", href: "/comunidad" };
+    ensured = contactIndex >= 0 ? [...ensured.slice(0, contactIndex), community, ...ensured.slice(contactIndex)] : [...ensured, community];
+  }
+  if (hasPlants) return ensured;
   const plants: SiteLink = { label: "Plantas", href: "/productos?coleccion=plantas" };
-  const startIndex = merged.findIndex((item) => String(item?.href || "") === "/");
-  if (startIndex >= 0) return [...merged.slice(0, startIndex + 1), plants, ...merged.slice(startIndex + 1)];
-  return [plants, ...merged];
+  const startIndex = ensured.findIndex((item) => String(item?.href || "") === "/");
+  if (startIndex >= 0) return [...ensured.slice(0, startIndex + 1), plants, ...ensured.slice(startIndex + 1)];
+  return [plants, ...ensured];
 }
 
 function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): MarketSalesAction[] {
