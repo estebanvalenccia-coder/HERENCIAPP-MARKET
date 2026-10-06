@@ -8,11 +8,13 @@ import {
   ShoppingCart,
   Sparkles,
   Truck,
+  Globe2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 
 const DEFAULT_HERO = "/herencia-portada.avif";
 
@@ -53,10 +55,12 @@ function money(value: unknown) {
 export function Home() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
 
   useEffect(() => {
     const load = () => {
       setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      setColombiaDelivery(parseColombiaDeliverySettings(backendStorage.getItem("internationalDeliverySettings")));
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         setCatalog(
@@ -248,6 +252,24 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {colombiaDelivery.enabled && (
+        <section className="border-b border-[#d9e1d9] bg-[#edf4ee]">
+          <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
+            <div className="flex items-start gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-2xl shadow-sm">🇨🇴</div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#6d7d72]">Herencia internacional</p>
+                <h2 className="mt-1 text-2xl font-semibold text-[#173126]">Ahora también entregamos en {colombiaDelivery.regionLabel}</h2>
+                <p className="mt-1 text-sm leading-6 text-[#637168]">Envía plantas y regalos a tus seres queridos en Colombia con entrega local.</p>
+              </div>
+            </div>
+            <Link to="/colombia" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#315b42] px-6 py-3 font-black text-white shadow-sm transition hover:bg-[#234832]">
+              <Globe2 className="h-4 w-4" /> Enviar a Colombia <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="border-b border-[#e5e1d8] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">

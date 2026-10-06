@@ -1,0 +1,123 @@
+import { useEffect, useMemo, useState } from "react";
+import { Globe2, Plus, Save, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
+import {
+  COLOMBIA_DELIVERY_STORAGE_KEY,
+  defaultColombiaDeliverySettings,
+  parseColombiaDeliverySettings,
+  type ColombiaDeliverySettings,
+} from "../../lib/internationalDelivery";
+
+export function AdminInternationalDelivery() {
+  const [settings, setSettings] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
+  const [products, setProducts] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const selected = useMemo(() => new Set(settings.selectedProductIds.map(String)), [settings.selectedProductIds]);
+
+  useEffect(() => {
+    setSettings(parseColombiaDeliverySettings(backendStorage.getItem(COLOMBIA_DELIVERY_STORAGE_KEY)));
+    backendApi.listCommerceProducts({ includeArchived: true })
+      .then(({ products }) => setProducts(Array.isArray(products) ? products.filter((p:any) => !p?.deletedAt) : []))
+      .catch(() => setProducts([]));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const result = await backendStorage.setItem(COLOMBIA_DELIVERY_STORAGE_KEY, JSON.stringify(settings));
+      if (!result.ok) throw new Error(result.error || "No se pudo sincronizar");
+      toast.success("Colombia / Internacional guardado y publicado");
+    } catch (error:any) {
+      toast.error(error?.message || "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleProduct = (id:string) => {
+    const next = new Set(settings.selectedProductIds.map(String));
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSettings({ ...settings, selectedProductIds: [...next] });
+  };
+
+  const patchZone = (index:number, patch:any) => {
+    const zones = settings.zones.map((zone, i) => i === index ? { ...zone, ...patch } : zone);
+    setSettings({ ...settings, zones });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Globe2 className="h-6 w-6" /></div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.18em] text-muted-foreground">Herencia internacional</p>
+              <h2 className="text-2xl font-bold">Colombia · Cali y Candelaria</h2>
+            </div>
+          </div>
+          <button onClick={save} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-50">
+            <Save className="h-4 w-4" /> {saving ? "Guardando..." : "Guardar y publicar"}
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <label className="rounded-2xl border p-4">
+            <span className="text-sm font-bold">Función activa</span>
+            <div className="mt-2 flex items-center gap-3">
+              <input type="checkbox" checked={settings.enabled} onChange={(e) => setSettings({ ...settings, enabled:e.target.checked })} />
+              <span className="text-sm text-muted-foreground">Mostrar /colombia al público</span>
+            </div>
+          </label>
+          <label className="rounded-2xl border p-4">
+            <span className="text-sm font-bold">Mensaje de regalo</span>
+            <div className="mt-2 flex items-center gap-3">
+              <input type="checkbox" checked={settings.giftMessageEnabled} onChange={(e) => setSettings({ ...settings, giftMessageEnabled:e.target.checked })} />
+              <span className="text-sm text-muted-foreground">Permitir tarjeta personalizada</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <label><span className="mb-2 block text-sm font-bold">Título principal</span><input value={settings.headline} onChange={(e)=>setSettings({...settings,headline:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+          <label><span className="mb-2 block text-sm font-bold">Descripción</span><textarea value={settings.description} onChange={(e)=>setSettings({...settings,description:e.target.value})} rows={3} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+          <label><span className="mb-2 block text-sm font-bold">Cobertura visible</span><input value={settings.regionLabel} onChange={(e)=>setSettings({...settings,regionLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+          <label><span className="mb-2 block text-sm font-bold">Imagen de portada (URL)</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div><h3 className="text-xl font-bold">Zonas y domicilios</h3><p className="text-sm text-muted-foreground">Controla cobertura, precio y tiempo estimado.</p></div>
+          <button onClick={() => setSettings({...settings,zones:[...settings.zones,{id:`zona-${Date.now()}`,name:"Nueva zona",enabled:true,feeEUR:0,eta:"A confirmar",note:""}]})} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold"><Plus className="h-4 w-4"/>Añadir zona</button>
+        </div>
+        <div className="mt-5 space-y-3">
+          {settings.zones.map((zone,index)=>(
+            <div key={zone.id} className="grid gap-3 rounded-2xl border p-4 lg:grid-cols-[auto_1.2fr_.5fr_1fr_1.4fr_auto] lg:items-center">
+              <input type="checkbox" checked={zone.enabled} onChange={(e)=>patchZone(index,{enabled:e.target.checked})} />
+              <input value={zone.name} onChange={(e)=>patchZone(index,{name:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
+              <input type="number" min="0" step="0.1" value={zone.feeEUR} onChange={(e)=>patchZone(index,{feeEUR:Number(e.target.value)})} className="rounded-xl border bg-background px-3 py-2" />
+              <input value={zone.eta} onChange={(e)=>patchZone(index,{eta:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
+              <input value={zone.note} onChange={(e)=>patchZone(index,{note:e.target.value})} className="rounded-xl border bg-background px-3 py-2" />
+              <button onClick={()=>setSettings({...settings,zones:settings.zones.filter((_,i)=>i!==index)})} className="rounded-xl p-2 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4"/></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+        <h3 className="text-xl font-bold">Catálogo disponible en Colombia</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Selecciona productos concretos. Si no seleccionas ninguno, la página mostrará productos destacados disponibles.</p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {products.map((product:any)=>(
+            <button key={product.id} onClick={()=>toggleProduct(String(product.id))} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selected.has(String(product.id)) ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}>
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-muted">{product.image && <img src={product.image} alt="" className="h-full w-full object-cover" />}</div>
+              <div className="min-w-0"><p className="truncate font-bold">{product.name}</p><p className="text-xs text-muted-foreground">{selected.has(String(product.id)) ? "Disponible en Colombia" : "No seleccionado"}</p></div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
