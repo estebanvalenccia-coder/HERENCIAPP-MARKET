@@ -16,7 +16,7 @@ export type ColombiaProductOverride = {
   stockColombia?: number;
 };
 
-export type ColombiaDeliverySettings = {
+export type ColombiaCategory = { id: string; name: string; enabled: boolean; imageUrl?: string; };\n\nexport type ColombiaDeliverySettings = {
   enabled: boolean;
   country: "Colombia";
   flag: string;
@@ -32,7 +32,7 @@ export type ColombiaDeliverySettings = {
   schedulingEnabled: boolean;
   paymentEnabled: boolean;
   sameDayLabel: string;
-  selectedProductIds: string[];
+  selectedProductIds: string[];\n  productOrder: string[];\n  categories: ColombiaCategory[];
   productOverrides: Record<string, ColombiaProductOverride>;
   zones: ColombiaDeliveryZone[];
 };
@@ -55,7 +55,7 @@ export const defaultColombiaDeliverySettings: ColombiaDeliverySettings = {
   schedulingEnabled: true,
   paymentEnabled: true,
   sameDayLabel: "Entrega el mismo día (según disponibilidad)",
-  selectedProductIds: [],
+  selectedProductIds: [],\n  productOrder: [],\n  categories: [\n    { id: "plantas", name: "Plantas", enabled: true },\n    { id: "ramos", name: "Ramos", enabled: true },\n    { id: "orquideas", name: "Orquídeas", enabled: true },\n    { id: "regalos", name: "Regalos", enabled: true },\n    { id: "dulce", name: "Dulce", enabled: true },\n    { id: "moda", name: "Moda", enabled: true },\n    { id: "decoracion", name: "Decoración", enabled: true },\n    { id: "cestas", name: "Cestas", enabled: true },\n    { id: "eventos", name: "Eventos", enabled: true },\n    { id: "personalizados", name: "Personalizados", enabled: true },\n  ],
   productOverrides: {},
   zones: [
     { id: "cali", name: "Cali (urbano)", enabled: true, feeEUR: 2.3, feeCOP: 9900, eta: "Hoy o mañana", note: "Cobertura urbana" },
@@ -101,7 +101,7 @@ export function parseColombiaDeliverySettings(raw: string | null): ColombiaDeliv
       description: legacyDescription ? defaultColombiaDeliverySettings.description : String(incoming.description || defaultColombiaDeliverySettings.description),
       heroKicker: String(incoming.heroKicker || defaultColombiaDeliverySettings.heroKicker),
       heroCtaLabel: String(incoming.heroCtaLabel || defaultColombiaDeliverySettings.heroCtaLabel),
-      selectedProductIds: Array.isArray(incoming.selectedProductIds) ? incoming.selectedProductIds.map(String) : [],
+      selectedProductIds: Array.isArray(incoming.selectedProductIds) ? incoming.selectedProductIds.map(String) : [],\n      productOrder: Array.isArray(incoming.productOrder) ? incoming.productOrder.map(String) : [],\n      categories: Array.isArray(incoming.categories) && incoming.categories.length ? incoming.categories.map((item:any,index:number)=>({ id:String(item.id || `categoria-${index+1}`), name:String(item.name || "Categoría"), enabled:item.enabled !== false, imageUrl:item.imageUrl ? String(item.imageUrl) : undefined })) : defaultColombiaDeliverySettings.categories.map(item=>({...item})),
       paymentEnabled: incoming.paymentEnabled === undefined ? true : Boolean(incoming.paymentEnabled),
       productOverrides: incoming.productOverrides && typeof incoming.productOverrides === "object"
         ? Object.fromEntries(Object.entries(incoming.productOverrides).map(([id, value]: any) => [
