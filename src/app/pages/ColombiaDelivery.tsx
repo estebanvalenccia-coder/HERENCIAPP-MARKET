@@ -62,6 +62,8 @@ export function ColombiaDelivery() {
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [showStripe, setShowStripe] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState(1);
 
   useEffect(() => {
     const loadSettings = () => {
@@ -288,7 +290,7 @@ export function ColombiaDelivery() {
             const itemEUR = Number(item.onSale && item.salePrice ? item.salePrice : item.price || 0);
             const itemCOP = Number(itemOverride?.priceCOP || Math.round(itemEUR * 4300 / 100) * 100);
             return (
-              <button key={item.id} onClick={() => setProductId(String(item.id))} className={`group overflow-hidden rounded-[18px] border bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md ${selected ? "border-[#315b42] ring-2 ring-[#315b42]/15" : "border-[#e8e1d6]"}`}>
+              <button key={item.id} onClick={() => { setProductId(String(item.id)); setCheckoutStep(1); setCheckoutOpen(true); }} className={`group overflow-hidden rounded-[18px] border bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md ${selected ? "border-[#315b42] ring-2 ring-[#315b42]/15" : "border-[#e8e1d6]"}`}>
                 <div className="relative aspect-[4/3] bg-[#f0ede6]">
                   <img src={item.image || item.images?.[0]?.url || item.images?.[0]} alt={item.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]" />
                   <span className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#314138] shadow"><Heart className="h-4 w-4"/></span>
@@ -297,7 +299,7 @@ export function ColombiaDelivery() {
                   <p className="line-clamp-1 font-black text-[#28342d]">{itemOverride?.label || item.name}</p>
                   <div className="mt-2 flex items-end justify-between gap-2">
                     <div><p className="font-black text-[#173126]">{moneyCOP(itemCOP)}</p><p className="text-[11px] text-[#7d877f]">≈ {moneyEUR(itemEUR)}</p></div>
-                    <span className={`rounded-full px-3 py-1 text-[11px] font-black ${selected?"bg-[#315b42] text-white":"bg-[#edf3ed] text-[#315b42]"}`}>{selected?"Elegido":"Elegir"}</span>
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-black ${selected?"bg-[#315b42] text-white":"bg-[#edf3ed] text-[#315b42]"}`}>{"Comprar"}</span>
                   </div>
                 </div>
               </button>
@@ -308,70 +310,27 @@ export function ColombiaDelivery() {
         {filteredProducts.length===0 && <div className="mt-6 rounded-3xl border border-dashed border-[#d9d1c5] bg-white p-10 text-center text-sm text-[#748077]">No hay productos publicados en esta categoría todavía.</div>}
       </section>
 
-      <section className="border-y border-[#e3ded3] bg-[#f5f2eb]">
-        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
-          <div className="grid gap-4 xl:grid-cols-5">
-            <StepCard number="1" title="Producto y zona">
-              {product ? (
-                <div className="flex gap-3">
-                  <img src={product.image || product.images?.[0]?.url || product.images?.[0]} alt="" className="h-20 w-20 rounded-2xl object-cover" />
-                  <div><p className="font-black">{product.name}</p><p className="text-sm font-bold">{moneyCOP(productCOP)}</p><p className="text-xs text-[#718076]">{zone?.name}</p></div>
-                </div>
-              ) : <p className="text-sm text-[#718076]">Elige un producto.</p>}
-            </StepCard>
-
-            <StepCard number="2" title="Dirección y destinatario">
-              <div className="grid gap-2">
-                <input value={recipientName} onChange={(e)=>setRecipientName(e.target.value)} placeholder="Nombre del destinatario" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <div className="relative"><Phone className="absolute left-3 top-3 h-4 w-4 text-[#829087]"/><input value={recipientPhone} onChange={(e)=>setRecipientPhone(e.target.value)} placeholder="Teléfono del destinatario" className="w-full rounded-xl border border-[#ddd7cb] bg-white py-2.5 pl-9 pr-3 text-sm" /></div>
-                <input value={neighborhood} onChange={(e)=>setNeighborhood(e.target.value)} placeholder="Barrio / vereda / sector" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <textarea value={address} onChange={(e)=>setAddress(e.target.value)} placeholder="Dirección completa: calle, carrera, número, apartamento/casa..." rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <input value={references} onChange={(e)=>setReferences(e.target.value)} placeholder="Referencias: portería, torre, color de casa..." className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <textarea value={deliveryComments} onChange={(e)=>setDeliveryComments(e.target.value.slice(0,400))} placeholder="Comentarios para la entrega: llamar antes, dejar en portería, no tocar timbre..." rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                <p className="text-right text-[11px] text-[#829087]">{deliveryComments.length}/400</p>
+      {checkoutOpen && product && zone && !showStripe && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#10251b]/55 p-3 backdrop-blur-sm sm:p-6">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[28px] bg-[#fbfaf6] shadow-2xl">
+            <div className="sticky top-0 z-10 border-b border-[#e3ded3] bg-[#fbfaf6]/95 px-5 py-4 backdrop-blur sm:px-7">
+              <div className="flex items-center justify-between gap-4">
+                <div><p className="text-[11px] font-black uppercase tracking-[.18em] text-[#718076]">Tu regalo en Cali</p><h2 className="font-serif text-2xl font-semibold">Paso {checkoutStep} de 5</h2></div>
+                <button onClick={()=>setCheckoutOpen(false)} className="rounded-full border border-[#ddd7cb] px-4 py-2 text-sm font-bold">Cerrar</button>
               </div>
-            </StepCard>
-
-            <StepCard number="3" title="Mensaje para la tarjeta">
-              <div className="flex flex-wrap gap-2">
-                {["Cumpleaños","Amor","Agradecimiento"].map((item)=><button key={item} onClick={()=>setOccasion(item)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${occasion===item?"bg-[#315b42] text-white":"bg-white border border-[#ddd7cb]"}`}>{item}</button>)}
-              </div>
-              {settings.giftMessageEnabled && <textarea value={giftMessage} onChange={(e)=>setGiftMessage(e.target.value.slice(0,200))} placeholder="Escribe tu mensaje..." rows={5} className="mt-3 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />}
-              <div className="mt-2 flex justify-between text-[11px] text-[#829087]"><span>{giftMessage.length}/200</span></div>
-              {settings.surpriseEnabled && <label className="mt-3 flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={surprise} onChange={(e)=>setSurprise(e.target.checked)}/> Es una sorpresa (no mostrar precio)</label>}
-            </StepCard>
-
-            <StepCard number="4" title="Fecha y hora de entrega">
-              {settings.schedulingEnabled ? (
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold"><CalendarDays className="mr-1 inline h-4 w-4"/>Elegir fecha<input type="date" min={todayIso()} value={deliveryDate} onChange={(e)=>setDeliveryDate(e.target.value)} className="mt-2 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" /></label>
-                  <label className="block text-xs font-bold"><Clock3 className="mr-1 inline h-4 w-4"/>Franja horaria<select value={deliveryTime} onChange={(e)=>setDeliveryTime(e.target.value)} className="mt-2 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm"><option>09:00–13:00</option><option>13:00–17:00</option><option>17:00–20:00</option></select></label>
-                </div>
-              ) : <p className="text-sm text-[#718076]">La fecha se confirmará por WhatsApp.</p>}
-            </StepCard>
-
-            <StepCard number="5" title="Pago y confirmación">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span>Producto</span><b>{moneyCOP(productCOP)}</b></div>
-                <div className="flex justify-between"><span>Envío</span><b>{moneyCOP(zone?.feeCOP || 0)}</b></div>
-                <div className="flex justify-between border-t border-[#ddd7cb] pt-2 text-base"><span className="font-black">Total</span><b>{moneyCOP(totalCOP)}</b></div>
-                <p className="text-right text-xs text-[#718076]">≈ {moneyEUR(totalEUR)}</p>
-              </div>
-              {settings.paymentEnabled && (
-                <div className="mt-4 grid gap-2">
-                  <input value={buyerName} onChange={(e)=>setBuyerName(e.target.value)} placeholder="Tu nombre (quien compra)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                  <input type="email" value={buyerEmail} onChange={(e)=>setBuyerEmail(e.target.value)} placeholder="Tu email para el recibo" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                  <input value={buyerPhone} onChange={(e)=>setBuyerPhone(e.target.value)} placeholder="Tu teléfono / WhatsApp (opcional)" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5 text-sm" />
-                </div>
-              )}
-              <button onClick={submit} disabled={!product} className="mt-4 w-full rounded-xl bg-[#315b42] px-4 py-3 font-black text-white disabled:opacity-50">
-                {settings.paymentEnabled ? "Pagar en COP con Stripe" : "Confirmar por WhatsApp"}
-              </button>
-              <p className="mt-2 text-center text-[11px] text-[#829087]">{settings.paymentEnabled ? "El cobro llega a la misma cuenta Stripe de Herencia, presentado en COP." : "Confirmamos disponibilidad antes del cobro."}</p>
-            </StepCard>
+              <div className="mt-3 grid grid-cols-5 gap-2">{[1,2,3,4,5].map(n=><span key={n} className={`h-1.5 rounded-full ${n<=checkoutStep?"bg-[#315b42]":"bg-[#dedbd3]"}`}/>)}</div>
+            </div>
+            <div className="p-5 sm:p-7">
+              {checkoutStep===1 && <StepCard number="1" title="Producto y zona"><div className="flex gap-3"><img src={product.image || product.images?.[0]?.url || product.images?.[0]} alt="" className="h-24 w-24 rounded-2xl object-cover"/><div><p className="font-black">{product.name}</p><p className="mt-1 text-lg font-black">{moneyCOP(productCOP)}</p><p className="text-sm text-[#718076]">{zone.name} · envío {moneyCOP(zone.feeCOP)}</p></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{settings.zones.filter(z=>z.enabled).map(z=><button key={z.id} onClick={()=>setZoneId(z.id)} className={`rounded-xl border px-3 py-2 text-left text-sm font-bold ${zoneId===z.id?"border-[#315b42] bg-[#edf3ed]":"bg-white"}`}>{z.name}<span className="block text-xs font-normal text-[#718076]">{z.eta}</span></button>)}</div></StepCard>}
+              {checkoutStep===2 && <StepCard number="2" title="Dirección y destinatario"><div className="grid gap-2"><input value={recipientName} onChange={e=>setRecipientName(e.target.value)} placeholder="Nombre del destinatario" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/><input value={recipientPhone} onChange={e=>setRecipientPhone(e.target.value)} placeholder="Teléfono del destinatario" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/><input value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} placeholder="Barrio / vereda / sector" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/><textarea value={address} onChange={e=>setAddress(e.target.value)} placeholder="Dirección completa" rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/><input value={references} onChange={e=>setReferences(e.target.value)} placeholder="Referencias para encontrar la dirección" className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/><textarea value={deliveryComments} onChange={e=>setDeliveryComments(e.target.value.slice(0,400))} placeholder="Comentarios para la entrega" rows={3} className="rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/></div></StepCard>}
+              {checkoutStep===3 && <StepCard number="3" title="Mensaje para la tarjeta"><div className="flex flex-wrap gap-2">{["Cumpleaños","Amor","Agradecimiento"].map(item=><button key={item} onClick={()=>setOccasion(item)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${occasion===item?"bg-[#315b42] text-white":"border bg-white"}`}>{item}</button>)}</div>{settings.giftMessageEnabled&&<textarea value={giftMessage} onChange={e=>setGiftMessage(e.target.value.slice(0,200))} placeholder="Escribe tu mensaje..." rows={5} className="mt-3 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/>}{settings.surpriseEnabled&&<label className="mt-3 flex gap-2 text-sm font-bold"><input type="checkbox" checked={surprise} onChange={e=>setSurprise(e.target.checked)}/> Es una sorpresa (no mostrar precio)</label>}</StepCard>}
+              {checkoutStep===4 && <StepCard number="4" title="Fecha y hora de entrega">{settings.schedulingEnabled?<div className="grid gap-4"><label className="text-sm font-bold">Fecha<input type="date" min={todayIso()} value={deliveryDate} onChange={e=>setDeliveryDate(e.target.value)} className="mt-2 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"/></label><label className="text-sm font-bold">Franja horaria<select value={deliveryTime} onChange={e=>setDeliveryTime(e.target.value)} className="mt-2 w-full rounded-xl border border-[#ddd7cb] bg-white px-3 py-2.5"><option>09:00–13:00</option><option>13:00–17:00</option><option>17:00–20:00</option></select></label></div>:<p>La fecha se confirmará por WhatsApp.</p>}</StepCard>}
+              {checkoutStep===5 && <StepCard number="5" title="Pago y confirmación"><div className="space-y-2"><div className="flex justify-between"><span>Producto</span><b>{moneyCOP(productCOP)}</b></div><div className="flex justify-between"><span>Envío</span><b>{moneyCOP(zone.feeCOP)}</b></div><div className="flex justify-between border-t pt-2 text-lg"><b>Total</b><b>{moneyCOP(totalCOP)}</b></div><p className="text-right text-xs text-[#718076]">≈ {moneyEUR(totalEUR)}</p></div>{settings.paymentEnabled&&<div className="mt-4 grid gap-2"><input value={buyerName} onChange={e=>setBuyerName(e.target.value)} placeholder="Tu nombre" className="rounded-xl border bg-white px-3 py-2.5"/><input type="email" value={buyerEmail} onChange={e=>setBuyerEmail(e.target.value)} placeholder="Tu email para el recibo" className="rounded-xl border bg-white px-3 py-2.5"/><input value={buyerPhone} onChange={e=>setBuyerPhone(e.target.value)} placeholder="Tu teléfono / WhatsApp" className="rounded-xl border bg-white px-3 py-2.5"/></div>}</StepCard>}
+              <div className="mt-5 flex items-center justify-between gap-3"><button onClick={()=>setCheckoutStep(s=>Math.max(1,s-1))} disabled={checkoutStep===1} className="rounded-xl border px-5 py-3 font-bold disabled:opacity-30">Atrás</button>{checkoutStep<5?<button onClick={()=>setCheckoutStep(s=>Math.min(5,s+1))} className="rounded-xl bg-[#315b42] px-6 py-3 font-black text-white">Continuar</button>:<button onClick={submit} className="rounded-xl bg-[#315b42] px-6 py-3 font-black text-white">{settings.paymentEnabled?"Pagar en COP con Stripe":"Confirmar pedido"}</button>}</div>
+            </div>
           </div>
         </div>
-      </section>
+      )}
 
       {showStripe && product && zone && (
         <section className="mx-auto max-w-3xl px-5 py-12 sm:px-8">
