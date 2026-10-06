@@ -64,7 +64,7 @@ export function ColombiaDelivery() {
     }
 
     const site = parseSiteContent(backendStorage.getItem("siteContent"));
-    const phone = String(site.contact?.whatsapp || site.contact?.phone || defaultSiteContent.contact.whatsapp || "").replace(/\D/g, "");
+    const phone = String(site.floatingWhatsapp?.phone || site.footer?.whatsappPhone || defaultSiteContent.floatingWhatsapp.phone || "").replace(/\D/g, "");
     const lines = [
       "Hola Herencia 🌿 Quiero solicitar un domicilio en Colombia.",
       "",
