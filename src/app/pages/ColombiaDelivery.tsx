@@ -348,6 +348,7 @@ export function ColombiaDelivery() {
               deliveryZoneId: zone.id,
               recipientName: recipientName.trim(),
               recipientPhone: recipientPhone.trim(),
+              phone: recipientPhone.trim(),
               giftMessage: giftMessage.trim(),
               occasion,
               surprise,
