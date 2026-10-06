@@ -1,11 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Bot, ExternalLink, Loader2, Lock, Mail, Sparkles } from "lucide-react";
-import { backendApi, backendStorage } from "../lib/backendStorage";
-import {
-  getHerenciaIaAccessMessage,
-  getHerenciaIaDailyLimit,
-  isHerenciaIaVip,
-} from "../lib/herenciaIaAccess";
+import { useEffect, useState } from "react";
+import { Bot, ExternalLink, Loader2, Lock, LogIn, Sparkles } from "lucide-react";
+import { Link } from "react-router";
+import { backendStorage } from "../lib/backendStorage";
 
 type HerenciaSettings = {
   enabled?: boolean;
@@ -14,23 +10,19 @@ type HerenciaSettings = {
   useIntegrated?: boolean;
 };
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const usageKey = (identity: string) => `herencia-ia-usage:${todayKey()}:${identity || "visitor"}`;
-
-function readUsage(identity: string) {
-  try {
-    return Math.max(0, Number(localStorage.getItem(usageKey(identity)) || 0));
-  } catch {
-    return 0;
-  }
-}
-
-function writeUsage(identity: string, value: number) {
-  try {
-    localStorage.setItem(usageKey(identity), String(Math.max(0, value)));
-  } catch {}
-}
+type AccessState = {
+  ok?: boolean;
+  authenticated: boolean;
+  email?: string;
+  role: "visitor" | "customer" | "vip";
+  vip: boolean;
+  unlimited: boolean;
+  plantSpend: number;
+  vipPlantSpend: number;
+  dailyLimit: number;
+  used: number;
+  remaining: number | null;
+};
 
 export function HerencIA() {
   const [settings, setSettings] = useState<HerenciaSettings>({
@@ -40,13 +32,8 @@ export function HerencIA() {
   });
   const [groqOk, setGroqOk] = useState<boolean | null>(null);
   const [groqModel, setGroqModel] = useState("");
-  const [email, setEmail] = useState("");
-  const [registered, setRegistered] = useState(false);
-  const [plantSpend, setPlantSpend] = useState(0);
-  const [totalPaid, setTotalPaid] = useState(0);
-  const [checkingCustomer, setCheckingCustomer] = useState(false);
-  const [customerChecked, setCustomerChecked] = useState(false);
-  const [usedMessages, setUsedMessages] = useState(0);
+  const [access, setAccess] = useState<AccessState | null>(null);
+  const [accessLoading, setAccessLoading] = useState(true);
   const [accessStarted, setAccessStarted] = useState(false);
 
   useEffect(() => {
@@ -65,17 +52,40 @@ export function HerencIA() {
       }
     };
     load();
-
-    try {
-      setEmail(localStorage.getItem("herencia-ia-email") || "");
-    } catch {}
-
     window.addEventListener("storage", load);
     window.addEventListener("backend-storage", load);
     return () => {
       window.removeEventListener("storage", load);
       window.removeEventListener("backend-storage", load);
     };
+  }, []);
+
+  const refreshAccess = async () => {
+    setAccessLoading(true);
+    try {
+      const response = await fetch("/api/herencia-ai/access", { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "No se pudo comprobar el acceso");
+      setAccess(data);
+    } catch {
+      setAccess(null);
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAccess();
+  }, []);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "HERENCIA_IA_ACCESS") return;
+      if (event.data?.access) setAccess(event.data.access);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
   useEffect(() => {
@@ -96,111 +106,6 @@ export function HerencIA() {
       active = false;
     };
   }, [settings.mode]);
-
-  useEffect(() => {
-    const normalized = normalizeEmail(email);
-    setAccessStarted(false);
-
-    if (!normalized) {
-      setRegistered(false);
-      setPlantSpend(0);
-      setTotalPaid(0);
-      setCustomerChecked(true);
-      setCheckingCustomer(false);
-      setUsedMessages(readUsage("visitor"));
-      return;
-    }
-
-    let cancelled = false;
-    setCheckingCustomer(true);
-    setCustomerChecked(false);
-
-    backendApi
-      .getHerenciaIaCustomerStatus(normalized)
-      .then((status) => {
-        if (cancelled) return;
-        const isRegistered = Boolean(status.registered);
-        setRegistered(isRegistered);
-        setPlantSpend(Number(status.plantSpend || 0));
-        setTotalPaid(Number(status.totalPaid || 0));
-        setCustomerChecked(true);
-        setUsedMessages(readUsage(isRegistered ? normalized : "visitor"));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRegistered(false);
-        setPlantSpend(0);
-        setTotalPaid(0);
-        setCustomerChecked(true);
-        setUsedMessages(readUsage("visitor"));
-      })
-      .finally(() => {
-        if (!cancelled) setCheckingCustomer(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [email]);
-
-  const normalizedEmail = normalizeEmail(email);
-  const identity = registered && normalizedEmail ? normalizedEmail : "visitor";
-  const vip = isHerenciaIaVip(plantSpend);
-  const dailyLimit = getHerenciaIaDailyLimit(registered);
-  const remainingMessages = vip ? Number.POSITIVE_INFINITY : Math.max(0, dailyLimit - usedMessages);
-  const canOpenIa = !checkingCustomer && customerChecked && (vip || remainingMessages > 0);
-
-  const accessMessage = useMemo(
-    () =>
-      checkingCustomer
-        ? "Comprobando tu cuenta y tus compras pagadas..."
-        : getHerenciaIaAccessMessage({
-            email: normalizedEmail,
-            registered,
-            plantSpend,
-            remainingMessages: vip ? 1 : remainingMessages,
-          }),
-    [checkingCustomer, normalizedEmail, registered, plantSpend, remainingMessages, vip]
-  );
-
-  useEffect(() => {
-    const onUsage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== "HERENCIA_IA_USAGE_CHANGED") return;
-      const next = Math.max(0, Number(event.data?.used || readUsage(identity)));
-      setUsedMessages(next);
-    };
-    window.addEventListener("message", onUsage);
-    return () => window.removeEventListener("message", onUsage);
-  }, [identity]);
-
-  const handleEmailChange = (value: string) => {
-    setEmail(value);
-    try {
-      localStorage.setItem("herencia-ia-email", value);
-    } catch {}
-  };
-
-  const startHerenciaIa = () => {
-    if (!canOpenIa) return;
-
-    try {
-      localStorage.setItem("herencia-ia-active-identity", identity);
-      localStorage.setItem("herencia-ia-active-email", registered ? normalizedEmail : "");
-      localStorage.setItem("herencia-ia-daily-limit", String(dailyLimit));
-      localStorage.setItem("herencia-ia-vip", vip ? "1" : "0");
-    } catch {}
-
-    // La app integrada cuenta mensajes reales. Para una URL externa, que no podemos
-    // controlar desde otro dominio, cada apertura consume un uso.
-    if (settings.mode === "external" && !vip) {
-      const next = usedMessages + 1;
-      writeUsage(identity, next);
-      setUsedMessages(next);
-    }
-
-    setAccessStarted(true);
-  };
 
   if (settings.enabled === false) {
     return (
@@ -229,35 +134,36 @@ export function HerencIA() {
     );
   }
 
+  const canOpen = Boolean(access?.unlimited || Number(access?.remaining || 0) > 0);
+
   if (!accessStarted) {
     return (
       <div className="min-h-[calc(100vh-120px)] bg-[#eef4e8] px-4 py-8 sm:py-12">
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_420px]">
           <section className="rounded-3xl border border-[#dce8df] bg-white p-7 shadow-sm sm:p-9">
             <div className="inline-flex items-center gap-2 rounded-full bg-[#315b42]/10 px-4 py-2 text-sm font-semibold text-[#315b42]">
-              <Sparkles className="h-4 w-4" /> Acceso controlado
+              <Sparkles className="h-4 w-4" /> Acceso controlado desde el backend
             </div>
             <h1 className="mt-5 text-4xl font-black text-[#173126]">Herenc(IA)</h1>
             <p className="mt-3 max-w-2xl text-[#6d776f]">
-              El uso está limitado para controlar el coste de la IA. Los visitantes tienen 2 mensajes al día,
-              los clientes registrados 5 y quienes superen 50 € en compras pagadas de plantas pueden seguir usándola sin límite diario.
+              El contador se guarda en Herencia Market, no en el navegador. Así el límite no se reinicia al borrar la caché o recargar la página.
             </p>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl bg-[#f5f7f2] p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#6d776f]">Visitante</p>
-                <p className="mt-1 text-3xl font-black text-[#173126]">2</p>
+                <p className="mt-1 text-3xl font-black text-[#173126]">{access?.authenticated ? "—" : access?.dailyLimit ?? 2}</p>
                 <p className="text-xs text-[#6d776f]">mensajes / día</p>
               </div>
               <div className="rounded-2xl bg-[#f5f7f2] p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#6d776f]">Cliente registrado</p>
-                <p className="mt-1 text-3xl font-black text-[#173126]">5</p>
+                <p className="mt-1 text-3xl font-black text-[#173126]">{access?.authenticated && !access.vip ? access.dailyLimit : 5}</p>
                 <p className="text-xs text-[#6d776f]">mensajes / día</p>
               </div>
               <div className="rounded-2xl bg-[#315b42] p-5 text-white">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/75">Cliente +50 € plantas</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/75">VIP en plantas</p>
                 <p className="mt-1 text-2xl font-black">Sin límite</p>
-                <p className="text-xs text-white/75">compras pagadas</p>
+                <p className="text-xs text-white/75">desde {Number(access?.vipPlantSpend || 50).toFixed(0)} € pagados</p>
               </div>
             </div>
           </section>
@@ -266,62 +172,62 @@ export function HerencIA() {
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-[#315b42] p-3 text-white"><Bot className="h-6 w-6" /></div>
               <div>
-                <h2 className="text-xl font-bold text-[#173126]">Entrar a Herenc(IA)</h2>
-                <p className="text-sm text-[#6d776f]">Comprobación automática de cliente</p>
+                <h2 className="text-xl font-bold text-[#173126]">Tu acceso</h2>
+                <p className="text-sm text-[#6d776f]">Cuenta y uso del día</p>
               </div>
             </div>
 
-            <label className="mt-6 block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#173126]">
-                <Mail className="h-4 w-4" /> Correo de cliente
-              </span>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => handleEmailChange(event.target.value)}
-                placeholder="cliente@email.com"
-                className="w-full rounded-2xl border border-[#dce8df] bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-[#315b42]/25"
-              />
-              <p className="mt-2 text-xs text-[#6d776f]">
-                Si el correo existe en Clientes, se aplican sus ventajas. Sin correo —o con un correo no registrado— entras como visitante.
-              </p>
-            </label>
-
-            {normalizedEmail ? (
-              <div className="mt-4 rounded-2xl bg-[#f5f7f2] p-4 text-sm">
-                {checkingCustomer ? (
-                  <p className="flex items-center gap-2 text-[#6d776f]"><Loader2 className="h-4 w-4 animate-spin" /> Comprobando cliente…</p>
-                ) : (
-                  <>
-                    <p className="font-bold text-[#173126]">
-                      {registered ? "✓ Cliente registrado" : "Correo no encontrado en Clientes"}
+            <div className="mt-6 rounded-2xl bg-[#f5f7f2] p-4">
+              {accessLoading ? (
+                <p className="flex items-center gap-2 text-sm text-[#6d776f]"><Loader2 className="h-4 w-4 animate-spin" /> Comprobando acceso…</p>
+              ) : access ? (
+                <>
+                  <p className="font-bold text-[#173126]">
+                    {access.vip ? "👑 Cliente VIP" : access.authenticated ? "✓ Cliente registrado" : "Visitante"}
+                  </p>
+                  {access.authenticated && access.email ? (
+                    <p className="mt-1 text-sm text-[#6d776f]">{access.email}</p>
+                  ) : null}
+                  {access.authenticated ? (
+                    <p className="mt-2 text-sm text-[#6d776f]">
+                      Compras pagadas de plantas: {Number(access.plantSpend || 0).toFixed(2)} €
                     </p>
-                    {registered ? (
-                      <>
-                        <p className="mt-1 text-[#6d776f]">Compras pagadas totales: {totalPaid.toFixed(2)} €</p>
-                        <p className="text-[#6d776f]">Compras pagadas de plantas: {plantSpend.toFixed(2)} €</p>
-                      </>
-                    ) : null}
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-[#6d776f]">
+                      Inicia sesión con tu cuenta de cliente para recibir el límite de cliente y detectar automáticamente el acceso VIP.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-amber-800">No se pudo comprobar el acceso. Recarga la página en unos segundos.</p>
+              )}
+            </div>
+
+            {access && !access.authenticated ? (
+              <Link
+                to="/login"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#315b42] px-5 py-3 font-bold text-[#315b42]"
+              >
+                <LogIn className="h-4 w-4" /> Iniciar sesión o registrarme
+              </Link>
             ) : null}
 
-            <div className={`mt-4 rounded-2xl p-4 ${canOpenIa ? "bg-[#315b42]/10 text-[#315b42]" : "bg-amber-50 text-amber-900"}`}>
+            <div className={`mt-4 rounded-2xl p-4 ${canOpen ? "bg-[#315b42]/10 text-[#315b42]" : "bg-amber-50 text-amber-900"}`}>
               <div className="flex items-center gap-2 font-bold">
-                {!canOpenIa ? <Lock className="h-4 w-4" /> : null}
-                {vip ? "Acceso VIP" : canOpenIa ? "Acceso disponible" : "Límite alcanzado"}
+                {!canOpen ? <Lock className="h-4 w-4" /> : null}
+                {access?.vip ? "Acceso ilimitado" : canOpen ? "Acceso disponible" : "Límite alcanzado"}
               </div>
-              <p className="mt-1 text-sm">{accessMessage}</p>
               <p className="mt-2 text-sm font-semibold">
-                {vip ? "Mensajes disponibles: sin límite diario" : `Te quedan ${remainingMessages} de ${dailyLimit} mensajes hoy.`}
+                {access?.unlimited
+                  ? "Mensajes disponibles: sin límite diario"
+                  : `Te quedan ${Math.max(0, Number(access?.remaining || 0))} de ${Number(access?.dailyLimit || 0)} mensajes hoy.`}
               </p>
             </div>
 
             <button
               type="button"
-              onClick={startHerenciaIa}
-              disabled={!canOpenIa}
+              onClick={() => setAccessStarted(true)}
+              disabled={accessLoading || !canOpen}
               className="mt-5 w-full rounded-2xl bg-[#315b42] px-5 py-4 font-bold text-white transition hover:bg-[#244735] disabled:cursor-not-allowed disabled:opacity-45"
             >
               Abrir Herenc(IA)
@@ -343,9 +249,7 @@ export function HerencIA() {
                 <h1 className="text-xl font-bold text-[#173126]">Herenc(IA)</h1>
                 <Sparkles className="h-4 w-4 text-[#315b42]" />
               </div>
-              <p className="text-sm text-[#6d776f]">
-                {external ? "Asistente externo conectado por URL" : "App integrada dentro de Herencia Market"}
-              </p>
+              <p className="text-sm text-[#6d776f]">{external ? "Asistente externo conectado por URL" : "App integrada dentro de Herencia Market"}</p>
             </div>
           </div>
 
@@ -363,15 +267,10 @@ export function HerencIA() {
             ) : null}
 
             <div className="rounded-full border border-[#dce8df] bg-white px-3 py-1.5 text-xs font-semibold text-[#315b42]">
-              {vip ? "Uso ilimitado" : `${Math.max(0, dailyLimit - usedMessages)} mensajes restantes`}
+              {access?.unlimited ? "Uso ilimitado" : `${Math.max(0, Number(access?.remaining || 0))} mensajes restantes`}
             </div>
 
-            <a
-              href={src}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden items-center gap-2 rounded-full border border-[#dce8df] px-4 py-2 text-sm font-semibold text-[#315b42] sm:flex"
-            >
+            <a href={src} target="_blank" rel="noopener noreferrer" className="hidden items-center gap-2 rounded-full border border-[#dce8df] px-4 py-2 text-sm font-semibold text-[#315b42] sm:flex">
               <ExternalLink className="h-4 w-4" /> Abrir grande
             </a>
           </div>
