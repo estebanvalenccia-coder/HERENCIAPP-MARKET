@@ -1,289 +1,381 @@
-import { useEffect, useState } from "react";
-import { Bot, ExternalLink, Loader2, Lock, LogIn, Sparkles } from "lucide-react";
-import { Link } from "react-router";
-import { backendStorage } from "../lib/backendStorage";
-
-type HerenciaSettings = {
-  enabled?: boolean;
-  url?: string;
-  mode?: "integrated" | "external";
-  useIntegrated?: boolean;
-};
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Crown, Leaf, Loader2, Send, ShoppingBag, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 
 type AccessState = {
-  ok?: boolean;
   authenticated: boolean;
   email?: string;
-  role: "visitor" | "customer" | "vip";
   vip: boolean;
   unlimited: boolean;
   plantSpend: number;
   vipPlantSpend: number;
   dailyLimit: number;
-  used: number;
   remaining: number | null;
 };
 
+type Product = {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  type?: string;
+  collections?: string[];
+  price: number;
+  salePrice?: number;
+  onSale?: boolean;
+  image?: string;
+  stock?: number;
+  trackInventory?: boolean;
+  active?: boolean;
+  status?: string;
+  deletedAt?: string;
+  variants?: any[];
+};
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  productIds?: string[];
+};
+
+const CHAT_KEY = "herencia_ia_native_messages_v2";
+
+function id() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeProduct(p: any): Product {
+  return {
+    ...p,
+    id: String(p?.id ?? ""),
+    name: String(p?.name || "Producto"),
+    description: String(p?.description || ""),
+    category: String(p?.category || ""),
+    type: String(p?.type || ""),
+    collections: Array.isArray(p?.collections) ? p.collections.map(String) : [],
+    price: Math.max(0, Number(p?.price || 0)),
+    salePrice: p?.salePrice == null ? undefined : Math.max(0, Number(p.salePrice || 0)),
+    onSale: Boolean(p?.onSale),
+    image: String(p?.image || p?.imageUrl || ""),
+    stock: Math.max(0, Number(p?.stock || 0)),
+    trackInventory: p?.trackInventory !== false,
+    active: p?.active !== false,
+    status: String(p?.status || "active"),
+    deletedAt: p?.deletedAt ? String(p.deletedAt) : undefined,
+    variants: Array.isArray(p?.variants) ? p.variants : [],
+  };
+}
+
+function price(p: Product) {
+  return p.onSale && Number(p.salePrice || 0) > 0 ? Number(p.salePrice) : Number(p.price || 0);
+}
+
 export function HerencIA() {
-  const [settings, setSettings] = useState<HerenciaSettings>({
-    enabled: true,
-    mode: "integrated",
-    useIntegrated: true,
-  });
-  const [groqOk, setGroqOk] = useState<boolean | null>(null);
-  const [groqModel, setGroqModel] = useState("");
+  const navigate = useNavigate();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [enabled, setEnabled] = useState(true);
   const [access, setAccess] = useState<AccessState | null>(null);
-  const [accessLoading, setAccessLoading] = useState(true);
-  const [accessStarted, setAccessStarted] = useState(false);
+  const [groq, setGroq] = useState<{ ok: boolean; model?: string } | null>(null);
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const rows = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]");
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  });
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    const load = () => {
-      try {
-        const parsed = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}");
-        const useIntegrated = parsed.useIntegrated !== false && parsed.mode !== "external";
-        setSettings({
-          enabled: parsed.enabled !== false,
-          url: String(parsed.url || ""),
-          mode: useIntegrated ? "integrated" : "external",
-          useIntegrated,
-        });
-      } catch {
-        setSettings({ enabled: true, mode: "integrated", useIntegrated: true });
-      }
-    };
-    load();
-    window.addEventListener("storage", load);
-    window.addEventListener("backend-storage", load);
-    return () => {
-      window.removeEventListener("storage", load);
-      window.removeEventListener("backend-storage", load);
-    };
+    try {
+      const s = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}");
+      setEnabled(s.enabled !== false);
+    } catch {}
   }, []);
 
+  useEffect(() => {
+    if (!messages.length) {
+      setMessages([{
+        id: "welcome",
+        role: "assistant",
+        content: "Hola 🌿 Soy Herenc(IA). Cuéntame qué estás buscando y te ayudo a encontrar plantas, regalos y productos reales de Herencia Market.",
+      }]);
+    }
+  }, []);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-30))); } catch {}
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const refreshAccess = async () => {
-    setAccessLoading(true);
     try {
-      const response = await fetch("/api/herencia-ai/access", { credentials: "include" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "No se pudo comprobar el acceso");
-      setAccess(data);
+      const r = await fetch("/api/herencia-ai/access", { credentials: "include" });
+      const data = await r.json();
+      if (r.ok) setAccess(data);
+      return r.ok ? data : null;
     } catch {
-      setAccess(null);
-    } finally {
-      setAccessLoading(false);
+      return null;
     }
   };
 
-  useEffect(() => {
-    void refreshAccess();
-  }, []);
+  useEffect(() => { void refreshAccess(); }, []);
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== "HERENCIA_IA_ACCESS") return;
-      if (event.data?.access) setAccess(event.data.access);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  useEffect(() => {
-    if (settings.mode !== "integrated") return;
-    let active = true;
-    setGroqOk(null);
     fetch("/api/herencia-ai/status", { credentials: "include" })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Estado no disponible");
-        if (active) {
-          setGroqOk(Boolean(data?.ok));
-          setGroqModel(String(data?.model || ""));
-        }
+      .then(async r => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then(({ ok, data }) => setGroq({ ok: ok && Boolean(data?.ok), model: data?.model }))
+      .catch(() => setGroq({ ok: false }));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    backendApi.listCommerceProducts()
+      .then(result => {
+        if (!active) return;
+        const rows = Array.isArray(result.products) ? result.products : [];
+        setCatalog(rows.map(normalizeProduct).filter(p => p.id && p.active !== false && !p.deletedAt && p.status !== "archived"));
       })
-      .catch(() => active && setGroqOk(false));
-    return () => {
-      active = false;
-    };
-  }, [settings.mode]);
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
-  if (settings.enabled === false) {
-    return (
-      <div className="grid min-h-[70vh] place-items-center bg-[#eef4e8] px-6 text-center">
-        <div className="max-w-md rounded-3xl border border-[#dce8df] bg-white p-8 shadow-sm">
-          <Bot className="mx-auto h-10 w-10 text-[#315b42]" />
-          <h1 className="mt-4 text-2xl font-bold text-[#173126]">Herenc(IA) está desactivada</h1>
-          <p className="mt-2 text-sm text-[#6d776f]">Puedes activarla desde Administración.</p>
-        </div>
-      </div>
-    );
-  }
+  const productMap = useMemo(() => new Map(catalog.map(p => [String(p.id), p])), [catalog]);
 
-  const external = settings.mode === "external" && Boolean(settings.url);
-  const src = external ? settings.url! : "/herencia-ai/index.html";
+  const consume = async () => {
+    const r = await fetch("/api/herencia-ai/consume", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || "Límite diario alcanzado");
+    setAccess(data);
+  };
 
-  if (settings.mode === "external" && !settings.url) {
-    return (
-      <div className="grid min-h-[70vh] place-items-center bg-[#eef4e8] px-6 text-center">
-        <div className="max-w-md rounded-3xl border border-[#dce8df] bg-white p-8 shadow-sm">
-          <Bot className="mx-auto h-10 w-10 text-[#315b42]" />
-          <h2 className="mt-4 text-xl font-bold text-[#173126]">Falta la URL externa</h2>
-          <p className="mt-2 text-sm text-[#6d776f]">Añádela en Administración o cambia a “App integrada”.</p>
-        </div>
-      </div>
-    );
-  }
+  const addToCart = async (product: Product, checkout = false) => {
+    let cart: any[] = [];
+    try {
+      const current = JSON.parse(backendStorage.getItem("cart") || "[]");
+      if (Array.isArray(current)) cart = current;
+    } catch {}
 
-  const canOpen = Boolean(access?.unlimited || Number(access?.remaining || 0) > 0);
+    const lineKey = `${product.id}::herencia-ia`;
+    const existing = cart.find(x => x.lineKey === lineKey);
+    if (existing) existing.quantity = Number(existing.quantity || 0) + 1;
+    else cart.push({ ...product, price: price(product), quantity: 1, lineKey, salesSource: "HERENCIA_IA" });
 
-  if (!accessStarted) {
-    return (
-      <div className="min-h-[calc(100vh-120px)] bg-[#eef4e8] px-4 py-8 sm:py-12">
-        <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_420px]">
-          <section className="rounded-3xl border border-[#dce8df] bg-white p-7 shadow-sm sm:p-9">
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#315b42]/10 px-4 py-2 text-sm font-semibold text-[#315b42]">
-              <Sparkles className="h-4 w-4" /> Acceso controlado desde el backend
-            </div>
-            <h1 className="mt-5 text-4xl font-black text-[#173126]">Herenc(IA)</h1>
-            <p className="mt-3 max-w-2xl text-[#6d776f]">
-              El contador se guarda en Herencia Market, no en el navegador. Así el límite no se reinicia al borrar la caché o recargar la página.
-            </p>
+    const saved = await backendStorage.setItem("cart", JSON.stringify(cart));
+    if (!saved.ok) return toast.error(saved.error || "No se pudo guardar el carrito");
+    window.dispatchEvent(new Event("storage"));
+    toast.success(checkout ? "Producto listo para comprar" : "Producto añadido al carrito");
+    if (checkout) navigate("/checkout");
+  };
 
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-[#f5f7f2] p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#6d776f]">Visitante</p>
-                <p className="mt-1 text-3xl font-black text-[#173126]">{access?.authenticated ? "—" : access?.dailyLimit ?? 2}</p>
-                <p className="text-xs text-[#6d776f]">mensajes / día</p>
-              </div>
-              <div className="rounded-2xl bg-[#f5f7f2] p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#6d776f]">Cliente registrado</p>
-                <p className="mt-1 text-3xl font-black text-[#173126]">{access?.authenticated && !access.vip ? access.dailyLimit : 5}</p>
-                <p className="text-xs text-[#6d776f]">mensajes / día</p>
-              </div>
-              <div className="rounded-2xl bg-[#315b42] p-5 text-white">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/75">VIP en plantas</p>
-                <p className="mt-1 text-2xl font-black">Sin límite</p>
-                <p className="text-xs text-white/75">desde {Number(access?.vipPlantSpend || 50).toFixed(0)} € pagados</p>
-              </div>
-            </div>
-          </section>
+  const send = async (e?: FormEvent) => {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text || sending) return;
 
-          <section className="rounded-3xl border border-[#dce8df] bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-[#315b42] p-3 text-white"><Bot className="h-6 w-6" /></div>
-              <div>
-                <h2 className="text-xl font-bold text-[#173126]">Tu acceso</h2>
-                <p className="text-sm text-[#6d776f]">Cuenta y uso del día</p>
-              </div>
-            </div>
+    const currentAccess = access || await refreshAccess();
+    if (currentAccess && !currentAccess.unlimited && Number(currentAccess.remaining || 0) <= 0) {
+      toast.error("Has alcanzado tu límite diario");
+      return;
+    }
 
-            <div className="mt-6 rounded-2xl bg-[#f5f7f2] p-4">
-              {accessLoading ? (
-                <p className="flex items-center gap-2 text-sm text-[#6d776f]"><Loader2 className="h-4 w-4 animate-spin" /> Comprobando acceso…</p>
-              ) : access ? (
-                <>
-                  <p className="font-bold text-[#173126]">
-                    {access.vip ? "👑 Cliente VIP" : access.authenticated ? "✓ Cliente registrado" : "Visitante"}
-                  </p>
-                  {access.authenticated && access.email ? (
-                    <p className="mt-1 text-sm text-[#6d776f]">{access.email}</p>
-                  ) : null}
-                  {access.authenticated ? (
-                    <p className="mt-2 text-sm text-[#6d776f]">
-                      Compras pagadas de plantas: {Number(access.plantSpend || 0).toFixed(2)} €
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-[#6d776f]">
-                      Inicia sesión con tu cuenta de cliente para recibir el límite de cliente y detectar automáticamente el acceso VIP.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-amber-800">No se pudo comprobar el acceso. Recarga la página en unos segundos.</p>
-              )}
-            </div>
+    const userMessage: Message = { id: id(), role: "user", content: text };
+    setMessages(prev => [...prev, userMessage]);
+    setInput("");
+    setSending(true);
 
-            {access && !access.authenticated ? (
-              <Link
-                to="/login"
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#315b42] px-5 py-3 font-bold text-[#315b42]"
-              >
-                <LogIn className="h-4 w-4" /> Iniciar sesión o registrarme
-              </Link>
-            ) : null}
+    try {
+      const r = await fetch("/api/ai/sales-chat", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
+          catalog: catalog.slice(0, 120),
+          conversationId: "herencia-ia-native",
+        }),
+      });
 
-            <div className={`mt-4 rounded-2xl p-4 ${canOpen ? "bg-[#315b42]/10 text-[#315b42]" : "bg-amber-50 text-amber-900"}`}>
-              <div className="flex items-center gap-2 font-bold">
-                {!canOpen ? <Lock className="h-4 w-4" /> : null}
-                {access?.vip ? "Acceso ilimitado" : canOpen ? "Acceso disponible" : "Límite alcanzado"}
-              </div>
-              <p className="mt-2 text-sm font-semibold">
-                {access?.unlimited
-                  ? "Mensajes disponibles: sin límite diario"
-                  : `Te quedan ${Math.max(0, Number(access?.remaining || 0))} de ${Number(access?.dailyLimit || 0)} mensajes hoy.`}
-              </p>
-            </div>
+      let data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const fallback = await fetch("/api/herencia-ai/chat", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, user: "herencia-ia-native" }),
+        });
+        data = await fallback.json().catch(() => ({}));
+        if (!fallback.ok) throw new Error(data?.error || "No se pudo responder");
+      }
 
-            <button
-              type="button"
-              onClick={() => setAccessStarted(true)}
-              disabled={accessLoading || !canOpen}
-              className="mt-5 w-full rounded-2xl bg-[#315b42] px-5 py-4 font-bold text-white transition hover:bg-[#244735] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Abrir Herenc(IA)
-            </button>
-          </section>
-        </div>
-      </div>
-    );
+      await consume();
+
+      setMessages(prev => [...prev, {
+        id: id(),
+        role: "assistant",
+        content: String(data?.reply || "Puedo ayudarte a encontrar algo de Herencia."),
+        productIds: Array.isArray(data?.productIds) ? data.productIds.map(String) : undefined,
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: id(),
+        role: "assistant",
+        content: "Ahora mismo tuve un problema de conexión. Tu mensaje no se ha descontado.",
+      }]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!enabled) {
+    return <div className="grid min-h-[70vh] place-items-center bg-[#edf3e7]"><p className="text-[#315b42]">Herenc(IA) está desactivada desde Administración.</p></div>;
   }
 
   return (
-    <div className="min-h-[calc(100vh-120px)] bg-[radial-gradient(circle_at_top_left,_#eff5e9,_#e5efdf_45%,_#f4ede0)]">
-      <div className="border-b border-[#dce8df] bg-white/95">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-[#315b42] p-3 text-white"><Bot className="h-6 w-6" /></div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-[#173126]">Herenc(IA)</h1>
-                <Sparkles className="h-4 w-4 text-[#315b42]" />
+    <div
+      className="min-h-[calc(100vh-120px)] px-3 py-4 sm:px-5 sm:py-6"
+      style={{
+        backgroundImage: "linear-gradient(135deg, rgba(232,241,226,.82), rgba(245,236,218,.76)), url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=1800&q=88')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }}
+    >
+      <div className="mx-auto grid max-w-[1380px] gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+        <section className="flex min-h-[calc(100vh-165px)] flex-col overflow-hidden rounded-[2.3rem] border border-white/25 bg-[#17442f]/72 shadow-[0_30px_90px_rgba(17,49,33,.28)] backdrop-blur-2xl">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#123a27]/78 px-5 py-4 sm:px-7">
+            <div className="flex items-center gap-4">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/15 bg-white/10 text-[#efd8a0] shadow-lg">
+                <Leaf className="h-7 w-7" />
               </div>
-              <p className="text-sm text-[#6d776f]">{external ? "Asistente externo conectado por URL" : "App integrada dentro de Herencia Market"}</p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-serif text-2xl font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
+                  <Sparkles className="h-4 w-4 text-[#d8bd7a]" />
+                </div>
+                <p className="mt-1 text-sm text-white/65">Tu asesora de plantas, decoración y regalos</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80">
+                {groq === null ? "Conectando…" : groq.ok ? `● Groq${groq.model ? ` · ${groq.model}` : ""}` : "● Sin conexión"}
+              </span>
+              <span className="rounded-full border border-[#d8bd7a]/20 bg-[#d8bd7a]/15 px-3 py-1.5 text-xs font-semibold text-[#f4dfaa]">
+                {access?.unlimited ? "Uso ilimitado" : `${Math.max(0, Number(access?.remaining || 0))} mensajes`}
+              </span>
+            </div>
+          </header>
+
+          <div
+            className="relative flex-1 overflow-y-auto px-4 py-6 sm:px-7"
+            style={{
+              backgroundImage: "linear-gradient(180deg, rgba(20,60,41,.24), rgba(247,238,216,.16)), url('https://images.unsplash.com/photo-1614594575810-9b3e3c99f8b2?auto=format&fit=crop&w=1800&q=86')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="mx-auto max-w-4xl space-y-5">
+              {messages.map(message => {
+                const products = (message.productIds || []).map(pid => productMap.get(pid)).filter(Boolean) as Product[];
+                return (
+                  <div key={message.id}>
+                    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[86%] rounded-[1.65rem] px-5 py-4 text-[15px] leading-7 shadow-xl backdrop-blur-xl sm:max-w-[72%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-white/35 bg-[#fffaf0]/92 text-[#173126]"}`}>
+                        {message.content}
+                      </div>
+                    </div>
+
+                    {products.length > 0 && (
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {products.slice(0,3).map(product => (
+                          <article key={product.id} className="overflow-hidden rounded-[1.6rem] border border-white/35 bg-[#fffaf0]/94 shadow-xl backdrop-blur-xl">
+                            <div className="aspect-[4/3] bg-[#edf1e8]">
+                              {product.image ? <img src={product.image} alt={product.name} className="h-full w-full object-cover" /> : null}
+                            </div>
+                            <div className="p-4">
+                              <h3 className="font-bold text-[#173126]">{product.name}</h3>
+                              <p className="mt-1 text-sm font-bold text-[#315b42]">{price(product).toFixed(2)} €</p>
+                              <div className="mt-4 flex gap-2">
+                                <button onClick={() => void addToCart(product)} className="flex-1 rounded-full border border-[#315b42]/15 bg-[#edf4e8] px-3 py-2 text-xs font-bold text-[#315b42]">Añadir</button>
+                                <button onClick={() => void addToCart(product,true)} className="flex-1 rounded-full bg-[#315b42] px-3 py-2 text-xs font-bold text-white">Comprar</button>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {sending && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 rounded-[1.5rem] rounded-bl-md border border-white/35 bg-[#fffaf0]/92 px-4 py-3 text-sm text-[#315b42] shadow-lg backdrop-blur-xl">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Herenc(IA) está pensando…
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {!external ? (
-              <div className="hidden rounded-full border border-[#dce8df] bg-white px-3 py-1.5 text-xs font-semibold sm:block">
-                {groqOk === null ? (
-                  <span className="flex items-center gap-1.5 text-[#6d776f]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Comprobando Groq</span>
-                ) : groqOk ? (
-                  <span className="text-emerald-700">● Groq conectado{groqModel ? ` · ${groqModel}` : ""}</span>
-                ) : (
-                  <span className="text-amber-700">● Groq no disponible</span>
-                )}
+          <div className="border-t border-white/10 bg-[#123a27]/84 px-4 py-4 backdrop-blur-2xl sm:px-6">
+            <form onSubmit={send} className="mx-auto flex max-w-4xl items-center gap-3">
+              <div className="flex min-h-14 flex-1 items-center rounded-full border border-white/25 bg-[#fffaf0]/96 px-5 shadow-lg">
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  disabled={sending || (!access?.unlimited && Number(access?.remaining || 0) <= 0)}
+                  placeholder={!access?.unlimited && Number(access?.remaining || 0) <= 0 ? "Has alcanzado tu límite diario" : "Escribe tu pregunta aquí…"}
+                  className="w-full bg-transparent text-[15px] text-[#173126] outline-none placeholder:text-[#879086]"
+                />
               </div>
-            ) : null}
-
-            <div className="rounded-full border border-[#dce8df] bg-white px-3 py-1.5 text-xs font-semibold text-[#315b42]">
-              {access?.unlimited ? "Uso ilimitado" : `${Math.max(0, Number(access?.remaining || 0))} mensajes restantes`}
-            </div>
-
-            <a href={src} target="_blank" rel="noopener noreferrer" className="hidden items-center gap-2 rounded-full border border-[#dce8df] px-4 py-2 text-sm font-semibold text-[#315b42] sm:flex">
-              <ExternalLink className="h-4 w-4" /> Abrir grande
-            </a>
+              <button type="submit" disabled={sending || !input.trim()} className="flex min-h-14 items-center gap-2 rounded-full bg-[#d6bb7a] px-5 font-bold text-[#173126] shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50">
+                Enviar <Send className="h-4 w-4" />
+              </button>
+            </form>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <div className="mx-auto max-w-7xl p-2 sm:p-4">
-        <iframe
-          src={src}
-          title="Herenc(IA)"
-          className="h-[calc(100vh-190px)] min-h-[680px] w-full rounded-[2rem] border-0 bg-transparent shadow-none"
-          allow="microphone; camera; clipboard-write"
-        />
+        <aside className="hidden min-h-[calc(100vh-165px)] flex-col gap-4 lg:flex">
+          <div className="rounded-[2rem] border border-white/25 bg-[#183f2c]/78 p-5 text-white shadow-[0_24px_70px_rgba(17,49,33,.22)] backdrop-blur-2xl">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-white/10 p-3 text-[#f0d79d]"><Bot className="h-5 w-5" /></div>
+              <div><h2 className="font-serif text-xl font-semibold">Tu acceso</h2><p className="text-xs text-white/55">{access?.authenticated ? "Cliente registrado" : "Visitante"}</p></div>
+            </div>
+            <div className="mt-5 rounded-2xl bg-white/10 p-4">
+              <p className="text-3xl font-black text-[#f4e0af]">{access?.unlimited ? "∞" : Math.max(0, Number(access?.remaining || 0))}</p>
+              <p className="mt-1 text-sm text-white/65">{access?.unlimited ? "mensajes sin límite" : `de ${Number(access?.dailyLimit || 0)} mensajes disponibles hoy`}</p>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(117,88,32,.82),rgba(80,61,27,.74))] p-5 text-white shadow-xl backdrop-blur-2xl">
+            <div className="flex items-center gap-2 text-[#f4dfaa]"><Crown className="h-5 w-5" /><strong>Acceso VIP</strong></div>
+            <p className="mt-3 text-sm leading-6 text-white/70">Con {Number(access?.vipPlantSpend || 50).toFixed(0)} € o más en compras pagadas de plantas, Herenc(IA) pasa a uso ilimitado.</p>
+            {access?.authenticated ? <p className="mt-3 text-xs font-semibold text-[#f4dfaa]">Llevas {Number(access.plantSpend || 0).toFixed(2)} € en plantas.</p> : null}
+          </div>
+
+          <div className="rounded-[2rem] border border-white/25 bg-[#183f2c]/78 p-5 text-white shadow-xl backdrop-blur-2xl">
+            <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[#f0d79d]" /><h3 className="font-serif text-lg font-semibold">Compra desde el chat</h3></div>
+            <p className="mt-3 text-sm leading-6 text-white/65">Herenc(IA) recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
+          </div>
+
+          <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-[2rem] border border-white/25 bg-[url('https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=86')] bg-cover bg-center shadow-xl">
+            <div className="absolute inset-0 bg-gradient-to-t from-[#173b29]/75 via-transparent to-transparent" />
+            <p className="absolute bottom-5 left-5 right-5 font-serif text-2xl leading-tight text-white">Más que plantas, un hogar con vida.</p>
+          </div>
+        </aside>
       </div>
     </div>
   );
