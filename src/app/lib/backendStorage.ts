@@ -1105,7 +1105,7 @@ export const backendApi = {
   },
 
   async getHerenciaIaCustomerStatus(email: string) {
-    return request<{ totalPaid: number; isVip: boolean }>("/api/herencia-ia/customer-status", {
+    return request<{ registered: boolean; totalPaid: number; plantSpend: number; isVip: boolean; vipMinimumPlantSpend: number }>("/api/herencia-ia/customer-status", {
       method: "POST",
       body: JSON.stringify({ email }),
     });
