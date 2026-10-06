@@ -694,6 +694,21 @@ export async function bootstrapNeonCommerceFromLegacy() {
   return { imported };
 }
 
+async function uniqueNeonCommerceSlug(productId, value) {
+  const base = slugify(value || productId);
+  const result = await neonPool.query(
+    "select slug from commerce_products where slug=$1 or slug like $2",
+    [base, `${base}-%`]
+  );
+  const used = new Set((result.rows || []).map((row) => String(row.slug || "")));
+  const own = await neonPool.query("select slug from commerce_products where id=$1 limit 1", [String(productId)]);
+  const ownSlug = String(own.rows?.[0]?.slug || "");
+  if (!used.has(base) || ownSlug === base) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
 export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
   if (!neonPool) throw new Error("Neon no está configurado");
   await ensureNeonCommerceDefaults();
@@ -710,6 +725,7 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
   }
   const price=num(input.salePrice ?? input.price,0);
   const compare=input.compareAtPrice ?? input.originalPrice ?? (input.onSale && input.salePrice ? input.price : null);
+  const uniqueSlug = await uniqueNeonCommerceSlug(productId, input.slug || input.name || productId);
   await neonPool.query(
     `insert into commerce_products(
       id,slug,type,name,scientific_name,description,category,status,featured,price,compare_at_price,cost,tax_rate,sku,stock,
@@ -724,7 +740,7 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
       size=excluded.size,difficulty=excluded.difficulty,pet_safe=excluded.pet_safe,toxicity=excluded.toxicity,water=excluded.water,
       temperature=excluded.temperature,occasion=excluded.occasion,allow_dedication=excluded.allow_dedication,seo_title=excluded.seo_title,
       seo_description=excluded.seo_description,metadata=excluded.metadata,updated_at=now()`,
-    [productId,slugify(input.slug||input.name||productId),String(input.type||"plant"),String(input.name||"").trim(),
+    [productId,uniqueSlug,String(input.type||"plant"),String(input.name||"").trim(),
      String(input.scientificName||input.scientific_name||"")||null,String(input.description||""),String(input.category||"plantas"),status,
      Boolean(input.featured),Math.max(0,price),compare==null?null:Math.max(0,num(compare)),input.cost==null||input.cost===""?null:Math.max(0,num(input.cost)),
      Math.max(0,num(input.taxRate??input.iva,21)),String(input.sku||"")||null,int(input.stock),
