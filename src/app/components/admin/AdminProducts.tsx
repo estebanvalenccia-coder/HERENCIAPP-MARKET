@@ -692,6 +692,30 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     toast.success(additions.length === 1 ? "Foto añadida desde la biblioteca" : `${additions.length} fotos añadidas desde la biblioteca`);
   }
 
+  function replaceEditImagesFromLibrary(urls: string[]) {
+    const next = Array.from(
+      new Set(urls.map((url) => String(url || "").trim()).filter(Boolean))
+    ).slice(0, 8);
+    if (!next.length) return;
+    setEditImages(next);
+    setEditForm((current) => ({ ...current, image: next[0] || "" }));
+    setEditVariants((variants) =>
+      variants.map((variant) => variant.image && !next.includes(variant.image) ? { ...variant, image: "" } : variant)
+    );
+    toast.success(next.length === 1 ? "Galería reemplazada por 1 foto" : `Galería reemplazada por ${next.length} fotos`);
+  }
+
+  function keepOnlyPrimaryImage() {
+    const primary = String(editImages[0] || editForm.image || "").trim();
+    const removed = new Set(editImages.filter((url) => url && url !== primary));
+    setEditImages(primary ? [primary] : []);
+    setEditForm((current) => ({ ...current, image: primary }));
+    setEditVariants((variants) =>
+      variants.map((variant) => removed.has(variant.image) ? { ...variant, image: "" } : variant)
+    );
+    toast.success(primary ? "Se conservará solo la foto principal al guardar" : "Galería vaciada");
+  }
+
   function moveEditImage(index: number, direction: -1 | 1) {
     setEditImages((current) => {
       const target = index + direction;
@@ -1126,30 +1150,61 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   )}
                 </div>
 
-                {editImages.length < 8 && (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
-                      <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Subir fotos"}
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                        disabled={galleryUploading}
-                        onChange={(event) => {
-                          const input = event.currentTarget;
-                          void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
-                        }}
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                <div className="space-y-2">
+                  {editImages.length < 8 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
+                        <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Subir fotos"}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                          disabled={galleryUploading}
+                          onChange={(event) => {
+                            const input = event.currentTarget;
+                            void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
+                          }}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </label>
+                      <MediaLibraryPicker
+                        currentUrls={editImages}
+                        max={8}
+                        onSelect={addEditImagesFromLibrary}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-3 py-3 text-xs font-black text-primary hover:bg-primary/10"
                       />
-                    </label>
+                    </div>
+                  ) : (
                     <MediaLibraryPicker
-                      currentUrls={editImages}
+                      currentUrls={[]}
                       max={8}
-                      onSelect={addEditImagesFromLibrary}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-3 py-3 text-xs font-black text-primary hover:bg-primary/10"
+                      label="Reemplazar galería desde biblioteca"
+                      onSelect={replaceEditImagesFromLibrary}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-3 py-3 text-xs font-black text-primary hover:bg-primary/10"
                     />
+                  )}
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {editImages.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={keepOnlyPrimaryImage}
+                        className="inline-flex items-center justify-center rounded-xl border border-border px-3 py-3 text-xs font-black hover:bg-muted"
+                      >
+                        Dejar solo la principal
+                      </button>
+                    )}
+                    {editImages.length > 0 && editImages.length < 8 && (
+                      <MediaLibraryPicker
+                        currentUrls={[]}
+                        max={8}
+                        label="Reemplazar toda la galería"
+                        onSelect={replaceEditImagesFromLibrary}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-3 py-3 text-xs font-black hover:bg-muted"
+                      />
+                    )}
                   </div>
-                )}
+                </div>
 
                 <label className="block text-sm font-bold">Prompt de imagen IA
                   <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-3" />
