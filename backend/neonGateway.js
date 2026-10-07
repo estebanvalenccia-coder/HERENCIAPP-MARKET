@@ -17,6 +17,7 @@ import {
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
+import { analyzeCatalogUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -236,6 +237,72 @@ const server=http.createServer(async(req,res)=>{try{
     if(req.method==="PUT"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});if(!protectedKeys.has(key)&&key!=="cart"&&key!=="user")return json(res,403,{error:"Clave no permitida"});const body=await bodyJson(req);await upsertNeonStorageValue(dbKey,body.value);return json(res,200,{ok:true,source:"neon"});}
     if(req.method==="DELETE"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});await deleteNeonStorageValue(dbKey);return json(res,200,{ok:true,source:"neon"});}
   }
+
+  if(path==="/api/admin/catalog/import-url/preview"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const url=String(body?.url||"").trim();
+    if(!url)return json(res,400,{error:"Pega la URL del catálogo del proveedor"});
+    const result=await analyzeCatalogUrl(url,{maxProducts:Math.max(1,Math.min(100,Number(body?.maxProducts||60)))});
+    return json(res,200,{...result,source:"supplier_url"});
+  }
+
+  if(path==="/api/admin/catalog/import-url/product"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para copiar las imágenes del proveedor"});
+    const body=await bodyJson(req);
+    const input=body?.product&&typeof body.product==="object"?body.product:{};
+    const name=String(input?.name||"").trim().slice(0,220);
+    const sourceProductUrl=String(input?.productUrl||"").trim();
+    const sourceCatalogUrl=String(input?.sourceCatalogUrl||sourceProductUrl||"").trim();
+    const sourceHost=String(input?.sourceHost||"").trim().slice(0,255);
+    if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
+    if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
+
+    const existing=await listNeonCommerceProducts({includeArchived:true});
+    const duplicate=existing.find((product)=>{
+      const metadata=product?.metadata&&typeof product.metadata==="object"?product.metadata:{};
+      if(String(metadata?.sourceProductUrl||"")===sourceProductUrl)return true;
+      return sourceHost&&String(metadata?.sourceHost||"")===sourceHost&&String(product?.name||"").trim().toLowerCase()===name.toLowerCase();
+    });
+    if(duplicate)return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
+
+    const mirrored=await mirrorRemoteProductImages(input,{maxImages:8});
+    const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
+    const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
+    const product=await saveNeonCommerceProduct({
+      name,
+      description:String(input?.description||"").trim().slice(0,5000),
+      category:String(input?.category||taxonomy.category||"jardineria"),
+      collection:String(input?.collection||taxonomy.collection||"jardineria"),
+      collections:[String(input?.collection||taxonomy.collection||"jardineria")],
+      type:String(input?.type||taxonomy.type||"product"),
+      department:String(input?.department||taxonomy.department||"Catálogo"),
+      area:String(input?.area||taxonomy.area||"Importados"),
+      family:String(input?.family||taxonomy.family||"Proveedor"),
+      subcategory:String(input?.family||taxonomy.family||"Proveedor"),
+      image:imageUrls[0]||"",
+      images:imageUrls,
+      price:0,
+      stock:0,
+      trackInventory:true,
+      active:false,
+      status:"draft",
+      featured:false,
+      metadata:{
+        importedFromUrl:true,
+        sourceProductUrl,
+        sourceCatalogUrl,
+        sourceHost,
+        supplierCategory:String(input?.supplierCategory||"").slice(0,300),
+        originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
+        mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+        importedAt:new Date().toISOString(),
+      },
+    });
+    return json(res,201,{ok:true,skipped:false,product,copiedImages:imageUrls.length,source:"neon"});
+  }
+
   if(path==="/api/settings/public"&&req.method==="GET"){
     const keys=["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent","internationalDeliverySettings"];
     const rows=await readNeonStorageValues(keys);const settings={};for(const row of rows){const safe=sanitize(row.key,row.value,false);try{settings[row.key]=JSON.parse(safe);}catch{settings[row.key]=safe;}}return json(res,200,{settings,source:"neon"});

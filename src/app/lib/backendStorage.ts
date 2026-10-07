@@ -381,6 +381,37 @@ export const backendApi = {
     return result;
   },
 
+  async previewCatalogUrl(url: string, maxProducts = 60) {
+    return request<{
+      ok: boolean;
+      sourceUrl: string;
+      sourceHost: string;
+      count: number;
+      truncated?: boolean;
+      products: any[];
+      source?: string;
+    }>("/api/admin/catalog/import-url/preview", {
+      method: "POST",
+      body: JSON.stringify({ url, maxProducts }),
+    });
+  },
+
+  async importCatalogUrlProduct(product: any) {
+    const result = await request<{
+      ok: boolean;
+      skipped?: boolean;
+      reason?: string;
+      product?: any;
+      copiedImages?: number;
+      source?: string;
+    }>("/api/admin/catalog/import-url/product", {
+      method: "POST",
+      body: JSON.stringify({ product }),
+    });
+    emitCommerceProductsChange();
+    return result;
+  },
+
   async preload() {
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")
