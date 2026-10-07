@@ -289,11 +289,59 @@ const server=http.createServer(async(req,res)=>{try{
       if(String(metadata?.sourceProductUrl||"")===sourceProductUrl)return true;
       return sourceHost&&String(metadata?.sourceHost||"")===sourceHost&&String(product?.name||"").trim().toLowerCase()===name.toLowerCase();
     });
-    if(duplicate)return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
 
     const mirrored=await mirrorRemoteProductImages(input,{maxImages:8});
     const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
     const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
+    const now=new Date().toISOString();
+
+    if(duplicate){
+      const duplicateMetadata=duplicate?.metadata&&typeof duplicate.metadata==="object"?duplicate.metadata:{};
+      const canRefresh=Boolean(duplicateMetadata?.importedFromUrl)&&String(duplicate?.status||"draft")==="draft";
+      if(!canRefresh){
+        return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
+      }
+
+      const refreshed=await saveNeonCommerceProduct({
+        ...duplicate,
+        name,
+        description:String(input?.description||duplicate?.description||"").trim().slice(0,5000),
+        category:String(input?.category||taxonomy.category||duplicate?.category||"jardineria"),
+        collection:String(input?.collection||taxonomy.collection||"jardineria"),
+        collections:[String(input?.collection||taxonomy.collection||"jardineria")],
+        type:String(input?.type||taxonomy.type||duplicate?.type||"product"),
+        department:String(input?.department||taxonomy.department||duplicate?.department||"Catálogo"),
+        area:String(input?.area||taxonomy.area||duplicate?.area||"Importados"),
+        family:String(input?.family||taxonomy.family||duplicate?.family||"Proveedor"),
+        subcategory:String(input?.family||taxonomy.family||duplicate?.subcategory||"Proveedor"),
+        image:imageUrls[0]||String(duplicate?.image||""),
+        images:imageUrls.length?imageUrls:(Array.isArray(duplicate?.images)?duplicate.images:[]),
+        status:"draft",
+        active:false,
+        metadata:{
+          ...duplicateMetadata,
+          importedFromUrl:true,
+          sourceProductUrl,
+          sourceCatalogUrl,
+          sourceHost,
+          supplierCategory:String(input?.supplierCategory||"").slice(0,300),
+          originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
+          mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+          refreshedFromSourceAt:now,
+        },
+      },{id:String(duplicate.id)});
+
+      return json(res,200,{
+        ok:true,
+        skipped:false,
+        updated:true,
+        reason:"refreshed_imported_draft",
+        product:refreshed,
+        copiedImages:imageUrls.length,
+        source:"neon"
+      });
+    }
+
     const product=await saveNeonCommerceProduct({
       name,
       description:String(input?.description||"").trim().slice(0,5000),
@@ -321,10 +369,10 @@ const server=http.createServer(async(req,res)=>{try{
         supplierCategory:String(input?.supplierCategory||"").slice(0,300),
         originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
         mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
-        importedAt:new Date().toISOString(),
+        importedAt:now,
       },
     });
-    return json(res,201,{ok:true,skipped:false,product,copiedImages:imageUrls.length,source:"neon"});
+    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,source:"neon"});
   }
 
   if(path==="/api/settings/public"&&req.method==="GET"){
