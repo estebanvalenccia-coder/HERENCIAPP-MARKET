@@ -41,6 +41,7 @@ export function AdminHerenciaNeural(){
  const [codeStage,setCodeStage]=useState<string|null>(null);
  const [codeMessages,setCodeMessages]=useState<Message[]>([{role:"neural",text:"Modo programación dedicado. Todo lo que escribas aquí se tratará como una solicitud de código y pasará por plan, aprobación, rama neural/*, verificación y PR.",kind:"code"}]);
  const [activeCodeApproval,setActiveCodeApproval]=useState<any>(null);
+ const [pinnedCodeReview,setPinnedCodeReview]=useState<any>(null);
  const [approvingCode,setApprovingCode]=useState(false);
 
  const refresh=useCallback(async()=>{
@@ -96,7 +97,7 @@ export function AdminHerenciaNeural(){
  const permissions:Record<string,Mode>=status?.policy?.permissions||{};
  const autonomy=status?.policy?.autonomy==="ACTIVE";
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"||t.requiresApproval);
- const activeCodeReview=tasks.find((t:any)=>t.intent==="code_change"&&(t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY"||t.result?.stage==="PREVIEW_READY"))||null;
+ const activeCodeReview=pinnedCodeReview||tasks.find((t:any)=>t.intent==="code_change"&&(t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY"||t.result?.stage==="PREVIEW_READY"))||null;
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -113,7 +114,7 @@ export function AdminHerenciaNeural(){
    setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="REVIEW_REQUIRED"?"Cambio programado y preparado para revisión. Abre la preview y decide si quieres ACEPTAR o DESCARTAR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Neural está preparando la preview.",kind:"code"}]);
    setActiveCodeApproval(null);
    const reviewTask=r?.task||r?.outcome?.task||null;
-   if(reviewTask?.id)setTasks(prev=>[reviewTask,...prev.filter((t:any)=>t.id!==reviewTask.id)]);
+   if(reviewTask?.id){setPinnedCodeReview(reviewTask);setTasks(prev=>[reviewTask,...prev.filter((t:any)=>t.id!==reviewTask.id)]);}
    await refresh();
   }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
  };
