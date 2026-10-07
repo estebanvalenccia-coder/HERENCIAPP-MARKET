@@ -333,23 +333,47 @@ async function mapWithConcurrency(items, limit, worker) {
 
 export function guessCatalogTaxonomy(urlValue = "", label = "") {
   const text = (String(urlValue) + " " + String(label)).toLowerCase();
+
   if (/semilla|seed/.test(text)) {
-    const area = /hort[ií]cola|hortaliza|tomate|pimiento|zanahoria|pepino|mel[oó]n|sand[ií]a/.test(text)
-      ? "Hortícolas"
-      : /arom[aá]tica/.test(text)
-        ? "Aromáticas"
-        : /flor/.test(text)
-          ? "Flores"
-          : "Semillas";
-    return { category: "semillas", collection: "semillas", type: "seed", department: "Semillas", area, family: area };
+    const isHuerto = /hort[ií]cola|hortaliza|tomate|pimiento|zanahoria|pepino|mel[oó]n|sand[ií]a|lechuga|cebolla|calabac[ií]n|berenjena|r[aá]bano|remolacha|jud[ií]a|guisante|ma[ií]z/.test(text);
+    const isAromatic = /arom[aá]tica|albahaca|perejil|cilantro|menta|romero|tomillo|or[eé]gano/.test(text);
+    const isFlower = /flor|petunia|zinnia|cal[eé]ndula|girasol|capuchina|pensamiento/.test(text);
+
+    const category = isHuerto
+      ? "semillas-huerto"
+      : isAromatic
+        ? "semillas-aromaticas"
+        : isFlower
+          ? "semillas-flores"
+          : "semillas-otros";
+
+    const area = isHuerto ? "Hortícolas" : isAromatic ? "Aromáticas" : isFlower ? "Flores" : "Otras semillas";
+    return { category, collection: "semillas", type: "seed", department: "Semillas", area, family: area };
   }
-  if (/sustrato|tierra|humus|esti[eé]rcol|fibra de coco/.test(text)) {
-    return { category: "sustratos", collection: "sustratos", type: "substrate", department: "Tierra y sustratos", area: "Sustratos", family: "Sustratos" };
+
+  if (/sustrato|tierra|humus|esti[eé]rcol|fibra de coco|coco|perlita|vermiculita|arlita|abono/.test(text)) {
+    const category = /universal/.test(text)
+      ? "tierra-universal"
+      : /humus|esti[eé]rcol|abono|fertiliz/.test(text)
+        ? "abonos"
+        : /coco|perlita|vermiculita|arlita|drenaje/.test(text)
+          ? "drenaje"
+          : "sustratos-especiales";
+    return { category, collection: "sustratos", type: "substrate", department: "Tierra y sustratos", area: "Sustratos", family: "Sustratos" };
   }
-  if (/jard[ií]n|jardiner[ií]a|maceta|herramienta|riego/.test(text)) {
-    return { category: "jardineria", collection: "jardineria", type: "garden", department: "Jardinería", area: "Jardinería", family: "Jardinería" };
+
+  if (/jard[ií]n|jardiner[ií]a|maceta|herramienta|riego|regadera|tijera|pala/.test(text)) {
+    const category = /herramienta|tijera|pala/.test(text)
+      ? "herramientas"
+      : /riego|regadera/.test(text)
+        ? "riego"
+        : /fertiliz/.test(text)
+          ? "fertilizantes"
+          : "accesorios-jardin";
+    return { category, collection: "jardineria", type: "garden", department: "Jardinería", area: "Jardinería", family: "Jardinería" };
   }
-  return { category: "jardineria", collection: "jardineria", type: "product", department: "Catálogo", area: "Importados", family: "Proveedor" };
+
+  return { category: "accesorios-jardin", collection: "jardineria", type: "product", department: "Catálogo", area: "Importados", family: "Proveedor" };
 }
 
 export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
