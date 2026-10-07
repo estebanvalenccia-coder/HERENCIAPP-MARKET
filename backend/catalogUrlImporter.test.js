@@ -5,6 +5,7 @@ import {
   guessCatalogTaxonomy,
   assertSafeExternalUrl,
   extractProductGalleryImages,
+  productDetailsFromHtml,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -68,4 +69,28 @@ test("usa subcategorías válidas para semillas, sustratos y jardinería", () =>
 test("bloquea destinos locales para evitar SSRF", async () => {
   await assert.rejects(() => assertSafeExternalUrl("http://127.0.0.1/admin"), /redes privadas/i);
   await assert.rejects(() => assertSafeExternalUrl("http://localhost/internal"), /no está permitido/i);
+});
+
+
+test("extrae precio y moneda estructurados del proveedor", () => {
+  const html = [
+    '<script type="application/ld+json">',
+    JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Maceta autorregable",
+      image: ["https://proveedor.es/maceta.jpg"],
+      offers: {
+        "@type": "Offer",
+        price: "8.95",
+        priceCurrency: "EUR"
+      }
+    }),
+    "</script>",
+  ].join("");
+
+  const product = productDetailsFromHtml(html, "https://proveedor.es/producto/maceta", {});
+  assert.equal(product.name, "Maceta autorregable");
+  assert.equal(product.supplierPrice, 8.95);
+  assert.equal(product.supplierCurrency, "EUR");
 });
