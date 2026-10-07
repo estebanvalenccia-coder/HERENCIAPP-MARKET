@@ -42,5 +42,5 @@
    if(task)render(task);else qs("#"+CARD_ID)?.remove();
   }catch(e){if(e.message!=="HTTP 401"&&e.message!=="HTTP 403")console.debug("[neural-review-failsafe]",e.message)}
  }
- window.addEventListener("load",()=>{setTimeout(check,800);setInterval(check,15000)});
+ window.addEventListener("load",()=>{setTimeout(check,250);setInterval(check,10000)});
 })();
