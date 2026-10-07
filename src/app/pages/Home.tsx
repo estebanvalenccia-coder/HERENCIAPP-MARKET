@@ -11,7 +11,7 @@ import {
   Globe2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
@@ -55,6 +55,7 @@ function money(value: unknown) {
 export function Home() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
 
   useEffect(() => {
@@ -82,7 +83,49 @@ export function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadCollections = async () => {
+      try {
+        const result = await backendApi.listCommerceCollections({ includeArchived: true });
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const row of Array.isArray(result.collections) ? result.collections : []) {
+          next[String(row.id)] = String(row.status || "active");
+        }
+        setCollectionStatus(next);
+      } catch {
+        // Si la API no responde, conservamos la portada actual en vez de ocultarla entera.
+      }
+    };
+    void loadCollections();
+    const refresh = () => void loadCollections();
+    window.addEventListener("backend-storage", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("backend-storage", refresh);
+    };
+  }, []);
+
   const market = getMarketExperience(site);
+
+  const collectionIdForCard = (item: any) => {
+    const href = String(item?.href || "").toLowerCase();
+    const title = String(item?.title || "").toLowerCase();
+    if (href.includes("semillas") || title.includes("semilla")) return "semillas";
+    if (href.includes("accesorios") || href.includes("jardiner") || title.includes("jardiner")) return "jardineria";
+    if (href.includes("sustratos") || title.includes("sustrato") || title.includes("tierra")) return "sustratos";
+    if (href.includes("decoracion") || href.includes("decoración") || title.includes("decor")) return "decoracion";
+    if (href.includes("/servicios") || title.includes("servicio")) return "servicios";
+    if (href.includes("/dulce") || title.includes("dulce")) return "dulce";
+    if (href.includes("/moda") || title.includes("moda")) return "moda";
+    return "plantas";
+  };
+
+  const visibleHomeCategories = market.home.categories.filter(
+    (item) => collectionStatus[collectionIdForCard(item)] !== "draft" &&
+      collectionStatus[collectionIdForCard(item)] !== "archived"
+  );
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
     [site]
@@ -274,7 +317,7 @@ export function Home() {
       <section className="border-b border-[#e5e1d8] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
           <div className="grid grid-cols-4 gap-5 md:grid-cols-8">
-            {market.home.categories.map((item) => (
+            {visibleHomeCategories.map((item) => (
               <Link key={item.title} to={item.href} className="group text-center">
                 <div className="mx-auto h-20 w-20 overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2eee6] shadow-sm transition group-hover:-translate-y-1 group-hover:shadow-md">
                   <img src={item.imageUrl} alt="" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />
@@ -304,7 +347,7 @@ export function Home() {
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {market.home.categories.slice(0, 8).map((item) => (
+          {visibleHomeCategories.slice(0, 8).map((item) => (
             <Link
               key={item.title}
               to={item.href}
