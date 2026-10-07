@@ -199,6 +199,40 @@ export function extractProductGalleryImages(html, productUrl) {
   return urls;
 }
 
+function normalizedOfferPrice(value) {
+  if (value == null || value === "") return 0;
+  const raw = String(value).trim().replace(/\s+/g, "");
+  if (!raw) return 0;
+  const normalized = raw.includes(",") && !raw.includes(".")
+    ? raw.replace(",", ".")
+    : raw.replace(/,/g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0;
+}
+
+function productOfferData(product = {}, fallback = {}) {
+  const offersRaw = product?.offers;
+  const offers = Array.isArray(offersRaw) ? offersRaw.find(Boolean) || {} : (offersRaw || {});
+  const priceSpecification = Array.isArray(offers?.priceSpecification)
+    ? offers.priceSpecification.find(Boolean) || {}
+    : (offers?.priceSpecification || {});
+
+  const supplierPrice =
+    normalizedOfferPrice(offers?.price) ||
+    normalizedOfferPrice(offers?.lowPrice) ||
+    normalizedOfferPrice(priceSpecification?.price) ||
+    normalizedOfferPrice(fallback?.supplierPrice);
+
+  const supplierCurrency = String(
+    offers?.priceCurrency ||
+    priceSpecification?.priceCurrency ||
+    fallback?.supplierCurrency ||
+    ""
+  ).trim().toUpperCase().slice(0, 8);
+
+  return { supplierPrice, supplierCurrency };
+}
+
 function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const ldProduct = jsonLdProducts(html)[0] || {};
   const name =
@@ -212,6 +246,8 @@ function productDetailsFromHtml(html, productUrl, fallback = {}) {
     stripTags(metaContent(html, "description")) ||
     stripTags(metaContent(html, "og:description")) ||
     stripTags(fallback.description || "");
+
+  const { supplierPrice, supplierCurrency } = productOfferData(ldProduct, fallback);
 
   const images = [
     ...normalizeImageList(ldProduct.image, productUrl),
@@ -231,6 +267,8 @@ function productDetailsFromHtml(html, productUrl, fallback = {}) {
     images: uniqueImages,
     image: uniqueImages[0] || "",
     category: stripTags(ldProduct.category || "") || stripTags(fallback.category || ""),
+    supplierPrice,
+    supplierCurrency,
   };
 }
 
@@ -437,6 +475,8 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
         image: item.image || item.images?.[0] || "",
         images: (item.images || []).slice(0, 8),
         supplierCategory: item.category || "",
+        supplierPrice: Number(item.supplierPrice || 0),
+        supplierCurrency: String(item.supplierCurrency || ""),
         ...taxonomy,
       };
     }),
@@ -461,6 +501,8 @@ export async function analyzeProductUrl(urlValue) {
     image: details.image || details.images?.[0] || "",
     images: (details.images || []).slice(0, 8),
     supplierCategory: details.category || "",
+    supplierPrice: Number(details.supplierPrice || 0),
+    supplierCurrency: String(details.supplierCurrency || ""),
     ...taxonomy,
   };
 }
