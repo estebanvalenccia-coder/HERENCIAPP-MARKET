@@ -280,6 +280,9 @@ const server=http.createServer(async(req,res)=>{try{
     const sourceProductUrl=String(input?.productUrl||"").trim();
     const sourceCatalogUrl=String(input?.sourceCatalogUrl||sourceProductUrl||"").trim();
     const sourceHost=String(input?.sourceHost||"").trim().slice(0,255);
+    const sourcePrice=Math.max(0,Number(input?.supplierPrice||input?.supplierCost||0));
+    const sourceCurrency=String(input?.supplierCurrency||input?.currency||"").trim().toUpperCase().slice(0,8);
+    const safeSupplierCost=(!sourceCurrency||sourceCurrency==="EUR")?sourcePrice:0;
     if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
     if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
 
@@ -325,6 +328,10 @@ const server=http.createServer(async(req,res)=>{try{
           sourceCatalogUrl,
           sourceHost,
           supplierCategory:String(input?.supplierCategory||"").slice(0,300),
+          supplierCost:safeSupplierCost>0?safeSupplierCost:Number(duplicateMetadata?.supplierCost||0),
+          supplierOriginalPrice:sourcePrice>0?sourcePrice:Number(duplicateMetadata?.supplierOriginalPrice||0),
+          supplierCurrency:sourceCurrency||String(duplicateMetadata?.supplierCurrency||""),
+          supplierPriceCapturedAt:sourcePrice>0?now:(duplicateMetadata?.supplierPriceCapturedAt||null),
           originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
           mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
           refreshedFromSourceAt:now,
@@ -367,6 +374,10 @@ const server=http.createServer(async(req,res)=>{try{
         sourceCatalogUrl,
         sourceHost,
         supplierCategory:String(input?.supplierCategory||"").slice(0,300),
+        supplierCost:safeSupplierCost,
+        supplierOriginalPrice:sourcePrice,
+        supplierCurrency:sourceCurrency,
+        supplierPriceCapturedAt:sourcePrice>0?now:null,
         originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
         mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
         importedAt:now,
