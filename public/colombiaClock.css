@@ -1,0 +1,13 @@
+#colombia-clock {
+  position: fixed;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--foreground);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  z-index: 1000;
+  pointer-events: none;
+  font-family: inherit;
+}
