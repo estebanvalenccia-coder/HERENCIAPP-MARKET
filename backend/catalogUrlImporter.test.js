@@ -4,6 +4,7 @@ import {
   extractCatalogCandidates,
   guessCatalogTaxonomy,
   assertSafeExternalUrl,
+  extractProductGalleryImages,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -36,6 +37,17 @@ test("clasifica automáticamente semillas y sustratos en colecciones existentes"
   assert.equal(seed.area, "Hortícolas");
   assert.equal(substrate.collection, "sustratos");
   assert.equal(substrate.category, "tierra-universal");
+});
+
+test("no mezcla productos relacionados dentro de la galería real", () => {
+  const html = [
+    '<div class="woocommerce-product-gallery__image"><a href="/media/zanahoria-grande.jpg"><img src="/media/zanahoria.jpg" data-large_image="/media/zanahoria-grande.jpg"></a></div>',
+    '<section class="related products"><img class="attachment-woocommerce_thumbnail" src="/media/lavanda.jpg"></section>',
+  ].join("");
+
+  const images = extractProductGalleryImages(html, "https://semillasbatlle.com/producto/zanahoria/");
+  assert.deepEqual(images, ["https://semillasbatlle.com/media/zanahoria-grande.jpg"]);
+  assert.equal(images.some((url) => url.includes("lavanda")), false);
 });
 
 test("usa subcategorías válidas para semillas, sustratos y jardinería", () => {
