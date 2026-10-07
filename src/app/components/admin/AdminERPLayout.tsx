@@ -1,4 +1,5 @@
 import { BarChart3, Boxes, BrainCircuit, CreditCard, LayoutDashboard, Package2, Receipt, Settings, ShoppingBag, Truck, Users, Wallet } from 'lucide-react'
+import ColombiaClock from './ColombiaClock';
 
 const sections = [
   { icon: LayoutDashboard, label: 'Dashboard' },
@@ -70,11 +71,14 @@ export function AdminERPLayout(){
                 <p className='mt-4 max-w-3xl text-lg font-medium text-zinc-500'>TPV, stock, clientes, finanzas, tickets, facturación, caja, mermas y analíticas sincronizadas en tiempo real.</p>
               </div>
 
-              <div className='grid grid-cols-2 gap-4'>
-                <Metric title='Ventas hoy' value='LIVE' />
-                <Metric title='TPV activo' value='OK' />
-                <Metric title='Finanzas' value='SYNC' />
-                <Metric title='Stock' value='REAL' />
+              <div className='flex flex-col items-end gap-2'>
+                <ColombiaClock />
+                <div className='grid grid-cols-2 gap-4'>
+                  <Metric title='Ventas hoy' value='LIVE' />
+                  <Metric title='TPV activo' value='OK' />
+                  <Metric title='Finanzas' value='SYNC' />
+                  <Metric title='Stock' value='REAL' />
+                </div>
               </div>
             </div>
           </section>
