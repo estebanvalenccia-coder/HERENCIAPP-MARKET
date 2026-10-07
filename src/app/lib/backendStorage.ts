@@ -1282,6 +1282,13 @@ export const backendApi = {
     });
   },
 
+  async neuralCode(text: string, conversationId = "admin:code") {
+    return request<any>("/api/neural/code", {
+      method: "POST",
+      body: JSON.stringify({ text, conversationId }),
+    });
+  },
+
   async neuralCommand(text: string) {
     return request<any>("/api/neural/command", {
       method: "POST",
