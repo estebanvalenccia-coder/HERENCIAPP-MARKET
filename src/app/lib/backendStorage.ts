@@ -1402,6 +1402,13 @@ export const backendApi = {
     });
   },
 
+  async neuralApproveCodeTask(id: string) {
+    return request<any>(`/api/neural/code/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
   async neuralRejectTask(id: string) {
     return request<any>(`/api/neural/tasks/${encodeURIComponent(id)}/reject`, {
       method: "POST",
