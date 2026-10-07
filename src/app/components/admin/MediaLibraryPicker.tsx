@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Image as ImageIcon, Loader2, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
@@ -36,6 +36,17 @@ export function MediaLibraryPicker({
     [currentUrls]
   );
   const remaining = Math.max(0, max - normalizedCurrent.length);
+
+  useEffect(() => {
+    if (!open) return;
+    const refresh = () => {
+      void backendApi.listSiteMedia()
+        .then((result) => setMedia(Array.isArray(result.media) ? result.media : []))
+        .catch(() => undefined);
+    };
+    window.addEventListener("media-library-changed", refresh);
+    return () => window.removeEventListener("media-library-changed", refresh);
+  }, [open]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
