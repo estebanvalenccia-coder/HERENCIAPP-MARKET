@@ -64,6 +64,9 @@ const initialForm = {
   serviceArea: "Barcelona",
   bookingRequired: true,
   leadTimeDays: "",
+  serviceMinHours: "1",
+  serviceMaxHours: "3",
+  serviceHourStep: "1",
 };
 
 type FormState = typeof initialForm;
@@ -664,6 +667,15 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
           leadTimeDays: formData.leadTimeDays
             ? Math.max(0, Number(formData.leadTimeDays))
             : null,
+          billingUnit: service ? "hour" : null,
+          serviceMinHours: service ? Math.max(1, Number(formData.serviceMinHours || 1)) : null,
+          serviceMaxHours: service
+            ? Math.max(
+                Math.max(1, Number(formData.serviceMinHours || 1)),
+                Number(formData.serviceMaxHours || 3)
+              )
+            : null,
+          serviceHourStep: service ? Math.max(1, Number(formData.serviceHourStep || 1)) : null,
         },
       };
 
@@ -1283,8 +1295,41 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
           {service && (
             <section className="rounded-2xl border border-border p-5">
               <h3 className="text-lg font-black">5. Configuración del servicio</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                El precio normal de arriba es el precio por hora. El cliente siempre reserva como mínimo una hora.
+              </p>
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <label className="text-sm font-bold">Duración aproximada (min)
+                <label className="text-sm font-bold">Horas mínimas
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={formData.serviceMinHours}
+                    onChange={(e) => patch({ serviceMinHours: String(Math.max(1, Number(e.target.value || 1))) })}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3"
+                  />
+                </label>
+                <label className="text-sm font-bold">Máximo reservable online
+                  <input
+                    type="number"
+                    min={Math.max(1, Number(formData.serviceMinHours || 1))}
+                    step="1"
+                    value={formData.serviceMaxHours}
+                    onChange={(e) => patch({ serviceMaxHours: String(Math.max(Number(formData.serviceMinHours || 1), Number(e.target.value || 1))) })}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3"
+                  />
+                </label>
+                <label className="text-sm font-bold">Incremento de reserva (horas)
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={formData.serviceHourStep}
+                    onChange={(e) => patch({ serviceHourStep: String(Math.max(1, Number(e.target.value || 1))) })}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3"
+                  />
+                </label>
+                <label className="text-sm font-bold">Duración orientativa (min)
                   <input type="number" min="0" value={formData.durationMinutes} onChange={(e) => patch({ durationMinutes: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
                 <label className="text-sm font-bold">Zona del servicio
@@ -1293,6 +1338,9 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 <label className="text-sm font-bold">Antelación mínima (días)
                   <input type="number" min="0" value={formData.leadTimeDays} onChange={(e) => patch({ leadTimeDays: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
+              </div>
+              <div className="mt-4 rounded-xl bg-primary/5 p-3 text-xs leading-5 text-muted-foreground">
+                Ejemplo: si pones 25 € y mínimo 1 / máximo 3, el cliente podrá reservar 1 h = 25 €, 2 h = 50 € o 3 h = 75 €.
               </div>
               <button type="button" onClick={() => patch({ bookingRequired: !formData.bookingRequired })} className={`mt-4 rounded-xl border px-4 py-2 text-sm font-bold ${formData.bookingRequired ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>
                 {formData.bookingRequired ? "✓ Requiere reserva/cita" : "No requiere reserva"}
