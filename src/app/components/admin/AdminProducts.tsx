@@ -122,6 +122,9 @@ const emptyEdit = {
   tags: "",
   seoTitle: "",
   seoDescription: "",
+  serviceMinHours: 1,
+  serviceMaxHours: 3,
+  serviceHourStep: 1,
 };
 
 type EditVariant = {
@@ -616,6 +619,12 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
       seoTitle: product.seoTitle || product.name || "",
       seoDescription: product.seoDescription || product.description || "",
+      serviceMinHours: Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1)),
+      serviceMaxHours: Math.max(
+        Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1)),
+        Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3)
+      ),
+      serviceHourStep: Math.max(1, Number(product.serviceHourStep ?? product.metadata?.serviceHourStep ?? 1)),
     });
   }
 
@@ -831,6 +840,12 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
           relatedProductIds: editRelatedIds,
+          billingUnit: editForm.collection === "servicios" ? "hour" : editingProduct.metadata?.billingUnit,
+          serviceMinHours: editForm.collection === "servicios" ? Math.max(1, Number(editForm.serviceMinHours || 1)) : editingProduct.metadata?.serviceMinHours,
+          serviceMaxHours: editForm.collection === "servicios"
+            ? Math.max(Math.max(1, Number(editForm.serviceMinHours || 1)), Number(editForm.serviceMaxHours || 3))
+            : editingProduct.metadata?.serviceMaxHours,
+          serviceHourStep: editForm.collection === "servicios" ? Math.max(1, Number(editForm.serviceHourStep || 1)) : editingProduct.metadata?.serviceHourStep,
         },
       
         ...(plantLike
@@ -1307,6 +1322,60 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                     <input type="number" min="0" step="0.01" value={editForm.iva} onChange={(e) => setEditForm({ ...editForm, iva: Math.max(0, Number(e.target.value || 0)) })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                   </label>
                 </div>
+
+                {editForm.collection === "servicios" && (
+                  <div className="rounded-2xl border border-border bg-primary/5 p-4">
+                    <h4 className="font-black">Reserva del servicio por horas</h4>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      El precio normal es el precio por hora. Tú decides cuántas horas puede reservar el cliente.
+                    </p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <label className="text-xs font-bold">Horas mínimas
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={editForm.serviceMinHours}
+                          onChange={(e) => setEditForm({
+                            ...editForm,
+                            serviceMinHours: Math.max(1, Number(e.target.value || 1)),
+                            serviceMaxHours: Math.max(Math.max(1, Number(e.target.value || 1)), editForm.serviceMaxHours),
+                          })}
+                          className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                        />
+                      </label>
+                      <label className="text-xs font-bold">Máximo online
+                        <input
+                          type="number"
+                          min={editForm.serviceMinHours}
+                          step="1"
+                          value={editForm.serviceMaxHours}
+                          onChange={(e) => setEditForm({
+                            ...editForm,
+                            serviceMaxHours: Math.max(editForm.serviceMinHours, Number(e.target.value || editForm.serviceMinHours)),
+                          })}
+                          className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                        />
+                      </label>
+                      <label className="text-xs font-bold">Incremento (horas)
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={editForm.serviceHourStep}
+                          onChange={(e) => setEditForm({
+                            ...editForm,
+                            serviceHourStep: Math.max(1, Number(e.target.value || 1)),
+                          })}
+                          className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Con mínimo 1 y máximo 3, el cliente podrá elegir 1, 2 o 3 horas. Nunca podrá reservar 0.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="text-sm font-bold">Estado
