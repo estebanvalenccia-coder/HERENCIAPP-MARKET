@@ -347,6 +347,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceProducts, setSourceProducts] = useState<SourceCatalogProduct[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Record<string, boolean>>({});
+  const [selectedSourceImages, setSelectedSourceImages] = useState<Record<string, boolean>>({});
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceImporting, setSourceImporting] = useState(false);
   const [sourceSavingMedia, setSourceSavingMedia] = useState(false);
@@ -357,6 +358,35 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     () => sourceProducts.filter((product) => selectedSourceIds[product.id]),
     [sourceProducts, selectedSourceIds]
   );
+
+  const sourceImagesForProduct = (product: SourceCatalogProduct) =>
+    Array.from(
+      new Set(
+        (product.images?.length ? product.images : product.image ? [product.image] : [])
+          .map((url) => String(url || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+  const sourceImageKey = (productId: string, url: string) => productId + "::" + url;
+
+  const selectedSourceImageCount = useMemo(
+    () =>
+      sourceProducts.reduce(
+        (count, product) =>
+          count +
+          sourceImagesForProduct(product).filter((url) =>
+            selectedSourceImages[sourceImageKey(String(product.id), url)]
+          ).length,
+        0
+      ),
+    [sourceProducts, selectedSourceImages]
+  );
+
+  const selectedImagesForProduct = (product: SourceCatalogProduct) =>
+    sourceImagesForProduct(product).filter((url) =>
+      selectedSourceImages[sourceImageKey(String(product.id), url)]
+    );
 
   const groupedDrafts = useMemo(() => {
     return drafts.reduce<Record<string, ProductDraft[]>>((groups, draft) => {
@@ -377,18 +407,15 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     setSourceLoading(true);
     setSourceProducts([]);
     setSelectedSourceIds({});
+    setSelectedSourceImages({});
     setSourceProgress({ done: 0, total: 0 });
 
     try {
       const result = await backendApi.previewCatalogUrl(url, 100);
       const products = Array.isArray(result.products) ? result.products : [];
       setSourceProducts(products);
-      setSelectedSourceIds(
-        products.reduce<Record<string, boolean>>((selected, product) => {
-          selected[String(product.id)] = true;
-          return selected;
-        }, {})
-      );
+      setSelectedSourceIds({});
+      setSelectedSourceImages({});
       if (!products.length) {
         toast.warning("No se detectaron productos en esa página");
       } else {
@@ -402,34 +429,51 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   };
 
   const saveSelectedSourceMedia = async () => {
-    const selected = selectedSourceProducts;
-    if (!selected.length) {
-      toast.error("Selecciona al menos un producto");
+    const groups = sourceProducts
+      .map((product) => ({ product, images: selectedImagesForProduct(product) }))
+      .filter((group) => group.images.length);
+
+    if (!groups.length) {
+      toast.error("Selecciona primero una o varias fotos");
       return;
     }
 
     setSourceSavingMedia(true);
-    setSourceProgress({ done: 0, total: selected.length });
+    setSourceProgress({ done: 0, total: groups.length });
     let copied = 0;
     let errors = 0;
+    const completedKeys: string[] = [];
 
-    for (let index = 0; index < selected.length; index += 1) {
-      const product = selected[index];
+    for (let index = 0; index < groups.length; index += 1) {
+      const { product, images } = groups[index];
       try {
-        const result = await backendApi.saveCatalogUrlProductMedia(product);
+        const result = await backendApi.saveCatalogUrlProductMedia({
+          ...product,
+          image: images[0] || "",
+          images,
+        });
         copied += Number(result.copiedImages || 0);
+        images.forEach((url) => completedKeys.push(sourceImageKey(String(product.id), url)));
       } catch {
         errors += 1;
       } finally {
-        setSourceProgress({ done: index + 1, total: selected.length });
+        setSourceProgress({ done: index + 1, total: groups.length });
       }
+    }
+
+    if (completedKeys.length) {
+      setSelectedSourceImages((current) => {
+        const next = { ...current };
+        completedKeys.forEach((key) => delete next[key]);
+        return next;
+      });
     }
 
     setSourceSavingMedia(false);
     window.dispatchEvent(new Event("media-library-changed"));
 
     if (errors) {
-      toast.warning("Biblioteca actualizada: " + copied + " fotos guardadas y " + errors + " productos con error");
+      toast.warning("Biblioteca actualizada: " + copied + " fotos guardadas y " + errors + " grupos con error");
     } else {
       toast.success("✅ " + copied + " fotos guardadas en la Biblioteca multimedia");
     }
@@ -438,7 +482,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const importSelectedSourceProducts = async () => {
     const selected = selectedSourceProducts;
     if (!selected.length) {
-      toast.error("Selecciona al menos un producto");
+      toast.error("Selecciona al menos un producto para crear borrador");
       return;
     }
 
@@ -451,8 +495,16 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
 
     for (let index = 0; index < selected.length; index += 1) {
       const product = selected[index];
+      const explicitlySelected = selectedImagesForProduct(product);
+      const fallbackMain = product.image || sourceImagesForProduct(product)[0] || "";
+      const images = explicitlySelected.length ? explicitlySelected : fallbackMain ? [fallbackMain] : [];
+
       try {
-        const result = await backendApi.importCatalogUrlProduct(product);
+        const result = await backendApi.importCatalogUrlProduct({
+          ...product,
+          image: images[0] || "",
+          images,
+        });
         if (result.skipped) skipped += 1;
         else imported += 1;
         completedIds.push(product.id);
@@ -774,7 +826,12 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="font-semibold text-foreground">{sourceProducts.length} productos encontrados</p>
-                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} seleccionados · analizar solo previsualiza · guardar fotos las copia a R2 · importar crea borradores</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedSourceProducts.length} productos para borrador · {selectedSourceImageCount} fotos para Biblioteca
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Nada se selecciona automáticamente. Producto y foto son selecciones independientes.
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -790,7 +847,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
-                    Seleccionar todos
+                    Seleccionar productos
                   </button>
                   <button
                     type="button"
@@ -798,18 +855,18 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
-                    Quitar selección
+                    Quitar productos
                   </button>
                   <button
                     type="button"
                     onClick={saveSelectedSourceMedia}
-                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceProducts.length}
+                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceImageCount}
                     className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/5 px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
                   >
                     {sourceSavingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                     {sourceSavingMedia
-                      ? "Guardando fotos " + sourceProgress.done + "/" + sourceProgress.total
-                      : "Guardar fotos en biblioteca"}
+                      ? "Guardando " + sourceProgress.done + "/" + sourceProgress.total
+                      : "Guardar " + selectedSourceImageCount + " foto" + (selectedSourceImageCount === 1 ? "" : "s") + " en biblioteca"}
                   </button>
                   <button
                     type="button"
@@ -820,49 +877,104 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     {sourceImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     {sourceImporting
                       ? "Importando " + sourceProgress.done + "/" + sourceProgress.total
-                      : "Importar " + selectedSourceProducts.length + " seleccionados"}
+                      : "Crear " + selectedSourceProducts.length + " borrador" + (selectedSourceProducts.length === 1 ? "" : "es")}
                   </button>
                 </div>
               </div>
 
-              <div className="max-h-[520px] divide-y divide-border overflow-y-auto">
-                {sourceProducts.map((product) => (
-                  <label key={product.id} className="grid cursor-pointer grid-cols-[auto_72px_1fr] gap-3 p-3 hover:bg-muted/30 sm:grid-cols-[auto_84px_1fr_auto] sm:items-center">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedSourceIds[product.id])}
-                      onChange={(event) =>
-                        setSelectedSourceIds((current) => ({ ...current, [product.id]: event.target.checked }))
-                      }
-                      disabled={sourceImporting || sourceSavingMedia}
-                      className="mt-2 h-4 w-4 sm:mt-0"
-                    />
-                    <div className="h-16 w-[72px] overflow-hidden rounded-xl border border-border bg-muted sm:h-20 sm:w-[84px]">
-                      {product.image ? (
-                        <img src={product.image} alt={product.name} className="h-full w-full object-contain" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">Sin foto</div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{product.name}</p>
-                      {product.description ? (
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
-                      ) : null}
-                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
-                        <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">
-                          {product.department || product.category || "Catálogo"}
-                        </span>
-                        <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                          {(product.images?.length || (product.image ? 1 : 0))} fotos
+              <div className="max-h-[620px] divide-y divide-border overflow-y-auto">
+                {sourceProducts.map((product) => {
+                  const images = sourceImagesForProduct(product);
+                  return (
+                    <div key={product.id} className="p-3 hover:bg-muted/20">
+                      <div className="grid grid-cols-[auto_72px_1fr] gap-3 sm:grid-cols-[auto_84px_1fr_auto] sm:items-start">
+                        <label className="mt-1 flex cursor-pointer items-center gap-2 text-xs font-bold">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedSourceIds[product.id])}
+                            onChange={(event) =>
+                              setSelectedSourceIds((current) => ({ ...current, [product.id]: event.target.checked }))
+                            }
+                            disabled={sourceImporting || sourceSavingMedia}
+                            className="h-4 w-4"
+                          />
+                        </label>
+
+                        <div className="h-16 w-[72px] overflow-hidden rounded-xl border border-border bg-muted sm:h-20 sm:w-[84px]">
+                          {product.image ? (
+                            <img src={product.image} alt={product.name} className="h-full w-full object-contain" />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">Sin foto</div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-semibold text-foreground">{product.name}</p>
+                            <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold text-muted-foreground">
+                              {selectedSourceIds[product.id] ? "Producto seleccionado" : "No crear producto"}
+                            </span>
+                          </div>
+                          {product.description ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
+                          ) : null}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                            <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">
+                              {product.department || product.category || "Catálogo"}
+                            </span>
+                            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                              {images.length} foto{images.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="col-start-3 text-right text-[10px] text-muted-foreground sm:col-start-auto">
+                          {product.sourceHost}
                         </span>
                       </div>
+
+                      {images.length > 0 && (
+                        <div className="mt-3 pl-0 sm:pl-[116px]">
+                          <p className="mb-2 text-[11px] font-bold text-muted-foreground">
+                            Fotos · marca únicamente las que quieras guardar o usar en este producto
+                          </p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {images.map((url, index) => {
+                              const key = sourceImageKey(String(product.id), url);
+                              const checked = Boolean(selectedSourceImages[key]);
+                              return (
+                                <label
+                                  key={key}
+                                  className={
+                                    "relative h-20 w-20 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 bg-muted transition " +
+                                    (checked ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40")
+                                  }
+                                  title={"Foto " + (index + 1) + " de " + product.name}
+                                >
+                                  <img src={url} alt={product.name + " foto " + (index + 1)} className="h-full w-full object-contain" />
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={sourceImporting || sourceSavingMedia}
+                                    onChange={(event) =>
+                                      setSelectedSourceImages((current) => ({ ...current, [key]: event.target.checked }))
+                                    }
+                                    className="absolute left-1.5 top-1.5 h-4 w-4 rounded bg-white shadow"
+                                  />
+                                  {checked && (
+                                    <span className="absolute bottom-1.5 left-1.5 rounded bg-primary px-1.5 py-0.5 text-[9px] font-black text-primary-foreground">
+                                      Elegida
+                                    </span>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <span className="col-start-3 text-right text-[10px] text-muted-foreground sm:col-start-auto">
-                      {product.sourceHost}
-                    </span>
-                  </label>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
