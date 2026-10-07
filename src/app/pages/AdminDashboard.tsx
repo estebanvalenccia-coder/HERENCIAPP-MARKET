@@ -427,9 +427,9 @@ export function AdminDashboard() {
     { id: "collections" as AdminSection, label: "Colecciones", icon: Layers3 },
     {
       id: "bulk-product-import" as AdminSection,
-      label: "Biblioteca de productos",
+      label: "Importar productos",
       icon: Layers3,
-      badge: "PRO",
+      badge: "URL",
     },
   ];
 
