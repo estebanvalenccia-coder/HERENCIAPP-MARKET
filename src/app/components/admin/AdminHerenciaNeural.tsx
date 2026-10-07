@@ -109,11 +109,14 @@ export function AdminHerenciaNeural(){
   try{
    const r=await backendApi.neuralApproveCodeTask(task.id);
    const outcome=r?.outcome;
-   setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="COMPLETED"?"Cambio programado y verificado. Revisa el trabajo reciente para ver la rama y el PR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Aprobación procesada. Neural está ejecutando el cambio.",kind:"code"}]);
+   setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="REVIEW_REQUIRED"?"Cambio programado y preparado para revisión. Abre la preview y decide si quieres ACEPTAR o DESCARTAR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Neural está preparando la preview.",kind:"code"}]);
    setActiveCodeApproval(null);
    await refresh();
   }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
  };
+ const refreshPreview=async(id:string)=>{try{await backendApi.neuralCodePreview(id);toast.success("Estado de preview actualizado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo actualizar la preview")}};
+ const acceptPreview=async(id:string)=>{if(!window.confirm("¿Aceptar este cambio y publicarlo en main?"))return;try{await backendApi.neuralAcceptCodePreview(id);toast.success("Cambio aceptado. Se ha enviado a main para despliegue.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo aceptar el cambio")}};
+ const discardPreview=async(id:string)=>{if(!window.confirm("¿Descartar esta preview? Se cerrará el PR y se eliminará la rama neural/*."))return;try{await backendApi.neuralDiscardCodePreview(id);toast.success("Preview descartada. Producción no cambió.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar la preview")}};
  const rejectCode=async(id?:string)=>{const taskId=id||activeCodeApproval?.id;if(!taskId)return;try{await backendApi.neuralRejectTask(taskId);setActiveCodeApproval(null);toast.success("Cambio descartado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar el cambio")}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -221,7 +224,23 @@ export function AdminHerenciaNeural(){
     {approvals.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{approvals.filter((t:any)=>t.intent==="code_change").slice(0,10).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.status} · {t.assignedCell||"developer"}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><p>{plan.summary}</p>{files.length>0&&<p className="mt-2"><b>Archivos:</b> {files.join(", ")}</p>}</div>}<div className="mt-3 grid gap-2 md:grid-cols-3"><button onClick={()=>void rejectCode(t.id)} className="rounded-xl border border-red-200 bg-white px-3 py-2 font-black text-red-700">Descartar</button><button onClick={()=>void approve(t.id)} className="md:col-span-2 rounded-xl bg-amber-100 px-3 py-2 font-black text-amber-900">Aprobar y programar en rama</button></div></div>})}</div>:<Empty text="No hay cambios de código esperando aprobación."/>}
    </Panel></div>
    <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
-    {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};return <div key={t.id} className="rounded-xl border p-3 text-sm"><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p>{result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}{result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Verificación superada</p>}</div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
+    {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};const preview=result.preview||{};const review=t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY";return <div key={t.id} className={`rounded-xl border p-4 text-sm ${review?"border-indigo-200 bg-indigo-50/40":""}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p></div>{review&&<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">ESPERA TU DECISIÓN</span>}</div>
+      {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
+      {result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Código escrito e integrado</p>}
+      {review&&<div className="mt-4 rounded-xl border bg-background p-3">
+       <p className="text-xs"><b>Preview:</b> {preview.state||"pending"}</p>
+       <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {preview.url?<a href={preview.url} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">BUSCAR PREVIEW</button>}
+        <button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">ACTUALIZAR ESTADO</button>
+       </div>
+       <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <button onClick={()=>void discardPreview(t.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 hover:bg-red-50">DESCARTAR</button>
+        <button onClick={()=>void acceptPreview(t.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white hover:bg-emerald-700">ACEPTAR CAMBIO</button>
+       </div>
+       <p className="mt-2 text-xs text-muted-foreground">Aceptar fusiona el PR a main y permite el despliegue. Descartar deja producción intacta.</p>
+      </div>}
+     </div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
    </Panel>
   </div>}
 
