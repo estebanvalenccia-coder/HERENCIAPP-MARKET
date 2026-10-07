@@ -1413,6 +1413,24 @@ export const backendApi = {
     });
   },
 
+  async neuralCodePreview(id: string) {
+    return request<any>(`/api/neural/code/${encodeURIComponent(id)}/preview`);
+  },
+
+  async neuralAcceptCodePreview(id: string) {
+    return request<any>(`/api/neural/code/${encodeURIComponent(id)}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
+  async neuralDiscardCodePreview(id: string) {
+    return request<any>(`/api/neural/code/${encodeURIComponent(id)}/discard`, {
+      method: "POST",
+      body: JSON.stringify({ rejectedBy: "admin" }),
+    });
+  },
+
   async neuralRejectTask(id: string) {
     return request<any>(`/api/neural/tasks/${encodeURIComponent(id)}/reject`, {
       method: "POST",
