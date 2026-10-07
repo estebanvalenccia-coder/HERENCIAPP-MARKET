@@ -4860,6 +4860,8 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
     const mode = normalizeSupplierFulfillmentMode(metadata.fulfillmentMode || supplier?.fulfillmentMode);
     const supplierCost = normalizeMoney(metadata.supplierCost ?? metadata.supplierUnitCost ?? 0);
     const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? item?.qty ?? 1)));
+    const salePrice = normalizeMoney(item?.price ?? 0);
+    const revenue = normalizeMoney(salePrice * quantity);
     const key = supplier?.id ? "supplier:" + supplier.id : "host:" + (sourceHost || "unassigned");
     const group = groups.get(key) || {
       supplier,
@@ -4869,6 +4871,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       mode,
       items: [],
       estimatedCost: 0,
+      revenue: 0,
       allCostsKnown: true,
     };
     group.items.push({
@@ -4881,9 +4884,12 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       sourceHost,
       supplierCost,
       estimatedCost: normalizeMoney(supplierCost * quantity),
+      salePrice,
+      revenue,
     });
     if (!(supplierCost > 0)) group.allCostsKnown = false;
     group.estimatedCost = normalizeMoney(group.estimatedCost + supplierCost * quantity);
+    group.revenue = normalizeMoney(group.revenue + revenue);
     groups.set(key, group);
   }
 
@@ -4901,6 +4907,11 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
     const now = new Date().toISOString();
     const supplier = group.supplier;
     const mode = normalizeSupplierFulfillmentMode(group.mode);
+    const minMarginPercent = Math.max(0, Math.min(95, Number(supplier?.minMarginPercent || 0)));
+    const grossMargin = normalizeMoney(Number(group.revenue || 0) - Number(group.estimatedCost || 0));
+    const grossMarginPercent = group.allCostsKnown && Number(group.revenue || 0) > 0
+      ? Math.round((grossMargin / Number(group.revenue || 0)) * 10000) / 100
+      : null;
     let status = "manual_ready";
     let blocker = "";
     if (!supplier) {
@@ -4920,6 +4931,10 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
         status = "approval_required";
         blocker = "El coste estimado supera el límite automático del proveedor.";
       }
+      if (!blocker && minMarginPercent > 0 && grossMarginPercent != null && grossMarginPercent < minMarginPercent) {
+        status = "approval_required";
+        blocker = "El margen estimado (" + grossMarginPercent.toFixed(1) + "%) está por debajo del mínimo de " + minMarginPercent.toFixed(1) + "%.";
+      }
     }
 
     const record = {
@@ -4934,6 +4949,10 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       blocker,
       items: group.items,
       estimatedCost: group.estimatedCost,
+      revenue: group.revenue,
+      grossMargin,
+      grossMarginPercent,
+      minMarginPercent,
       customerEmail: String(order.customer_email || order.customerEmail || ""),
       customerName: String(order.customer_name || order.customerName || ""),
       shippingAddress: compactShippingAddress(order),
@@ -5031,6 +5050,13 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
           orderId: record.orderId,
           items: record.items,
           estimatedCost: record.estimatedCost,
+          revenue: Number(record.revenue || 0),
+          grossMargin: Number(record.grossMargin || 0),
+          grossMarginPercent: record.grossMarginPercent,
+          minMarginPercent: Number(record.minMarginPercent || 0),
+          maxAllowedSupplierCost: Number(record.minMarginPercent || 0) > 0 && Number(record.revenue || 0) > 0
+            ? normalizeMoney(Number(record.revenue) * (1 - Number(record.minMarginPercent) / 100))
+            : null,
           shippingAddress: record.shippingAddress,
           customerName: record.customerName,
           customerEmail: record.customerEmail,
@@ -5233,6 +5259,7 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
       sourceHost: normalizeSupplierSourceHost(req.body?.sourceHost ?? existingSupplier?.sourceHost ?? ""),
       fulfillmentMode: normalizeSupplierFulfillmentMode(req.body?.fulfillmentMode ?? existingSupplier?.fulfillmentMode ?? "manual"),
       maxAutoOrderTotal: Math.max(0, normalizeMoney(req.body?.maxAutoOrderTotal ?? existingSupplier?.maxAutoOrderTotal ?? 0)),
+      minMarginPercent: Math.max(0, Math.min(95, Number(req.body?.minMarginPercent ?? existingSupplier?.minMarginPercent ?? 0))),
       notes: String(req.body?.notes ?? existingSupplier?.notes ?? "").trim().slice(0, 1000),
       active: req.body?.active == null ? existingSupplier?.active !== false : req.body.active !== false,
       updatedAt: new Date().toISOString(),

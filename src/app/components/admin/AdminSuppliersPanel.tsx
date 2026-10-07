@@ -66,6 +66,7 @@ export function AdminSuppliersPanel() {
     sourceHost: "",
     fulfillmentMode: "manual" as SupplierMode,
     maxAutoOrderTotal: 80,
+    minMarginPercent: 30,
     active: true,
   });
   const [purchase, setPurchase] = useState({ supplierId: "", reference: "", productId: "", quantity: 1, unitCost: 0 });
@@ -119,6 +120,7 @@ export function AdminSuppliersPanel() {
         sourceHost: "",
         fulfillmentMode: "manual",
         maxAutoOrderTotal: 80,
+        minMarginPercent: 30,
         active: true,
       });
       toast.success("Proveedor guardado");
@@ -137,6 +139,7 @@ export function AdminSuppliersPanel() {
       sourceHost: supplier.sourceHost || "",
       fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
       maxAutoOrderTotal: Number(supplier.maxAutoOrderTotal || 0),
+      minMarginPercent: Number(supplier.minMarginPercent || 0),
       active: supplier.active !== false,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -416,6 +419,13 @@ export function AdminSuppliersPanel() {
             <span className="block text-xs font-semibold text-muted-foreground">Máximo por pedido automático</span>
             <input type="number" min="0" step="0.01" value={form.maxAutoOrderTotal} onChange={(e) => setForm({ ...form, maxAutoOrderTotal: Math.max(0, Number(e.target.value || 0)) })} className="mt-1 w-full bg-transparent font-semibold outline-none"/>
           </label>
+          <label className="rounded-xl border border-border p-3 text-sm">
+            <span className="block text-xs font-semibold text-muted-foreground">Margen mínimo Autopilot</span>
+            <div className="mt-1 flex items-center gap-1">
+              <input type="number" min="0" max="95" step="1" value={form.minMarginPercent} onChange={(e) => setForm({ ...form, minMarginPercent: Math.max(0, Math.min(95, Number(e.target.value || 0))) })} className="w-full bg-transparent font-semibold outline-none"/>
+              <span className="font-semibold">%</span>
+            </div>
+          </label>
           <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm font-semibold">
             <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })}/>
             Proveedor activo
@@ -425,7 +435,7 @@ export function AdminSuppliersPanel() {
           <button onClick={() => void saveSupplier()} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">
             <Save className="h-4 w-4"/>Guardar proveedor
           </button>
-          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
+          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,minMarginPercent:30,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
         </div>
       </section>
 
@@ -498,6 +508,7 @@ export function AdminSuppliersPanel() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{item.supplierName} · coste estimado <strong>{money(item.estimatedCost)}</strong></p>
                   <p className="mt-1 text-xs text-muted-foreground">{(item.items || []).map((line:any)=>`${line.name} ×${line.quantity}`).join(" · ")}</p>
+                  {Number(item.estimatedCost || 0) > 0 && Number(item.revenue || 0) > 0 && <p className="mt-1 text-xs font-semibold text-muted-foreground">Venta: {money(item.revenue)} · coste: {money(item.estimatedCost)} · margen: {Number(item.grossMarginPercent || 0).toFixed(1)}%{Number(item.minMarginPercent || 0) > 0 ? ` · mínimo ${Number(item.minMarginPercent).toFixed(1)}%` : ""}</p>}
                   {item.blocker && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">{item.blocker}</p>}
                   {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
                 </div>
@@ -527,6 +538,7 @@ export function AdminSuppliersPanel() {
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{supplier.fulfillmentMode === "autopilot" ? "🤖 Autopilot" : "🖱️ Manual"}</span>
                 {supplier.fulfillmentMode === "autopilot" && <span className="rounded-full bg-muted px-2.5 py-1 text-xs"><ShieldCheck className="mr-1 inline h-3.5 w-3.5"/>máx. {money(supplier.maxAutoOrderTotal)}</span>}
+                {supplier.fulfillmentMode === "autopilot" && Number(supplier.minMarginPercent || 0) > 0 && <span className="rounded-full bg-muted px-2.5 py-1 text-xs">margen mín. {Number(supplier.minMarginPercent).toFixed(0)}%</span>}
               </div>
             </div>
           </button>)}
