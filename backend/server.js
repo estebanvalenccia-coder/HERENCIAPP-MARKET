@@ -5165,7 +5165,15 @@ app.post("/api/admin/supplier-fulfillments/prepare/:orderId", requireAdmin, asyn
     const order = await getOrderPrimary(req.params.orderId);
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
     const fulfillments = await buildSupplierFulfillmentsForOrder(order, { force: Boolean(req.body?.force) });
-    res.json({ fulfillments });
+    const results = [];
+    if (req.body?.executeAutopilot) {
+      for (const fulfillment of fulfillments) {
+        if (fulfillment.mode === "autopilot" && fulfillment.status === "autopilot_ready") {
+          results.push(await executeSupplierFulfillment(fulfillment.id));
+        }
+      }
+    }
+    res.json({ fulfillments, executionResults: results });
   } catch (error) {
     res.status(error.statusCode || 500).json({ error: error.message || "No se pudo preparar el pedido de proveedor" });
   }
