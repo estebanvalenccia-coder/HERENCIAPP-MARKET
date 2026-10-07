@@ -351,6 +351,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceImporting, setSourceImporting] = useState(false);
   const [sourceSavingMedia, setSourceSavingMedia] = useState(false);
+  const [repairingImported, setRepairingImported] = useState(false);
   const [sourceProgress, setSourceProgress] = useState({ done: 0, total: 0 });
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
@@ -421,6 +422,39 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       toast.error(error?.message || "No se pudo analizar el catálogo del proveedor");
     } finally {
       setSourceLoading(false);
+    }
+  };
+
+  const repairImportedDrafts = async () => {
+    const host = (() => {
+      try {
+        return sourceUrl.trim() ? new URL(sourceUrl.trim()).hostname : "";
+      } catch {
+        return "";
+      }
+    })();
+
+    const scope = host ? "los borradores importados desde " + host : "todos los borradores importados por URL";
+    if (!window.confirm("Se repararán " + scope + ". Se conservarán precio, stock y datos comerciales, pero se actualizarán galería y clasificación desde la ficha original. ¿Continuar?")) {
+      return;
+    }
+
+    setRepairingImported(true);
+    try {
+      const result = await backendApi.repairImportedCatalogDrafts(host, 50);
+      if (!result.candidates) {
+        toast.info("No hay borradores importados pendientes de reparar");
+      } else if (result.errors) {
+        toast.warning("Reparación terminada: " + result.repaired + " corregidos y " + result.errors + " con error");
+      } else {
+        toast.success("✅ " + result.repaired + " borradores importados reparados");
+      }
+      window.dispatchEvent(new Event("commerce-products-changed"));
+      window.dispatchEvent(new Event("media-library-changed"));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudieron reparar los borradores importados");
+    } finally {
+      setRepairingImported(false);
     }
   };
 
@@ -798,23 +832,33 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !sourceLoading && !sourceImporting && !sourceSavingMedia) {
+                if (event.key === "Enter" && !sourceLoading && !sourceImporting && !sourceSavingMedia && !repairingImported) {
                   event.preventDefault();
                   void analyzeSourceCatalog();
                 }
               }}
               placeholder="https://proveedor.com/categoria/productos/"
               className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={sourceLoading || sourceImporting || sourceSavingMedia}
+              disabled={sourceLoading || sourceImporting || sourceSavingMedia || repairingImported}
             />
             <button
               type="button"
               onClick={analyzeSourceCatalog}
-              disabled={sourceLoading || sourceImporting || sourceSavingMedia || !sourceUrl.trim()}
+              disabled={sourceLoading || sourceImporting || sourceSavingMedia || repairingImported || !sourceUrl.trim()}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
             >
               {sourceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               {sourceLoading ? "Analizando..." : "Analizar página"}
+            </button>
+            <button
+              type="button"
+              onClick={repairImportedDrafts}
+              disabled={sourceLoading || sourceImporting || sourceSavingMedia || repairingImported}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+              title={sourceUrl.trim() ? "Repara borradores del proveedor indicado" : "Repara todos los borradores importados por URL"}
+            >
+              {repairingImported ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {repairingImported ? "Reparando..." : "Reparar borradores importados"}
             </button>
           </div>
 
