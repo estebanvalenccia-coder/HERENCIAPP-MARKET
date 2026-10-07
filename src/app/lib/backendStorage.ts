@@ -1340,6 +1340,14 @@ export const backendApi = {
     return request<{ tasks: any[] }>(`/api/neural/tasks?limit=1000${status ? `&status=${encodeURIComponent(status)}` : ""}`);
   },
 
+  async neuralCodeReviews() {
+    return request<{ reviews: any[] }>("/api/neural/code/reviews");
+  },
+
+  async neuralCodeTask(id: string) {
+    return request<{ task: any }>(`/api/neural/code/${encodeURIComponent(id)}`);
+  },
+
   async neuralChat(text: string, conversationId = "admin:default") {
     return request<any>("/api/neural/chat", {
       method: "POST",
