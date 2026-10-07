@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
+import { MediaLibraryPicker } from "./MediaLibraryPicker";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -677,6 +678,20 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     }
   }
 
+  function addEditImagesFromLibrary(urls: string[]) {
+    const existing = new Set(editImages.map((url) => String(url || "").trim()).filter(Boolean));
+    const remaining = Math.max(0, 8 - editImages.length);
+    const additions = urls
+      .map((url) => String(url || "").trim())
+      .filter((url) => url && !existing.has(url))
+      .slice(0, remaining);
+
+    if (!additions.length) return;
+    setEditImages((current) => [...current, ...additions].slice(0, 8));
+    setEditForm((current) => ({ ...current, image: current.image || additions[0] || "" }));
+    toast.success(additions.length === 1 ? "Foto añadida desde la biblioteca" : `${additions.length} fotos añadidas desde la biblioteca`);
+  }
+
   function moveEditImage(index: number, direction: -1 | 1) {
     setEditImages((current) => {
       const target = index + direction;
@@ -1112,20 +1127,28 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                 </div>
 
                 {editImages.length < 8 && (
-                  <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
-                    <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Añadir fotos"}
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                      disabled={galleryUploading}
-                      onChange={(event) => {
-                        const input = event.currentTarget;
-                        void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
-                      }}
-                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-3 py-3 text-xs font-black">
+                      <Upload className="h-4 w-4" /> {galleryUploading ? "Subiendo…" : "Subir fotos"}
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                        disabled={galleryUploading}
+                        onChange={(event) => {
+                          const input = event.currentTarget;
+                          void addGalleryFiles(Array.from(input.files || [])).finally(() => { input.value = ""; });
+                        }}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      />
+                    </label>
+                    <MediaLibraryPicker
+                      currentUrls={editImages}
+                      max={8}
+                      onSelect={addEditImagesFromLibrary}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-3 py-3 text-xs font-black text-primary hover:bg-primary/10"
                     />
-                  </label>
+                  </div>
                 )}
 
                 <label className="block text-sm font-bold">Prompt de imagen IA
