@@ -72,9 +72,24 @@ export function Services() {
   function addServiceToCart(service: any) {
     try {
       const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
-      const existing = cart.find((item: any) => String(item.id) === String(service.id));
-      if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-      else cart.push({ ...service, quantity: 1, trackInventory: false });
+      const minHours = Math.max(1, Number(service.serviceMinHours ?? service.metadata?.serviceMinHours ?? 1));
+      const maxHours = Math.max(minHours, Number(service.serviceMaxHours ?? service.metadata?.serviceMaxHours ?? 3));
+      const hourStep = Math.max(1, Number(service.serviceHourStep ?? service.metadata?.serviceHourStep ?? 1));
+      const lineKey = `${service.id}::service::base`;
+      const existing = cart.find((item: any) => item.lineKey === lineKey || (String(item.id) === String(service.id) && item.serviceBooking));
+      const line = {
+        ...service,
+        quantity: 1,
+        serviceHours: minHours,
+        serviceMinHours: minHours,
+        serviceMaxHours: maxHours,
+        serviceHourStep: hourStep,
+        serviceBooking: true,
+        trackInventory: false,
+        lineKey,
+      };
+      if (existing) Object.assign(existing, line);
+      else cart.push(line);
       void backendStorage.setItem("cart", JSON.stringify(cart));
       window.dispatchEvent(new Event("storage"));
     } catch {
@@ -191,7 +206,7 @@ export function Services() {
                 <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">Contratación online</p>
                 <h2 className="mt-2 text-3xl font-medium">Servicios con precio publicado</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
-                  Estos servicios se crean desde Administración → Catálogo y pueden añadirse al carrito como cualquier otro artículo.
+                  El precio por hora y las horas mínimas/máximas se controlan desde Administración. La reserva mínima nunca puede ser de 0 horas.
                 </p>
               </div>
               <Link to="/productos?coleccion=servicios" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
@@ -209,13 +224,16 @@ export function Services() {
                     <Link to={`/producto/${service.id}`} className="text-xl font-black">{service.name}</Link>
                     <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#6c786f]">{service.description}</p>
                     <div className="mt-5 flex items-center justify-between gap-3">
-                      <span className="text-xl font-black text-[#315b42]">€{Number(service.onSale && service.salePrice ? service.salePrice : service.price || 0).toFixed(2)}</span>
+                      <span className="text-xl font-black text-[#315b42]">
+                        €{Number(service.onSale && service.salePrice ? service.salePrice : service.price || 0).toFixed(2)}
+                        <span className="ml-1 text-xs font-semibold text-[#718076]">/ hora</span>
+                      </span>
                       <button
                         type="button"
                         onClick={() => addServiceToCart(service)}
                         className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-4 py-2.5 text-sm font-black text-white"
                       >
-                        <ShoppingCart className="h-4 w-4" /> Contratar
+                        <ShoppingCart className="h-4 w-4" /> Reservar
                       </button>
                     </div>
                   </div>
