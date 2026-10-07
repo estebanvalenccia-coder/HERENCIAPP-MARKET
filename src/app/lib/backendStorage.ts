@@ -813,37 +813,6 @@ export const backendApi = {
     );
   },
 
-  async getSupplierFulfillments() {
-    return request<{ fulfillments: any[]; suppliers: any[]; autopilotConnectorConfigured: boolean }>("/api/admin/supplier-fulfillments");
-  },
-
-  async prepareSupplierFulfillments(orderId: string, force = false) {
-    return request<{ fulfillments: any[] }>(`/api/admin/supplier-fulfillments/prepare/${encodeURIComponent(orderId)}`, {
-      method: "POST",
-      body: JSON.stringify({ force }),
-    });
-  },
-
-  async executeSupplierFulfillment(id: string, force = false) {
-    return request<{ fulfillment: any; executed: boolean; manual: boolean }>(`/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/execute`, {
-      method: "POST",
-      body: JSON.stringify({ force }),
-    });
-  },
-
-  async updateSupplierFulfillment(id: string, payload: {
-    status?: string;
-    externalOrderId?: string;
-    trackingNumber?: string;
-    trackingUrl?: string;
-    blocker?: string;
-  }) {
-    return request<{ fulfillment: any }>(`/api/admin/supplier-fulfillments/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
-  },
-
   async createPosPurchase(payload: any) {
     return request<{ purchase: any; inventory: any[]; operations: any }>("/api/pos/purchases", {
       method: "POST",
