@@ -290,18 +290,18 @@ const server=http.createServer(async(req,res)=>{try{
       return sourceHost&&String(metadata?.sourceHost||"")===sourceHost&&String(product?.name||"").trim().toLowerCase()===name.toLowerCase();
     });
 
+    const duplicateMetadata=duplicate?.metadata&&typeof duplicate.metadata==="object"?duplicate.metadata:{};
+    const canRefreshDuplicate=Boolean(duplicate)&&Boolean(duplicateMetadata?.importedFromUrl)&&String(duplicate?.status||"draft")==="draft";
+    if(duplicate&&!canRefreshDuplicate){
+      return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
+    }
+
     const mirrored=await mirrorRemoteProductImages(input,{maxImages:8});
     const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
     const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
     const now=new Date().toISOString();
 
     if(duplicate){
-      const duplicateMetadata=duplicate?.metadata&&typeof duplicate.metadata==="object"?duplicate.metadata:{};
-      const canRefresh=Boolean(duplicateMetadata?.importedFromUrl)&&String(duplicate?.status||"draft")==="draft";
-      if(!canRefresh){
-        return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
-      }
-
       const refreshed=await saveNeonCommerceProduct({
         ...duplicate,
         name,
