@@ -414,7 +414,7 @@ export const backendApi = {
   },
 
   async saveCatalogUrlProductMedia(product: any) {
-    return request<{
+    const result = await request<{
       ok: boolean;
       copiedImages: number;
       media: Array<{ name: string; path: string; url: string; size?: number; createdAt?: string; sourceUrl?: string }>;
@@ -423,6 +423,8 @@ export const backendApi = {
       method: "POST",
       body: JSON.stringify({ product }),
     });
+    window.dispatchEvent(new Event("media-library-changed"));
+    return result;
   },
 
   async repairImportedCatalogDrafts(sourceHost = "", limit = 30) {
@@ -580,10 +582,12 @@ export const backendApi = {
   },
 
   async deleteSiteMedia(path: string) {
-    return request<{ ok: boolean }>("/api/admin/media", {
+    const result = await request<{ ok: boolean }>("/api/admin/media", {
       method: "DELETE",
       body: JSON.stringify({ path }),
     });
+    window.dispatchEvent(new Event("media-library-changed"));
+    return result;
   },
 
   async posBootstrap() {

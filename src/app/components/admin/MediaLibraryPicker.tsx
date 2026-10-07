@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Check, Image as ImageIcon, Loader2, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Image as ImageIcon, Loader2, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
@@ -29,12 +29,24 @@ export function MediaLibraryPicker({
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   const normalizedCurrent = useMemo(
     () => Array.from(new Set(currentUrls.map((url) => String(url || "").trim()).filter(Boolean))),
     [currentUrls]
   );
   const remaining = Math.max(0, max - normalizedCurrent.length);
+
+  useEffect(() => {
+    if (!open) return;
+    const refresh = () => {
+      void backendApi.listSiteMedia()
+        .then((result) => setMedia(Array.isArray(result.media) ? result.media : []))
+        .catch(() => undefined);
+    };
+    window.addEventListener("media-library-changed", refresh);
+    return () => window.removeEventListener("media-library-changed", refresh);
+  }, [open]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -60,6 +72,26 @@ export function MediaLibraryPicker({
       setOpen(false);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function deleteMediaItem(item: MediaItem) {
+    if (!item?.path || deletingPath) return;
+    if (!window.confirm("¿Eliminar esta foto de la Biblioteca multimedia?\n\nEsto elimina el archivo de R2. Los productos que ya usen esta imagen podrían dejar de mostrarla.")) {
+      return;
+    }
+
+    setDeletingPath(item.path);
+    try {
+      await backendApi.deleteSiteMedia(item.path);
+      setMedia((current) => current.filter((mediaItem) => mediaItem.path !== item.path));
+      setSelected((current) => current.filter((url) => url !== item.url));
+      window.dispatchEvent(new Event("media-library-changed"));
+      toast.success("Foto eliminada de la Biblioteca");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar la foto");
+    } finally {
+      setDeletingPath(null);
     }
   }
 
@@ -136,28 +168,45 @@ export function MediaLibraryPicker({
                     const alreadyUsed = normalizedCurrent.includes(item.url);
                     const checked = selected.includes(item.url);
                     return (
-                      <button
+                      <div
                         key={item.path}
-                        type="button"
-                        disabled={alreadyUsed}
-                        onClick={() => toggle(item.url)}
-                        className={`group overflow-hidden rounded-2xl border text-left transition ${checked ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50"} ${alreadyUsed ? "cursor-not-allowed opacity-50" : ""}`}
+                        className={`group overflow-hidden rounded-2xl border text-left transition ${checked ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50"} ${alreadyUsed ? "opacity-70" : ""}`}
                       >
                         <div className="relative aspect-square bg-muted">
+                          <button
+                            type="button"
+                            disabled={alreadyUsed}
+                            onClick={() => toggle(item.url)}
+                            className="absolute inset-0 z-10 disabled:cursor-not-allowed"
+                            aria-label={alreadyUsed ? "Imagen ya usada" : "Seleccionar imagen"}
+                          />
                           <img src={item.url} alt={item.name} className="h-full w-full object-cover" />
                           {checked && (
-                            <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-primary text-primary-foreground shadow">
+                            <span className="absolute right-2 top-2 z-20 grid h-7 w-7 place-items-center rounded-full bg-primary text-primary-foreground shadow pointer-events-none">
                               <Check className="h-4 w-4" />
                             </span>
                           )}
+                          <button
+                            type="button"
+                            disabled={deletingPath === item.path}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void deleteMediaItem(item);
+                            }}
+                            className="absolute left-2 top-2 z-30 grid h-8 w-8 place-items-center rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 disabled:opacity-60"
+                            aria-label="Eliminar de la biblioteca"
+                            title="Eliminar de la biblioteca"
+                          >
+                            {deletingPath === item.path ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </button>
                           {alreadyUsed && (
-                            <span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/70 px-2 py-1 text-center text-[10px] font-black text-white">
+                            <span className="absolute inset-x-2 bottom-2 z-20 rounded-lg bg-black/70 px-2 py-1 text-center text-[10px] font-black text-white pointer-events-none">
                               Ya usada
                             </span>
                           )}
                         </div>
                         <p className="truncate px-3 py-2 text-xs font-bold">{item.name}</p>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
