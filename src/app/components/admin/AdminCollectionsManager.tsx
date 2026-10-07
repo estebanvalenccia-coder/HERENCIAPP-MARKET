@@ -234,9 +234,9 @@ export function AdminCollectionsManager() {
         },
       });
 
-      if (!CORE_COLLECTIONS.has(id)) {
-        await backendApi.setCommerceCollectionProducts(id, draft.productIds);
-      }
+      // Todas las colecciones, incluidas las 8 secciones base de la portada,
+      // se gestionan desde aquí sin duplicar productos.
+      await backendApi.setCommerceCollectionProducts(id, draft.productIds);
 
       await load();
       const refreshed = (await backendApi.listCommerceCollections({ includeArchived: true })).collections || [];
@@ -473,8 +473,8 @@ export function AdminCollectionsManager() {
                   onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as any }))}
                   className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
                 >
-                  <option value="active">Publicada</option>
-                  <option value="draft">Borrador / oculta</option>
+                  <option value="active">ON · Visible en la tienda</option>
+                  <option value="draft">OFF · Oculta en la tienda</option>
                   {selectedCollection && !isCore && <option value="archived">Archivada</option>}
                 </select>
               </label>
@@ -544,7 +544,7 @@ export function AdminCollectionsManager() {
               </div>
             </div>
 
-            {!isCore && (
+            {selectedCollection && (
               <div className="rounded-2xl border border-border p-4">
                 <div className="mb-4">
                   <p className="font-black">Productos de esta colección</p>
@@ -590,8 +590,8 @@ export function AdminCollectionsManager() {
             )}
 
             {isCore && (
-              <div className="rounded-xl bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                Esta es una colección base que define el tipo principal del artículo. Puedes cambiar nombre, imagen, descripción, subcategorías y orden. La pertenencia de productos base se gestiona desde cada producto para no romper su tipo/stock.
+              <div className="rounded-xl bg-emerald-50 p-4 text-xs leading-5 text-emerald-800">
+                Esta sección aparece en la portada. Ponla en <b>Publicada (ON)</b> para mostrarla o en <b>Borrador / oculta (OFF)</b> para esconderla. Aquí mismo puedes añadir o quitar productos sin duplicarlos ni alterar su stock.
               </div>
             )}
 
