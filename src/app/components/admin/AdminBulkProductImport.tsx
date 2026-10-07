@@ -349,6 +349,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [selectedSourceIds, setSelectedSourceIds] = useState<Record<string, boolean>>({});
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceImporting, setSourceImporting] = useState(false);
+  const [sourceSavingMedia, setSourceSavingMedia] = useState(false);
   const [sourceProgress, setSourceProgress] = useState({ done: 0, total: 0 });
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
@@ -397,6 +398,40 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       toast.error(error?.message || "No se pudo analizar el catálogo del proveedor");
     } finally {
       setSourceLoading(false);
+    }
+  };
+
+  const saveSelectedSourceMedia = async () => {
+    const selected = selectedSourceProducts;
+    if (!selected.length) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+
+    setSourceSavingMedia(true);
+    setSourceProgress({ done: 0, total: selected.length });
+    let copied = 0;
+    let errors = 0;
+
+    for (let index = 0; index < selected.length; index += 1) {
+      const product = selected[index];
+      try {
+        const result = await backendApi.saveCatalogUrlProductMedia(product);
+        copied += Number(result.copiedImages || 0);
+      } catch {
+        errors += 1;
+      } finally {
+        setSourceProgress({ done: index + 1, total: selected.length });
+      }
+    }
+
+    setSourceSavingMedia(false);
+    window.dispatchEvent(new Event("media-library-changed"));
+
+    if (errors) {
+      toast.warning("Biblioteca actualizada: " + copied + " fotos guardadas y " + errors + " productos con error");
+    } else {
+      toast.success("✅ " + copied + " fotos guardadas en la Biblioteca multimedia");
     }
   };
 
@@ -714,19 +749,19 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !sourceLoading && !sourceImporting) {
+                if (event.key === "Enter" && !sourceLoading && !sourceImporting && !sourceSavingMedia) {
                   event.preventDefault();
                   void analyzeSourceCatalog();
                 }
               }}
               placeholder="https://proveedor.com/categoria/productos/"
               className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={sourceLoading || sourceImporting}
+              disabled={sourceLoading || sourceImporting || sourceSavingMedia}
             />
             <button
               type="button"
               onClick={analyzeSourceCatalog}
-              disabled={sourceLoading || sourceImporting || !sourceUrl.trim()}
+              disabled={sourceLoading || sourceImporting || sourceSavingMedia || !sourceUrl.trim()}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
             >
               {sourceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
@@ -739,7 +774,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="font-semibold text-foreground">{sourceProducts.length} productos encontrados</p>
-                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} seleccionados · se importan como borrador</p>
+                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} seleccionados · analizar solo previsualiza · guardar fotos las copia a R2 · importar crea borradores</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -752,7 +787,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                         }, {})
                       )
                     }
-                    disabled={sourceImporting}
+                    disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
                     Seleccionar todos
@@ -760,15 +795,26 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                   <button
                     type="button"
                     onClick={() => setSelectedSourceIds({})}
-                    disabled={sourceImporting}
+                    disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
                     Quitar selección
                   </button>
                   <button
                     type="button"
+                    onClick={saveSelectedSourceMedia}
+                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceProducts.length}
+                    className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/5 px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {sourceSavingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    {sourceSavingMedia
+                      ? "Guardando fotos " + sourceProgress.done + "/" + sourceProgress.total
+                      : "Guardar fotos en biblioteca"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={importSelectedSourceProducts}
-                    disabled={sourceImporting || !selectedSourceProducts.length}
+                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceProducts.length}
                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
                     {sourceImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -788,7 +834,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                       onChange={(event) =>
                         setSelectedSourceIds((current) => ({ ...current, [product.id]: event.target.checked }))
                       }
-                      disabled={sourceImporting}
+                      disabled={sourceImporting || sourceSavingMedia}
                       className="mt-2 h-4 w-4 sm:mt-0"
                     />
                     <div className="h-16 w-[72px] overflow-hidden rounded-xl border border-border bg-muted sm:h-20 sm:w-[84px]">
