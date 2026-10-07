@@ -775,6 +775,44 @@ export const backendApi = {
     });
   },
 
+  async listSupplierFulfillments() {
+    return request<{
+      fulfillments: any[];
+      suppliers: any[];
+      autopilotConnectorConfigured: boolean;
+    }>("/api/admin/supplier-fulfillments");
+  },
+
+  async prepareSupplierFulfillments(orderId: string, force = false) {
+    return request<{ fulfillments: any[] }>(
+      `/api/admin/supplier-fulfillments/prepare/${encodeURIComponent(orderId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      }
+    );
+  },
+
+  async executeSupplierFulfillment(id: string, force = false) {
+    return request<{ fulfillment: any; executed: boolean; manual: boolean }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      }
+    );
+  },
+
+  async updateSupplierFulfillment(id: string, payload: any) {
+    return request<{ fulfillment: any }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
   async getSupplierFulfillments() {
     return request<{ fulfillments: any[]; suppliers: any[]; autopilotConnectorConfigured: boolean }>("/api/admin/supplier-fulfillments");
   },
