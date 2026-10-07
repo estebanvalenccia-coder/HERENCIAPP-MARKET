@@ -1,5 +1,6 @@
 import express from "express";
 import { hasR2, uploadR2Media } from "./r2Media.js";
+import { hasNeon, listNeonCommerceProducts } from "./neonDb.js";
 
 const requestBuckets = new Map();
 const generatedImageCache = new Map();
@@ -67,7 +68,7 @@ function commercialRateLimit(req, res) {
 
 function normalizeCatalog(input) {
   if (!Array.isArray(input)) return [];
-  return input.slice(0, 120).map((item) => {
+  return input.slice(0, 240).map((item) => {
     const variants = Array.isArray(item?.variants)
       ? item.variants.slice(0, 20).map((variant) => ({
           id: clampText(variant?.id, 120),
@@ -78,24 +79,52 @@ function normalizeCatalog(input) {
       : [];
     const trackInventory = item?.trackInventory !== false;
     const stock = Math.max(0, Math.floor(Number(item?.stock || 0)));
+    const status = clampText(item?.status || "active", 32).toLowerCase();
+    const active = item?.active !== false && status !== "archived" && status !== "draft";
     const variantAvailable = variants.some((variant) => variant.stock == null || Number(variant.stock) > 0);
     return {
       id: clampText(item?.id, 160),
       name: clampText(item?.name, 120),
+      scientificName: clampText(item?.scientificName || item?.scientific_name || "", 140),
       category: clampText(item?.category, 80),
       type: clampText(item?.type, 80),
       collections: Array.isArray(item?.collections) ? item.collections.slice(0, 12).map((value) => clampText(value, 80)).filter(Boolean) : [],
+      tags: Array.isArray(item?.tags) ? item.tags.slice(0, 24).map((value) => clampText(value, 80)).filter(Boolean) : [],
       price: Math.max(0, Number(item?.price || 0)),
       salePrice: item?.salePrice == null ? null : Math.max(0, Number(item.salePrice || 0)),
       onSale: Boolean(item?.onSale),
       stock,
       trackInventory,
-      available: item?.active !== false && String(item?.status || "active") !== "archived" && (!trackInventory || stock > 0 || variantAvailable),
-      description: clampText(item?.description, 320),
+      active,
+      status,
+      available: active && (!trackInventory || stock > 0 || variantAvailable),
+      description: clampText(item?.description, 420),
       image: clampText(item?.image || item?.imageUrl || "", 1200),
       variants,
     };
-  }).filter((item) => item.id && item.name && item.available);
+  }).filter((item) => item.id && item.name && item.active);
+}
+
+async function loadAuthoritativeSalesCatalog(clientCatalog) {
+  let rows = Array.isArray(clientCatalog) ? clientCatalog : [];
+  let source = "client";
+
+  if (hasNeon()) {
+    try {
+      const neonRows = await listNeonCommerceProducts({ includeArchived: false });
+      if (Array.isArray(neonRows) && neonRows.length) {
+        rows = neonRows;
+        source = "neon";
+      }
+    } catch (error) {
+      console.warn("[HERENCIA SALES] no se pudo cargar catálogo autoritativo desde Neon:", error?.message || error);
+    }
+  }
+
+  return {
+    catalog: normalizeCatalog(rows),
+    source,
+  };
 }
 
 function normalizeFlowerCatalog(input) {
@@ -346,13 +375,17 @@ Responde primero a la pregunta del cliente. No conviertas automáticamente cada 
 
 Además puedes buscar, comparar, personalizar y vender productos de Herencia. Recomienda productos solo cuando sean realmente útiles. Si Herencia no vende algo apropiado, ayuda igualmente y no fuerces una venta.
 
-CATÁLOGO REAL DISPONIBLE:
+CATÁLOGO REAL COMPLETO DE HERENCIA:
 ${JSON.stringify(catalog)}
 
 REGLAS COMERCIALES:
-- Solo recomienda IDs exactos del catálogo.
+- Este catálogo es la fuente de verdad. Incluye productos activos disponibles y productos activos temporalmente agotados.
+- available=true significa que se puede comprar ahora. available=false significa que el producto SÍ existe en Herencia pero ahora mismo no está disponible para compra.
+- Solo usa IDs exactos del catálogo.
 - No inventes stock, precios, productos, promociones ni disponibilidad.
-- No recomiendes agotados.
+- Si el cliente pregunta por una planta o producto que aparece por nombre, nombre científico, categoría o etiqueta, NO digas que Herencia no lo vende. Si está agotado, dilo claramente y ofrece alternativas disponibles.
+- No afirmes que "solo disponemos" de un único producto salvo que el catálogo completo tenga literalmente un único producto activo.
+- Puedes devolver el ID exacto de un producto agotado si es el producto que el cliente preguntó o identificó, para que la interfaz lo muestre como agotado. Las alternativas recomendadas sí deben estar disponibles.
 - Respeta price, salePrice y variantes.
 - No inventes propiedades médicas ni recomiendes remedios peligrosos.
 
@@ -384,7 +417,6 @@ async function salesChatHandler(req, res) {
 
   const body = req.body || {};
   const message = clampText(body.message, 1600);
-  const catalog = normalizeCatalog(body.catalog);
   const history = Array.isArray(body.history)
     ? body.history.slice(-10).map((item) => ({
         role: item?.role === "assistant" ? "assistant" : "user",
@@ -395,6 +427,11 @@ async function salesChatHandler(req, res) {
   if (!message) return res.status(400).json({ error: "Escribe qué quieres encontrar o crear." });
 
   try {
+    const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
+    if (!catalog.length) {
+      return res.status(503).json({ error: "El catálogo real de Herencia no está disponible ahora mismo." });
+    }
+
     const content = await callGroq([
       { role: "system", content: salesSystemPrompt(catalog) },
       ...history,
@@ -419,6 +456,8 @@ async function salesChatHandler(req, res) {
       intent: result.intent || "other",
       productIds: result.productIds,
       bouquet: result.bouquet || null,
+      catalogCount: catalog.length,
+      catalogSource,
     });
   } catch (error) {
     console.error("[HERENCIA SALES] chat:", error);
@@ -545,13 +584,17 @@ async function salesIdentifyHandler(req, res) {
   const body = req.body || {};
   const data = String(body.data || "");
   const mimeType = String(body.mimeType || "image/jpeg");
-  const catalog = normalizeCatalog(body.catalog);
 
   if (!data || data.length > 9_000_000) {
     return res.status(400).json({ error: "La imagen es demasiado grande o está vacía." });
   }
 
   try {
+    const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
+    if (!catalog.length) {
+      return res.status(503).json({ error: "El catálogo real de Herencia no está disponible ahora mismo." });
+    }
+
     const result = await identifyWithGemini({ data, mimeType, catalog });
     const validIds = new Set(catalog.map((item) => String(item.id)));
     const productIds = Array.isArray(result.productIds)
@@ -563,6 +606,8 @@ async function salesIdentifyHandler(req, res) {
       identifiedName: clampText(result.identifiedName, 140),
       confidence: ["alta","media","baja"].includes(result.confidence) ? result.confidence : "media",
       productIds,
+      catalogCount: catalog.length,
+      catalogSource,
     });
   } catch (error) {
     console.error("[HERENCIA SALES] identify:", error);
@@ -577,17 +622,18 @@ async function salesSpacePreviewHandler(req, res) {
   const roomData = String(body.data || "");
   const roomMimeType = String(body.mimeType || "image/jpeg");
   const productId = String(body.productId || "");
-  const catalog = normalizeCatalog(body.catalog);
-  const product = catalog.find((item) => String(item.id) === productId);
 
   if (!roomData || roomData.length > 12_000_000) {
     return res.status(400).json({ error: "La foto del espacio es demasiado grande o está vacía." });
   }
-  if (!product) {
-    return res.status(400).json({ error: "Selecciona un producto real del catálogo de Herencia." });
-  }
 
   try {
+    const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
+    const product = catalog.find((item) => String(item.id) === productId);
+    if (!product) {
+      return res.status(400).json({ error: "Selecciona un producto real del catálogo de Herencia." });
+    }
+
     const image = await generateGeminiSpacePreview({ roomData, roomMimeType, product });
     res.json({
       image,
@@ -597,6 +643,8 @@ async function salesSpacePreviewHandler(req, res) {
       price: Number(product.price || 0),
       currency: "EUR",
       disclaimer: "Visualización orientativa generada por IA. El tamaño, la forma y el color reales pueden variar ligeramente.",
+      catalogCount: catalog.length,
+      catalogSource,
     });
   } catch (error) {
     console.error("[HERENCIA SALES] space preview:", error);
