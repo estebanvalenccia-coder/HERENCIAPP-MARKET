@@ -13,6 +13,7 @@ export function ProductDetail() {
   const [product, setProduct] = useState<any>(null);
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [quantity, setQuantity] = useState(1);
+  const [serviceHours, setServiceHours] = useState(1);
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
   const [selectedImage, setSelectedImage] = useState("");
@@ -161,7 +162,30 @@ export function ProductDetail() {
   const collection = getCommerceCollection(collectionId);
   const plantLike = product ? isPlantCareProduct(product) : false;
   const serviceProduct = collectionId === "servicios";
+  const serviceMinHours = serviceProduct
+    ? Math.max(1, Number(product?.serviceMinHours ?? product?.metadata?.serviceMinHours ?? 1))
+    : 1;
+  const serviceMaxHours = serviceProduct
+    ? Math.max(serviceMinHours, Number(product?.serviceMaxHours ?? product?.metadata?.serviceMaxHours ?? 3))
+    : 1;
+  const serviceHourStep = serviceProduct
+    ? Math.max(1, Number(product?.serviceHourStep ?? product?.metadata?.serviceHourStep ?? 1))
+    : 1;
+  const serviceHourOptions = serviceProduct
+    ? Array.from(
+        { length: Math.floor((serviceMaxHours - serviceMinHours) / serviceHourStep) + 1 },
+        (_, index) => serviceMinHours + index * serviceHourStep
+      ).filter((hours) => hours <= serviceMaxHours)
+    : [];
   const detailConfig = site.productDetailPage;
+
+  useEffect(() => {
+    if (!serviceProduct) return;
+    setServiceHours((current) => {
+      const clamped = Math.min(serviceMaxHours, Math.max(serviceMinHours, current));
+      return clamped < serviceMinHours ? serviceMinHours : clamped;
+    });
+  }, [serviceProduct, serviceMinHours, serviceMaxHours]);
 
   useEffect(() => {
     if (!galleryImages.length) {
@@ -283,6 +307,33 @@ export function ProductDetail() {
     if (!product) return;
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+
+    if (serviceProduct) {
+      const hours = Math.min(serviceMaxHours, Math.max(serviceMinHours, serviceHours));
+      const lineKey = `${product.id}::service::${selectedVariant || "base"}`;
+      const existingItem = cart.find((item: any) => item.lineKey === lineKey);
+      const serviceLine = {
+        ...product,
+        price: effectivePrice,
+        unitPrice: effectivePrice,
+        quantity: 1,
+        serviceHours: hours,
+        serviceMinHours,
+        serviceMaxHours,
+        serviceHourStep,
+        serviceBooking: true,
+        trackInventory: false,
+        lineKey,
+        selectedVariant: selectedVariant || undefined,
+      };
+      if (existingItem) Object.assign(existingItem, serviceLine);
+      else cart.push(serviceLine);
+      void backendStorage.setItem("cart", JSON.stringify(cart));
+      window.dispatchEvent(new Event("storage"));
+      toast.success(`Reserva añadida: ${hours} ${hours === 1 ? "hora" : "horas"}`);
+      return;
+    }
+
     const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}`;
     const existingItem = cart.find((item: any) => item.lineKey === lineKey);
     if (trackInventory && Number(existingItem?.quantity || 0) + quantity > stock) {
@@ -292,7 +343,7 @@ export function ProductDetail() {
     else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined, personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
-    toast.success(serviceProduct ? "Servicio añadido" : "Producto añadido al carrito");
+    toast.success("Producto añadido al carrito");
   };
 
   if (!product) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Producto no encontrado o cargando…</p></div>;
@@ -389,13 +440,50 @@ export function ProductDetail() {
             <h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1>
             {detailConfig.showDescription !== false && <p className="text-muted-foreground text-lg">{product.description}</p>}
           </div>
-          <div className="text-5xl font-bold text-primary">€{effectivePrice.toFixed(2)}</div>
+          <div className="text-5xl font-bold text-primary">
+            €{effectivePrice.toFixed(2)}
+            {serviceProduct && <span className="ml-2 text-lg font-semibold text-muted-foreground">/ hora</span>}
+          </div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
           {detailConfig.showVariants !== false && variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
-          {detailConfig.showQuantity !== false && <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>}
-          <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? "Contratar" : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
+          {serviceProduct ? (
+            <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+              <div>
+                <label className="block text-sm font-bold">¿Cuántas horas quieres reservar?</label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Mínimo {serviceMinHours} {serviceMinHours === 1 ? "hora" : "horas"}. El precio lo configuras tú desde Administración.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {serviceHourOptions.map((hours) => (
+                  <button
+                    key={hours}
+                    type="button"
+                    onClick={() => setServiceHours(hours)}
+                    className={`rounded-xl border px-4 py-3 text-sm font-bold transition ${
+                      serviceHours === hours
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background hover:border-primary/50"
+                    }`}
+                  >
+                    {hours} {hours === 1 ? "hora" : "horas"} · €{(effectivePrice * hours).toFixed(2)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-background px-4 py-3">
+                <span className="text-sm font-semibold">Total de la reserva</span>
+                <span className="text-xl font-black text-primary">€{(effectivePrice * serviceHours).toFixed(2)}</span>
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Si el servicio requiere más tiempo del reservado, las horas adicionales se abonarán posteriormente.
+              </p>
+            </div>
+          ) : detailConfig.showQuantity !== false ? (
+            <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
+          ) : null}
+          <div className="flex gap-3"><button disabled={trackInventory && stock<=0} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado") : serviceProduct ? "Disponible para contratación" : "Disponible"}</div>}
           {detailConfig.showCare !== false && plantLike && aiData && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
           {detailConfig.showWaitlist !== false && trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
@@ -424,7 +512,7 @@ export function ProductDetail() {
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{collection.name}</p>
           <h2 className="mt-2 text-3xl font-bold">Información del artículo</h2>
           <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{product.description}</p>
-          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">Este servicio requiere coordinar fecha o cita después de la compra.</div>}
+          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">La reserva se confirma pagando las horas seleccionadas. La fecha y los detalles del servicio se coordinan en el checkout.</div>}
           {collectionId === "dulce" && product.requiresRefrigeration && <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
         </motion.div>
         ) : null
