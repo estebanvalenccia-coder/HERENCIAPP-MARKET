@@ -5,13 +5,16 @@ import {
   ChevronDown,
   Flower2,
   ImagePlus,
+  Link2,
+  Loader2,
+  Download,
   Sparkles,
   Trash2,
   UploadCloud,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
 
 type TaxonomyOption = {
@@ -39,6 +42,24 @@ type ProductDraft = {
   featured: boolean;
   aiStatus: "pending" | "classified" | "manual" | "error";
   confidence?: number;
+};
+
+type SourceCatalogProduct = {
+  id: string;
+  name: string;
+  description?: string;
+  productUrl: string;
+  sourceCatalogUrl: string;
+  sourceHost: string;
+  image?: string;
+  images?: string[];
+  supplierCategory?: string;
+  category?: string;
+  collection?: string;
+  type?: string;
+  department?: string;
+  area?: string;
+  family?: string;
 };
 
 const taxonomy: TaxonomyOption[] = [
@@ -323,7 +344,18 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [drafts, setDrafts] = useState<ProductDraft[]>([]);
   const [isClassifying, setIsClassifying] = useState(false);
   const [savingLibrary, setSavingLibrary] = useState(false);
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceProducts, setSourceProducts] = useState<SourceCatalogProduct[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Record<string, boolean>>({});
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceImporting, setSourceImporting] = useState(false);
+  const [sourceProgress, setSourceProgress] = useState({ done: 0, total: 0 });
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const selectedSourceProducts = useMemo(
+    () => sourceProducts.filter((product) => selectedSourceIds[product.id]),
+    [sourceProducts, selectedSourceIds]
+  );
 
   const groupedDrafts = useMemo(() => {
     return drafts.reduce<Record<string, ProductDraft[]>>((groups, draft) => {
@@ -333,6 +365,86 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       return groups;
     }, {});
   }, [drafts]);
+
+  const analyzeSourceCatalog = async () => {
+    const url = sourceUrl.trim();
+    if (!url) {
+      toast.error("Pega primero la URL del catálogo del proveedor");
+      return;
+    }
+
+    setSourceLoading(true);
+    setSourceProducts([]);
+    setSelectedSourceIds({});
+    setSourceProgress({ done: 0, total: 0 });
+
+    try {
+      const result = await backendApi.previewCatalogUrl(url, 100);
+      const products = Array.isArray(result.products) ? result.products : [];
+      setSourceProducts(products);
+      setSelectedSourceIds(
+        products.reduce<Record<string, boolean>>((selected, product) => {
+          selected[String(product.id)] = true;
+          return selected;
+        }, {})
+      );
+      if (!products.length) {
+        toast.warning("No se detectaron productos en esa página");
+      } else {
+        toast.success(products.length + " productos detectados en " + result.sourceHost);
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo analizar el catálogo del proveedor");
+    } finally {
+      setSourceLoading(false);
+    }
+  };
+
+  const importSelectedSourceProducts = async () => {
+    const selected = selectedSourceProducts;
+    if (!selected.length) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+
+    setSourceImporting(true);
+    setSourceProgress({ done: 0, total: selected.length });
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+    const completedIds: string[] = [];
+
+    for (let index = 0; index < selected.length; index += 1) {
+      const product = selected[index];
+      try {
+        const result = await backendApi.importCatalogUrlProduct(product);
+        if (result.skipped) skipped += 1;
+        else imported += 1;
+        completedIds.push(product.id);
+      } catch {
+        errors += 1;
+      } finally {
+        setSourceProgress({ done: index + 1, total: selected.length });
+      }
+    }
+
+    if (completedIds.length) {
+      setSelectedSourceIds((current) => {
+        const next = { ...current };
+        completedIds.forEach((id) => {
+          next[id] = false;
+        });
+        return next;
+      });
+    }
+
+    setSourceImporting(false);
+    if (errors) {
+      toast.warning("Importación terminada: " + imported + " nuevos, " + skipped + " ya existían y " + errors + " con error");
+    } else {
+      toast.success("Importación terminada: " + imported + " nuevos y " + skipped + " ya existentes");
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -582,6 +694,136 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               Importar productos
             </button>
           </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-border bg-muted/20 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
+              <Link2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-foreground">Importar desde URL del proveedor</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Pega una página de catálogo. Herencia detecta los productos, te deja elegir cuáles traer y copia sus imágenes a Cloudflare R2.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <input
+              value={sourceUrl}
+              onChange={(event) => setSourceUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !sourceLoading && !sourceImporting) {
+                  event.preventDefault();
+                  void analyzeSourceCatalog();
+                }
+              }}
+              placeholder="https://proveedor.com/categoria/productos/"
+              className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={sourceLoading || sourceImporting}
+            />
+            <button
+              type="button"
+              onClick={analyzeSourceCatalog}
+              disabled={sourceLoading || sourceImporting || !sourceUrl.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
+            >
+              {sourceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              {sourceLoading ? "Analizando..." : "Analizar página"}
+            </button>
+          </div>
+
+          {sourceProducts.length > 0 && (
+            <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-background">
+              <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="font-semibold text-foreground">{sourceProducts.length} productos encontrados</p>
+                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} seleccionados · se importan como borrador</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedSourceIds(
+                        sourceProducts.reduce<Record<string, boolean>>((selected, product) => {
+                          selected[product.id] = true;
+                          return selected;
+                        }, {})
+                      )
+                    }
+                    disabled={sourceImporting}
+                    className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                  >
+                    Seleccionar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSourceIds({})}
+                    disabled={sourceImporting}
+                    className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                  >
+                    Quitar selección
+                  </button>
+                  <button
+                    type="button"
+                    onClick={importSelectedSourceProducts}
+                    disabled={sourceImporting || !selectedSourceProducts.length}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {sourceImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {sourceImporting
+                      ? "Importando " + sourceProgress.done + "/" + sourceProgress.total
+                      : "Importar " + selectedSourceProducts.length + " seleccionados"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[520px] divide-y divide-border overflow-y-auto">
+                {sourceProducts.map((product) => (
+                  <label key={product.id} className="grid cursor-pointer grid-cols-[auto_72px_1fr] gap-3 p-3 hover:bg-muted/30 sm:grid-cols-[auto_84px_1fr_auto] sm:items-center">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selectedSourceIds[product.id])}
+                      onChange={(event) =>
+                        setSelectedSourceIds((current) => ({ ...current, [product.id]: event.target.checked }))
+                      }
+                      disabled={sourceImporting}
+                      className="mt-2 h-4 w-4 sm:mt-0"
+                    />
+                    <div className="h-16 w-[72px] overflow-hidden rounded-xl border border-border bg-muted sm:h-20 sm:w-[84px]">
+                      {product.image ? (
+                        <img src={product.image} alt={product.name} className="h-full w-full object-contain" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">Sin foto</div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{product.name}</p>
+                      {product.description ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
+                      ) : null}
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                        <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">
+                          {product.department || product.category || "Catálogo"}
+                        </span>
+                        <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                          {(product.images?.length || (product.image ? 1 : 0))} fotos
+                        </span>
+                      </div>
+                    </div>
+                    <span className="col-start-3 text-right text-[10px] text-muted-foreground sm:col-start-auto">
+                      {product.sourceHost}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="mt-3 text-xs text-muted-foreground">
+            Usa esta opción únicamente con catálogos cuyas imágenes y datos tengas permiso para reutilizar.
+          </p>
         </div>
 
         <label className="flex flex-col items-center justify-center min-h-64 border-2 border-dashed border-border rounded-3xl cursor-pointer hover:bg-accent/40 transition-colors text-center px-6">
