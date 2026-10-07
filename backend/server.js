@@ -229,6 +229,7 @@ const publicKeys = new Set([
   "businessSuiteSettings",
   "marketingContent",
   "communityContent",
+  "storefrontPosts",
 ]);
 
 const privateVisitorKeys = new Set(["cart", "user"]);
@@ -263,6 +264,7 @@ const protectedKeys = new Set([
   "businessSuiteSettings",
   "marketingContent",
   "communityContent",
+  "storefrontPosts",
   "__backendStorage_test__",
 ]);
 
@@ -2785,7 +2787,8 @@ app.get("/api/settings/public", async (_req, res) => {
     "siteContent",
     "businessSuiteSettings",
     "marketingContent",
-  "communityContent",
+    "communityContent",
+    "storefrontPosts",
   ];
 
   try {
