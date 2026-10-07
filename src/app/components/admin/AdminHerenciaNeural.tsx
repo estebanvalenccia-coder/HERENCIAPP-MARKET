@@ -107,12 +107,12 @@ export function AdminHerenciaNeural(){
   if(!task?.id||approvingCode)return;
   setApprovingCode(true);
   try{
-   const r=await backendApi.neuralApproveTask(task.id);
+   const r=await backendApi.neuralApproveCodeTask(task.id);
    const outcome=r?.outcome;
    setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="COMPLETED"?"Cambio programado y verificado. Revisa el trabajo reciente para ver la rama y el PR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Aprobación procesada. Neural está ejecutando el cambio.",kind:"code"}]);
    setActiveCodeApproval(null);
    await refresh();
-  }catch(e:any){toast.error(e.message||"No se pudo aprobar el cambio")}finally{setApprovingCode(false)}
+  }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
  };
  const rejectCode=async(id?:string)=>{const taskId=id||activeCodeApproval?.id;if(!taskId)return;try{await backendApi.neuralRejectTask(taskId);setActiveCodeApproval(null);toast.success("Cambio descartado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar el cambio")}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -121,13 +121,15 @@ export function AdminHerenciaNeural(){
  const observe=async()=>{try{const r=await backendApi.neuralObserveNow();toast.success(r.ok?"Digital Twin actualizado":`Observación: ${r.skipped||"sin cambios"}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const searchMemory=async()=>{try{const r=await backendApi.neuralMemory(memoryQuery);setMemory(r.items||[])}catch(e:any){toast.error(e.message)}};
  const approve=async(id:string)=>{try{
-  const r=await backendApi.neuralApproveTask(id);
+  const task=tasks.find((x:any)=>x.id===id);
+  const r=task?.intent==="code_change"?await backendApi.neuralApproveCodeTask(id):await backendApi.neuralApproveTask(id);
   const outcome=r?.outcome;
   if(outcome?.status==="FAILED") toast.error(outcome?.error||"La tarea falló después de aprobarla");
-  else if(outcome?.status==="COMPLETED") toast.success("Aprobada y ejecutada correctamente");
+  else if(outcome?.status==="COMPLETED") toast.success(task?.intent==="code_change"?"Cambio programado y verificado":"Aprobada y ejecutada correctamente");
   else toast.success("Aprobación registrada");
+  setActiveCodeApproval(null);
   await refresh();
- }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea")}};
+ }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea");await refresh()}};
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
  const reflectNow=async()=>{try{const report=await backendApi.neuralReflect();toast.success(`Reflexión completada: ${report.reviewed||0} recuerdos revisados`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo ejecutar la reflexión")}};
  const consolidatePatterns=async()=>{try{await backendApi.neuralConsolidatePatterns();toast.success("Patrones consolidados en memoria de negocio");await refresh()}catch(e:any){toast.error(e.message||"No se pudieron consolidar patrones")}};
