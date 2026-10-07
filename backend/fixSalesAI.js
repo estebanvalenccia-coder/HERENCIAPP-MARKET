@@ -162,9 +162,9 @@ async function generateGeminiImage(prompt) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-nano-banana-2.1";
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
     {
       method: "POST",
       signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000) + 15000),
@@ -235,7 +235,7 @@ async function generateGeminiSpacePreview({ roomData, roomMimeType, product }) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-nano-banana-2.1";
   let productReference = null;
   try {
     productReference = await imageReferenceFromUrl(product?.image);
@@ -264,7 +264,7 @@ REGLAS OBLIGATORIAS:
   if (productReference) parts.push({ inlineData: productReference });
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
     {
       method: "POST",
       signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000) + 30000),
@@ -291,7 +291,7 @@ async function identifyWithGemini({ data, mimeType, catalog }) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
   if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada en Railway");
 
-  const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
   const catalogText = JSON.stringify(catalog);
   const prompt = `Eres Herenc(IA), asistente experto y polivalente de Herencia Market especializado en plantas, botánica práctica y jardinería.
 Identifica la planta o producto y analiza, cuando sea relevante, signos visibles compatibles con problemas de riego, luz, humedad, sustrato, nutrientes, plagas u hongos.
@@ -308,7 +308,7 @@ Devuelve SOLO JSON:
 Los IDs pueden ser texto. Usa únicamente IDs exactos que existan en el catálogo. Si no hay coincidencia, productIds debe ser [].`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
     {
       method: "POST",
       signal: AbortSignal.timeout(Number(process.env.SALES_AI_TIMEOUT_MS || 30000)),
