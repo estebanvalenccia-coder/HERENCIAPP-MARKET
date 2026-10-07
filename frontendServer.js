@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const port = Number(process.env.PORT || 3000);
 const root = fileURLToPath(new URL("./dist/", import.meta.url));
 const backendOrigin = (process.env.BACKEND_ORIGIN || "https://herenciapp-market-production.up.railway.app").replace(/\/$/, "");
+const buildId = process.env.RAILWAY_GIT_COMMIT_SHA || "local";
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -59,12 +60,26 @@ function safeFile(pathname) {
   return candidate;
 }
 
-function serveFile(file, res, { cache = true } = {}) {
+function serveFile(file, res, { cachePolicy = "revalidate" } = {}) {
   const type = mime[extname(file).toLowerCase()] || "application/octet-stream";
-  res.writeHead(200, {
+  const cacheControl =
+    cachePolicy === "immutable"
+      ? "public, max-age=31536000, immutable"
+      : cachePolicy === "no-store"
+        ? "no-store, no-cache, must-revalidate"
+        : "public, max-age=0, must-revalidate";
+
+  const headers = {
     "content-type": type,
-    "cache-control": cache ? "public, max-age=31536000, immutable" : "no-store",
-  });
+    "cache-control": cacheControl,
+    "x-herencia-build": buildId,
+  };
+
+  if (file.endsWith("/sw.js") || file.endsWith("\\sw.js")) {
+    headers["service-worker-allowed"] = "/";
+  }
+
+  res.writeHead(200, headers);
   createReadStream(file).pipe(res);
 }
 
@@ -78,16 +93,22 @@ const server = http.createServer(async (req, res) => {
 
   const file = safeFile(url.pathname === "/" ? "index.html" : url.pathname);
   if (file && existsSync(file) && statSync(file).isFile()) {
-    return serveFile(file, res, { cache: extname(file) !== ".html" });
+    const cachePolicy =
+      url.pathname === "/" || extname(file) === ".html" || url.pathname === "/sw.js"
+        ? "no-store"
+        : url.pathname.startsWith("/assets/")
+          ? "immutable"
+          : "revalidate";
+    return serveFile(file, res, { cachePolicy });
   }
 
   const index = join(root, "index.html");
-  if (existsSync(index)) return serveFile(index, res, { cache: false });
+  if (existsSync(index)) return serveFile(index, res, { cachePolicy: "no-store" });
 
-  res.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
+  res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
   res.end("Frontend build no disponible");
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Herencia frontend listening on ${port}; API proxy -> ${backendOrigin}`);
+  console.log(`Herencia frontend listening on ${port}; build=${buildId}; API proxy -> ${backendOrigin}`);
 });

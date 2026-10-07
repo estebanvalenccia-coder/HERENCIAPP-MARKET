@@ -15,11 +15,13 @@ backendApi.preload().finally(() => {
   root.render(<App />);
 });
 
-
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js?v=3").catch((error) => {
-      console.warn("No se pudo registrar el service worker de Herencia", error);
-    });
+    navigator.serviceWorker
+      .register("/sw.js?v=4", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch((error) => {
+        console.warn("No se pudo registrar el service worker de Herencia", error);
+      });
   });
 }
