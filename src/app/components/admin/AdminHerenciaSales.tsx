@@ -122,7 +122,6 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
     ["paid", "confirmed", "preparing", "processing", "ready", "delivered", "completed"].includes(String(order?.status || ""))
   );
   const realRevenue = purchasedOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0);
-  const handoffs = attributedOrders.filter((order) => String(order?.metadata?.source || "") === "HERENCIA_SALES_HANDOFF").length;
   const purchases = purchasedOrders.length || Number(totals.sales_purchases || eventMap.get("sales_purchase")?.value || 0);
   const conversion = opens > 0 ? (purchases / opens) * 100 : 0;
   const revenue = realRevenue || Number(totals.sales_revenue || eventMap.get("sales_purchase")?.amount || 0);
@@ -221,7 +220,6 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
               ["Añadidos al carrito", totals.sales_add_to_cart || 0],
               ["Comprar ahora", totals.sales_buy_now || 0],
               ["Visualizaciones espacio", totals.space_previews || 0],
-              ["Traspasos a floristería", Math.max(Number(totals.sales_handoffs || 0), handoffs)],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-2xl bg-muted/45 p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
