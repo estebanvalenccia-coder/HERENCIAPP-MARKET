@@ -112,6 +112,7 @@ export function AdminHerenciaNeural(){
    const outcome=r?.outcome;
    setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="REVIEW_REQUIRED"?"Cambio programado y preparado para revisión. Abre la preview y decide si quieres ACEPTAR o DESCARTAR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Neural está preparando la preview.",kind:"code"}]);
    setActiveCodeApproval(null);
+   if(r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);
    await refresh();
   }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
  };
@@ -130,8 +131,10 @@ export function AdminHerenciaNeural(){
   const outcome=r?.outcome;
   if(outcome?.status==="FAILED") toast.error(outcome?.error||"La tarea falló después de aprobarla");
   else if(outcome?.status==="COMPLETED") toast.success(task?.intent==="code_change"?"Cambio programado y verificado":"Aprobada y ejecutada correctamente");
+  else if(outcome?.status==="REVIEW_REQUIRED") toast.success("Cambio programado. Ya puedes revisar la preview.");
   else toast.success("Aprobación registrada");
   setActiveCodeApproval(null);
+  if(r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);
   await refresh();
  }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea");await refresh()}};
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
