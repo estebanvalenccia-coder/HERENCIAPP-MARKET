@@ -748,7 +748,12 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   async function saveEdit() {
     if (!editingProduct) return;
     if (!editForm.name.trim()) return toast.error("El nombre es obligatorio");
-    if (editForm.price <= 0) return toast.error("El precio debe ser mayor que 0");
+    if (editForm.status === "active" && editForm.price <= 0) {
+      return toast.error("Para publicar, el precio debe ser mayor que 0");
+    }
+    if (editForm.onSale && editForm.price <= 0) {
+      return toast.error("Añade primero un precio normal antes de activar una oferta");
+    }
     if (editForm.onSale && (editForm.salePrice <= 0 || editForm.salePrice >= editForm.price)) {
       return toast.error("El precio de oferta debe ser menor que el precio normal");
     }
