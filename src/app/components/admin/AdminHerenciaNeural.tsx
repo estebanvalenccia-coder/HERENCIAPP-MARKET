@@ -119,13 +119,20 @@ export function AdminHerenciaNeural(){
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
  const observe=async()=>{try{const r=await backendApi.neuralObserveNow();toast.success(r.ok?"Digital Twin actualizado":`Observación: ${r.skipped||"sin cambios"}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const searchMemory=async()=>{try{const r=await backendApi.neuralMemory(memoryQuery);setMemory(r.items||[])}catch(e:any){toast.error(e.message)}};
- const approve=async(id:string)=>{try{await backendApi.neuralApproveTask(id);toast.success("Tarea aprobada");await refresh()}catch(e:any){toast.error(e.message)}};
+ const approve=async(id:string)=>{try{
+  const r=await backendApi.neuralApproveTask(id);
+  const outcome=r?.outcome;
+  if(outcome?.status==="FAILED") toast.error(outcome?.error||"La tarea falló después de aprobarla");
+  else if(outcome?.status==="COMPLETED") toast.success("Aprobada y ejecutada correctamente");
+  else toast.success("Aprobación registrada");
+  await refresh();
+ }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea")}};
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
  const reflectNow=async()=>{try{const report=await backendApi.neuralReflect();toast.success(`Reflexión completada: ${report.reviewed||0} recuerdos revisados`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo ejecutar la reflexión")}};
  const consolidatePatterns=async()=>{try{await backendApi.neuralConsolidatePatterns();toast.success("Patrones consolidados en memoria de negocio");await refresh()}catch(e:any){toast.error(e.message||"No se pudieron consolidar patrones")}};
  const consolidateConversations=async()=>{try{const r=await backendApi.neuralConsolidateConversations();toast.success("Conversaciones consolidadas: "+String(r?.promoted?.length||0)+" patrones nuevos");await refresh()}catch(e:any){toast.error(e.message||"No se pudo consolidar el aprendizaje conversacional")}};
 
- const tabs=[["command","Command Center",Brain],["code","Neural Code",Code2],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["business","Negocio / Digital Twin",ShoppingBag],["crm","Clientes / CRM",Bot],["automations","Automatizaciones",Activity],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
+ const tabs=[["command","Command Center",Brain],["code","Neural Code",Code2],["approvals","Aprobaciones",ShieldCheck],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["business","Negocio / Digital Twin",ShoppingBag],["crm","Clientes / CRM",Bot],["automations","Automatizaciones",Activity],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
 
  return <div className="space-y-6">
   <div className="rounded-3xl border bg-gradient-to-r from-emerald-950 to-emerald-800 text-white p-6 shadow-xl">
@@ -133,7 +140,7 @@ export function AdminHerenciaNeural(){
     <div className="flex gap-4 items-center"><div className="p-3 bg-white/10 rounded-2xl"><Brain className="w-9 h-9"/></div><div><h1 className="text-3xl font-black">HERENCIA Neural</h1><p className="text-emerald-100">Neural OS independiente · memoria persistente · autonomía gobernada</p></div></div>
     <div className="flex flex-wrap gap-3 items-center">
      <Badge text={error?"Neural desconectada":autonomy?"Neural activa":"Autonomía detenida"} ok={!error&&autonomy}/>
-     <span className="px-4 py-2 rounded-xl bg-white/10">{stats.agents} células</span><span className="px-4 py-2 rounded-xl bg-white/10">{stats.tasks} tareas</span><button type="button" onClick={()=>{const hasCode=approvals.some((t:any)=>t.intent==="code_change");setTab(hasCode?"code":"command");window.setTimeout(()=>document.getElementById(hasCode?"neural-code-approvals":"neural-command-approvals")?.scrollIntoView({behavior:"smooth",block:"center"}),80)}} className={`px-4 py-2 rounded-xl font-bold transition ${stats.approvals?"bg-amber-400 text-amber-950 hover:bg-amber-300":"bg-white/10"}`} title="Ver aprobaciones pendientes">{stats.approvals} aprobaciones</button>
+     <span className="px-4 py-2 rounded-xl bg-white/10">{stats.agents} células</span><span className="px-4 py-2 rounded-xl bg-white/10">{stats.tasks} tareas</span><button type="button" onClick={()=>setTab("approvals")} className={`px-4 py-2 rounded-xl font-bold transition ${stats.approvals?"bg-amber-400 text-amber-950 hover:bg-amber-300":"bg-white/10"}`} title="Ver aprobaciones pendientes">{stats.approvals} aprobaciones</button>
      <button onClick={()=>void refresh()} className="p-3 rounded-xl bg-white/10 hover:bg-white/20" title="Actualizar"><RefreshCw className={`w-5 h-5 ${loading?"animate-spin":""}`}/></button>
      <button onClick={()=>void toggleAutonomy()} disabled={Boolean(error)} className={`px-5 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50 ${autonomy?"bg-red-500 hover:bg-red-600":"bg-emerald-500 hover:bg-emerald-600"}`}><Power className="w-5 h-5"/>{autonomy?"DETENER AUTONOMÍA":"REACTIVAR"}</button>
     </div>
@@ -213,6 +220,28 @@ export function AdminHerenciaNeural(){
     {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};return <div key={t.id} className="rounded-xl border p-3 text-sm"><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p>{result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}{result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Verificación superada</p>}</div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
    </Panel></div>
   </div>}
+
+  {tab==="approvals"&&<Panel title="Centro de aprobaciones" icon={ShieldCheck}>
+   <div className="mb-4 rounded-2xl border bg-muted/40 p-4">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+     <div><h3 className="text-lg font-black">Todo lo que espera tu autorización</h3><p className="text-sm text-muted-foreground">Esta vista reúne todas las aprobaciones de Neural en un único lugar. No necesitas buscarlas en otros apartados.</p></div>
+     <span className={`rounded-full px-3 py-1 text-sm font-black ${approvals.length?"bg-amber-100 text-amber-900":"bg-emerald-100 text-emerald-900"}`}>{approvals.length} pendiente{approvals.length===1?"":"s"}</span>
+    </div>
+   </div>
+   {approvals.length?<div className="space-y-4">{approvals.map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+     <div><div className="text-xs font-black uppercase tracking-wide text-amber-700">{t.intent==="code_change"?"Programación":"Acción gobernada"}</div><h3 className="mt-1 text-base font-black">{t.title}</h3><p className="mt-1 text-xs text-muted-foreground">{t.intent} · {t.assignedCell||"supervisor"} · {t.status}</p></div>
+     {plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}
+    </div>
+    {plan&&<div className="mt-4 rounded-xl bg-white/80 p-4 text-sm">
+      <p><b>Plan:</b> {plan.summary}</p>
+      {files.length>0&&<p className="mt-2 break-words text-xs"><b>Archivos:</b> {files.join(", ")}</p>}
+      {plan.acceptanceCriteria?.length>0&&<div className="mt-2"><b className="text-xs">Criterios de comprobación:</b><ul className="mt-1 list-disc pl-5 text-xs">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}
+      {t.intent==="code_change"&&<p className="mt-3 text-xs font-bold text-emerald-800">Se trabajará en una rama neural/*; producción directa permanece bloqueada.</p>}
+    </div>}
+    <button onClick={()=>void approve(t.id)} className="mt-4 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600">APROBAR {t.intent==="code_change"?"Y PROGRAMAR":"TAREA"}</button>
+   </div>})}</div>:<Empty text="No hay aprobaciones pendientes ahora mismo."/>}
+  </Panel>}
 
   {tab==="brain"&&<Panel title="Cerebro / Self Model" icon={Brain}>{selfModel?<div className="grid gap-5 xl:grid-cols-3"><div className="xl:col-span-2 rounded-2xl border p-5"><div className="text-xs uppercase tracking-wider text-muted-foreground">Identidad persistente</div><h3 className="mt-1 text-2xl font-black">{selfModel.identity||"HERENCIA Neural"}</h3><p className="mt-3 text-muted-foreground">{selfModel.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(selfModel.principles||[]).map((x:string)=><span key={x} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><div className="text-sm font-black">Continuidad</div><div className="mt-3 space-y-2 text-sm"><Row label="Versión" value={selfModel.version||"—"}/><Row label="Generación" value={String(selfModel.generation||1)}/><Row label="Capacidades" value={String((selfModel.capabilities||[]).length)}/><Row label="Limitaciones" value={String((selfModel.limitations||[]).length)}/><Row label="Aprendizajes" value={String((selfModel.learnings||[]).length)}/></div></div><div className="rounded-2xl border p-5"><b>Capacidades</b><div className="mt-3 flex flex-wrap gap-2">{(selfModel.capabilities||[]).map((x:string)=><span key={x} className="rounded-lg bg-muted px-2 py-1 text-xs">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><b>Limitaciones conocidas</b>{(selfModel.limitations||[]).length?<ul className="mt-3 space-y-2 text-sm">{selfModel.limitations.map((x:string)=><li key={x}>• {x}</li>)}</ul>:<p className="mt-3 text-sm text-muted-foreground">No hay limitaciones registradas en el Self Model actual.</p>}</div><div className="rounded-2xl border p-5"><div className="flex items-center justify-between gap-3"><b>Estado cognitivo</b><button onClick={()=>void reflectNow()} className="rounded-xl border px-3 py-2 text-xs font-bold hover:bg-muted">Reflexionar ahora</button></div><div className="mt-3 space-y-2 text-sm"><Row label="Tareas activas" value={String((selfModel.tasks||[]).length)}/><Row label="Errores recientes" value={String((selfModel.errors||[]).length)}/><Row label="Correcciones" value={String((selfModel.corrections||[]).length)}/></div></div></div>:<Empty text="Self Model no disponible."/>}</Panel>}
 
