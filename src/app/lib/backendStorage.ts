@@ -1385,6 +1385,13 @@ export const backendApi = {
     });
   },
 
+  async neuralRejectTask(id: string) {
+    return request<any>(`/api/neural/tasks/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ rejectedBy: "admin" }),
+    });
+  },
+
   async neuralTraces() {
     return request<{ traces: any[] }>("/api/neural/traces");
   },
