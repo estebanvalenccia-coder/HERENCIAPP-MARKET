@@ -1337,7 +1337,7 @@ export const backendApi = {
   },
 
   async neuralTasks(status?: string) {
-    return request<{ tasks: any[] }>(`/api/neural/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+    return request<{ tasks: any[] }>(`/api/neural/tasks?limit=1000${status ? `&status=${encodeURIComponent(status)}` : ""}`);
   },
 
   async neuralChat(text: string, conversationId = "admin:default") {
