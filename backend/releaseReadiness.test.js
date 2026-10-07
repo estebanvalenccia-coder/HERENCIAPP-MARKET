@@ -4,12 +4,15 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("checkout público solo permite entrega a domicilio", async () => {
+test("productos físicos usan entrega y servicios usan reserva sin envío", async () => {
   const cart = await read("src/app/pages/Cart.tsx");
   const checkout = await read("src/app/pages/Checkout.tsx");
   const server = await read("backend/server.js");
-  assert.match(cart, /deliveryMethod\s*=\s*["']envio["']/);
-  assert.match(checkout, /deliveryMethod\s*=\s*["']envio["']/);
+
+  assert.match(cart, /hasPhysicalItems\s*\?\s*shippingCost\s*:\s*0/);
+  assert.match(cart, /No se aplican gastos de envío a los servicios/);
+  assert.match(checkout, /onlyServices\s*\?\s*["']servicio["']\s*:\s*["']envio["']/);
+  assert.match(checkout, /const shipping\s*=\s*hasPhysicalItems\s*\?\s*shippingCost\s*:\s*0/);
   assert.match(server, /solo ofrece entrega a domicilio/);
 });
 
