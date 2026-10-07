@@ -485,6 +485,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     setSourceImporting(true);
     setSourceProgress({ done: 0, total: selected.length });
     let imported = 0;
+    let updated = 0;
     let skipped = 0;
     let errors = 0;
     const completedIds: string[] = [];
@@ -501,6 +502,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
           images: importImages,
         });
         if (result.skipped) skipped += 1;
+        else if (result.updated) updated += 1;
         else imported += 1;
         completedIds.push(product.id);
       } catch {
@@ -522,9 +524,9 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
 
     setSourceImporting(false);
     if (errors) {
-      toast.warning("Importación terminada: " + imported + " nuevos, " + skipped + " ya existían y " + errors + " con error");
+      toast.warning("Importación terminada: " + imported + " nuevos, " + updated + " reparados, " + skipped + " ya existentes y " + errors + " con error");
     } else {
-      toast.success("Importación terminada: " + imported + " nuevos y " + skipped + " ya existentes");
+      toast.success("Importación terminada: " + imported + " nuevos, " + updated + " reparados y " + skipped + " ya existentes");
     }
   };
 
