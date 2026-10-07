@@ -412,6 +412,18 @@ export const backendApi = {
     return result;
   },
 
+  async saveCatalogUrlProductMedia(product: any) {
+    return request<{
+      ok: boolean;
+      copiedImages: number;
+      media: Array<{ name: string; path: string; url: string; size?: number; createdAt?: string; sourceUrl?: string }>;
+      source?: string;
+    }>("/api/admin/catalog/import-url/media", {
+      method: "POST",
+      body: JSON.stringify({ product }),
+    });
+  },
+
   async preload() {
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")

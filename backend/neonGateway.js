@@ -247,6 +247,30 @@ const server=http.createServer(async(req,res)=>{try{
     return json(res,200,{...result,source:"supplier_url"});
   }
 
+  if(path==="/api/admin/catalog/import-url/media"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para guardar las imágenes"});
+    const body=await bodyJson(req);
+    const input=body?.product&&typeof body.product==="object"?body.product:{};
+    const name=String(input?.name||"producto").trim().slice(0,220)||"producto";
+    const images=Array.isArray(input?.images)?input.images:input?.image?[input.image]:[];
+    if(!images.length)return json(res,400,{error:"Ese producto no tiene imágenes detectadas"});
+    const mirrored=await mirrorRemoteProductImages({...input,name},{maxImages:8});
+    return json(res,201,{
+      ok:true,
+      copiedImages:mirrored.length,
+      media:mirrored.map((item)=>({
+        name:item.name,
+        path:item.path,
+        url:item.url,
+        size:item.size,
+        createdAt:item.createdAt,
+        sourceUrl:item.sourceUrl,
+      })),
+      source:"cloudflare_r2",
+    });
+  }
+
   if(path==="/api/admin/catalog/import-url/product"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para copiar las imágenes del proveedor"});
