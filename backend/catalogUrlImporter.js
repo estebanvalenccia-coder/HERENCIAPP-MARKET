@@ -1,6 +1,5 @@
 import dns from "node:dns/promises";
 import net from "node:net";
-import { uploadR2MediaBuffer } from "./r2Media.js";
 
 const MAX_HTML_BYTES = 3 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -229,7 +228,9 @@ function isPrivateIp(address) {
     const normalized = address.toLowerCase();
     return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") ||
       normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
-      normalized.startsWith("fea") || normalized.startsWith("feb");
+      normalized.startsWith("fea") || normalized.startsWith("feb") ||
+      normalized.startsWith("::ffff:127.") || normalized.startsWith("::ffff:10.") ||
+      normalized.startsWith("::ffff:192.168.") || normalized.startsWith("::ffff:169.254.");
   }
   return true;
 }
@@ -397,6 +398,7 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
 }
 
 export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {}) {
+  const { uploadR2MediaBuffer } = await import("./r2Media.js");
   const source = Array.isArray(product?.images) && product.images.length ? product.images : product?.image ? [product.image] : [];
   const unique = [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, Math.max(1, Math.min(8, maxImages)));
   const media = [];
