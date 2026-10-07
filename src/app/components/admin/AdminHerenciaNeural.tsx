@@ -96,6 +96,7 @@ export function AdminHerenciaNeural(){
  const permissions:Record<string,Mode>=status?.policy?.permissions||{};
  const autonomy=status?.policy?.autonomy==="ACTIVE";
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"||t.requiresApproval);
+ const activeCodeReview=tasks.find((t:any)=>t.intent==="code_change"&&(t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY"))||null;
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -198,6 +199,16 @@ export function AdminHerenciaNeural(){
     </div>
     <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
+    {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=result.pullRequest?.url||result.pullRequest?.html_url||result.pullRequest?.result?.url||null;const ready=preview.url&&preview.state==="success";const failed=preview.state==="failure";return <div className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":"PREVIEW EN PREPARACIÓN"}</span></div>
+      {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
+      {failed&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">El código está preparado, pero el proveedor de preview no pudo generar la vista. Puedes reintentar el estado; producción sigue intacta.</p>}
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+       {ready?<a href={preview.url} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(activeCodeReview.id)} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white hover:bg-indigo-700">{failed?"REINTENTAR PREVIEW":"BUSCAR PREVIEW"}</button>}
+       {prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="rounded-xl border bg-white px-4 py-3 text-center font-black">VER PR</a>}
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2"><button onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700">DESCARTAR</button><button onClick={()=>void acceptPreview(activeCodeReview.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">ACEPTAR CAMBIO</button></div>
+     </div>})()}
     {activeCodeApproval&&(()=>{const plan=activeCodeApproval.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Cambio listo para aprobar</div><h3 className="mt-1 font-black text-amber-950">{activeCodeApproval.title}</h3></div>{plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}</div>
       {plan&&<div className="mt-3 rounded-xl bg-white/70 p-3 text-sm"><p><b>Plan:</b> {plan.summary}</p>{files.length>0&&<p className="mt-2 break-words text-xs"><b>Archivos:</b> {files.join(", ")}</p>}{plan.acceptanceCriteria?.length>0&&<ul className="mt-2 list-disc pl-5 text-xs">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul>}</div>}
