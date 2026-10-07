@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo } from "lucide-react";
+import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo, Code2, GitPullRequest } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { toast } from "sonner";
 import { StorefrontBlock } from "../site/StorefrontBlock";
@@ -37,6 +37,9 @@ export function AdminHerenciaNeural(){
  const [proactive,setProactive]=useState<any>(null);
  const [scheduler,setScheduler]=useState<any>(null);
  const [chatStage,setChatStage]=useState<string|null>(null);
+ const [codePrompt,setCodePrompt]=useState("");
+ const [codeStage,setCodeStage]=useState<string|null>(null);
+ const [codeMessages,setCodeMessages]=useState<Message[]>([{role:"neural",text:"Modo programación dedicado. Todo lo que escribas aquí se tratará como una solicitud de código y pasará por plan, aprobación, rama neural/*, verificación y PR.",kind:"code"}]);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -91,6 +94,7 @@ export function AdminHerenciaNeural(){
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
  const cycle=async(key:string)=>{const order:Mode[]=["AUTO","ASK","BLOCK"],current=(permissions[key]||"BLOCK") as Mode,next=order[(order.indexOf(current)+1)%3];try{await backendApi.neuralSetPermission(key,next);toast.success(`${labels[key]||key}: ${next}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const send=async()=>{const q=message.trim();if(!q||chatStage)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");setChatStage("Entendiendo tu mensaje…");try{const r=await backendApi.neuralChat(q,"admin:command-center");setMessages(m=>[...m,{role:"neural",text:r.message||"He procesado tu mensaje.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setChatStage(null)}};
+ const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -102,7 +106,7 @@ export function AdminHerenciaNeural(){
  const consolidatePatterns=async()=>{try{await backendApi.neuralConsolidatePatterns();toast.success("Patrones consolidados en memoria de negocio");await refresh()}catch(e:any){toast.error(e.message||"No se pudieron consolidar patrones")}};
  const consolidateConversations=async()=>{try{const r=await backendApi.neuralConsolidateConversations();toast.success("Conversaciones consolidadas: "+String(r?.promoted?.length||0)+" patrones nuevos");await refresh()}catch(e:any){toast.error(e.message||"No se pudo consolidar el aprendizaje conversacional")}};
 
- const tabs=[["command","Command Center",Brain],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["business","Negocio / Digital Twin",ShoppingBag],["crm","Clientes / CRM",Bot],["automations","Automatizaciones",Activity],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
+ const tabs=[["command","Command Center",Brain],["code","Neural Code",Code2],["brain","Cerebro / Self Model",Brain],["learning","Aprendizaje",Sparkles],["business","Negocio / Digital Twin",ShoppingBag],["crm","Clientes / CRM",Bot],["automations","Automatizaciones",Activity],["tasks","Tareas",ListTodo],["agents","Células",Bot],["memory","Memoria",Database],["research","Investigación",Globe2],["designer","Neural Designer",Palette],["goals","Objetivos",Target],["permissions","Permisos",ShieldCheck],["activity","Auditoría",Activity],["lab","Neural Lab",FlaskConical],["graph","Knowledge Graph",Network],["history","Time Machine",History]] as const;
 
  return <div className="space-y-6">
   <div className="rounded-3xl border bg-gradient-to-r from-emerald-950 to-emerald-800 text-white p-6 shadow-xl">
@@ -151,6 +155,36 @@ export function AdminHerenciaNeural(){
    </Panel>
    <Panel title="Aprobaciones pendientes" icon={ShieldCheck}>
     {approvals.length?<div className="space-y-3">{approvals.slice(0,8).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="border rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b className="text-sm">{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.intent} · {t.assignedCell||"supervisor"} · {t.status}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><b>Plan de Neural</b><p className="mt-1">{plan.summary}</p>{files.length>0&&<div className="mt-2"><span className="font-bold">Archivos:</span> {files.join(", ")}</div>}{plan.acceptanceCriteria?.length>0&&<div className="mt-2"><span className="font-bold">Comprobará:</span><ul className="mt-1 list-disc pl-4">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}<p className="mt-2 font-bold text-emerald-800">Producción no se modifica al aprobar esta preparación.</p></div>}<button onClick={()=>void approve(t.id)} className="mt-3 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold">Aprobar y crear rama de trabajo</button></div>})}</div>:<Empty text="No hay tareas esperando autorización."/>}
+   </Panel>
+  </div>}
+
+  {tab==="code"&&<div className="grid xl:grid-cols-3 gap-5">
+   <Panel title="Neural Code · Programación" icon={Code2} className="xl:col-span-2">
+    <div className="rounded-2xl border bg-emerald-50/60 p-4 text-sm text-emerald-950">
+     <b>Modo de programación explícito.</b> Aquí Neural no intenta decidir si estás conversando o programando: cada solicitud se crea directamente como <code>code_change</code>.
+    </div>
+    <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
+    {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
+    <div className="mt-4 space-y-3">
+     <textarea value={codePrompt} disabled={Boolean(codeStage)} onChange={e=>setCodePrompt(e.target.value)} className="min-h-28 w-full rounded-xl border bg-background p-4 disabled:opacity-60" placeholder="Ejemplo: Crea en el administrador un reloj visible con hora de Madrid. No lo publiques; prepara el cambio para aprobación."/>
+     <button disabled={Boolean(codeStage)||!codePrompt.trim()} onClick={()=>void sendCode()} className="w-full rounded-xl bg-primary px-4 py-3 font-black text-primary-foreground disabled:opacity-50"><Code2 className="mr-2 inline h-4 w-4"/>Preparar cambio de código</button>
+    </div>
+   </Panel>
+   <Panel title="Flujo seguro" icon={ShieldCheck}>
+    <div className="space-y-3 text-sm">
+     <Row label="1. Plan" value="Automático"/>
+     <Row label="2. Aprobación" value="Obligatoria"/>
+     <Row label="3. Rama" value="neural/*"/>
+     <Row label="4. Verificación" value="Obligatoria"/>
+     <Row label="5. Pull Request" value="Sí"/>
+     <Row label="Producción directa" value="Bloqueada"/>
+    </div>
+   </Panel>
+   <Panel title="Aprobaciones de código" icon={ShieldCheck} className="xl:col-span-2">
+    {approvals.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{approvals.filter((t:any)=>t.intent==="code_change").slice(0,10).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.status} · {t.assignedCell||"developer"}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><p>{plan.summary}</p>{files.length>0&&<p className="mt-2"><b>Archivos:</b> {files.join(", ")}</p>}</div>}<button onClick={()=>void approve(t.id)} className="mt-3 w-full rounded-xl bg-amber-100 px-3 py-2 font-black text-amber-900">Aprobar y programar en rama</button></div>})}</div>:<Empty text="No hay cambios de código esperando aprobación."/>}
+   </Panel>
+   <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
+    {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};return <div key={t.id} className="rounded-xl border p-3 text-sm"><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p>{result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}{result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Verificación superada</p>}</div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
    </Panel>
   </div>}
 
