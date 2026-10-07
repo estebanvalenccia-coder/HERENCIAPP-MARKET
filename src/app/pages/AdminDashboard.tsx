@@ -190,6 +190,16 @@ export function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    const onExpired = () => {
+      setIsAuthenticated(false);
+      setIsCheckingSession(false);
+      toast.error("Tu sesión de administrador ha caducado. Inicia sesión de nuevo para continuar.");
+    };
+    window.addEventListener("herencia:admin-session-expired", onExpired);
+    return () => window.removeEventListener("herencia:admin-session-expired", onExpired);
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated || !backendApi.enabled) {
       setRealtimeConnected(false);
       return;

@@ -209,6 +209,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     backendAvailable = false;
     lastBackendError = await readErrorResponse(response);
+    if (response.status === 401 && path.startsWith("/api/neural")) {
+      window.dispatchEvent(new CustomEvent("herencia:admin-session-expired"));
+    }
     throw new Error(lastBackendError);
   }
 

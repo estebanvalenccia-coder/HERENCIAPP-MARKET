@@ -363,6 +363,8 @@ function requireAdmin(req, res, next) {
 }
 
 function cookieOptions(maxAgeSeconds) {
+  // The admin API is consumed through the same-origin /api proxy on herenciamarket.es.
+  // Host-only cookies keep the session bound to the public site/proxy while Secure protects production transport.
   return `HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${isProduction ? "; Secure" : ""}`;
 }
 
