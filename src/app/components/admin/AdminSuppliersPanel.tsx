@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Bot,
   Building2,
-  CheckCircle2,
   ClipboardCopy,
   ExternalLink,
   Link2,
@@ -138,11 +137,6 @@ export function AdminSuppliersPanel() {
     [importedProducts]
   );
 
-  const spent = useMemo(
-    () => (operations.purchases || []).reduce((sum: number, item: any) => sum + Number(item.total || 0), 0),
-    [operations]
-  );
-
   const selectedProduct = catalogProducts.find((product: any) => String(product.id) === String(purchase.productId));
 
   const saveSupplier = async () => {
@@ -207,7 +201,7 @@ export function AdminSuppliersPanel() {
     setBusyId("product:" + id);
     try {
       await backendApi.updateCommerceProduct(id, {
-        trackInventory: enabled ? false : product.trackInventory !== false,
+        trackInventory: enabled ? false : true,
         metadata: {
           ...metadata,
           fulfillmentType: enabled ? "dropship" : "stock",
