@@ -466,8 +466,21 @@ const server=http.createServer(async(req,res)=>{try{
     if(!status)return json(res,400,{error:"Estado obligatorio"});
     const allowed=new Set(["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed","preparing","processing","ready","delivered","completed","cancelled","refunded","payment_error","payment_canceled"]);
     if(!allowed.has(status))return json(res,400,{error:"Estado no válido"});
-    const updated=await patchNeonOrder(decodeURIComponent(orderStatusMatch[1]),{status});
+    const orderId=decodeURIComponent(orderStatusMatch[1]);
+    const updated=await patchNeonOrder(orderId,{status});
     if(!updated)return json(res,404,{error:"Pedido no encontrado"});
+    if(["paid","confirmed","preparing","processing","ready"].includes(status)){
+      void fetch(`${legacyUrl}/api/admin/supplier-fulfillments/prepare/${encodeURIComponent(orderId)}`,{
+        method:"POST",
+        headers:{"content-type":"application/json",cookie:cookies(req)},
+        body:JSON.stringify({executeAutopilot:true})
+      }).then(async(response)=>{
+        if(!response.ok){
+          const message=await response.text().catch(()=>"");
+          console.error("[supplier-autopilot] prepare failed",response.status,message.slice(0,300));
+        }
+      }).catch((error)=>console.error("[supplier-autopilot] gateway trigger failed",error?.message||error));
+    }
     return json(res,200,{order:normalizeOrderRow(updated),source:"neon"});
   }
 
