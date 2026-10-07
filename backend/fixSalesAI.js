@@ -326,7 +326,9 @@ async function identifyWithGemini({ data, mimeType, catalog }) {
 Identifica la planta o producto y analiza, cuando sea relevante, signos visibles compatibles con problemas de riego, luz, humedad, sustrato, nutrientes, plagas u hongos.
 Puedes explicar cuidados, prevención, recuperación, propagación, trasplante, poda y jardinería. Si la imagen no permite un diagnóstico fiable, dilo y pide el dato mínimo que falte. No presentes una sospecha visual como certeza.
 También puedes relacionar la consulta con productos REALES del catálogo cuando sean útiles, sin forzar una venta.
-Catálogo disponible: ${catalogText}
+El catálogo es la fuente de verdad y puede contener productos temporalmente agotados: available=true se puede comprar ahora; available=false significa que el producto existe en Herencia pero está agotado/no disponible.
+Si la planta o producto identificado coincide por nombre, nombre científico, categoría o etiqueta con un artículo del catálogo, devuelve su ID exacto aunque available=false y explica claramente su disponibilidad. No digas que Herencia no lo vende si sí aparece en el catálogo.
+Catálogo real completo: ${catalogText}
 Devuelve SOLO JSON:
 {
   "reply": "respuesta útil; puede incluir diagnóstico orientativo, cuidados y pasos recomendados",
