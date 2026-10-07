@@ -425,6 +425,22 @@ export const backendApi = {
     });
   },
 
+  async repairImportedCatalogDrafts(sourceHost = "", limit = 30) {
+    const result = await request<{
+      ok: boolean;
+      candidates: number;
+      repaired: number;
+      errors: number;
+      results: Array<{ id: string; name: string; ok: boolean; images?: number; error?: string }>;
+      source?: string;
+    }>("/api/admin/catalog/import-url/repair-drafts", {
+      method: "POST",
+      body: JSON.stringify({ sourceHost, limit }),
+    });
+    emitCommerceProductsChange();
+    return result;
+  },
+
   async preload() {
     if (!preloadPromise) {
       preloadPromise = request<{ data: Record<string, string> }>("/api/storage")
