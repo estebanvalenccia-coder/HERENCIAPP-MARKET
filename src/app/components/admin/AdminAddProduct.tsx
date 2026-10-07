@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { COLOMBIA_DELIVERY_STORAGE_KEY, parseColombiaDeliverySettings } from "../../lib/internationalDelivery";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
+import { MediaLibraryPicker } from "./MediaLibraryPicker";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -470,6 +471,28 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
     setImageUrlInput("");
   }
 
+  function addImagesFromLibrary(urls: string[]) {
+    setSelectedImages((current) => {
+      const existing = new Set(
+        current.map((image) => String(image.remoteUrl || image.preview || "").trim()).filter(Boolean)
+      );
+      const remaining = Math.max(0, 8 - current.length);
+      const additions = urls
+        .map((url) => String(url || "").trim())
+        .filter((url) => url && !existing.has(url))
+        .slice(0, remaining)
+        .map((url, index) => ({
+          id: `library-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+          remoteUrl: url,
+          preview: url,
+        }));
+      if (additions.length) {
+        toast.success(additions.length === 1 ? "Foto añadida desde la biblioteca" : `${additions.length} fotos añadidas desde la biblioteca`);
+      }
+      return [...current, ...additions].slice(0, 8);
+    });
+  }
+
   function setPrimaryImage(index: number) {
     if (index <= 0 || index >= selectedImages.length) return;
     setSelectedImages((current) => {
@@ -857,19 +880,35 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </div>
 
                   {selectedImages.length < 8 && (
-                    <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 px-4 py-4 text-sm font-bold hover:bg-muted/40">
-                      <Upload className="h-4 w-4" /> Añadir más fotos
-                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleImageUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                    </label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 px-4 py-4 text-sm font-bold hover:bg-muted/40">
+                        <Upload className="h-4 w-4" /> Subir más fotos
+                        <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleImageUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                      </label>
+                      <MediaLibraryPicker
+                        currentUrls={selectedImages.map((image) => image.remoteUrl || "").filter(Boolean)}
+                        max={8}
+                        onSelect={addImagesFromLibrary}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-4 py-4 text-sm font-black text-primary hover:bg-primary/10"
+                      />
+                    </div>
                   )}
                 </div>
               ) : (
-                <label className="relative flex h-80 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30 text-center hover:bg-muted/60">
-                  <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                  <span className="font-bold">Subir fotos</span>
-                  <span className="mt-1 max-w-64 text-xs text-muted-foreground">Hasta 8 imágenes JPG, PNG, WEBP, GIF o AVIF · máximo 8 MB cada una</span>
-                  <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleImageUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                </label>
+                <div className="space-y-3">
+                  <label className="relative flex h-64 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30 text-center hover:bg-muted/60">
+                    <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
+                    <span className="font-bold">Subir fotos</span>
+                    <span className="mt-1 max-w-64 text-xs text-muted-foreground">Hasta 8 imágenes JPG, PNG, WEBP, GIF o AVIF · máximo 8 MB cada una</span>
+                    <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" onChange={handleImageUpload} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  </label>
+                  <MediaLibraryPicker
+                    currentUrls={[]}
+                    max={8}
+                    onSelect={addImagesFromLibrary}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 px-4 py-4 text-sm font-black text-primary hover:bg-primary/10"
+                  />
+                </div>
               )}
 
               <div className="mt-3 rounded-2xl border border-border bg-background p-3">
