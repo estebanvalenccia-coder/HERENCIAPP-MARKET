@@ -84,6 +84,7 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  imagePreview?: string;
   productIds?: string[];
   bouquetDraft?: BouquetDraft | null;
   bouquetResult?: BouquetResult | null;
@@ -341,7 +342,6 @@ export function SalesChatWidget() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [imageLoading, setImageLoading] = useState(false);
   const [spaceLoading, setSpaceLoading] = useState(false);
-  const [handoffLoading, setHandoffLoading] = useState(false);
   const [spaceTargetProduct, setSpaceTargetProduct] = useState<SalesProduct | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
@@ -741,7 +741,12 @@ export function SalesChatWidget() {
 
       setMessages((prev) => [
         ...prev,
-        { id: newId(), role: "user", content: `📷 Quiero ver ${product.name} colocado en este espacio.` },
+        {
+          id: newId(),
+          role: "user",
+          content: `Quiero ver ${product.name} colocado en este espacio.`,
+          imagePreview: dataUrl,
+        },
       ]);
 
       const response = await fetch("/api/ai/sales-space-preview", {
@@ -799,6 +804,16 @@ export function SalesChatWidget() {
         reader.readAsDataURL(file);
       });
 
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: "user",
+          content: "Buscar por esta foto",
+          imagePreview: dataUrl,
+        },
+      ]);
+
       const base64 = dataUrl.split(",")[1] || "";
       const response = await fetch("/api/ai/sales-identify", {
         method: "POST",
@@ -816,7 +831,6 @@ export function SalesChatWidget() {
       const ids = Array.isArray(data.productIds) ? data.productIds.map(String) : [];
       setMessages((prev) => [
         ...prev,
-        { id: newId(), role: "user", content: "📷 Quiero comprar una planta o producto como el de esta foto." },
         { id: newId(), role: "assistant", content: data.reply, productIds: ids },
       ]);
 
@@ -830,56 +844,6 @@ export function SalesChatWidget() {
     } finally {
       setLoading(false);
       if (fileRef.current) fileRef.current.value = "";
-    }
-  };
-
-  const handoffToFlorist = async () => {
-    if (handoffLoading) return;
-    setHandoffLoading(true);
-    try {
-      const summary = messages
-        .filter((message) => message.id !== "welcome")
-        .slice(-12)
-        .map((message) => `${message.role === "user" ? "Cliente" : "HERENCIA SALES"}: ${message.content}`)
-        .join("\n");
-
-      await backendApi.createOrder({
-        id: `sales-handoff-${Date.now()}`,
-        customerName: "Consulta HERENCIA SALES",
-        paymentMethod: "pendiente",
-        deliveryMethod: "consulta-floristeria",
-        status: "pending_store_confirmation",
-        subtotal: 0,
-        shipping: 0,
-        total: 0,
-        items: [],
-        metadata: {
-          source: "HERENCIA_SALES_HANDOFF",
-          type: "sales_handoff",
-          herenciaSales: true,
-          conversationId,
-          notes: summary || "El cliente solicita atención de la floristería desde HERENCIA SALES.",
-          salesConversation: messages
-            .filter((message) => message.id !== "welcome")
-            .slice(-12)
-            .map((message) => ({ role: message.role, content: message.content })),
-        },
-      });
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: newId(),
-          role: "assistant",
-          content: "He enviado la conversación a la floristería. El equipo podrá revisar lo que estabas buscando sin que tengas que repetirlo.",
-        },
-      ]);
-      trackSalesEvent("sales_handoff", { conversationId, eventLabel: "Floristería" });
-      toast.success("Consulta enviada a la floristería");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo enviar la consulta");
-    } finally {
-      setHandoffLoading(false);
     }
   };
 
@@ -920,7 +884,7 @@ export function SalesChatWidget() {
                 <p className="mt-2 text-xl font-black leading-tight">{sales.title}</p>
                 <p className="mt-1 text-sm text-white/78">{sales.prompt}</p>
                 <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-white/55">
-                  {catalogLoading ? "Sincronizando catálogo…" : `${catalog.length} productos reales conectados`}
+                  {catalogLoading ? "Sincronizando catálogo…" : catalog.length ? `${catalog.length} productos reales conectados` : "Catálogo real conectado desde servidor"}
                 </p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 transition hover:bg-white/10" aria-label="Cerrar">
@@ -933,7 +897,14 @@ export function SalesChatWidget() {
             {messages.map((message) => (
               <div key={message.id} className={message.role === "user" ? "ml-10" : "mr-4"}>
                 <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-[#315b42] text-white" : "border border-[#e0ddd5] bg-white"}`}>
-                  {message.content}
+                  {message.imagePreview ? (
+                    <img
+                      src={message.imagePreview}
+                      alt="Imagen enviada al chat"
+                      className="mb-3 max-h-64 w-full rounded-xl object-cover"
+                    />
+                  ) : null}
+                  <div>{message.content}</div>
                 </div>
 
                 {!!message.productIds?.length ? (
@@ -1093,13 +1064,10 @@ export function SalesChatWidget() {
               <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"><Camera className="h-4 w-4" /> Buscar por foto</button>
               <button type="button" onClick={openSpacePicker} className="flex items-center gap-2 rounded-full border border-[#315b42]/30 bg-[#eef2eb] px-3 py-2 text-xs font-bold text-[#315b42]"><ImageIcon className="h-4 w-4" /> Ver en mi espacio</button>
               <a href="/crear-ramo" className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"><Flower2 className="h-4 w-4" /> Creador manual</a>
-              <button type="button" onClick={() => void handoffToFlorist()} disabled={handoffLoading} className="flex items-center gap-2 rounded-full border border-[#315b42]/30 px-3 py-2 text-xs font-bold text-[#315b42] disabled:opacity-50">
-                {handoffLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Floristería
-              </button>
             </div>
             <div className="flex items-end gap-2">
               <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={1} placeholder="Dime qué quieres comprar o crear…" className="max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-[#ded9cd] bg-white px-4 py-3 text-sm outline-none focus:border-[#315b42]" />
-              <button type="button" onClick={() => void send()} disabled={!input.trim() || loading || !catalog.length} className="grid h-11 w-11 place-items-center rounded-full bg-[#315b42] text-white disabled:opacity-40" aria-label="Enviar">
+              <button type="button" onClick={() => void send()} disabled={!input.trim() || loading} className="grid h-11 w-11 place-items-center rounded-full bg-[#315b42] text-white disabled:opacity-40" aria-label="Enviar">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </div>
