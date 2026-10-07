@@ -1,4 +1,5 @@
 import { BarChart3, Boxes, BrainCircuit, CreditCard, LayoutDashboard, Package2, Receipt, Settings, ShoppingBag, Truck, Users, Wallet } from 'lucide-react'
+import ColombiaClock from './ColombiaClock';
 
 const sections = [
   { icon: LayoutDashboard, label: 'Dashboard' },
@@ -61,7 +62,10 @@ export function AdminERPLayout(){
           </div>
         </aside>
 
-        <main className='p-8'>
+        <main className='relative p-8'>
+          {/* Clock positioned at the top‑right */}
+          <ColombiaClock className='absolute top-4 right-4' />
+
           <section className='rounded-[2.5rem] border border-emerald-100 bg-white/90 p-8 shadow-2xl backdrop-blur-xl'>
             <div className='flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between'>
               <div>
