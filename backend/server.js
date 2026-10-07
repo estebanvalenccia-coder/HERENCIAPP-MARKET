@@ -1287,7 +1287,29 @@ app.post(
             String(previousOrder?.stripe_payment_intent_id || "") === String(paymentIntent.id || "");
 
           if (!alreadyConfirmed) {
-            broadcastAdminOrderEvent(inventoryOrder, "order_paid");
+      
+      try {
+        const supplierFulfillments = await buildSupplierFulfillmentsForOrder(inventoryOrder);
+        for (const fulfillment of supplierFulfillments) {
+          if (fulfillment.mode === "autopilot" && fulfillment.status === "autopilot_ready") {
+            void executeSupplierFulfillment(fulfillment.id).catch((supplierError) =>
+              console.error("Autopilot proveedor:", supplierError?.message || supplierError)
+            );
+          }
+        }
+      } catch (supplierError) {
+        console.error("No se pudo preparar Autopilot de proveedor:", supplierError?.message || supplierError);
+        await addAutomationNotification({
+          type: "supplier_fulfillment_error",
+          title: "Pedido pagado con incidencia de proveedor",
+          message: "Pedido #" + String(inventoryOrder.id).slice(0,8) + ": " + String(supplierError?.message || supplierError),
+          entityType: "order",
+          entityId: String(inventoryOrder.id),
+          dedupeKey: "supplier-fulfillment:" + String(inventoryOrder.id),
+        }).catch(() => null);
+      }
+
+      broadcastAdminOrderEvent(inventoryOrder, "order_paid");
             void emitNeuralBusinessEvent("order.paid", normalizeOrder(inventoryOrder));
 
             try {
@@ -3760,6 +3782,15 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     }
   }
 
+
+  if (["paid", "confirmed", "preparing", "processing", "ready"].includes(status)) {
+    try {
+      await buildSupplierFulfillmentsForOrder(data);
+    } catch (supplierError) {
+      console.error("No se pudo preparar fulfillment de proveedor:", supplierError?.message || supplierError);
+    }
+  }
+
   void emitNeuralBusinessEvent("order.status_changed", { ...normalizeOrder(data), previousStatus: previousOrder.status, nextStatus: status });
   res.json({ order: data, statusEmailResult });
 });
@@ -4735,19 +4766,396 @@ app.post("/api/pos/gift-cards/redeem", requireAdmin, async (req, res) => {
   }
 });
 
+
+function normalizeSupplierSourceHost(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw.includes("://") ? raw : "https://" + raw);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return raw.replace(/^www\./, "").split("/")[0];
+  }
+}
+
+function normalizeSupplierFulfillmentMode(value = "") {
+  return String(value || "").toLowerCase() === "autopilot" ? "autopilot" : "manual";
+}
+
+async function readSupplierOperations() {
+  const defaults = {
+    giftCards: [],
+    floristOrders: [],
+    suppliers: [],
+    purchases: [],
+    staff: [],
+    staffShifts: [],
+    loyalty: {},
+    quotes: [],
+    inventoryAdjustments: [],
+    supplierFulfillments: [],
+  };
+  return {
+    ...defaults,
+    ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}),
+  };
+}
+
+async function writeSupplierOperations(operations) {
+  await upsertStorageValue("posOperations", JSON.stringify(operations));
+  return operations;
+}
+
+function compactShippingAddress(order = {}) {
+  const metadata = order?.metadata && typeof order.metadata === "object" ? order.metadata : {};
+  const address = metadata.shippingAddress && typeof metadata.shippingAddress === "object"
+    ? metadata.shippingAddress
+    : {};
+  return {
+    name: String(address.name || order.customer_name || order.customerName || "").trim().slice(0, 160),
+    phone: String(address.phone || metadata.phone || "").trim().slice(0, 80),
+    address: String(address.address || address.line1 || address.street || "").trim().slice(0, 320),
+    address2: String(address.address2 || address.line2 || "").trim().slice(0, 220),
+    postalCode: String(address.postalCode || address.zip || address.postcode || "").trim().slice(0, 32),
+    city: String(address.city || "").trim().slice(0, 120),
+    province: String(address.province || address.state || "").trim().slice(0, 120),
+    country: String(address.country || "ES").trim().slice(0, 80),
+    notes: String(metadata.deliveryNotes || metadata.notes || "").trim().slice(0, 600),
+  };
+}
+
+async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) {
+  if (!order?.id) return [];
+  const operations = await readSupplierOperations();
+  const products = await loadAuthoritativeProducts({ includeArchived: true });
+  const byId = new Map((Array.isArray(products) ? products : []).map((product) => [String(product?.id ?? ""), product]));
+  const existing = Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [];
+  const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
+  const groups = new Map();
+
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    const product = byId.get(String(item?.id ?? ""));
+    if (!product) continue;
+    const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    const sourceProductUrl = String(metadata.sourceProductUrl || "").trim();
+    const sourceHost = normalizeSupplierSourceHost(metadata.sourceHost || (() => {
+      try { return sourceProductUrl ? new URL(sourceProductUrl).hostname : ""; } catch { return ""; }
+    })());
+    const fulfillmentType = String(metadata.fulfillmentType || "").toLowerCase();
+    const imported = Boolean(metadata.importedFromUrl || sourceProductUrl);
+    if (fulfillmentType !== "dropship" && !imported) continue;
+
+    const supplierId = String(metadata.supplierId || "").trim();
+    const supplier =
+      suppliers.find((entry) => supplierId && String(entry?.id || "") === supplierId) ||
+      suppliers.find((entry) => sourceHost && normalizeSupplierSourceHost(entry?.sourceHost) === sourceHost) ||
+      null;
+    const mode = normalizeSupplierFulfillmentMode(metadata.fulfillmentMode || supplier?.fulfillmentMode);
+    const supplierCost = normalizeMoney(metadata.supplierCost ?? metadata.supplierUnitCost ?? 0);
+    const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? item?.qty ?? 1)));
+    const key = supplier?.id ? "supplier:" + supplier.id : "host:" + (sourceHost || "unassigned");
+    const group = groups.get(key) || {
+      supplier,
+      supplierId: supplier?.id || supplierId || "",
+      supplierName: supplier?.name || sourceHost || "Proveedor sin asignar",
+      sourceHost,
+      mode,
+      items: [],
+      estimatedCost: 0,
+      allCostsKnown: true,
+    };
+    group.items.push({
+      productId: String(product.id),
+      name: String(product.name || item?.name || "Producto"),
+      sku: String(product.sku || ""),
+      quantity,
+      selectedVariant: String(item?.selectedVariant || ""),
+      sourceProductUrl,
+      sourceHost,
+      supplierCost,
+      estimatedCost: normalizeMoney(supplierCost * quantity),
+    });
+    if (!(supplierCost > 0)) group.allCostsKnown = false;
+    group.estimatedCost = normalizeMoney(group.estimatedCost + supplierCost * quantity);
+    groups.set(key, group);
+  }
+
+  if (!groups.size) return [];
+
+  const created = [];
+  for (const group of groups.values()) {
+    const dedupeKey = String(order.id) + "::" + (group.supplierId || group.sourceHost || "unassigned");
+    const found = existing.find((entry) => String(entry?.dedupeKey || "") === dedupeKey);
+    if (found && !force) {
+      created.push(found);
+      continue;
+    }
+
+    const now = new Date().toISOString();
+    const supplier = group.supplier;
+    const mode = normalizeSupplierFulfillmentMode(group.mode);
+    let status = "manual_ready";
+    let blocker = "";
+    if (!supplier) {
+      status = "supplier_required";
+      blocker = "Asigna un proveedor antes de procesar este pedido.";
+    } else if (supplier.active === false) {
+      status = "supplier_disabled";
+      blocker = "El proveedor está desactivado.";
+    } else if (mode === "autopilot") {
+      status = "autopilot_ready";
+      if (!group.allCostsKnown) {
+        status = "cost_required";
+        blocker = "Configura el coste proveedor de todos los productos antes de usar Autopilot.";
+      }
+      const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
+      if (!blocker && maxAutoOrderTotal > 0 && group.estimatedCost > maxAutoOrderTotal) {
+        status = "approval_required";
+        blocker = "El coste estimado supera el límite automático del proveedor.";
+      }
+    }
+
+    const record = {
+      id: found?.id || crypto.randomUUID(),
+      dedupeKey,
+      orderId: String(order.id),
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      sourceHost: group.sourceHost,
+      mode,
+      status,
+      blocker,
+      items: group.items,
+      estimatedCost: group.estimatedCost,
+      customerEmail: String(order.customer_email || order.customerEmail || ""),
+      customerName: String(order.customer_name || order.customerName || ""),
+      shippingAddress: compactShippingAddress(order),
+      externalOrderId: found?.externalOrderId || "",
+      trackingNumber: found?.trackingNumber || "",
+      trackingUrl: found?.trackingUrl || "",
+      createdAt: found?.createdAt || now,
+      updatedAt: now,
+    };
+
+    const nextExisting = operations.supplierFulfillments || [];
+    const index = nextExisting.findIndex((entry) => String(entry?.dedupeKey || "") === dedupeKey);
+    if (index >= 0) nextExisting[index] = record;
+    else nextExisting.unshift(record);
+    operations.supplierFulfillments = nextExisting.slice(0, 2000);
+    created.push(record);
+  }
+
+  await writeSupplierOperations(operations);
+  return created;
+}
+
+async function executeSupplierFulfillment(recordId, { force = false } = {}) {
+  const operations = await readSupplierOperations();
+  const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(recordId));
+  if (index < 0) throw Object.assign(new Error("Preparación de proveedor no encontrada"), { statusCode: 404 });
+
+  const record = operations.supplierFulfillments[index];
+  const supplier = (operations.suppliers || []).find((entry) => String(entry?.id || "") === String(record.supplierId || ""));
+  if (!supplier) throw Object.assign(new Error("Asigna un proveedor antes de continuar"), { statusCode: 409 });
+  if (supplier.active === false) throw Object.assign(new Error("El proveedor está desactivado"), { statusCode: 409 });
+
+  const now = new Date().toISOString();
+  if (record.mode !== "autopilot") {
+    const updated = {
+      ...record,
+      status: "manual_purchase_required",
+      blocker: "",
+      approvedAt: now,
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: true };
+  }
+
+  const allCostsKnown = (record.items || []).every((item) => Number(item?.supplierCost || 0) > 0);
+  if (!allCostsKnown && !force) {
+    const updated = { ...record, status: "cost_required", blocker: "Falta el coste proveedor de uno o más productos.", updatedAt: now };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
+  if (!force && maxAutoOrderTotal > 0 && Number(record.estimatedCost || 0) > maxAutoOrderTotal) {
+    const updated = { ...record, status: "approval_required", blocker: "Supera el límite automático configurado.", updatedAt: now };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  const connectorUrl = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim();
+  const connectorToken = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "").trim();
+  if (!connectorUrl) {
+    const updated = {
+      ...record,
+      status: "connector_required",
+      blocker: "Autopilot está preparado, pero falta conectar un proveedor/API autorizado.",
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  let response;
+  let payload = {};
+  try {
+    response = await fetch(connectorUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(connectorToken ? { authorization: "Bearer " + connectorToken } : {}),
+      },
+      body: JSON.stringify({
+        event: "supplier.order.create",
+        supplier: {
+          id: supplier.id,
+          name: supplier.name,
+          sourceHost: supplier.sourceHost || record.sourceHost || "",
+        },
+        fulfillment: {
+          id: record.id,
+          orderId: record.orderId,
+          items: record.items,
+          estimatedCost: record.estimatedCost,
+          shippingAddress: record.shippingAddress,
+          customerName: record.customerName,
+          customerEmail: record.customerEmail,
+        },
+      }),
+    });
+    const raw = await response.text();
+    try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { message: raw.slice(0, 500) }; }
+  } catch (error) {
+    const updated = {
+      ...record,
+      status: "action_required",
+      blocker: "El conector Autopilot no respondió.",
+      lastError: String(error?.message || error).slice(0, 600),
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  if (!response.ok) {
+    const updated = {
+      ...record,
+      status: "action_required",
+      blocker: "El proveedor rechazó la compra automática.",
+      lastError: String(payload?.error || payload?.message || ("HTTP " + response.status)).slice(0, 600),
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  const updated = {
+    ...record,
+    status: String(payload?.status || "ordered"),
+    blocker: "",
+    externalOrderId: String(payload?.externalOrderId || payload?.orderId || record.externalOrderId || ""),
+    trackingNumber: String(payload?.trackingNumber || record.trackingNumber || ""),
+    trackingUrl: String(payload?.trackingUrl || record.trackingUrl || ""),
+    orderedAt: now,
+    updatedAt: now,
+    lastError: "",
+  };
+  operations.supplierFulfillments[index] = updated;
+  await writeSupplierOperations(operations);
+  return { fulfillment: updated, executed: true, manual: false };
+}
+
+app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const operations = await readSupplierOperations();
+    res.json({
+      fulfillments: Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [],
+      suppliers: Array.isArray(operations.suppliers) ? operations.suppliers : [],
+      autopilotConnectorConfigured: Boolean(String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim()),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo cargar la cola de proveedores" });
+  }
+});
+
+app.post("/api/admin/supplier-fulfillments/prepare/:orderId", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const order = await getOrderPrimary(req.params.orderId);
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    const fulfillments = await buildSupplierFulfillmentsForOrder(order, { force: Boolean(req.body?.force) });
+    res.json({ fulfillments });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo preparar el pedido de proveedor" });
+  }
+});
+
+app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const result = await executeSupplierFulfillment(req.params.id, { force: Boolean(req.body?.force) });
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo procesar el pedido del proveedor" });
+  }
+});
+
+app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const operations = await readSupplierOperations();
+    const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
+    const previous = operations.supplierFulfillments[index];
+    const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","cost_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
+    const requestedStatus = String(req.body?.status || previous.status);
+    const updated = {
+      ...previous,
+      status: allowedStatus.has(requestedStatus) ? requestedStatus : previous.status,
+      externalOrderId: req.body?.externalOrderId == null ? previous.externalOrderId : String(req.body.externalOrderId || "").slice(0, 180),
+      trackingNumber: req.body?.trackingNumber == null ? previous.trackingNumber : String(req.body.trackingNumber || "").slice(0, 180),
+      trackingUrl: req.body?.trackingUrl == null ? previous.trackingUrl : String(req.body.trackingUrl || "").slice(0, 1000),
+      blocker: req.body?.blocker == null ? previous.blocker : String(req.body.blocker || "").slice(0, 600),
+      updatedAt: new Date().toISOString(),
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    res.json({ fulfillment: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo actualizar el pedido del proveedor" });
+  }
+});
+
+
 app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
+    const existingSupplier = (current.suppliers || []).find((item) => String(item?.id || "") === String(req.body?.id || ""));
     const supplier = {
-      id: String(req.body?.id || crypto.randomUUID()),
-      name: String(req.body?.name || "").trim(),
-      nif: String(req.body?.nif || "").trim(),
-      email: String(req.body?.email || "").trim(),
-      phone: String(req.body?.phone || "").trim(),
-      notes: String(req.body?.notes || "").trim(),
-      active: req.body?.active !== false,
+      ...(existingSupplier || {}),
+      id: String(req.body?.id || existingSupplier?.id || crypto.randomUUID()),
+      name: String(req.body?.name ?? existingSupplier?.name ?? "").trim(),
+      nif: String(req.body?.nif ?? existingSupplier?.nif ?? "").trim(),
+      email: String(req.body?.email ?? existingSupplier?.email ?? "").trim(),
+      phone: String(req.body?.phone ?? existingSupplier?.phone ?? "").trim(),
+      category: String(req.body?.category ?? existingSupplier?.category ?? "").trim().slice(0, 120),
+      sourceHost: normalizeSupplierSourceHost(req.body?.sourceHost ?? existingSupplier?.sourceHost ?? ""),
+      fulfillmentMode: normalizeSupplierFulfillmentMode(req.body?.fulfillmentMode ?? existingSupplier?.fulfillmentMode ?? "manual"),
+      maxAutoOrderTotal: Math.max(0, normalizeMoney(req.body?.maxAutoOrderTotal ?? existingSupplier?.maxAutoOrderTotal ?? 0)),
+      notes: String(req.body?.notes ?? existingSupplier?.notes ?? "").trim().slice(0, 1000),
+      active: req.body?.active == null ? existingSupplier?.active !== false : req.body.active !== false,
       updatedAt: new Date().toISOString(),
     };
     if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
