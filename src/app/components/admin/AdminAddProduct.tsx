@@ -205,11 +205,13 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
 
   function changeCollection(nextId: string) {
     const next = getCommerceCollection(nextId);
+    const nextIsService = isServiceCollection(next.id);
     patch({
       collection: next.id,
       category: next.categories[0]?.id || next.id,
-      trackInventory: next.inventoryDefault,
-      stock: next.inventoryDefault ? formData.stock : "0",
+      trackInventory: nextIsService ? false : next.inventoryDefault,
+      stock: nextIsService ? "0" : next.inventoryDefault ? formData.stock : "0",
+      barcode: nextIsService ? "" : formData.barcode,
       extraCollections: formData.extraCollections.filter((id) => id !== next.id),
     });
   }
@@ -773,8 +775,16 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                       : "border-border bg-background hover:bg-muted/50"
                   }`}
                 >
-                  <p className="font-black">{item.name}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                  <p className="font-black">
+                    {item.id === "jardineria" ? "Jardinería (productos)" : item.id === "servicios" ? "Servicios por horas" : item.name}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {item.id === "jardineria"
+                      ? "Herramientas, riego, fertilizantes y accesorios físicos."
+                      : item.id === "servicios"
+                        ? "Jardinería, limpieza, asesoría, mantenimiento y otros servicios reservables."
+                        : item.description}
+                  </p>
                 </button>
               ))}
             </div>
@@ -1045,10 +1055,26 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
           </section>
 
           <section className="rounded-2xl border border-border bg-muted/20 p-5">
-            <h3 className="text-lg font-black">4. Precio, margen e inventario</h3>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-black">
+                  {service ? "4. Precio por hora y condiciones de cobro" : "4. Precio, margen e inventario"}
+                </h3>
+                {service && (
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                    Aquí defines cuánto cuesta una hora del servicio. El total se calcula según las horas que el cliente reserve.
+                  </p>
+                )}
+              </div>
+              {service && (
+                <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-black text-primary">
+                  SERVICIO · SIN STOCK
+                </span>
+              )}
+            </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-sm font-bold">
-                Precio normal (€) *
+                {service ? "Precio por hora (€) *" : "Precio normal (€) *"}
                 <input
                   type="number"
                   min="0"
@@ -1059,7 +1085,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 />
               </label>
               <label className="text-sm font-bold">
-                Coste (€)
+                {service ? "Coste interno por hora (€)" : "Coste (€)"}
                 <input
                   type="number"
                   min="0"
@@ -1081,7 +1107,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 />
               </label>
               <div className="rounded-xl border border-border bg-background p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Margen estimado</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{service ? "Margen por hora" : "Margen estimado"}</p>
                 <p className="mt-2 text-xl font-black">{margin > 0 ? `€${margin.toFixed(2)}` : "—"}</p>
                 <p className="text-xs text-muted-foreground">{marginPercent > 0 ? `${marginPercent.toFixed(1)}%` : "Añade coste"}</p>
               </div>
@@ -1122,60 +1148,91 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               </label>
             )}
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="text-sm font-bold">
-                SKU
-                <input
-                  value={formData.sku}
-                  onChange={(event) => patch({ sku: event.target.value })}
-                  placeholder="Automático si se deja vacío"
-                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
-                />
-              </label>
-              <label className="text-sm font-bold">
-                Código de barras
-                <input
-                  value={formData.barcode}
-                  onChange={(event) => patch({ barcode: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
-                />
-              </label>
-              <label className="text-sm font-bold">
-                Stock
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  disabled={!formData.trackInventory}
-                  value={formData.stock}
-                  onChange={(event) => patch({ stock: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 disabled:opacity-50"
-                />
-              </label>
-              <label className="text-sm font-bold">
-                Estado
-                <select
-                  value={formData.status}
-                  onChange={(event) => patch({ status: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
-                >
-                  <option value="active">Publicado</option>
-                  <option value="draft">Borrador</option>
-                </select>
-              </label>
-            </div>
+            {service ? (
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 sm:col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-primary">Cómo se cobrará</p>
+                  <p className="mt-2 text-sm font-semibold">El cliente paga las horas seleccionadas al reservar.</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    No hay stock, unidades ni gastos de envío. Las horas adicionales que excedan la reserva se cobran posteriormente.
+                  </p>
+                </div>
+                <label className="text-sm font-bold">
+                  Referencia interna / SKU
+                  <input
+                    value={formData.sku}
+                    onChange={(event) => patch({ sku: event.target.value })}
+                    placeholder="Automático si se deja vacío"
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                  />
+                </label>
+                <label className="text-sm font-bold">
+                  Estado
+                  <select
+                    value={formData.status}
+                    onChange={(event) => patch({ status: event.target.value })}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                  >
+                    <option value="active">Publicado</option>
+                    <option value="draft">Borrador</option>
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="text-sm font-bold">
+                    SKU
+                    <input
+                      value={formData.sku}
+                      onChange={(event) => patch({ sku: event.target.value })}
+                      placeholder="Automático si se deja vacío"
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                    />
+                  </label>
+                  <label className="text-sm font-bold">
+                    Código de barras
+                    <input
+                      value={formData.barcode}
+                      onChange={(event) => patch({ barcode: event.target.value })}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                    />
+                  </label>
+                  <label className="text-sm font-bold">
+                    Stock
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      disabled={!formData.trackInventory}
+                      value={formData.stock}
+                      onChange={(event) => patch({ stock: event.target.value })}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="text-sm font-bold">
+                    Estado
+                    <select
+                      value={formData.status}
+                      onChange={(event) => patch({ status: event.target.value })}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+                    >
+                      <option value="active">Publicado</option>
+                      <option value="draft">Borrador</option>
+                    </select>
+                  </label>
+                </div>
 
-            <label className="mt-4 flex items-center gap-3 text-sm font-bold">
-              <input
-                type="checkbox"
-                checked={formData.trackInventory}
-                disabled={service}
-                onChange={(event) => patch({ trackInventory: event.target.checked })}
-              />
-              {service
-                ? "Los servicios no bloquean ventas por stock"
-                : "Controlar inventario y bloquear venta al llegar a 0"}
-            </label>
+                <label className="mt-4 flex items-center gap-3 text-sm font-bold">
+                  <input
+                    type="checkbox"
+                    checked={formData.trackInventory}
+                    onChange={(event) => patch({ trackInventory: event.target.checked })}
+                  />
+                  Controlar inventario y bloquear venta al llegar a 0
+                </label>
+              </>
+            )}
           </section>
 
           {plantLike && (
@@ -1293,11 +1350,18 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
           )}
 
           {service && (
-            <section className="rounded-2xl border border-border p-5">
-              <h3 className="text-lg font-black">5. Configuración del servicio</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                El precio normal de arriba es el precio por hora. El cliente siempre reserva como mínimo una hora.
-              </p>
+            <section className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">5. Reserva por horas</h3>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Configura aquí exactamente lo que podrá reservar el cliente: mínimo, máximo y saltos de horas.
+                  </p>
+                </div>
+                <span className="rounded-full bg-primary px-3 py-1.5 text-[11px] font-black text-primary-foreground">
+                  CONFIGURACIÓN DE RESERVA
+                </span>
+              </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="text-sm font-bold">Horas mínimas
                   <input
@@ -1339,8 +1403,10 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   <input type="number" min="0" value={formData.leadTimeDays} onChange={(e) => patch({ leadTimeDays: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-3" />
                 </label>
               </div>
-              <div className="mt-4 rounded-xl bg-primary/5 p-3 text-xs leading-5 text-muted-foreground">
-                Ejemplo: si pones 25 € y mínimo 1 / máximo 3, el cliente podrá reservar 1 h = 25 €, 2 h = 50 € o 3 h = 75 €.
+              <div className="mt-4 rounded-xl border border-primary/15 bg-background p-4 text-xs leading-5 text-muted-foreground">
+                <span className="font-black text-foreground">Vista previa:</span>{" "}
+                {Number(formData.price || 0) > 0 ? `${Number(formData.price).toFixed(2)} € / hora` : "indica el precio por hora"} · mínimo {Math.max(1, Number(formData.serviceMinHours || 1))} h · máximo {Math.max(Math.max(1, Number(formData.serviceMinHours || 1)), Number(formData.serviceMaxHours || 3))} h.
+                El cliente pagará el total de las horas elegidas al confirmar la reserva.
               </div>
               <button type="button" onClick={() => patch({ bookingRequired: !formData.bookingRequired })} className={`mt-4 rounded-xl border px-4 py-2 text-sm font-bold ${formData.bookingRequired ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>
                 {formData.bookingRequired ? "✓ Requiere reserva/cita" : "No requiere reserva"}
