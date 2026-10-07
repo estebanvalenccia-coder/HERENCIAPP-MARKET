@@ -38,6 +38,7 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  imagePreview?: string;
   productIds?: string[];
 };
 
@@ -76,6 +77,7 @@ function price(p: Product) {
 export function HerencIA() {
   const navigate = useNavigate();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [enabled, setEnabled] = useState(true);
   const [backgroundUrl, setBackgroundUrl] = useState("");
   const [access, setAccess] = useState<AccessState | null>(null);
@@ -111,7 +113,12 @@ export function HerencIA() {
   }, []);
 
   useEffect(() => {
-    try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-30))); } catch {}
+    try {
+      sessionStorage.setItem(
+        CHAT_KEY,
+        JSON.stringify(messages.slice(-30).map(({ imagePreview: _imagePreview, ...message }) => message))
+      );
+    } catch {}
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -137,14 +144,34 @@ export function HerencIA() {
 
   useEffect(() => {
     let active = true;
-    backendApi.listCommerceProducts()
-      .then(result => {
-        if (!active) return;
+    const loadCatalog = async () => {
+      try {
+        const result = await backendApi.listCommerceProducts();
         const rows = Array.isArray(result.products) ? result.products : [];
-        setCatalog(rows.map(normalizeProduct).filter(p => p.id && p.active !== false && !p.deletedAt && p.status !== "archived"));
-      })
-      .catch(() => {});
-    return () => { active = false; };
+        const next = rows.map(normalizeProduct).filter(p => p.id && p.active !== false && !p.deletedAt && p.status !== "archived");
+        if (!active) return;
+        if (next.length) {
+          setCatalog(next);
+          return;
+        }
+      } catch {}
+
+      try {
+        const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+        const next = (Array.isArray(cached) ? cached : [])
+          .map(normalizeProduct)
+          .filter(p => p.id && p.active !== false && !p.deletedAt && p.status !== "archived");
+        if (active) setCatalog(next);
+      } catch {}
+    };
+
+    void loadCatalog();
+    const refresh = () => void loadCatalog();
+    window.addEventListener("commerce-products-changed", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("commerce-products-changed", refresh);
+    };
   }, []);
 
   const productMap = useMemo(() => new Map(catalog.map(p => [String(p.id), p])), [catalog]);
@@ -240,6 +267,80 @@ export function HerencIA() {
     }
   };
 
+  const identifyImage = async (file?: File) => {
+    if (!file || sending) return;
+    if (file.size > 6 * 1024 * 1024) {
+      toast.error("La imagen debe pesar menos de 6 MB");
+      return;
+    }
+
+    const currentAccess = access || await refreshAccess();
+    if (currentAccess && !currentAccess.unlimited && Number(currentAccess.remaining || 0) <= 0) {
+      toast.error("Has alcanzado tu límite diario");
+      return;
+    }
+
+    setSending(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+        reader.readAsDataURL(file);
+      });
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: id(),
+          role: "user",
+          content: "Analiza esta foto",
+          imagePreview: dataUrl,
+        },
+      ]);
+
+      const base64 = dataUrl.split(",")[1] || "";
+      const r = await fetch("/api/ai/sales-identify", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: base64,
+          mimeType: file.type || "image/jpeg",
+          catalog: catalog.slice(0, 120),
+          conversationId: "herencia-ia-native",
+        }),
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error || "No se pudo analizar la imagen");
+
+      await consume();
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: id(),
+          role: "assistant",
+          content: String(data?.reply || "He analizado la imagen."),
+          productIds: Array.isArray(data?.productIds) ? data.productIds.map(String) : undefined,
+        },
+      ]);
+    } catch (err) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: id(),
+          role: "assistant",
+          content: err instanceof Error ? err.message : "No se pudo analizar la imagen.",
+        },
+      ]);
+    } finally {
+      setSending(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
   if (!enabled) {
     return <div className="grid min-h-[70vh] place-items-center bg-[#edf3e7]"><p className="text-[#315b42]">Herenc(IA) está desactivada desde Administración.</p></div>;
   }
@@ -298,7 +399,14 @@ export function HerencIA() {
                         <div className="mb-1 grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#d9c99f] bg-[#fffaf0] text-[#315b42] shadow-md"><Leaf className="h-4 w-4" /></div>
                       )}
                       <div className={`max-w-[86%] rounded-[22px] px-5 py-3.5 text-[15px] leading-6 shadow-xl backdrop-blur-xl sm:max-w-[66%] ${message.role === "user" ? "rounded-br-md border border-white/10 bg-[#2c6944]/92 text-white" : "rounded-bl-md border border-[#ead9b6]/75 bg-[#fffaf0]/92 text-[#173126]"}`}>
-                        {message.content}
+                        {message.imagePreview ? (
+                          <img
+                            src={message.imagePreview}
+                            alt="Imagen enviada a Herenc(IA)"
+                            className="mb-3 max-h-72 w-full rounded-2xl object-cover"
+                          />
+                        ) : null}
+                        <div>{message.content}</div>
                         <div className={`mt-1 text-right text-[10px] ${message.role === "user" ? "text-white/45" : "text-[#6d786f]/55"}`}>
                           ahora
                         </div>
@@ -341,6 +449,23 @@ export function HerencIA() {
 
           <div className="border-t border-white/20 bg-[rgba(242,229,202,.26)] px-5 py-3.5 backdrop-blur-xl">
             <form onSubmit={send} className="mx-auto flex max-w-[820px] items-center gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={e => void identifyImage(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={sending || (!access?.unlimited && Number(access?.remaining || 0) <= 0)}
+                className="grid h-[50px] w-[50px] shrink-0 place-items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 text-[#315b42] shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50"
+                aria-label="Subir una foto"
+                title="Subir una foto"
+              >
+                <Paperclip className="h-5 w-5" />
+              </button>
               <div className="flex min-h-[50px] flex-1 items-center rounded-full border border-[#ead9b6]/75 bg-[#fffaf0]/96 px-5 shadow-lg">
                 <input
                   value={input}
