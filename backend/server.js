@@ -3785,7 +3785,14 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
 
   if (["paid", "confirmed", "preparing", "processing", "ready"].includes(status)) {
     try {
-      await buildSupplierFulfillmentsForOrder(data);
+      const supplierFulfillments = await buildSupplierFulfillmentsForOrder(data);
+      for (const fulfillment of supplierFulfillments) {
+        if (fulfillment.mode === "autopilot" && fulfillment.status === "autopilot_ready") {
+          void executeSupplierFulfillment(fulfillment.id).catch((supplierError) =>
+            console.error("Autopilot proveedor:", supplierError?.message || supplierError)
+          );
+        }
+      }
     } catch (supplierError) {
       console.error("No se pudo preparar fulfillment de proveedor:", supplierError?.message || supplierError);
     }
@@ -5074,6 +5081,70 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   return { fulfillment: updated, executed: true, manual: false };
 }
 
+function supplierConnectorAuthorized(req) {
+  const expected = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "");
+  if (!expected) return false;
+  const auth = String(req.headers?.authorization || "");
+  const provided = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+}
+
+app.post("/api/supplier-autopilot/webhook", async (req, res) => {
+  if (!supplierConnectorAuthorized(req)) return res.status(401).json({ error: "Firma de conector no válida" });
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const id = String(req.body?.fulfillmentId || req.body?.id || "").trim();
+    if (!id) return res.status(400).json({ error: "Falta fulfillmentId" });
+    const operations = await readSupplierOperations();
+    const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === id);
+    if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
+
+    const previous = operations.supplierFulfillments[index];
+    const allowed = new Set(["ordered", "shipped", "delivered", "cancelled", "action_required"]);
+    const incomingStatus = String(req.body?.status || previous.status);
+    const status = allowed.has(incomingStatus) ? incomingStatus : previous.status;
+    const updated = {
+      ...previous,
+      status,
+      externalOrderId: String(req.body?.externalOrderId || previous.externalOrderId || "").slice(0, 180),
+      trackingNumber: String(req.body?.trackingNumber || previous.trackingNumber || "").slice(0, 180),
+      trackingUrl: String(req.body?.trackingUrl || previous.trackingUrl || "").slice(0, 1000),
+      blocker: status === "action_required" ? String(req.body?.message || previous.blocker || "El proveedor requiere revisión").slice(0, 600) : "",
+      updatedAt: new Date().toISOString(),
+      providerUpdatedAt: new Date().toISOString(),
+    };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+
+    if (updated.orderId && status === "shipped") {
+      const order = await getOrderPrimary(updated.orderId).catch(() => null);
+      if (order) {
+        const metadata = {
+          ...(order.metadata || {}),
+          supplierTracking: {
+            ...(order.metadata?.supplierTracking || {}),
+            [updated.id]: {
+              supplier: updated.supplierName,
+              externalOrderId: updated.externalOrderId,
+              trackingNumber: updated.trackingNumber,
+              trackingUrl: updated.trackingUrl,
+              status,
+              updatedAt: updated.updatedAt,
+            },
+          },
+        };
+        await patchOrderPrimary(updated.orderId, { metadata }).catch(() => null);
+      }
+    }
+
+    res.json({ ok: true, fulfillment: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "No se pudo procesar el webhook del proveedor" });
+  }
+});
+
 app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
@@ -5117,7 +5188,7 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
     const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(req.params.id));
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
     const previous = operations.supplierFulfillments[index];
-    const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","cost_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
+    const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","supplier_required","supplier_disabled","cost_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
     const requestedStatus = String(req.body?.status || previous.status);
     const updated = {
       ...previous,
