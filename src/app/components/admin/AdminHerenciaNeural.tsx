@@ -46,8 +46,8 @@ export function AdminHerenciaNeural(){
 
  const refresh=useCallback(async()=>{
   setLoading(true);
-  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns(),backendApi.neuralConversationLearning(),backendApi.neuralSelfTest(),backendApi.neuralTwin(),backendApi.neuralResources(),backendApi.neuralProactiveStatus(),backendApi.neuralScheduler()]);
-  const [s,a,t,g,act,sig,gr,br,self,dmd,pat,conv,diag,tw,resrc,pro,sched]=results;
+  const results=await Promise.allSettled([backendApi.neuralStatus(),backendApi.neuralAgents(),backendApi.neuralTasks(),backendApi.neuralCodeReviews(),backendApi.neuralGoals(),backendApi.neuralActivity(),backendApi.neuralSignals(),backendApi.neuralGraph(),backendApi.neuralBrief(),backendApi.neuralSelfModel(),backendApi.neuralDemand(),backendApi.neuralPatterns(),backendApi.neuralConversationLearning(),backendApi.neuralSelfTest(),backendApi.neuralTwin(),backendApi.neuralResources(),backendApi.neuralProactiveStatus(),backendApi.neuralScheduler()]);
+  const [s,a,t,reviews,g,act,sig,gr,br,self,dmd,pat,conv,diag,tw,resrc,pro,sched]=results;
   if(s.status==="fulfilled"){setStatus(s.value);setError(null)}else setError(s.reason?.message||"Neural no disponible");
   if(a.status==="fulfilled")setAgents(a.value.agents||[]);
   if(t.status==="fulfilled"){
@@ -55,6 +55,11 @@ export function AdminHerenciaNeural(){
     setTasks(nextTasks);
     const waitingCode=nextTasks.find((task:any)=>task.intent==="code_change"&&(task.status==="WAITING_APPROVAL"||task.requiresApproval));
     setActiveCodeApproval((current:any)=>current?.id&&nextTasks.some((task:any)=>task.id===current.id&&(task.status==="WAITING_APPROVAL"||task.requiresApproval))?current:(waitingCode||null));
+  }
+  if(reviews.status==="fulfilled"){
+    const review=reviews.value.reviews?.[0]||null;
+    setPinnedCodeReview(review);
+    if(review?.id)setTasks(prev=>[review,...prev.filter((x:any)=>x.id!==review.id)]);
   }
   if(g.status==="fulfilled")setGoals(g.value.goals||[]);
   if(act.status==="fulfilled")setActivity(act.value.events||[]);
