@@ -1,4 +1,5 @@
 import { BarChart3, Boxes, BrainCircuit, CreditCard, LayoutDashboard, Package2, Receipt, Settings, ShoppingBag, Truck, Users, Wallet } from 'lucide-react'
+import ColombiaClock from './ColombiaClock'
 
 const sections = [
   { icon: LayoutDashboard, label: 'Dashboard' },
@@ -18,6 +19,8 @@ const sections = [
 export function AdminERPLayout(){
   return (
     <div className='min-h-screen bg-gradient-to-br from-emerald-50 via-white to-rose-50'>
+      {/* Colombia clock positioned at the top‑right */}
+      <ColombiaClock />
       <div className='grid min-h-screen grid-cols-[290px_1fr]'>
         <aside className='border-r border-emerald-100 bg-white/80 p-6 backdrop-blur-xl'>
           <div className='mb-8 flex items-center gap-4 rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-lg'>
