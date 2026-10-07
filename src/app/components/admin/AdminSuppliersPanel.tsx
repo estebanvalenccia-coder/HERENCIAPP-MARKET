@@ -54,6 +54,8 @@ export function AdminSuppliersPanel() {
   const [loading, setLoading] = useState(true);
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
+  const [importUrl, setImportUrl] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
 
   const [form, setForm] = useState<any>({
     id: "",
@@ -156,6 +158,69 @@ export function AdminSuppliersPanel() {
       await load();
     } catch (error: any) {
       toast.error(error?.message || "No se pudo registrar la compra");
+    }
+  };
+
+  const importProductByUrl = async () => {
+    const url = String(importUrl || "").trim();
+    if (!url) return toast.error("Pega la URL del producto");
+    try {
+      new URL(url);
+    } catch {
+      return toast.error("La URL no es válida");
+    }
+
+    setImportingUrl(true);
+    try {
+      const preview = await backendApi.previewCatalogUrl(url, 1);
+      const candidate = Array.isArray(preview.products) ? preview.products[0] : null;
+      if (!candidate) {
+        toast.error("No se pudo detectar el producto en esa URL");
+        return;
+      }
+
+      const result = await backendApi.importCatalogUrlProduct(candidate);
+      const imported = result.product;
+      if (!imported) {
+        if (result.skipped) toast.info("Ese producto ya estaba importado");
+        else toast.warning("La ficha fue analizada pero no se pudo crear el borrador");
+        await load();
+        return;
+      }
+
+      const sourceHost = String(candidate.sourceHost || "").replace(/^www\./, "");
+      const matchedSupplier = suppliers.find((supplier: any) =>
+        String(supplier?.sourceHost || "").replace(/^www\./, "").toLowerCase() === sourceHost.toLowerCase()
+      );
+
+      if (matchedSupplier) {
+        const metadata = imported?.metadata && typeof imported.metadata === "object" ? imported.metadata : {};
+        await backendApi.updateCommerceProduct(imported.id, {
+          metadata: {
+            ...metadata,
+            importedFromUrl: true,
+            fulfillmentType: "dropship",
+            supplierId: matchedSupplier.id,
+            fulfillmentMode: matchedSupplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+            supplierCost: Number(metadata.supplierCost || candidate.supplierPrice || 0),
+            sourceHost: sourceHost || matchedSupplier.sourceHost || "",
+            supplierAssignedAt: new Date().toISOString(),
+          },
+          trackInventory: false,
+        });
+      }
+
+      setImportUrl("");
+      toast.success(
+        matchedSupplier
+          ? "Producto importado y conectado automáticamente con " + matchedSupplier.name
+          : "Producto importado como borrador. Ahora asígnale proveedor y coste."
+      );
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo importar el producto desde esa URL");
+    } finally {
+      setImportingUrl(false);
     }
   };
 
@@ -294,6 +359,39 @@ export function AdminSuppliersPanel() {
       <Card icon={Bot} label="Cola proveedor" value={String(activeFulfillments.length)} />
       <Card icon={PackagePlus} label="Compras acumuladas" value={money(spent)} />
     </div>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-bold uppercase tracking-wider text-primary">Importación rápida</p>
+        <h2 className="text-xl font-bold">Pega la URL del producto</h2>
+        <p className="text-sm text-muted-foreground">
+          Herencia analiza la ficha, copia las imágenes disponibles a su biblioteca y crea un borrador. Si el dominio coincide con un proveedor registrado, lo enlaza automáticamente.
+        </p>
+      </div>
+      <div className="mt-4 flex flex-col gap-3 lg:flex-row">
+        <input
+          type="url"
+          value={importUrl}
+          onChange={(e) => setImportUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !importingUrl) void importProductByUrl();
+          }}
+          placeholder="https://www.aliexpress.com/item/... o URL de otro proveedor"
+          className="min-w-0 flex-1 rounded-xl border border-border bg-background p-3"
+        />
+        <button
+          disabled={importingUrl || !importUrl.trim()}
+          onClick={() => void importProductByUrl()}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {importingUrl ? <RefreshCw className="h-4 w-4 animate-spin"/> : <Link2 className="h-4 w-4"/>}
+          {importingUrl ? "Analizando…" : "Importar producto"}
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        La importación queda en borrador para que revises precio, descripción, variantes e imágenes antes de publicar.
+      </p>
+    </section>
 
     <div className="grid gap-6 xl:grid-cols-2">
       <section className="rounded-2xl border border-border bg-card p-6">
