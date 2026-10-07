@@ -49,6 +49,7 @@ import { AdminAddProduct } from "../components/admin/AdminAddProduct";
 import { AdminBulkProductImport } from "../components/admin/AdminBulkProductImport";
 import { AdminCollectionsManager } from "../components/admin/AdminCollectionsManager";
 import { AdminOffers } from "../components/admin/AdminOffers";
+import { AdminPublications } from "../components/admin/AdminPublications";
 import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
@@ -91,6 +92,7 @@ type AdminSection =
   | "pos"
   | "ai-bouquet-designer"
   | "offers"
+  | "publications"
   | "orders"
   | "finance"
   | "calculator"
@@ -384,6 +386,7 @@ export function AdminDashboard() {
       badge: "NUEVO",
     },
     { id: "offers" as AdminSection, label: "Ofertas", icon: Tag },
+    { id: "publications" as AdminSection, label: "Publicaciones", icon: Megaphone, badge: "NUEVO" },
     {
       id: "orders" as AdminSection,
       label: "Pedidos",
@@ -921,6 +924,8 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "offers" && <AdminOffers />}
+
+          {currentSection === "publications" && <AdminPublications />}
 
           {currentSection === "orders" && <AdminOrders key={ordersRefreshKey} />}
 

@@ -83,6 +83,7 @@ const remotelySyncedKeys = new Set([
   "businessSuiteSettings",
   "marketingContent",
   "communityContent",
+  "storefrontPosts",
   "internationalDeliverySettings",
   "discountCodes",
   "__backendStorage_test__",

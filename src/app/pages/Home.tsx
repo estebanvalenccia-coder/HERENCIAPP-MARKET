@@ -15,6 +15,7 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
+import { StorefrontFeed } from "../components/site/StorefrontFeed";
 
 const DEFAULT_HERO = "/herencia-portada.avif";
 
@@ -330,6 +331,8 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      <StorefrontFeed />
 
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
