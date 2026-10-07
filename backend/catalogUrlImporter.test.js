@@ -4,6 +4,7 @@ import {
   extractCatalogCandidates,
   guessCatalogTaxonomy,
   assertSafeExternalUrl,
+  extractProductGalleryImages,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -32,8 +33,36 @@ test("clasifica automáticamente semillas y sustratos en colecciones existentes"
   const substrate = guessCatalogTaxonomy("https://proveedor.es/sustrato-universal", "Sustrato universal 20 L");
 
   assert.equal(seed.collection, "semillas");
+  assert.equal(seed.category, "semillas-huerto");
   assert.equal(seed.area, "Hortícolas");
   assert.equal(substrate.collection, "sustratos");
+  assert.equal(substrate.category, "tierra-universal");
+});
+
+test("no mezcla productos relacionados dentro de la galería real", () => {
+  const html = [
+    '<div class="woocommerce-product-gallery__image"><a href="/media/zanahoria-grande.jpg"><img src="/media/zanahoria.jpg" data-large_image="/media/zanahoria-grande.jpg"></a></div>',
+    '<section class="related products"><img class="attachment-woocommerce_thumbnail" src="/media/lavanda.jpg"></section>',
+  ].join("");
+
+  const images = extractProductGalleryImages(html, "https://semillasbatlle.com/producto/zanahoria/");
+  assert.deepEqual(images, ["https://semillasbatlle.com/media/zanahoria-grande.jpg"]);
+  assert.equal(images.some((url) => url.includes("lavanda")), false);
+});
+
+test("usa subcategorías válidas para semillas, sustratos y jardinería", () => {
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/semillas/aromaticas/albahaca", "Albahaca").category,
+    "semillas-aromaticas"
+  );
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/sustratos/humus", "Humus de lombriz").category,
+    "abonos"
+  );
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/jardineria/riego", "Regadera 2 L").category,
+    "riego"
+  );
 });
 
 test("bloquea destinos locales para evitar SSRF", async () => {

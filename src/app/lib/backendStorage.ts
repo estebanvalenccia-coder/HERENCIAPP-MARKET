@@ -400,6 +400,7 @@ export const backendApi = {
     const result = await request<{
       ok: boolean;
       skipped?: boolean;
+      updated?: boolean;
       reason?: string;
       product?: any;
       copiedImages?: number;
