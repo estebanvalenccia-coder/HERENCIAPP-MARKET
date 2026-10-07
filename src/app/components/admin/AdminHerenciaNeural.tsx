@@ -42,6 +42,7 @@ export function AdminHerenciaNeural(){
  const [codeMessages,setCodeMessages]=useState<Message[]>([{role:"neural",text:"Modo programación dedicado. Todo lo que escribas aquí se tratará como una solicitud de código y pasará por plan, aprobación, rama neural/*, verificación y PR.",kind:"code"}]);
  const [activeCodeApproval,setActiveCodeApproval]=useState<any>(null);
  const [approvingCode,setApprovingCode]=useState(false);
+ const [approvingTaskId,setApprovingTaskId]=useState<string|null>(null);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -119,14 +120,20 @@ export function AdminHerenciaNeural(){
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
  const observe=async()=>{try{const r=await backendApi.neuralObserveNow();toast.success(r.ok?"Digital Twin actualizado":`Observación: ${r.skipped||"sin cambios"}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const searchMemory=async()=>{try{const r=await backendApi.neuralMemory(memoryQuery);setMemory(r.items||[])}catch(e:any){toast.error(e.message)}};
- const approve=async(id:string)=>{try{
-  const r=await backendApi.neuralApproveTask(id);
-  const outcome=r?.outcome;
-  if(outcome?.status==="FAILED") toast.error(outcome?.error||"La tarea falló después de aprobarla");
-  else if(outcome?.status==="COMPLETED") toast.success("Aprobada y ejecutada correctamente");
-  else toast.success("Aprobación registrada");
-  await refresh();
- }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea")}};
+ const approve=async(id:string)=>{
+  if(approvingTaskId)return;
+  setApprovingTaskId(id);
+  try{
+   toast.message("Procesando aprobación…");
+   const r=await backendApi.neuralApproveTask(id);
+   const outcome=r?.outcome;
+   if(outcome?.status==="FAILED") toast.error(outcome?.error||"La tarea falló después de aprobarla");
+   else if(outcome?.status==="COMPLETED") toast.success("Aprobada y ejecutada correctamente");
+   else toast.success("Aprobación registrada");
+   await refresh();
+  }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea")}
+  finally{setApprovingTaskId(null)}
+ };
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
  const reflectNow=async()=>{try{const report=await backendApi.neuralReflect();toast.success(`Reflexión completada: ${report.reviewed||0} recuerdos revisados`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo ejecutar la reflexión")}};
  const consolidatePatterns=async()=>{try{await backendApi.neuralConsolidatePatterns();toast.success("Patrones consolidados en memoria de negocio");await refresh()}catch(e:any){toast.error(e.message||"No se pudieron consolidar patrones")}};
@@ -180,7 +187,7 @@ export function AdminHerenciaNeural(){
     {diagnostic?<div className="space-y-2"><div className={`rounded-xl p-3 text-sm font-black ${diagnostic.ok?"bg-emerald-50 text-emerald-800":"bg-amber-50 text-amber-900"}`}>{diagnostic.ok?"Núcleo verificado":"Hay elementos pendientes de configuración o verificación"}</div>{(diagnostic.tests||[]).map((x:any)=><div key={x.name} className="flex items-start justify-between gap-3 border-b py-2 last:border-0"><div><b className="text-sm">{x.name}</b><p className="text-xs text-muted-foreground">{x.detail}</p></div><span className={`text-xs font-black ${x.ok?"text-emerald-700":"text-amber-700"}`}>{x.ok?"OK":"PENDIENTE"}</span></div>)}</div>:<Empty text="Diagnóstico no disponible."/>}
    </Panel>
    <div id="neural-command-approvals"><Panel title="Aprobaciones pendientes" icon={ShieldCheck}>
-    {approvals.length?<div className="space-y-3">{approvals.slice(0,8).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="border rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b className="text-sm">{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.intent} · {t.assignedCell||"supervisor"} · {t.status}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><b>Plan de Neural</b><p className="mt-1">{plan.summary}</p>{files.length>0&&<div className="mt-2"><span className="font-bold">Archivos:</span> {files.join(", ")}</div>}{plan.acceptanceCriteria?.length>0&&<div className="mt-2"><span className="font-bold">Comprobará:</span><ul className="mt-1 list-disc pl-4">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}<p className="mt-2 font-bold text-emerald-800">Producción no se modifica al aprobar esta preparación.</p></div>}<button onClick={()=>void approve(t.id)} className="mt-3 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold">Aprobar y crear rama de trabajo</button></div>})}</div>:<Empty text="No hay tareas esperando autorización."/>}
+    {approvals.length?<div className="space-y-3">{approvals.slice(0,8).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="border rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b className="text-sm">{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.intent} · {t.assignedCell||"supervisor"} · {t.status}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><b>Plan de Neural</b><p className="mt-1">{plan.summary}</p>{files.length>0&&<div className="mt-2"><span className="font-bold">Archivos:</span> {files.join(", ")}</div>}{plan.acceptanceCriteria?.length>0&&<div className="mt-2"><span className="font-bold">Comprobará:</span><ul className="mt-1 list-disc pl-4">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}<p className="mt-2 font-bold text-emerald-800">Producción no se modifica al aprobar esta preparación.</p></div>}<button type="button" disabled={approvingTaskId===t.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();void approve(t.id)}} className="mt-3 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold disabled:opacity-60">{approvingTaskId===t.id?"APROBANDO…":"Aprobar y crear rama de trabajo"}</button></div>})}</div>:<Empty text="No hay tareas esperando autorización."/>}
    </Panel>
   </div>}
 
@@ -196,7 +203,7 @@ export function AdminHerenciaNeural(){
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Cambio listo para aprobar</div><h3 className="mt-1 font-black text-amber-950">{activeCodeApproval.title}</h3></div>{plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}</div>
       {plan&&<div className="mt-3 rounded-xl bg-white/70 p-3 text-sm"><p><b>Plan:</b> {plan.summary}</p>{files.length>0&&<p className="mt-2 break-words text-xs"><b>Archivos:</b> {files.join(", ")}</p>}{plan.acceptanceCriteria?.length>0&&<ul className="mt-2 list-disc pl-5 text-xs">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul>}</div>}
       <p className="mt-3 text-xs font-bold text-emerald-800">Aprobar crea/programa únicamente en una rama neural/*; producción no se modifica directamente.</p>
-      <button disabled={approvingCode} onClick={()=>void approveCode()} className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600 disabled:opacity-50">{approvingCode?"Programando…":"APROBAR Y PROGRAMAR"}</button>
+      <button  type="button" disabled={approvingCode} onClick={(e)=>{e.preventDefault();e.stopPropagation();void approveCode()}} className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600 disabled:opacity-50">{approvingCode?"Programando…":"APROBAR Y PROGRAMAR"}</button>
     </div>})()}
     <div className="mt-4 space-y-3">
      <textarea value={codePrompt} disabled={Boolean(codeStage)} onChange={e=>setCodePrompt(e.target.value)} className="min-h-28 w-full rounded-xl border bg-background p-4 disabled:opacity-60" placeholder="Ejemplo: Crea en el administrador un reloj visible con hora de Madrid. No lo publiques; prepara el cambio para aprobación."/>
@@ -214,7 +221,7 @@ export function AdminHerenciaNeural(){
     </div>
    </Panel>
    <div id="neural-code-approvals" className="xl:col-span-2"><Panel title="Aprobaciones de código" icon={ShieldCheck}>
-    {approvals.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{approvals.filter((t:any)=>t.intent==="code_change").slice(0,10).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.status} · {t.assignedCell||"developer"}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><p>{plan.summary}</p>{files.length>0&&<p className="mt-2"><b>Archivos:</b> {files.join(", ")}</p>}</div>}<button onClick={()=>void approve(t.id)} className="mt-3 w-full rounded-xl bg-amber-100 px-3 py-2 font-black text-amber-900">Aprobar y programar en rama</button></div>})}</div>:<Empty text="No hay cambios de código esperando aprobación."/>}
+    {approvals.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{approvals.filter((t:any)=>t.intent==="code_change").slice(0,10).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.status} · {t.assignedCell||"developer"}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><p>{plan.summary}</p>{files.length>0&&<p className="mt-2"><b>Archivos:</b> {files.join(", ")}</p>}</div>}<button type="button" disabled={approvingTaskId===t.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();void approve(t.id)}} className="mt-3 w-full rounded-xl bg-amber-100 px-3 py-2 font-black text-amber-900 disabled:opacity-60">{approvingTaskId===t.id?"APROBANDO…":"Aprobar y programar en rama"}</button></div>})}</div>:<Empty text="No hay cambios de código esperando aprobación."/>}
    </Panel></div>
    <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
     {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};return <div key={t.id} className="rounded-xl border p-3 text-sm"><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p>{result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}{result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Verificación superada</p>}</div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
@@ -239,7 +246,7 @@ export function AdminHerenciaNeural(){
       {plan.acceptanceCriteria?.length>0&&<div className="mt-2"><b className="text-xs">Criterios de comprobación:</b><ul className="mt-1 list-disc pl-5 text-xs">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}
       {t.intent==="code_change"&&<p className="mt-3 text-xs font-bold text-emerald-800">Se trabajará en una rama neural/*; producción directa permanece bloqueada.</p>}
     </div>}
-    <button onClick={()=>void approve(t.id)} className="mt-4 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600">APROBAR {t.intent==="code_change"?"Y PROGRAMAR":"TAREA"}</button>
+    <button type="button" disabled={approvingTaskId===t.id} onClick={(e)=>{e.preventDefault();e.stopPropagation();void approve(t.id)}} className="mt-4 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600 disabled:opacity-60">{approvingTaskId===t.id?"APROBANDO…":<>APROBAR {t.intent==="code_change"?"Y PROGRAMAR":"TAREA"}</>}</button>
    </div>})}</div>:<Empty text="No hay aprobaciones pendientes ahora mismo."/>}
   </Panel>}
 
