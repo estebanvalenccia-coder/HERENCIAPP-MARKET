@@ -32,8 +32,25 @@ test("clasifica automáticamente semillas y sustratos en colecciones existentes"
   const substrate = guessCatalogTaxonomy("https://proveedor.es/sustrato-universal", "Sustrato universal 20 L");
 
   assert.equal(seed.collection, "semillas");
+  assert.equal(seed.category, "semillas-huerto");
   assert.equal(seed.area, "Hortícolas");
   assert.equal(substrate.collection, "sustratos");
+  assert.equal(substrate.category, "tierra-universal");
+});
+
+test("usa subcategorías válidas para semillas, sustratos y jardinería", () => {
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/semillas/aromaticas/albahaca", "Albahaca").category,
+    "semillas-aromaticas"
+  );
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/sustratos/humus", "Humus de lombriz").category,
+    "abonos"
+  );
+  assert.equal(
+    guessCatalogTaxonomy("https://proveedor.es/jardineria/riego", "Regadera 2 L").category,
+    "riego"
+  );
 });
 
 test("bloquea destinos locales para evitar SSRF", async () => {
