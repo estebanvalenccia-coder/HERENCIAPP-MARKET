@@ -233,7 +233,7 @@ function productOfferData(product = {}, fallback = {}) {
   return { supplierPrice, supplierCurrency };
 }
 
-function productDetailsFromHtml(html, productUrl, fallback = {}) {
+export function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const ldProduct = jsonLdProducts(html)[0] || {};
   const name =
     usefulProductName(ldProduct.name || "") ||
