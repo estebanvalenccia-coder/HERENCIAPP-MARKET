@@ -40,6 +40,8 @@ export function AdminHerenciaNeural(){
  const [codePrompt,setCodePrompt]=useState("");
  const [codeStage,setCodeStage]=useState<string|null>(null);
  const [codeMessages,setCodeMessages]=useState<Message[]>([{role:"neural",text:"Modo programación dedicado. Todo lo que escribas aquí se tratará como una solicitud de código y pasará por plan, aprobación, rama neural/*, verificación y PR.",kind:"code"}]);
+ const [activeCodeApproval,setActiveCodeApproval]=useState<any>(null);
+ const [approvingCode,setApprovingCode]=useState(false);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -94,7 +96,19 @@ export function AdminHerenciaNeural(){
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
  const cycle=async(key:string)=>{const order:Mode[]=["AUTO","ASK","BLOCK"],current=(permissions[key]||"BLOCK") as Mode,next=order[(order.indexOf(current)+1)%3];try{await backendApi.neuralSetPermission(key,next);toast.success(`${labels[key]||key}: ${next}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const send=async()=>{const q=message.trim();if(!q||chatStage)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");setChatStage("Entendiendo tu mensaje…");try{const r=await backendApi.neuralChat(q,"admin:command-center");setMessages(m=>[...m,{role:"neural",text:r.message||"He procesado tu mensaje.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setChatStage(null)}};
- const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
+ const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id){setActiveCodeApproval(r.task);setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);}else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
+ const approveCode=async()=>{
+  const task=activeCodeApproval;
+  if(!task?.id||approvingCode)return;
+  setApprovingCode(true);
+  try{
+   const r=await backendApi.neuralApproveTask(task.id);
+   const outcome=r?.outcome;
+   setCodeMessages(m=>[...m,{role:"neural",text:outcome?.status==="COMPLETED"?"Cambio programado y verificado. Revisa el trabajo reciente para ver la rama y el PR.":outcome?.status==="FAILED"?`La programación falló: ${outcome?.error||"error desconocido"}`:"Aprobación procesada. Neural está ejecutando el cambio.",kind:"code"}]);
+   setActiveCodeApproval(null);
+   await refresh();
+  }catch(e:any){toast.error(e.message||"No se pudo aprobar el cambio")}finally{setApprovingCode(false)}
+ };
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -165,6 +179,12 @@ export function AdminHerenciaNeural(){
     </div>
     <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
+    {activeCodeApproval&&(()=>{const plan=activeCodeApproval.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Cambio listo para aprobar</div><h3 className="mt-1 font-black text-amber-950">{activeCodeApproval.title}</h3></div>{plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}</div>
+      {plan&&<div className="mt-3 rounded-xl bg-white/70 p-3 text-sm"><p><b>Plan:</b> {plan.summary}</p>{files.length>0&&<p className="mt-2 break-words text-xs"><b>Archivos:</b> {files.join(", ")}</p>}{plan.acceptanceCriteria?.length>0&&<ul className="mt-2 list-disc pl-5 text-xs">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul>}</div>}
+      <p className="mt-3 text-xs font-bold text-emerald-800">Aprobar crea/programa únicamente en una rama neural/*; producción no se modifica directamente.</p>
+      <button disabled={approvingCode} onClick={()=>void approveCode()} className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600 disabled:opacity-50">{approvingCode?"Programando…":"APROBAR Y PROGRAMAR"}</button>
+    </div>})()}
     <div className="mt-4 space-y-3">
      <textarea value={codePrompt} disabled={Boolean(codeStage)} onChange={e=>setCodePrompt(e.target.value)} className="min-h-28 w-full rounded-xl border bg-background p-4 disabled:opacity-60" placeholder="Ejemplo: Crea en el administrador un reloj visible con hora de Madrid. No lo publiques; prepara el cambio para aprobación."/>
      <button disabled={Boolean(codeStage)||!codePrompt.trim()} onClick={()=>void sendCode()} className="w-full rounded-xl bg-primary px-4 py-3 font-black text-primary-foreground disabled:opacity-50"><Code2 className="mr-2 inline h-4 w-4"/>Preparar cambio de código</button>
