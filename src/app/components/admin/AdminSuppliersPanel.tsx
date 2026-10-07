@@ -195,6 +195,10 @@ export function AdminSuppliersPanel() {
 
       if (matchedSupplier) {
         const metadata = imported?.metadata && typeof imported.metadata === "object" ? imported.metadata : {};
+        const sourceCurrency = String(candidate.supplierCurrency || metadata.supplierCurrency || "").toUpperCase();
+        const detectedCost = (!sourceCurrency || sourceCurrency === "EUR")
+          ? Number(metadata.supplierCost || candidate.supplierPrice || 0)
+          : 0;
         await backendApi.updateCommerceProduct(imported.id, {
           metadata: {
             ...metadata,
@@ -202,7 +206,9 @@ export function AdminSuppliersPanel() {
             fulfillmentType: "dropship",
             supplierId: matchedSupplier.id,
             fulfillmentMode: matchedSupplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
-            supplierCost: Number(metadata.supplierCost || candidate.supplierPrice || 0),
+            supplierCost: detectedCost,
+            supplierOriginalPrice: Number(candidate.supplierPrice || metadata.supplierOriginalPrice || 0),
+            supplierCurrency: sourceCurrency,
             sourceHost: sourceHost || matchedSupplier.sourceHost || "",
             supplierAssignedAt: new Date().toISOString(),
           },
@@ -546,6 +552,8 @@ function ImportedProductRow({
   const [cost, setCost] = useState(Number(metadata.supplierCost || 0));
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
+  const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
+  const originalSupplierPrice = Number(metadata.supplierOriginalPrice || metadata.supplierCost || 0);
   const salePrice = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
   const grossMargin = salePrice > 0 && cost > 0 ? salePrice - cost : 0;
   const grossPercent = salePrice > 0 && cost > 0 ? (grossMargin / salePrice) * 100 : 0;
@@ -557,6 +565,7 @@ function ImportedProductRow({
         <div className="min-w-0">
           <p className="truncate font-semibold">{product.name}</p>
           <p className="truncate text-xs text-muted-foreground">{sourceHost || "Proveedor por URL"} · venta {money(salePrice)}</p>
+          {originalSupplierPrice > 0 && <p className="truncate text-[11px] text-muted-foreground">Precio detectado: {originalSupplierPrice.toFixed(2)} {supplierCurrency}{supplierCurrency !== "EUR" ? " · revisa/conviértelo antes de Autopilot" : ""}</p>}
           {cost > 0 && salePrice > 0 && <p className={`text-xs font-semibold ${grossMargin > 0 ? "text-emerald-700" : "text-red-700"}`}>Margen bruto: {money(grossMargin)} · {grossPercent.toFixed(1)}%</p>}
         </div>
       </div>
