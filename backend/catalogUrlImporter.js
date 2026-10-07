@@ -170,6 +170,35 @@ export function extractCatalogCandidates(html, baseUrl) {
   return [...byUrl.values()].filter((item) => item.name && item.productUrl);
 }
 
+export function extractProductGalleryImages(html, productUrl) {
+  const urls = [];
+  const source = String(html || "");
+
+  // WooCommerce keeps actual product media inside .woocommerce-product-gallery__image.
+  // Related products often use attachment-woocommerce_thumbnail; those must never enter
+  // the product gallery.
+  const galleryItemRegex = /<div\b[^>]*class=["'][^"']*woocommerce-product-gallery__image[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+  let itemMatch;
+
+  while ((itemMatch = galleryItemRegex.exec(source))) {
+    const block = itemMatch[1] || "";
+    const imageMatch = block.match(/<img\b([^>]*)>/i);
+    const linkMatch = block.match(/<a\b[^>]*href=(["'])(.*?)\1/i);
+
+    const attrs = imageMatch?.[1] || "";
+    const candidate =
+      attrValue(attrs, "data-large_image") ||
+      attrValue(attrs, "data-src") ||
+      (linkMatch ? linkMatch[2] : "") ||
+      attrValue(attrs, "src");
+
+    const absolute = safeAbsoluteUrl(candidate, productUrl);
+    if (absolute && !urls.includes(absolute)) urls.push(absolute);
+  }
+
+  return urls;
+}
+
 function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const ldProduct = jsonLdProducts(html)[0] || {};
   const name =
@@ -190,14 +219,7 @@ function productDetailsFromHtml(html, productUrl, fallback = {}) {
     ...(Array.isArray(fallback.images) ? fallback.images : []),
   ];
 
-  const galleryRegex = /<img\b([^>]*(?:woocommerce-product-gallery|product-image|wp-post-image|attachment-woocommerce)[^>]*)>/gi;
-  let imageMatch;
-  while ((imageMatch = galleryRegex.exec(String(html)))) {
-    const attrs = imageMatch[1];
-    const src = attrValue(attrs, "data-large_image") || attrValue(attrs, "data-src") || attrValue(attrs, "src");
-    const absolute = safeAbsoluteUrl(src, productUrl);
-    if (absolute) images.push(absolute);
-  }
+  images.push(...extractProductGalleryImages(html, productUrl));
 
   const uniqueImages = [...new Set(images.filter(Boolean))].slice(0, 8);
   return {
