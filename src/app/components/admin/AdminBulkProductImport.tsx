@@ -347,6 +347,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceProducts, setSourceProducts] = useState<SourceCatalogProduct[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Record<string, boolean>>({});
+  const [selectedSourceImages, setSelectedSourceImages] = useState<Record<string, boolean>>({});
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceImporting, setSourceImporting] = useState(false);
   const [sourceSavingMedia, setSourceSavingMedia] = useState(false);
@@ -356,6 +357,31 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   const selectedSourceProducts = useMemo(
     () => sourceProducts.filter((product) => selectedSourceIds[product.id]),
     [sourceProducts, selectedSourceIds]
+  );
+
+  const productImageUrls = (product: SourceCatalogProduct) =>
+    Array.from(
+      new Set(
+        (product.images?.length ? product.images : product.image ? [product.image] : [])
+          .map((url) => String(url || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+  const sourceImageKey = (product: SourceCatalogProduct, url: string) =>
+    String(product.id) + "::" + url;
+
+  const selectedImagesForProduct = (product: SourceCatalogProduct) =>
+    productImageUrls(product).filter((url) => selectedSourceImages[sourceImageKey(product, url)]);
+
+  const selectedSourceImageCount = useMemo(
+    () =>
+      sourceProducts.reduce(
+        (count, product) =>
+          count + productImageUrls(product).filter((url) => selectedSourceImages[sourceImageKey(product, url)]).length,
+        0
+      ),
+    [sourceProducts, selectedSourceImages]
   );
 
   const groupedDrafts = useMemo(() => {
@@ -377,18 +403,15 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     setSourceLoading(true);
     setSourceProducts([]);
     setSelectedSourceIds({});
+    setSelectedSourceImages({});
     setSourceProgress({ done: 0, total: 0 });
 
     try {
       const result = await backendApi.previewCatalogUrl(url, 100);
       const products = Array.isArray(result.products) ? result.products : [];
       setSourceProducts(products);
-      setSelectedSourceIds(
-        products.reduce<Record<string, boolean>>((selected, product) => {
-          selected[String(product.id)] = true;
-          return selected;
-        }, {})
-      );
+      setSelectedSourceIds({});
+      setSelectedSourceImages({});
       if (!products.length) {
         toast.warning("No se detectaron productos en esa página");
       } else {
@@ -402,9 +425,12 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
   };
 
   const saveSelectedSourceMedia = async () => {
-    const selected = selectedSourceProducts;
+    const selected = sourceProducts
+      .map((product) => ({ product, images: selectedImagesForProduct(product) }))
+      .filter((item) => item.images.length > 0);
+
     if (!selected.length) {
-      toast.error("Selecciona al menos un producto");
+      toast.error("Selecciona primero una o varias fotos");
       return;
     }
 
@@ -412,12 +438,18 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     setSourceProgress({ done: 0, total: selected.length });
     let copied = 0;
     let errors = 0;
+    const completedKeys: string[] = [];
 
     for (let index = 0; index < selected.length; index += 1) {
-      const product = selected[index];
+      const { product, images } = selected[index];
       try {
-        const result = await backendApi.saveCatalogUrlProductMedia(product);
+        const result = await backendApi.saveCatalogUrlProductMedia({
+          ...product,
+          image: images[0] || "",
+          images,
+        });
         copied += Number(result.copiedImages || 0);
+        images.forEach((url) => completedKeys.push(sourceImageKey(product, url)));
       } catch {
         errors += 1;
       } finally {
@@ -425,11 +457,19 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       }
     }
 
+    if (completedKeys.length) {
+      setSelectedSourceImages((current) => {
+        const next = { ...current };
+        completedKeys.forEach((key) => delete next[key]);
+        return next;
+      });
+    }
+
     setSourceSavingMedia(false);
     window.dispatchEvent(new Event("media-library-changed"));
 
     if (errors) {
-      toast.warning("Biblioteca actualizada: " + copied + " fotos guardadas y " + errors + " productos con error");
+      toast.warning("Biblioteca actualizada: " + copied + " fotos guardadas y " + errors + " grupos con error");
     } else {
       toast.success("✅ " + copied + " fotos guardadas en la Biblioteca multimedia");
     }
@@ -452,7 +492,14 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     for (let index = 0; index < selected.length; index += 1) {
       const product = selected[index];
       try {
-        const result = await backendApi.importCatalogUrlProduct(product);
+        const chosenImages = selectedImagesForProduct(product);
+        const mainImage = product.image || productImageUrls(product)[0] || "";
+        const importImages = chosenImages.length ? chosenImages : mainImage ? [mainImage] : [];
+        const result = await backendApi.importCatalogUrlProduct({
+          ...product,
+          image: importImages[0] || "",
+          images: importImages,
+        });
         if (result.skipped) skipped += 1;
         else imported += 1;
         completedIds.push(product.id);
@@ -774,7 +821,8 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
               <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="font-semibold text-foreground">{sourceProducts.length} productos encontrados</p>
-                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} seleccionados · analizar solo previsualiza · guardar fotos las copia a R2 · importar crea borradores</p>
+                  <p className="text-xs text-muted-foreground">{selectedSourceProducts.length} productos para borrador · {selectedSourceImageCount} fotos para Biblioteca</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Nada se selecciona automáticamente. Producto y foto se eligen por separado.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -790,7 +838,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
-                    Seleccionar todos
+                    Seleccionar productos
                   </button>
                   <button
                     type="button"
@@ -798,18 +846,18 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     disabled={sourceImporting || sourceSavingMedia}
                     className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
-                    Quitar selección
+                    Quitar productos
                   </button>
                   <button
                     type="button"
                     onClick={saveSelectedSourceMedia}
-                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceProducts.length}
+                    disabled={sourceImporting || sourceSavingMedia || !selectedSourceImageCount}
                     className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/5 px-4 py-2 text-xs font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
                   >
                     {sourceSavingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                     {sourceSavingMedia
                       ? "Guardando fotos " + sourceProgress.done + "/" + sourceProgress.total
-                      : "Guardar fotos en biblioteca"}
+                      : "Guardar " + selectedSourceImageCount + " foto" + (selectedSourceImageCount === 1 ? "" : "s") + " en biblioteca"}
                   </button>
                   <button
                     type="button"
@@ -827,7 +875,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
 
               <div className="max-h-[520px] divide-y divide-border overflow-y-auto">
                 {sourceProducts.map((product) => (
-                  <label key={product.id} className="grid cursor-pointer grid-cols-[auto_72px_1fr] gap-3 p-3 hover:bg-muted/30 sm:grid-cols-[auto_84px_1fr_auto] sm:items-center">
+                  <div key={product.id} className="grid grid-cols-[auto_72px_1fr] gap-3 p-3 hover:bg-muted/30 sm:grid-cols-[auto_84px_1fr_auto] sm:items-start">
                     <input
                       type="checkbox"
                       checked={Boolean(selectedSourceIds[product.id])}
@@ -854,14 +902,39 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                           {product.department || product.category || "Catálogo"}
                         </span>
                         <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                          {(product.images?.length || (product.image ? 1 : 0))} fotos
+                          {productImageUrls(product).length} fotos
                         </span>
                       </div>
+                      {productImageUrls(product).length > 0 && (
+                        <div className="mt-3">
+                          <p className="mb-2 text-[10px] font-bold text-muted-foreground">Marca solo las fotos que quieras guardar o usar:</p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {productImageUrls(product).map((url, index) => {
+                              const key = sourceImageKey(product, url);
+                              const checked = Boolean(selectedSourceImages[key]);
+                              return (
+                                <label key={key} className={"relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 bg-muted " + (checked ? "border-primary" : "border-border")}>
+                                  <img src={url} alt={product.name + " " + (index + 1)} className="h-full w-full object-contain" />
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={sourceImporting || sourceSavingMedia}
+                                    onChange={(event) =>
+                                      setSelectedSourceImages((current) => ({ ...current, [key]: event.target.checked }))
+                                    }
+                                    className="absolute left-1 top-1 h-4 w-4"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <span className="col-start-3 text-right text-[10px] text-muted-foreground sm:col-start-auto">
                       {product.sourceHost}
                     </span>
-                  </label>
+                  </div>
                 ))}
               </div>
             </div>
