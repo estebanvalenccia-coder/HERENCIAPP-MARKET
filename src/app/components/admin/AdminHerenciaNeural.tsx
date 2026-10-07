@@ -181,7 +181,7 @@ export function AdminHerenciaNeural(){
    </Panel>
    <div id="neural-command-approvals"><Panel title="Aprobaciones pendientes" icon={ShieldCheck}>
     {approvals.length?<div className="space-y-3">{approvals.slice(0,8).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="border rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b className="text-sm">{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.intent} · {t.assignedCell||"supervisor"} · {t.status}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><b>Plan de Neural</b><p className="mt-1">{plan.summary}</p>{files.length>0&&<div className="mt-2"><span className="font-bold">Archivos:</span> {files.join(", ")}</div>}{plan.acceptanceCriteria?.length>0&&<div className="mt-2"><span className="font-bold">Comprobará:</span><ul className="mt-1 list-disc pl-4">{plan.acceptanceCriteria.map((x:string,i:number)=><li key={i}>{x}</li>)}</ul></div>}<p className="mt-2 font-bold text-emerald-800">Producción no se modifica al aprobar esta preparación.</p></div>}<button onClick={()=>void approve(t.id)} className="mt-3 w-full py-2 rounded-lg bg-amber-100 text-amber-900 font-bold">Aprobar y crear rama de trabajo</button></div>})}</div>:<Empty text="No hay tareas esperando autorización."/>}
-   </Panel>
+   </Panel></div>
   </div>}
 
   {tab==="code"&&<div className="grid xl:grid-cols-3 gap-5">
@@ -218,7 +218,7 @@ export function AdminHerenciaNeural(){
    </Panel></div>
    <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
     {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};return <div key={t.id} className="rounded-xl border p-3 text-sm"><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p>{result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}{result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Verificación superada</p>}</div>})}</div>:<Empty text="Todavía no hay trabajos de programación."/>}
-   </Panel></div>
+   </Panel>
   </div>}
 
   {tab==="approvals"&&<Panel title="Centro de aprobaciones" icon={ShieldCheck}>
