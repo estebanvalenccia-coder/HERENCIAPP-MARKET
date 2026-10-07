@@ -283,16 +283,30 @@ function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
   return [plants, ...ensured];
 }
 
+function isDisabledSalesAction(item: any) {
+  const id = String(item?.id || "").toLowerCase();
+  const label = String(item?.label || "").toLowerCase();
+  return (
+    id.includes("florist") ||
+    id.includes("florister") ||
+    id.includes("handoff") ||
+    label.includes("floristería") ||
+    label.includes("floristeria")
+  );
+}
+
 function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): MarketSalesAction[] {
-  if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(base));
+  const safeBase = base.filter((item) => !isDisabledSalesAction(item));
+  if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(safeBase));
+  const safeIncoming = incoming.filter((item: any) => !isDisabledSalesAction(item));
   const incomingById = new Map(
-    incoming
+    safeIncoming
       .filter((item: any) => item && typeof item.id === "string")
       .map((item: any) => [item.id, item])
   );
-  const baseIds = new Set(base.map((item) => item.id));
-  const merged = base.map((item) => ({ ...item, ...(incomingById.get(item.id) || {}) })) as MarketSalesAction[];
-  const customExtras = incoming.filter(
+  const baseIds = new Set(safeBase.map((item) => item.id));
+  const merged = safeBase.map((item) => ({ ...item, ...(incomingById.get(item.id) || {}) })) as MarketSalesAction[];
+  const customExtras = safeIncoming.filter(
     (item: any) => item && typeof item.id === "string" && !baseIds.has(item.id)
   ) as MarketSalesAction[];
   return [...merged, ...customExtras];
