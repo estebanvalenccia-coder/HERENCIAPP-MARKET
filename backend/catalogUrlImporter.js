@@ -443,6 +443,28 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
   };
 }
 
+export async function analyzeProductUrl(urlValue) {
+  const page = await fetchHtml(urlValue);
+  const details = productDetailsFromHtml(page.html, page.url, {});
+  if (!details?.name) {
+    throw Object.assign(new Error("No se pudo reconocer la ficha del producto"), { statusCode: 422 });
+  }
+  const source = new URL(page.url);
+  const taxonomy = guessCatalogTaxonomy(page.url, details.category || details.name);
+  return {
+    id: page.url,
+    name: details.name,
+    description: details.description || "",
+    productUrl: page.url,
+    sourceCatalogUrl: page.url,
+    sourceHost: source.hostname,
+    image: details.image || details.images?.[0] || "",
+    images: (details.images || []).slice(0, 8),
+    supplierCategory: details.category || "",
+    ...taxonomy,
+  };
+}
+
 export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {}) {
   const { uploadR2MediaBuffer } = await import("./r2Media.js");
   const source = Array.isArray(product?.images) && product.images.length ? product.images : product?.image ? [product.image] : [];
