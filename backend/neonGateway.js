@@ -17,7 +17,7 @@ import {
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
-import { analyzeCatalogUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
+import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -373,6 +373,78 @@ const server=http.createServer(async(req,res)=>{try{
       },
     });
     return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,source:"neon"});
+  }
+
+  if(path==="/api/admin/catalog/import-url/repair-drafts"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para reparar las galerías importadas"});
+
+    const body=await bodyJson(req);
+    const limit=Math.max(1,Math.min(50,Number(body?.limit||30)));
+    const sourceHost=String(body?.sourceHost||"").trim().toLowerCase();
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    const candidates=products.filter((product)=>{
+      const metadata=product?.metadata&&typeof product.metadata==="object"?product.metadata:{};
+      if(!metadata?.importedFromUrl)return false;
+      if(String(product?.status||"draft")!=="draft")return false;
+      if(!String(metadata?.sourceProductUrl||"").trim())return false;
+      if(sourceHost&&String(metadata?.sourceHost||"").trim().toLowerCase()!==sourceHost)return false;
+      return true;
+    }).slice(0,limit);
+
+    let repaired=0;
+    let errors=0;
+    const results=[];
+
+    for(const existing of candidates){
+      const metadata=existing?.metadata&&typeof existing.metadata==="object"?existing.metadata:{};
+      const sourceProductUrl=String(metadata?.sourceProductUrl||"").trim();
+      try{
+        const analyzed=await analyzeProductUrl(sourceProductUrl);
+        const sourceImages=Array.isArray(analyzed?.images)?analyzed.images:[];
+        if(!sourceImages.length)throw new Error("La ficha no contiene imágenes válidas");
+
+        const mirrored=await mirrorRemoteProductImages(analyzed,{maxImages:8});
+        const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
+        if(!imageUrls.length)throw new Error("No se pudo copiar la galería corregida");
+
+        const refreshed=await saveNeonCommerceProduct({
+          ...existing,
+          category:String(analyzed.category||existing.category||"jardineria"),
+          collection:String(analyzed.collection||"jardineria"),
+          collections:[String(analyzed.collection||"jardineria")],
+          type:String(analyzed.type||existing.type||"product"),
+          department:String(analyzed.department||existing.department||"Catálogo"),
+          area:String(analyzed.area||existing.area||"Importados"),
+          family:String(analyzed.family||existing.family||"Proveedor"),
+          subcategory:String(analyzed.family||existing.subcategory||"Proveedor"),
+          image:imageUrls[0],
+          images:imageUrls,
+          metadata:{
+            ...metadata,
+            supplierCategory:String(analyzed.supplierCategory||metadata?.supplierCategory||"").slice(0,300),
+            originalImageUrls:sourceImages.slice(0,8),
+            mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+            repairedFromSourceAt:new Date().toISOString(),
+          },
+        },{id:String(existing.id)});
+
+        repaired+=1;
+        results.push({id:String(existing.id),name:String(existing.name||""),ok:true,images:imageUrls.length,product:refreshed});
+      }catch(error){
+        errors+=1;
+        results.push({id:String(existing.id),name:String(existing.name||""),ok:false,error:String(error?.message||error||"Error desconocido")});
+      }
+    }
+
+    return json(res,200,{
+      ok:true,
+      candidates:candidates.length,
+      repaired,
+      errors,
+      results,
+      source:"neon"
+    });
   }
 
   if(path==="/api/settings/public"&&req.method==="GET"){
