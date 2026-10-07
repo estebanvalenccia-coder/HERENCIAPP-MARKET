@@ -1,71 +1,491 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, PackagePlus, Save, ShoppingBag, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  Building2,
+  CheckCircle2,
+  ExternalLink,
+  Link2,
+  MousePointerClick,
+  PackagePlus,
+  Play,
+  RefreshCw,
+  Save,
+  ShoppingBag,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
 import { toast } from "sonner";
-import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { backendApi } from "../../lib/backendStorage";
 
-export function AdminSuppliersPanel(){
-  const [operations,setOperations]=useState<any>({suppliers:[],purchases:[]});
-  const [products,setProducts]=useState<any[]>([]);
-  const [form,setForm]=useState({name:"",email:"",phone:"",category:""});
-  const [purchase,setPurchase]=useState({supplierId:"",reference:"",productId:"",quantity:1,unitCost:0});
+type SupplierMode = "manual" | "autopilot";
 
-  const load=async()=>{
-    try{
-      const [r]=await Promise.all([backendApi.getPosOperations(),backendStorage.refresh()]);
-      setOperations(r.operations||{});
-      try{setProducts(JSON.parse(backendStorage.getItem("adminProducts")||"[]").filter((p:any)=>p.active!==false&&!p.deletedAt));}catch{setProducts([]);}
-    }catch(e:any){toast.error(e?.message||"No se pudieron cargar proveedores");}
+const money = (value: number) =>
+  new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(value || 0));
+
+function sourceHostFromProduct(product: any) {
+  const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+  if (metadata.sourceHost) return String(metadata.sourceHost).replace(/^www\./, "");
+  try {
+    return metadata.sourceProductUrl ? new URL(String(metadata.sourceProductUrl)).hostname.replace(/^www\./, "") : "";
+  } catch {
+    return "";
+  }
+}
+
+function fulfillmentBadge(status = "") {
+  const normalized = String(status || "");
+  if (["ordered", "shipped", "delivered"].includes(normalized)) return "✅ " + normalized;
+  if (normalized === "autopilot_ready") return "🤖 listo";
+  if (normalized === "manual_ready" || normalized === "manual_purchase_required") return "🖱️ manual";
+  if (normalized === "connector_required") return "🔌 conector";
+  if (normalized === "approval_required") return "🛡️ aprobación";
+  if (normalized === "cost_required") return "💶 coste";
+  if (normalized === "action_required") return "⚠️ revisar";
+  return normalized || "pendiente";
+}
+
+export function AdminSuppliersPanel() {
+  const [operations, setOperations] = useState<any>({ suppliers: [], purchases: [], supplierFulfillments: [] });
+  const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [fulfillments, setFulfillments] = useState<any[]>([]);
+  const [connectorReady, setConnectorReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [savingProductId, setSavingProductId] = useState("");
+  const [processingId, setProcessingId] = useState("");
+
+  const [form, setForm] = useState<any>({
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    category: "",
+    sourceHost: "",
+    fulfillmentMode: "manual" as SupplierMode,
+    maxAutoOrderTotal: 80,
+    active: true,
+  });
+  const [purchase, setPurchase] = useState({ supplierId: "", reference: "", productId: "", quantity: 1, unitCost: 0 });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [ops, catalog, onlineOrders, queue] = await Promise.all([
+        backendApi.getPosOperations(),
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listOrders(),
+        backendApi.listSupplierFulfillments(),
+      ]);
+      setOperations(ops.operations || {});
+      setProducts(Array.isArray(catalog.products) ? catalog.products : []);
+      setOrders(Array.isArray(onlineOrders.orders) ? onlineOrders.orders : []);
+      setFulfillments(Array.isArray(queue.fulfillments) ? queue.fulfillments : []);
+      setConnectorReady(Boolean(queue.autopilotConnectorConfigured));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cargar Supplier Hub");
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(()=>{void load();},[]);
 
-  const add=async()=>{
-    if(!form.name.trim()) return toast.error("Escribe el nombre del proveedor");
-    try{
-      const r=await backendApi.savePosSupplier(form);
-      setOperations(r.operations||operations);
-      setForm({name:"",email:"",phone:"",category:""});
-      toast.success("Proveedor guardado");
-    }catch(e:any){toast.error(e?.message||"No se pudo guardar");}
-  };
+  useEffect(() => {
+    void load();
+  }, []);
 
-  const createPurchase=async()=>{
-    if(!purchase.supplierId||!purchase.productId||purchase.quantity<=0)return toast.error("Selecciona proveedor, producto y cantidad");
-    try{
-      const r=await backendApi.createPosPurchase({
-        supplierId:purchase.supplierId,
-        reference:purchase.reference,
-        items:[{id:purchase.productId,quantity:purchase.quantity,unitCost:purchase.unitCost}],
+  const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
+  const importedProducts = useMemo(
+    () =>
+      products.filter((product: any) => {
+        const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+        return Boolean(metadata.importedFromUrl || metadata.sourceProductUrl);
+      }),
+    [products]
+  );
+
+  const saveSupplier = async () => {
+    if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
+    try {
+      const result = await backendApi.savePosSupplier(form);
+      setOperations(result.operations || operations);
+      setForm({
+        id: "",
+        name: "",
+        email: "",
+        phone: "",
+        category: "",
+        sourceHost: "",
+        fulfillmentMode: "manual",
+        maxAutoOrderTotal: 80,
+        active: true,
       });
-      setOperations(r.operations||operations);
-      setProducts(r.inventory||products);
-      await backendStorage.refresh();
-      setPurchase({...purchase,reference:"",productId:"",quantity:1,unitCost:0});
-      toast.success("Compra registrada y stock actualizado");
-    }catch(e:any){toast.error(e?.message||"No se pudo registrar la compra");}
+      toast.success("Proveedor guardado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el proveedor");
+    }
   };
 
-  const spent=useMemo(()=>(operations.purchases||[]).reduce((s:number,p:any)=>s+Number(p.total||0),0),[operations]);
-  const selectedProduct=products.find((p:any)=>String(p.id)===String(purchase.productId));
+  const editSupplier = (supplier: any) => {
+    setForm({
+      id: supplier.id || "",
+      name: supplier.name || "",
+      email: supplier.email || "",
+      phone: supplier.phone || "",
+      category: supplier.category || "",
+      sourceHost: supplier.sourceHost || "",
+      fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+      maxAutoOrderTotal: Number(supplier.maxAutoOrderTotal || 0),
+      active: supplier.active !== false,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const createPurchase = async () => {
+    if (!purchase.supplierId || !purchase.productId || purchase.quantity <= 0) {
+      return toast.error("Selecciona proveedor, producto y cantidad");
+    }
+    try {
+      const result = await backendApi.createPosPurchase({
+        supplierId: purchase.supplierId,
+        reference: purchase.reference,
+        items: [{ id: purchase.productId, quantity: purchase.quantity, unitCost: purchase.unitCost }],
+      });
+      setOperations(result.operations || operations);
+      setPurchase({ ...purchase, reference: "", productId: "", quantity: 1, unitCost: 0 });
+      toast.success("Compra registrada y stock actualizado");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo registrar la compra");
+    }
+  };
+
+  const assignDropship = async (product: any, supplierId: string, mode: SupplierMode, supplierCost: number) => {
+    if (!supplierId) return toast.error("Selecciona un proveedor");
+    const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
+    if (!supplier) return toast.error("Proveedor no encontrado");
+
+    setSavingProductId(String(product.id));
+    try {
+      const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+      await backendApi.updateCommerceProduct(product.id, {
+        metadata: {
+          ...metadata,
+          importedFromUrl: true,
+          fulfillmentType: "dropship",
+          supplierId: supplier.id,
+          fulfillmentMode: mode,
+          supplierCost: Math.max(0, Number(supplierCost || 0)),
+          sourceHost: metadata.sourceHost || supplier.sourceHost || sourceHostFromProduct(product),
+          supplierAssignedAt: new Date().toISOString(),
+        },
+        trackInventory: false,
+      });
+      toast.success(mode === "autopilot" ? "Producto conectado a Autopilot" : "Producto conectado en modo manual");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo asignar el proveedor");
+    } finally {
+      setSavingProductId("");
+    }
+  };
+
+  const syncPaidOrders = async () => {
+    const candidates = orders.filter((order: any) =>
+      ["paid", "confirmed", "preparing", "processing", "ready"].includes(String(order.status || ""))
+    );
+    if (!candidates.length) return toast.info("No hay pedidos pagados pendientes de preparar");
+
+    let prepared = 0;
+    let errors = 0;
+    for (const order of candidates.slice(0, 100)) {
+      try {
+        const result = await backendApi.prepareSupplierFulfillments(String(order.id));
+        prepared += Array.isArray(result.fulfillments) ? result.fulfillments.length : 0;
+      } catch {
+        errors += 1;
+      }
+    }
+    await load();
+    if (errors) toast.warning(\`Cola actualizada: \${prepared} preparaciones y \${errors} pedidos con incidencia\`);
+    else toast.success(\`Cola actualizada: \${prepared} preparaciones de proveedor\`);
+  };
+
+  const executeFulfillment = async (fulfillment: any, force = false) => {
+    setProcessingId(String(fulfillment.id));
+    try {
+      const result = await backendApi.executeSupplierFulfillment(String(fulfillment.id), force);
+      const next = result.fulfillment;
+      setFulfillments((current) => current.map((item) => String(item.id) === String(next.id) ? next : item));
+      if (result.executed) toast.success("Pedido enviado al proveedor por Autopilot");
+      else if (result.manual) toast.success("Compra manual preparada");
+      else toast.warning(next.blocker || "El pedido necesita revisión");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo procesar el pedido del proveedor");
+    } finally {
+      setProcessingId("");
+    }
+  };
+
+  const markOrdered = async (fulfillment: any) => {
+    const externalOrderId = window.prompt("Número de pedido del proveedor (opcional)", fulfillment.externalOrderId || "") ?? "";
+    try {
+      const result = await backendApi.updateSupplierFulfillment(String(fulfillment.id), {
+        status: "ordered",
+        externalOrderId,
+        blocker: "",
+      });
+      setFulfillments((current) => current.map((item) => String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+      toast.success("Pedido de proveedor marcado como realizado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar");
+    }
+  };
+
+  const addTracking = async (fulfillment: any) => {
+    const trackingNumber = window.prompt("Número de seguimiento", fulfillment.trackingNumber || "");
+    if (trackingNumber == null) return;
+    const trackingUrl = window.prompt("URL de seguimiento (opcional)", fulfillment.trackingUrl || "") ?? "";
+    try {
+      const result = await backendApi.updateSupplierFulfillment(String(fulfillment.id), {
+        status: "shipped",
+        trackingNumber,
+        trackingUrl,
+        blocker: "",
+      });
+      setFulfillments((current) => current.map((item) => String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+      toast.success("Tracking guardado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo guardar el tracking");
+    }
+  };
+
+  const spent = useMemo(
+    () => (operations.purchases || []).reduce((sum: number, item: any) => sum + Number(item.total || 0), 0),
+    [operations]
+  );
+
+  const activeFulfillments = fulfillments.filter((item: any) => !["delivered", "cancelled"].includes(String(item.status || "")));
+  const selectedProduct = products.find((product: any) => String(product.id) === String(purchase.productId));
+
+  if (loading) {
+    return <div className="rounded-3xl border border-border bg-card p-8 text-sm text-muted-foreground">Cargando Supplier Hub…</div>;
+  }
 
   return <div className="space-y-6">
-    <section className="rounded-3xl border border-border bg-card p-6"><p className="text-sm font-bold uppercase tracking-wider text-primary">Compras y proveedores</p><h1 className="mt-2 text-3xl font-black">Proveedores Herencia</h1><p className="mt-2 text-muted-foreground">Altas, compras y entradas de stock conectadas al TPV.</p></section>
-    <div className="grid gap-4 md:grid-cols-3"><Card icon={Building2} label="Proveedores" value={String((operations.suppliers||[]).length)}/><Card icon={Truck} label="Compras registradas" value={String((operations.purchases||[]).length)}/><Card icon={PackagePlus} label="Compras acumuladas" value={new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(spent)}/></div>
+    <section className="rounded-3xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-wider text-primary">Supplier Hub</p>
+          <h1 className="mt-2 text-3xl font-black">Proveedores · Manual + Autopilot</h1>
+          <p className="mt-2 max-w-3xl text-muted-foreground">
+            Conecta productos importados por URL con su proveedor. Manual prepara todo para comprar tú;
+            Autopilot ejecuta solo cuando existe un conector/API autorizado y respeta tus límites.
+          </p>
+        </div>
+        <div className={\`rounded-2xl border px-4 py-3 text-sm font-semibold \${connectorReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}\`}>
+          {connectorReady ? <><CheckCircle2 className="mr-2 inline h-4 w-4"/>Conector Autopilot listo</> : <><AlertTriangle className="mr-2 inline h-4 w-4"/>Autopilot preparado · falta conector</>}
+        </div>
+      </div>
+    </section>
 
-    <div className="grid gap-6 xl:grid-cols-2">
-      <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold">Nuevo proveedor</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{(["name","email","phone","category"] as const).map((key)=><input key={key} value={form[key]} onChange={(e)=>setForm({...form,[key]:e.target.value})} placeholder={{name:"Nombre",email:"Email",phone:"Teléfono",category:"Categoría"}[key]} className="rounded-xl border border-border bg-background p-3"/>)}</div><button onClick={()=>void add()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground"><Save className="h-4 w-4"/>Guardar proveedor</button></section>
-
-      <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold">Registrar compra / entrada</h2><p className="mt-1 text-sm text-muted-foreground">La cantidad se suma al stock real. Si el producto estaba agotado, dispara el aviso de reposición.</p><div className="mt-4 grid gap-3">
-        <select value={purchase.supplierId} onChange={(e)=>setPurchase({...purchase,supplierId:e.target.value})} className="rounded-xl border border-border bg-background p-3"><option value="">Proveedor</option>{(operations.suppliers||[]).map((s:any)=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-        <select value={purchase.productId} onChange={(e)=>setPurchase({...purchase,productId:e.target.value})} className="rounded-xl border border-border bg-background p-3"><option value="">Producto</option>{products.map((p:any)=><option key={p.id} value={p.id}>{p.name} · stock {p.stock||0}</option>)}</select>
-        <div className="grid grid-cols-2 gap-3"><input type="number" min="1" value={purchase.quantity} onChange={(e)=>setPurchase({...purchase,quantity:Math.max(1,Number(e.target.value||1))})} placeholder="Cantidad" className="rounded-xl border border-border bg-background p-3"/><input type="number" min="0" step="0.01" value={purchase.unitCost} onChange={(e)=>setPurchase({...purchase,unitCost:Math.max(0,Number(e.target.value||0))})} placeholder="Coste unidad" className="rounded-xl border border-border bg-background p-3"/></div>
-        <input value={purchase.reference} onChange={(e)=>setPurchase({...purchase,reference:e.target.value})} placeholder="Referencia / factura proveedor" className="rounded-xl border border-border bg-background p-3"/>
-        {selectedProduct&&<p className="text-sm text-muted-foreground">Después de esta entrada: <strong>{Number(selectedProduct.stock||0)+purchase.quantity}</strong> uds. · Coste entrada: <strong>{new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(purchase.quantity*purchase.unitCost)}</strong></p>}
-      </div><button onClick={()=>void createPurchase()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground"><ShoppingBag className="h-4 w-4"/>Registrar compra</button></section>
+    <div className="grid gap-4 md:grid-cols-4">
+      <Card icon={Building2} label="Proveedores" value={String(suppliers.length)} />
+      <Card icon={Link2} label="Productos URL" value={String(importedProducts.length)} />
+      <Card icon={Bot} label="Cola proveedor" value={String(activeFulfillments.length)} />
+      <Card icon={PackagePlus} label="Compras acumuladas" value={money(spent)} />
     </div>
 
-    <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold mb-4">Proveedores registrados</h2><div className="space-y-2">{(operations.suppliers||[]).length===0?<p className="text-sm text-muted-foreground">Aún no hay proveedores.</p>:(operations.suppliers||[]).map((s:any)=><div key={s.id||s.name} className="rounded-xl border border-border p-4"><p className="font-semibold">{s.name}</p><p className="text-xs text-muted-foreground">{s.category||"Sin categoría"} · {s.email||"Sin email"} · {s.phone||"Sin teléfono"}</p></div>)}</div></section>
+    <div className="grid gap-6 xl:grid-cols-2">
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="text-xl font-bold">{form.id ? "Editar proveedor" : "Nuevo proveedor"}</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre · ej. AliExpress" className="rounded-xl border border-border bg-background p-3"/>
+          <input value={form.sourceHost} onChange={(e) => setForm({ ...form, sourceHost: e.target.value })} placeholder="Dominio · aliexpress.com" className="rounded-xl border border-border bg-background p-3"/>
+          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="rounded-xl border border-border bg-background p-3"/>
+          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Teléfono" className="rounded-xl border border-border bg-background p-3"/>
+          <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Categoría" className="rounded-xl border border-border bg-background p-3"/>
+          <select value={form.fulfillmentMode} onChange={(e) => setForm({ ...form, fulfillmentMode: e.target.value as SupplierMode })} className="rounded-xl border border-border bg-background p-3">
+            <option value="manual">🖱️ Manual / 1 clic</option>
+            <option value="autopilot">🤖 Autopilot</option>
+          </select>
+          <label className="rounded-xl border border-border p-3 text-sm">
+            <span className="block text-xs font-semibold text-muted-foreground">Máximo por pedido automático</span>
+            <input type="number" min="0" step="0.01" value={form.maxAutoOrderTotal} onChange={(e) => setForm({ ...form, maxAutoOrderTotal: Math.max(0, Number(e.target.value || 0)) })} className="mt-1 w-full bg-transparent font-semibold outline-none"/>
+          </label>
+          <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm font-semibold">
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })}/>
+            Proveedor activo
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button onClick={() => void saveSupplier()} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">
+            <Save className="h-4 w-4"/>Guardar proveedor
+          </button>
+          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
+        </div>
+      </section>
 
-    <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-xl font-bold mb-4">Últimas compras</h2><div className="space-y-2">{(operations.purchases||[]).length===0?<p className="text-sm text-muted-foreground">Sin compras registradas.</p>:(operations.purchases||[]).slice(0,30).map((p:any)=><div key={p.id} className="flex flex-col gap-2 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{p.reference||"Compra a proveedor"}</p><p className="text-xs text-muted-foreground">{(p.items||[]).map((i:any)=>`${i.name} x${i.quantity}`).join(", ")} · {new Date(p.createdAt).toLocaleString("es-ES")}</p></div><strong>{new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(Number(p.total||0))}</strong></div>)}</div></section>
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="text-xl font-bold">Entrada de stock propio</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Solo para compras que llegan a tu almacén. Dropshipping no suma stock local.</p>
+        <div className="mt-4 grid gap-3">
+          <select value={purchase.supplierId} onChange={(e) => setPurchase({ ...purchase, supplierId: e.target.value })} className="rounded-xl border border-border bg-background p-3">
+            <option value="">Proveedor</option>
+            {suppliers.map((supplier: any) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+          </select>
+          <select value={purchase.productId} onChange={(e) => setPurchase({ ...purchase, productId: e.target.value })} className="rounded-xl border border-border bg-background p-3">
+            <option value="">Producto</option>
+            {products.filter((product:any)=>product.active!==false&&!product.deletedAt).map((product: any) => <option key={product.id} value={product.id}>{product.name} · stock {product.stock || 0}</option>)}
+          </select>
+          <div className="grid grid-cols-2 gap-3">
+            <input type="number" min="1" value={purchase.quantity} onChange={(e) => setPurchase({ ...purchase, quantity: Math.max(1, Number(e.target.value || 1)) })} placeholder="Cantidad" className="rounded-xl border border-border bg-background p-3"/>
+            <input type="number" min="0" step="0.01" value={purchase.unitCost} onChange={(e) => setPurchase({ ...purchase, unitCost: Math.max(0, Number(e.target.value || 0)) })} placeholder="Coste unidad" className="rounded-xl border border-border bg-background p-3"/>
+          </div>
+          <input value={purchase.reference} onChange={(e) => setPurchase({ ...purchase, reference: e.target.value })} placeholder="Referencia / factura proveedor" className="rounded-xl border border-border bg-background p-3"/>
+          {selectedProduct && <p className="text-sm text-muted-foreground">Después de esta entrada: <strong>{Number(selectedProduct.stock || 0) + purchase.quantity}</strong> uds. · Coste: <strong>{money(purchase.quantity * purchase.unitCost)}</strong></p>}
+        </div>
+        <button onClick={() => void createPurchase()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">
+          <ShoppingBag className="h-4 w-4"/>Registrar compra
+        </button>
+      </section>
+    </div>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Productos importados por URL</h2>
+          <p className="text-sm text-muted-foreground">Asigna proveedor, coste y modo. Al marcarlo dropshipping se desactiva el stock local.</p>
+        </div>
+      </div>
+      <div className="mt-4 space-y-3">
+        {!importedProducts.length ? <p className="text-sm text-muted-foreground">Aún no hay productos importados por URL.</p> :
+          importedProducts.slice(0, 150).map((product: any) => <ImportedProductRow
+            key={product.id}
+            product={product}
+            suppliers={suppliers}
+            saving={savingProductId === String(product.id)}
+            onSave={assignDropship}
+          />)}
+      </div>
+    </section>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Cola de pedidos a proveedores</h2>
+          <p className="text-sm text-muted-foreground">Los pedidos pagados se preparan automáticamente. También puedes reconstruir la cola para pedidos anteriores.</p>
+        </div>
+        <button onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold">
+          <RefreshCw className="h-4 w-4"/>Sincronizar pedidos pagados
+        </button>
+      </div>
+      <div className="mt-4 space-y-3">
+        {!fulfillments.length ? <p className="text-sm text-muted-foreground">No hay compras de proveedor preparadas todavía.</p> :
+          fulfillments.slice(0, 200).map((item: any) => {
+            const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","action_required"].includes(String(item.status || ""));
+            const sourceUrl = item.items?.[0]?.sourceProductUrl || "";
+            return <div key={item.id} className="rounded-2xl border border-border p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-bold">Pedido #{String(item.orderId || "").slice(0, 8)}</p>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{item.mode === "autopilot" ? "🤖 AUTOPILOT" : "🖱️ MANUAL"}</span>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{fulfillmentBadge(item.status)}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{item.supplierName} · coste estimado <strong>{money(item.estimatedCost)}</strong></p>
+                  <p className="mt-1 text-xs text-muted-foreground">{(item.items || []).map((line:any)=>\`\${line.name} ×\${line.quantity}\`).join(" · ")}</p>
+                  {item.blocker && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">{item.blocker}</p>}
+                  {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {sourceUrl && <button onClick={() => window.open(sourceUrl, "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><ExternalLink className="h-4 w-4"/>Proveedor</button>}
+                  {item.mode === "manual" && !["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><MousePointerClick className="h-4 w-4"/>Preparar compra</button>}
+                  {canRunAuto && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>Ejecutar Autopilot</button>}
+                  {["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
+                  {["ordered","shipped"].includes(String(item.status || "")) && <button onClick={() => void addTracking(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><Truck className="h-4 w-4"/>Tracking</button>}
+                </div>
+              </div>
+            </div>;
+          })}
+      </div>
+    </section>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <h2 className="text-xl font-bold">Proveedores registrados</h2>
+      <div className="mt-4 space-y-2">
+        {!suppliers.length ? <p className="text-sm text-muted-foreground">Aún no hay proveedores.</p> :
+          suppliers.map((supplier: any) => <button key={supplier.id} onClick={() => editSupplier(supplier)} className="w-full rounded-xl border border-border p-4 text-left hover:bg-muted/40">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-semibold">{supplier.name}</p>
+                <p className="text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio"} · {supplier.category || "Sin categoría"}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{supplier.fulfillmentMode === "autopilot" ? "🤖 Autopilot" : "🖱️ Manual"}</span>
+                {supplier.fulfillmentMode === "autopilot" && <span className="rounded-full bg-muted px-2.5 py-1 text-xs"><ShieldCheck className="mr-1 inline h-3.5 w-3.5"/>máx. {money(supplier.maxAutoOrderTotal)}</span>}
+              </div>
+            </div>
+          </button>)}
+      </div>
+    </section>
   </div>;
 }
-function Card({icon:Icon,label,value}:{icon:any;label:string;value:string}){return <div className="rounded-2xl border border-border bg-card p-5"><Icon className="h-6 w-6 text-primary"/><p className="mt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-black">{value}</p></div>}
+
+function ImportedProductRow({
+  product,
+  suppliers,
+  saving,
+  onSave,
+}: {
+  product: any;
+  suppliers: any[];
+  saving: boolean;
+  onSave: (product: any, supplierId: string, mode: SupplierMode, supplierCost: number) => Promise<void>;
+}) {
+  const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+  const [supplierId, setSupplierId] = useState(String(metadata.supplierId || ""));
+  const [mode, setMode] = useState<SupplierMode>(metadata.fulfillmentMode === "autopilot" ? "autopilot" : "manual");
+  const [cost, setCost] = useState(Number(metadata.supplierCost || 0));
+  const sourceUrl = String(metadata.sourceProductUrl || "");
+  const sourceHost = sourceHostFromProduct(product);
+  const salePrice = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
+  const grossMargin = salePrice > 0 && cost > 0 ? salePrice - cost : 0;
+  const grossPercent = salePrice > 0 && cost > 0 ? (grossMargin / salePrice) * 100 : 0;
+
+  return <div className="grid gap-3 rounded-2xl border border-border p-4 xl:grid-cols-[minmax(0,1.4fr)_220px_180px_160px_auto] xl:items-center">
+    <div className="min-w-0">
+      <div className="flex items-center gap-3">
+        {product.image ? <img src={product.image} alt="" className="h-14 w-14 rounded-xl object-cover"/> : <div className="grid h-14 w-14 place-items-center rounded-xl bg-muted">📦</div>}
+        <div className="min-w-0">
+          <p className="truncate font-semibold">{product.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{sourceHost || "Proveedor por URL"} · venta {money(salePrice)}</p>
+          {cost > 0 && salePrice > 0 && <p className={\`text-xs font-semibold \${grossMargin > 0 ? "text-emerald-700" : "text-red-700"}\`}>Margen bruto: {money(grossMargin)} · {grossPercent.toFixed(1)}%</p>}
+        </div>
+      </div>
+    </div>
+    <select value={supplierId} onChange={(e)=>setSupplierId(e.target.value)} className="rounded-xl border border-border bg-background p-3 text-sm">
+      <option value="">Seleccionar proveedor</option>
+      {suppliers.map((supplier:any)=><option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+    </select>
+    <select value={mode} onChange={(e)=>setMode(e.target.value as SupplierMode)} className="rounded-xl border border-border bg-background p-3 text-sm">
+      <option value="manual">🖱️ Manual</option>
+      <option value="autopilot">🤖 Autopilot</option>
+    </select>
+    <label className="rounded-xl border border-border px-3 py-2">
+      <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor</span>
+      <input type="number" min="0" step="0.01" value={cost} onChange={(e)=>setCost(Math.max(0,Number(e.target.value||0)))} className="w-full bg-transparent text-sm font-semibold outline-none"/>
+    </label>
+    <div className="flex gap-2">
+      {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
+      <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost)} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
+    </div>
+  </div>;
+}
+
+function Card({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return <div className="rounded-2xl border border-border bg-card p-5">
+    <Icon className="h-6 w-6 text-primary"/>
+    <p className="mt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="mt-1 text-2xl font-black">{value}</p>
+  </div>;
+}
