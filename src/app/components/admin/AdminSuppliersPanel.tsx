@@ -206,8 +206,8 @@ export function AdminSuppliersPanel() {
       }
     }
     await load();
-    if (errors) toast.warning(\`Cola actualizada: \${prepared} preparaciones y \${errors} pedidos con incidencia\`);
-    else toast.success(\`Cola actualizada: \${prepared} preparaciones de proveedor\`);
+    if (errors) toast.warning(`Cola actualizada: ${prepared} preparaciones y ${errors} pedidos con incidencia`);
+    else toast.success(`Cola actualizada: ${prepared} preparaciones de proveedor`);
   };
 
   const executeFulfillment = async (fulfillment: any, force = false) => {
@@ -282,7 +282,7 @@ export function AdminSuppliersPanel() {
             Autopilot ejecuta solo cuando existe un conector/API autorizado y respeta tus límites.
           </p>
         </div>
-        <div className={\`rounded-2xl border px-4 py-3 text-sm font-semibold \${connectorReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}\`}>
+        <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${connectorReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           {connectorReady ? <><CheckCircle2 className="mr-2 inline h-4 w-4"/>Conector Autopilot listo</> : <><AlertTriangle className="mr-2 inline h-4 w-4"/>Autopilot preparado · falta conector</>}
         </div>
       </div>
@@ -393,7 +393,7 @@ export function AdminSuppliersPanel() {
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{fulfillmentBadge(item.status)}</span>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{item.supplierName} · coste estimado <strong>{money(item.estimatedCost)}</strong></p>
-                  <p className="mt-1 text-xs text-muted-foreground">{(item.items || []).map((line:any)=>\`\${line.name} ×\${line.quantity}\`).join(" · ")}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{(item.items || []).map((line:any)=>`${line.name} ×${line.quantity}`).join(" · ")}</p>
                   {item.blocker && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">{item.blocker}</p>}
                   {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
                 </div>
@@ -459,7 +459,7 @@ function ImportedProductRow({
         <div className="min-w-0">
           <p className="truncate font-semibold">{product.name}</p>
           <p className="truncate text-xs text-muted-foreground">{sourceHost || "Proveedor por URL"} · venta {money(salePrice)}</p>
-          {cost > 0 && salePrice > 0 && <p className={\`text-xs font-semibold \${grossMargin > 0 ? "text-emerald-700" : "text-red-700"}\`}>Margen bruto: {money(grossMargin)} · {grossPercent.toFixed(1)}%</p>}
+          {cost > 0 && salePrice > 0 && <p className={`text-xs font-semibold ${grossMargin > 0 ? "text-emerald-700" : "text-red-700"}`}>Margen bruto: {money(grossMargin)} · {grossPercent.toFixed(1)}%</p>}
         </div>
       </div>
     </div>
