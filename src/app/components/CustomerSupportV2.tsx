@@ -240,7 +240,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
           <div ref={bottomRef}/>
         </div>
       </>}
-      {active && !creating && !active.humanRequested && (
+      {active && !creating && !active.humanRequested && active.status === "handoff" && (
         <div className="mx-4 my-3 rounded-2xl border border-[#d6e8d8] bg-[#f0f7ef] p-3">
           {active.status === "handoff" ? (
             <p className="mb-2 text-sm font-semibold text-[#2e6243]">Herencia IA necesita la ayuda de tu Amigo Plantil para resolver esta consulta.</p>

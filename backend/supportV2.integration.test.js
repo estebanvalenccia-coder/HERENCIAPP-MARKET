@@ -39,6 +39,8 @@ function makeTestApp() {
 test("guest tickets, ownership, internal notes, admin replies and private images",async()=>{
   // Prevent test fixtures from sending real operational emails.
   process.env.STORE_EMAIL = "";
+  const previousKey = process.env.GROQ_API_KEY;
+  delete process.env.GROQ_API_KEY;
   const app=makeTestApp();
   await app.ready();
   const base="http://127.0.0.1:"+app.port();
@@ -57,12 +59,11 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(start.res.status,201);
     assert.match(start.payload.thread.id,/^t_/);
     const ticket=start.payload.thread;
-    // Una pregunta sensible pasa primero por IA local de derivación,
-    // pero NO avisa al equipo hasta que el cliente pulsa el botón humano.
-    assert.equal(ticket.status,"handoff");
+    // La IA primero orienta incluso ante un pedido dañado; no deriva por palabras clave.
+    assert.equal(ticket.status,"automated");
     assert.equal(ticket.humanRequested,false);
     assert.equal(ticket.messages.length,2);
-    assert.match(ticket.messages[1].text,/Amigo Plantil/i);
+    assert.match(ticket.messages[1].text,/dañado|devolución|fotografía/i);
     const human=await call("/api/support/v2/tickets/"+ticket.id+"/handoff",{
       cookie,method:"POST",
     });
@@ -124,5 +125,9 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(removed.res.status,404);
     const removedMedia=await call("/api/support/v2/tickets/"+ticket.id+"/attachments/"+fileId,{cookie:adminCookie});
     assert.equal(removedMedia.res.status,404);
-  }finally{await app.close();}
+  }finally{
+    await app.close();
+    if(previousKey===undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY=previousKey;
+  }
 });
