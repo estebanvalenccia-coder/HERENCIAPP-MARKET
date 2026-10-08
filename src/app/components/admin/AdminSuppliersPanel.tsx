@@ -48,6 +48,8 @@ function fulfillmentBadge(status = "") {
   if (normalized === "manual_ready" || normalized === "manual_purchase_required") return "🖱️ manual";
   if (normalized === "connector_required") return "🔌 conector";
   if (normalized === "approval_required") return "🛡️ aprobación";
+  if (normalized === "cj_creating" || normalized === "cj_paying") return "⏳ operación CJ";
+  if (normalized === "cj_creation_unknown" || normalized === "cj_payment_unknown") return "⚠️ conciliar CJ";
   if (normalized === "cost_required") return "💶 coste";
   if (normalized === "mapping_required") return "🔗 SKU/VID";
   if (normalized === "address_required") return "📍 dirección";
@@ -72,6 +74,13 @@ export function AdminSuppliersPanel() {
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
   const [syncingPaidOrders, setSyncingPaidOrders] = useState(false);
+  const [cjApprovalPreview, setCjApprovalPreview] = useState<Awaited<ReturnType<typeof backendApi.getCjManualApprovalPreview>> | null>(null);
+  const [cjApprovalAction, setCjApprovalAction] = useState<"create" | "pay" | null>(null);
+  const [cjApprovalConfirmation, setCjApprovalConfirmation] = useState("");
+  const [cjApprovalMaxUsd, setCjApprovalMaxUsd] = useState("");
+  const [cjMerchantPaysAcknowledged, setCjMerchantPaysAcknowledged] = useState(false);
+  const [cjApprovalSubmitting, setCjApprovalSubmitting] = useState(false);
+  const [cjApprovalLoadingId, setCjApprovalLoadingId] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -456,6 +465,55 @@ export function AdminSuppliersPanel() {
       toast.error(error?.message || "No se pudo procesar el pedido del proveedor");
     } finally {
       setProcessingId("");
+    }
+  };
+
+  const openCjApproval = async (fulfillment: any, action: "create" | "pay") => {
+    if (cjApprovalLoadingId) return;
+    setCjApprovalLoadingId(String(fulfillment.id));
+    try {
+      const preview = await backendApi.getCjManualApprovalPreview(String(fulfillment.id));
+      setCjApprovalPreview(preview);
+      setCjApprovalAction(action);
+      setCjApprovalConfirmation("");
+      setCjMerchantPaysAcknowledged(false);
+      const amount = action === "create" ? preview.estimatedSupplierTotalUsd : preview.providerActualPaymentUsd;
+      setCjApprovalMaxUsd(Number(amount || 0).toFixed(2));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo preparar la autorización CJ");
+    } finally {
+      setCjApprovalLoadingId("");
+    }
+  };
+
+  const submitCjApproval = async () => {
+    if (!cjApprovalPreview || !cjApprovalAction || cjApprovalSubmitting) return;
+    setCjApprovalSubmitting(true);
+    try {
+      const request = {
+        snapshot: cjApprovalPreview.snapshot,
+        confirmation: cjApprovalConfirmation,
+        approvedMaxUsd: Number(cjApprovalMaxUsd),
+        acknowledgeMerchantPays: cjMerchantPaysAcknowledged,
+      };
+      const result = cjApprovalAction === "create"
+        ? await backendApi.createUnpaidCjOrder(cjApprovalPreview.fulfillmentId, request)
+        : await backendApi.payApprovedCjOrder(cjApprovalPreview.fulfillmentId, request);
+      setFulfillments((list) => list.map((item) =>
+        String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+      toast.success(cjApprovalAction === "create"
+        ? "Pedido creado en CJ SIN pagar. Revisa el importe antes de autorizar el pago."
+        : "Pago confirmado por CJ. Estado de proveedor actualizado.");
+      setCjApprovalAction(null);
+      setCjApprovalPreview(null);
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "CJ requiere revisar este pedido");
+      // A timeout may mean CJ received the action. Refresh from the server;
+      // never automatically repeat an ambiguous create or balance payment.
+      await load();
+    } finally {
+      setCjApprovalSubmitting(false);
     }
   };
 
