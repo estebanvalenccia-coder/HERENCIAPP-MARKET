@@ -9,7 +9,12 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
+import {
+  cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
+  validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
+} from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
@@ -5394,7 +5399,8 @@ async function syncCjSupplierFulfillment(record) {
     rawStatus === "SHIPPED" ? "shipped" :
     rawStatus === "CANCELLED" ? "cancelled" :
     ["UNPAID", "CREATED", "IN_CART"].includes(rawStatus) ? "payment_required" :
-    "ordered";
+    ["UNSHIPPED", "PAID", "PROCESSING", "COMPLETED"].includes(rawStatus) ? "ordered" :
+    "action_required";
   return {
     ...record,
     status,
@@ -5701,6 +5707,18 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   const supplier = (operations.suppliers || []).find((entry) => String(entry?.id || "") === String(record.supplierId || ""));
   if (!supplier) throw Object.assign(new Error("Asigna un proveedor antes de continuar"), { statusCode: 409 });
   if (supplier.active === false) throw Object.assign(new Error("El proveedor está desactivado"), { statusCode: 409 });
+
+  // The generic execution endpoint can NEVER create/pay CJ orders. Supplier
+  // purchases require separate, clearly labelled two-step admin routes.
+  if (supplierIntegrationType(supplier) === "cj" || record.provider === "cj") {
+    return {
+      fulfillment: {
+        ...record,
+        blocker: "Revisa CJ desde las acciones explícitas «Crear sin pagar» y «Pagar». Este botón no compra.",
+      },
+      executed: false, manual: false,
+    };
+  }
 
   const now = new Date().toISOString();
   // Never replay an already purchased, delivered or closed supplier order.
@@ -6272,6 +6290,557 @@ app.post("/api/admin/supplier-fulfillments/prepare/:orderId", requireAdmin, asyn
   }
 });
 
+// Manual CJ fulfillment: two separate, explicit user gestures. An unpaid CJ
+// supplier order may be created only after the admin has reviewed the customer
+// order, real variant, shipping quote and merchant-funded promotion. Paying it
+// is a SECOND action and requires an independent payment gate.
+function cjManualSnapshot(record, order, supplier) {
+  const snapshot = {
+    recordId: record.id,
+    updatedAt: record.updatedAt,
+    status: record.status,
+    estimatedCost: record.estimatedCost,
+    items: record.items,
+    shippingAddress: record.shippingAddress,
+    externalOrderId: record.externalOrderId,
+    orderId: order.id,
+    orderStatus: order.status,
+    orderTotal: order.total,
+    orderMetadata: {
+      coupon: order.metadata?.coupon,
+      discount: order.metadata?.discount,
+      freeCouponOrder: order.metadata?.freeCouponOrder,
+    },
+    supplier: {
+      id: supplier.id, active: supplier.active,
+      cjSandbox: supplier.cjSandbox, cjMaxPaymentUsd: supplier.cjMaxPaymentUsd,
+      maxAutoOrderTotal: supplier.maxAutoOrderTotal,
+    },
+  };
+  return crypto.createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+}
+
+function cjManualReadyForPayment() {
+  return String(process.env.CJ_LIVE_PAYMENT_ENABLED || "").trim().toLowerCase() === "true";
+}
+
+async function loadCjManualOrder(recordId) {
+  const operations = await readSupplierOperations();
+  const record = (operations.supplierFulfillments || []).find((row) =>
+    String(row?.id || "") === String(recordId));
+  if (!record) throw cjManualError("Preparación CJ no encontrada.", 404);
+  const supplier = (operations.suppliers || []).find((entry) =>
+    String(entry?.id || "") === String(record.supplierId || ""));
+  if (!supplier || supplierIntegrationType(supplier) !== "cj") {
+    throw cjManualError("Proveedor CJ no encontrado o no vinculado.");
+  }
+  const order = await getOrderPrimary(record.orderId);
+  if (!order) throw cjManualError("No existe el pedido del cliente para esta compra.", 404);
+  return { record, supplier, order };
+}
+
+async function mutateCjManualRecord(recordId, statuses, patch, validateCurrent = null) {
+  // Atomic reservation inside Neon is REQUIRED before contacting CJ.
+  // No second replica can create or pay the same supplier order concurrently.
+  if (!hasNeon()) throw cjManualError("No hay almacenamiento transaccional disponible para CJ.", 503);
+  let updated = null;
+  await mutateNeonStorageValue("posOperations", (raw) => {
+    const data = parseStoredJson(raw, {});
+    const existing = (data.supplierFulfillments || []).find((row) =>
+      String(row?.id || "") === String(recordId));
+    if (!existing) throw cjManualError("Preparación CJ no encontrada.", 404);
+    const liveSupplier = (data.suppliers || []).find((row) =>
+      String(row?.id || "") === String(existing.supplierId || ""));
+    if (!liveSupplier || supplierIntegrationType(liveSupplier) !== "cj" ||
+        liveSupplier.active === false || liveSupplier.cjSandbox !== false) {
+      throw cjManualError("Proveedor CJ inactivo, desconectado o todavía en modo pruebas.");
+    }
+    if (validateCurrent) validateCurrent(existing, liveSupplier);
+    const merged = applyCjManualStage(data, recordId, statuses, patch);
+    updated = merged.record;
+    return JSON.stringify(merged.operations);
+  });
+  return updated;
+}
+
+// Separate immutable spend/create ledger: legacy POS writes cannot accidentally
+// erase a non-repeatable CJ external action reservation in posOperations.
+async function claimCjExternalAction(action, fulfillmentId, operationId) {
+  if (!hasNeon()) throw cjManualError("Sin base de datos segura para reservar la operación.", 503);
+  const safeAction = action === "pay" ? "pay" : "create";
+  const key = "cjManualExternalAction:" + safeAction + ":" + String(fulfillmentId);
+  await mutateNeonStorageValue(key, (raw) => {
+    if (String(raw || "").trim()) {
+      throw cjManualError("Esta compra CJ ya tiene una operación externa registrada. Concíliala antes de repetir.");
+    }
+    return JSON.stringify({
+      operationId,
+      action: safeAction,
+      fulfillmentId: String(fulfillmentId),
+      status: "claimed",
+      createdAt: new Date().toISOString(),
+    });
+  });
+  return key;
+}
+
+async function recordCjExternalActionResult(key, operationId, status, cjOrderId = "") {
+  if (!key) return;
+  await mutateNeonStorageValue(key, (raw) => {
+    const data = parseStoredJson(raw, {});
+    if (data.operationId !== operationId) {
+      throw cjManualError("El registro de acciones CJ no coincide con la operación.");
+    }
+    return JSON.stringify({
+      ...data,
+      status,
+      cjOrderId: String(cjOrderId || "").slice(0, 90),
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
+// Re-quote the exact Spanish postcode before creating an external order.
+// This is read-only and sends no customer's name, phone or street to CJ.
+async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUsd) {
+  const line = record.items?.[0] || {};
+  const sourceUrl = String(line.sourceProductUrl || "");
+  const pid = (() => {
+    try {
+      return new URL(sourceUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)?.[1] || "";
+    } catch { return ""; }
+  })();
+  if (!pid) throw cjManualError("Falta la URL original válida de CJ para verificar el precio.");
+  const vid = String(line.supplierVariantId || "");
+  const zip = String(record.shippingAddress?.postalCode || "");
+  let variant, freight;
+  try {
+    [variant, freight] = await Promise.all([
+      verifyCjVariantPrice({ pid, vid }),
+      quoteCjVariantShipping({
+        vid, quantity: 1,
+        origin: String(supplier.cjFromCountryCode || "CN").toUpperCase(),
+        destination: "ES", zip,
+      }),
+    ]);
+  } catch {
+    throw cjManualError("CJ no pudo confirmar la variante o el envío al código postal. No se creará ningún pedido.");
+  }
+  const method = (freight?.methods || []).find((row) =>
+    String(row.name || "") === String(line.cjPreferredLogisticName || ""));
+  const postageUsd = Number(method?.totalPostageUsd);
+  const productUsd = Number(variant?.priceUsd);
+  if (!(productUsd >= 0 && postageUsd >= 0) ||
+      !Number.isFinite(productUsd) || !Number.isFinite(postageUsd) ||
+      !method || !variant || variant.vid !== vid) {
+    throw cjManualError("El transportista o la variante CJ no están disponibles para ese código postal.");
+  }
+  const liveTotalUsd = Math.round((productUsd + postageUsd) * 100) / 100;
+  const limitUsd = Number(supplier.cjMaxPaymentUsd);
+  if (!(liveTotalUsd > 0) || liveTotalUsd > maxApprovedUsd || liveTotalUsd > limitUsd ||
+      Math.abs(liveTotalUsd - savedUsd) > Math.max(0.50, savedUsd * 0.02)) {
+    throw cjManualError("CJ ha cambiado el coste o transporte para el código postal. Recalcula la cotización y autoriza el nuevo importe.");
+  }
+  return { liveTotalUsd, verifiedZip: zip, logisticName: method.name };
+}
+
+async function verifyCjCustomerFunding(order, funding) {
+  if (funding.freeCoupon) return; // Admin consciously funds the free coupon.
+  const paymentIntentId = String(
+    order.stripe_payment_intent_id || order.stripePaymentIntentId || ""
+  ).trim();
+  if (!stripe || !paymentIntentId) {
+    throw cjManualError("Falta la confirmación real de Stripe para este pedido.");
+  }
+  let intent;
+  try { intent = await stripe.paymentIntents.retrieve(paymentIntentId); }
+  catch { throw cjManualError("No se ha podido verificar Stripe. Operación CJ bloqueada."); }
+  if (intent.status !== "succeeded" || intent.livemode !== true ||
+      String(intent.currency || "").toLowerCase() !== "eur" ||
+      Math.round(Number(intent.amount_received || 0)) < Math.round(funding.total * 100)) {
+    throw cjManualError("Stripe no acredita el importe real cobrado al cliente.");
+  }
+}
+
+// Admin may inspect this before any real supplier action.
+app.get("/api/admin/supplier-fulfillments/:id/cj-manual-preview", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const { record, supplier, order } = await loadCjManualOrder(req.params.id);
+    let creation = null;
+    let createError = "";
+    let payment = null;
+    let paymentError = "";
+    try { creation = validateManualCjCreate({ record, supplier, order }); }
+    catch (error) { createError = String(error.message || "").slice(0, 220); }
+    try {
+      payment = validateManualCjPayment({
+        record, supplier, approvedUsd: Number(supplier.cjMaxPaymentUsd),
+      });
+    } catch (error) { paymentError = String(error.message || "").slice(0, 220); }
+    const funding = (() => {
+      try { return classifyCjOrderFunding(order); }
+      catch { return null; }
+    })();
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      orderId: record.orderId,
+      fulfillmentId: record.id,
+      status: record.status,
+      snapshot: cjManualSnapshot(record, order, supplier),
+      sandbox: supplier.cjSandbox !== false,
+      creationEnabled: String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() === "true",
+      paymentEnabled: cjManualReadyForPayment(),
+      merchantFunded: Boolean(funding?.storeFunded),
+      customerTotalEur: funding?.total ?? null,
+      estimatedSupplierCostEur: Number(record.estimatedCost || 0),
+      estimatedSupplierTotalUsd: Number(creation?.estimatedPaymentUsd || record.items?.[0]?.cjPricingEstimate?.supplierTotalUsd || 0),
+      providerActualPaymentUsd: Number(record.providerActualPayment || 0),
+      maxSupplierPaymentUsd: Number(supplier.cjMaxPaymentUsd || 0),
+      externalOrderId: String(record.externalOrderId || ""),
+      canCreate: Boolean(creation) && !supplier.cjSandbox && cjConfigured() &&
+        String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() === "true",
+      canPay: Boolean(payment) && cjManualReadyForPayment() && cjConfigured(),
+      creationReason: createError || (
+        supplier.cjSandbox !== false ? "El proveedor CJ está en SANDBOX." :
+        String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() !== "true"
+          ? "CJ_LIVE_ORDER_CREATION_ENABLED está desactivada." : ""),
+      paymentReason: paymentError || (!cjManualReadyForPayment()
+        ? "CJ_LIVE_PAYMENT_ENABLED está desactivada para evitar cargos sin tu permiso." : ""),
+      createConfirmation: cjConfirmation("create", record.orderId),
+      paymentConfirmation: cjConfirmation("pay", record.orderId),
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "No se pudo revisar el pedido CJ" });
+  }
+});
+
+// STEP 1. Admin explicitly creates a real supplier order, with payType=3.
+// This endpoint never calls CJ's payment API.
+app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  let reservationMade = false;
+  try {
+    if (!cjConfigured() ||
+        String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() !== "true") {
+      throw cjManualError("La creación real CJ todavía está deshabilitada en Railway.");
+    }
+    const { record, supplier, order } = await loadCjManualOrder(req.params.id);
+    const preview = validateManualCjCreate({ record, supplier, order });
+    const fingerprint = cjManualSnapshot(record, order, supplier);
+    if (String(req.body?.snapshot || "") !== fingerprint ||
+        String(req.body?.confirmation || "") !== cjConfirmation("create", record.orderId)) {
+      throw cjManualError("Revisa el presupuesto actualizado y escribe la confirmación de creación exacta.");
+    }
+    const approvedMaxUsd = Number(req.body?.approvedMaxUsd);
+    if (!(approvedMaxUsd > 0) || !Number.isFinite(approvedMaxUsd) ||
+        approvedMaxUsd > preview.maxAllowedUsd || approvedMaxUsd < preview.estimatedPaymentUsd) {
+      throw cjManualError("El presupuesto aprobado no cubre la cotización CJ o supera tu límite.");
+    }
+    if (preview.funding.storeFunded && req.body?.acknowledgeMerchantPays !== true) {
+      throw cjManualError("Debes confirmar expresamente que Herencia asume el coste del cupón.");
+    }
+    await verifyCjCustomerFunding(order, preview.funding);
+    await verifyCjManualLiveCosts(record, supplier, approvedMaxUsd, preview.estimatedPaymentUsd);
+    const operationId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const reserve = await mutateCjManualRecord(record.id,
+      ["approval_required", "autopilot_ready"],
+      {
+        status: "cj_creating",
+        blocker: "Creación de pedido CJ pendiente. No reintentar; comprobar antes de duplicar.",
+        cjOperationId: operationId,
+        cjOrderNumber: preview.orderNumber,
+        cjManualAuthorization: {
+          approvedByAdminAt: now,
+          approvedCostEur: preview.estimatedCostEur,
+          approvedMaxUsd,
+          funding: preview.funding.funding,
+          customerTotalEur: preview.funding.total,
+          couponDiscountEur: preview.funding.discount,
+          merchantPays: preview.funding.storeFunded,
+        },
+      }, (current, currentSupplier) => {
+        if (cjManualSnapshot(current, order, currentSupplier) !== fingerprint) {
+          throw cjManualError("Los costes o el pedido cambiaron. Recarga la vista antes de aprobar.");
+        }
+        validateManualCjCreate({ record: current, supplier: currentSupplier, order });
+      }
+    );
+    reservationMade = true;
+    // This reservation is independent of POS state: concurrent admin/POS
+    // writes can never turn a previous CJ call into a retryable purchase.
+    const externalActionLedger = await claimCjExternalAction("create", record.id, operationId);
+    const line = reserve.items[0];
+    const address = reserve.shippingAddress;
+    const payload = await cjRequest("/shopping/order/createOrderV2", {
+      method: "POST",
+      body: {
+        orderNumber: preview.orderNumber,
+        shippingZip: String(address.postalCode).slice(0, 20),
+        shippingCountryCode: "ES",
+        shippingCountry: String(address.country).slice(0, 50),
+        shippingProvince: String(address.province || address.city).slice(0, 50),
+        shippingCity: String(address.city).slice(0, 50),
+        shippingPhone: String(address.phone).slice(0, 20),
+        shippingCustomerName: String(address.name).slice(0, 50),
+        shippingAddress: String(address.address).slice(0, 500),
+        shippingAddress2: String(address.address2 || "").slice(0, 500),
+        email: String(reserve.customerEmail || "").slice(0, 50),
+        remark: String(address.notes || "Pedido Herencia Market").slice(0, 500),
+        payType: 3,
+        isSandbox: 0,
+        logisticName: preview.logisticName,
+        fromCountryCode: String(supplier.cjFromCountryCode || "CN").slice(0, 2),
+        platform: "api",
+        orderFlow: 1,
+        products: [{
+          vid: String(line.supplierVariantId).slice(0, 50),
+          ...(line.supplierSku ? { sku: String(line.supplierSku).slice(0, 50) } : {}),
+          quantity: 1,
+          storeLineItemId: String(line.productId).slice(0, 125),
+        }],
+      },
+    });
+    const data = payload?.data || {};
+    const cjOrderId = String(data.orderId || "").trim();
+    const shipmentOrderId = String(data.shipmentOrderId || "").trim();
+    if (!cjOrderId && !shipmentOrderId) {
+      throw cjManualError("CJ no devolvió un ID. Verifica la cuenta CJ antes de reintentar.", 502);
+    }
+    const realUsd = Number(data.actualPayment ?? data.orderAmount);
+    const safeRealUsd = Number.isFinite(realUsd) && realUsd > 0 ? Math.round(realUsd * 100) / 100 : 0;
+    const recorded = await mutateCjManualRecord(record.id, ["cj_creating"], {
+      provider: "cj",
+      status: safeRealUsd > 0 && safeRealUsd <= approvedMaxUsd && safeRealUsd <= preview.maxAllowedUsd
+        ? "payment_required" : "cj_creation_unknown",
+      blocker: safeRealUsd > 0 && safeRealUsd <= approvedMaxUsd && safeRealUsd <= preview.maxAllowedUsd
+        ? "Pedido creado en CJ sin pagar. Autoriza el pago por separado."
+        : "CJ creó el pedido, pero el importe es desconocido o excede el aprobado. Revisa CJ sin pagar.",
+      externalOrderId: cjOrderId,
+      cjShipmentOrderId: shipmentOrderId,
+      providerActualPayment: safeRealUsd,
+      providerCurrency: "USD",
+      providerOrderStatus: String(data.orderStatus || "CREATED").slice(0, 40),
+      providerRequestId: String(payload?.requestId || "").slice(0, 100),
+      cjCreatedAt: new Date().toISOString(),
+    }, (current) => {
+      if (String(current.cjOperationId || "") !== operationId) {
+        throw cjManualError("La reserva CJ cambió durante la creación. Revisión manual necesaria.");
+      }
+    });
+    await recordCjExternalActionResult(externalActionLedger, operationId, "created_unpaid", cjOrderId).catch(
+      (error) => console.warn("No se pudo completar auditoría CJ:", error?.message || "sin detalles")
+    );
+    res.json({ fulfillment: recorded, createdInCj: true, paidInCj: false });
+  } catch (error) {
+    if (reservationMade) {
+      await mutateCjManualRecord(req.params.id, ["cj_creating"], {
+        status: "cj_creation_unknown",
+        blocker: "CJ pudo recibir la creación pero no se confirmó el resultado. Consulta pedidos CJ antes de cualquier nuevo intento.",
+        lastError: String(error?.message || error).slice(0, 220),
+      }).catch(() => null);
+    }
+    res.status(error.statusCode || 502).json({
+      error: reservationMade
+        ? "La creación CJ necesita conciliación. NO repitas la operación; consulta pedidos en CJ."
+        : String(error?.message || "No se ha aprobado el pedido").slice(0, 250),
+    });
+  }
+});
+
+// STEP 2. Explicit separate admin request to pay the existing CJ order.
+// A merchant-funded 100% coupon is permitted only because the admin explicitly
+// accepted that cost in the previous creation step and confirms payment again.
+app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  let paymentReserved = false;
+  try {
+    if (!cjConfigured() || !cjManualReadyForPayment()) {
+      throw cjManualError("Los pagos reales de CJ están desactivados en Railway.");
+    }
+    const { record, supplier, order } = await loadCjManualOrder(req.params.id);
+    classifyCjOrderFunding(order);
+    const preview = validateManualCjPayment({
+      record, supplier, approvedUsd: req.body?.approvedMaxUsd,
+    });
+    if (String(req.body?.confirmation || "") !== cjConfirmation("pay", record.orderId) ||
+        String(req.body?.snapshot || "") !== cjManualSnapshot(record, order, supplier)) {
+      throw cjManualError("Revisa el importe y confirma expresamente este pago CJ.");
+    }
+    if (record.cjManualAuthorization?.merchantPays &&
+        req.body?.acknowledgeMerchantPays !== true) {
+      throw cjManualError("Confirma que el pago al proveedor sale del presupuesto de Herencia.");
+    }
+    // Paid customer check is performed AGAIN immediately before supplier payment.
+    await verifyCjCustomerFunding(order, classifyCjOrderFunding(order));
+    const fingerprint = cjManualSnapshot(record, order, supplier);
+    const operationId = crypto.randomUUID();
+    const claimed = await mutateCjManualRecord(record.id, ["payment_required"], {
+      status: "cj_paying",
+      blocker: "Pago CJ en proceso. No repitas la orden; espera confirmación o concilia.",
+      cjOperationId: operationId,
+    }, (current, currentSupplier) => {
+      if (cjManualSnapshot(current, order, currentSupplier) !== fingerprint) {
+        throw cjManualError("El importe CJ ha cambiado. Recarga antes de autorizar un pago.");
+      }
+      validateManualCjPayment({ record: current, supplier: currentSupplier, approvedUsd: req.body?.approvedMaxUsd });
+    });
+    paymentReserved = true;
+    const externalPaymentLedger = await claimCjExternalAction("pay", record.id, operationId);
+    // There is exactly one possible balance debit; never retry automatically.
+    await cjPayOrder({
+      orderId: claimed.externalOrderId,
+      shipmentOrderId: claimed.cjShipmentOrderId || "",
+    });
+    const paid = await mutateCjManualRecord(record.id, ["cj_paying"], {
+      status: "ordered",
+      paidAt: new Date().toISOString(),
+      orderedAt: claimed.cjCreatedAt || new Date().toISOString(),
+      blocker: "",
+      lastError: "",
+      providerOrderStatus: "PAID",
+    }, (current) => {
+      if (String(current.cjOperationId || "") !== operationId) {
+        throw cjManualError("La reserva de pago CJ cambió: conciliación obligatoria.");
+      }
+    });
+    await recordCjExternalActionResult(externalPaymentLedger, operationId, "paid", paid.externalOrderId).catch(
+      (error) => console.warn("No se pudo completar auditoría pago CJ:", error?.message || "sin detalles")
+    );
+    res.json({ fulfillment: paid, paidInCj: true, supplierDebitUsd: preview.amountUsd });
+  } catch (error) {
+    if (paymentReserved) {
+      await mutateCjManualRecord(req.params.id, ["cj_paying"], {
+        status: "cj_payment_unknown",
+        blocker: "El pago CJ puede haberse procesado. Consulta CJ antes de volver a pagar.",
+        lastError: String(error?.message || error).slice(0, 220),
+      }).catch(() => null);
+    }
+    res.status(error.statusCode || 502).json({
+      error: paymentReserved
+        ? "El resultado del pago CJ necesita verificación. NO repitas el cargo."
+        : String(error?.message || "El pago CJ no está autorizado").slice(0, 250),
+    });
+  }
+});
+
+// Recover an ambiguous CJ create/payment using ONLY supplier read endpoints.
+// Never retries createOrderV2 or a balance debit. A missing order in a paginated
+// CJ result is NOT grounds for clearing the duplicate-protection reservation.
+app.post("/api/admin/supplier-fulfillments/:id/cj-reconcile", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    if (!cjConfigured()) throw cjManualError("CJ_API_KEY no está disponible.");
+    const { record } = await loadCjManualOrder(req.params.id);
+    const allowed = ["cj_creation_unknown", "cj_payment_unknown", "payment_required"];
+    if (!allowed.includes(String(record.status || ""))) {
+      throw cjManualError("Este pedido CJ no requiere conciliación de creación o pago.");
+    }
+    let remote = null;
+    if (record.externalOrderId) {
+      const payload = await cjRequest("/shopping/order/getOrderDetail", {
+        query: { orderId: record.externalOrderId },
+      });
+      const data = payload?.data || {};
+      if (String(data.orderId || record.externalOrderId) !== String(record.externalOrderId)) {
+        throw cjManualError("CJ respondió con un identificador distinto. Revisión manual necesaria.");
+      }
+      remote = {
+        orderId: record.externalOrderId,
+        orderNumber: String(data.orderNum || data.orderNumber || record.cjOrderNumber || ""),
+        status: String(data.orderStatus || ""),
+        actualPayment: data.actualPayment ?? data.orderAmount,
+        shipmentOrderId: data.shipmentOrderId || "",
+      };
+    } else if (record.cjOrderNumber) {
+      // Narrow search by the deterministic orderNumber sent by Herencia.
+      for (let index = 0; index < CJ_AUDIT_ORDER_STATUSES.length; index++) {
+        const status = CJ_AUDIT_ORDER_STATUSES[index];
+        const payload = await cjRequest("/shopping/order/list", {
+          query: { pageNum: 1, pageSize: 50, status },
+        });
+        const rows = Array.isArray(payload?.data?.list) ? payload.data.list : [];
+        const match = rows.find((row) =>
+          String(row?.orderNum || row?.orderNumber || "") === String(record.cjOrderNumber));
+        if (match) {
+          remote = {
+            orderId: String(match.orderId || ""),
+            orderNumber: String(record.cjOrderNumber),
+            status: String(match.orderStatus || status),
+            actualPayment: match.actualPayment ?? match.orderAmount,
+            shipmentOrderId: match.shipmentOrderId || "",
+          };
+          break;
+        }
+        if (index + 1 < CJ_AUDIT_ORDER_STATUSES.length) {
+          await new Promise((resolve) => setTimeout(resolve, 1100));
+        }
+      }
+    }
+    if (!remote?.orderId) {
+      // Never unblock unknown orders without proof from CJ.
+      return res.json({
+        found: false, paid: false, safeToRetryCreate: false,
+        error: "No se encontró una coincidencia concluyente en CJ. Mantén el bloqueo y comprueba tu cuenta CJ manualmente.",
+        fulfillment: record,
+      });
+    }
+    const status = String(remote.status || "").toUpperCase();
+    const isPaid = ["UNSHIPPED", "PROCESSING", "SHIPPED", "DELIVERED", "PAID", "COMPLETED"].includes(status);
+    const isUnpaid = ["CREATED", "IN_CART", "UNPAID"].includes(status);
+    const expectedUsd = Number(remote.actualPayment);
+    const paidStatus = status === "DELIVERED" ? "delivered" : status === "SHIPPED" ? "shipped" : "ordered";
+    const initialCap = Number(record.cjManualAuthorization?.approvedMaxUsd || 0);
+    const supplierCap = Number((await readSupplierOperations()).suppliers?.find((entry) =>
+      String(entry.id || "") === String(record.supplierId || ""))?.cjMaxPaymentUsd || 0);
+    if ((!isPaid && !isUnpaid) || !(expectedUsd > 0) ||
+        expectedUsd > initialCap || expectedUsd > supplierCap) {
+      return res.json({
+        found: true, paid: isPaid, safeToRetryCreate: false,
+        error: "CJ encontró el pedido, pero el estado o importe requiere revisión manual.",
+        cjStatus: status, fulfillment: record,
+      });
+    }
+    // If we previously issued a balance payment and the provider still says
+    // UNPAID, do NOT unlock another payment: propagation may be delayed.
+    if (record.status === "cj_payment_unknown" && !isPaid) {
+      return res.json({
+        found: true, paid: false, safeToRetryCreate: false,
+        error: "CJ aún indica impagado. Mantén el bloqueo y comprueba el saldo antes de cualquier reintento.",
+        cjStatus: status, fulfillment: record,
+      });
+    }
+    const updated = await mutateCjManualRecord(record.id, [record.status], {
+      provider: "cj",
+      status: isPaid ? paidStatus : "payment_required",
+      blocker: isPaid ? "" : "Pedido encontrado en CJ pendiente de pago. Necesita autorización manual.",
+      externalOrderId: remote.orderId,
+      cjShipmentOrderId: String(remote.shipmentOrderId || record.cjShipmentOrderId || ""),
+      providerActualPayment: Math.round(expectedUsd * 100) / 100,
+      providerCurrency: "USD",
+      providerOrderStatus: status,
+      providerSyncedAt: new Date().toISOString(),
+    }, (current) => {
+      if (String(current.externalOrderId || "") &&
+          String(current.externalOrderId) !== remote.orderId) {
+        throw cjManualError("CJ devolvió una referencia externa distinta.");
+      }
+      if (String(current.cjOrderNumber || "") !== String(record.cjOrderNumber || "")) {
+        throw cjManualError("La referencia de creación cambió: recarga antes de conciliar.");
+      }
+    });
+    res.json({
+      found: true, paid: isPaid, safeToRetryCreate: false,
+      cjStatus: status, fulfillment: updated,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 502).json({
+      error: String(error?.message || "CJ no respondió a la conciliación").slice(0, 220),
+    });
+  }
+});
+
 app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
@@ -6289,6 +6858,19 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
     const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(req.params.id));
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
     const previous = operations.supplierFulfillments[index];
+    const cjSupplier = (operations.suppliers || []).find((item) =>
+      String(item?.id || "") === String(previous.supplierId || ""));
+    if (previous.provider === "cj" || (cjSupplier && supplierIntegrationType(cjSupplier) === "cj")) {
+      const isStatusChange = req.body?.status != null &&
+        String(req.body.status) !== String(previous.status);
+      const isExternalChange = req.body?.externalOrderId != null ||
+        req.body?.trackingNumber != null || req.body?.trackingUrl != null;
+      if (isStatusChange || isExternalChange) {
+        return res.status(409).json({
+          error: "Los estados, pagos, referencias y tracking CJ solo se actualizan mediante la verificación del proveedor.",
+        });
+      }
+    }
     const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","supplier_required","supplier_disabled","cost_required","mapping_required","address_required","payment_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
     const requestedStatus = String(req.body?.status || previous.status);
     const updated = {

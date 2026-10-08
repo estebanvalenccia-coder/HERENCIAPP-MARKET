@@ -865,6 +865,49 @@ export const backendApi = {
     );
   },
 
+  // Two separate manual CJ actions. Creation uses payType=3 (unpaid);
+  // only the second, explicitly confirmed action may debit CJ balance.
+  async getCjManualApprovalPreview(id: string) {
+    return request<{
+      orderId: string; fulfillmentId: string; status: string; snapshot: string;
+      sandbox: boolean; creationEnabled: boolean; paymentEnabled: boolean;
+      merchantFunded: boolean; customerTotalEur: number | null;
+      estimatedSupplierCostEur: number; estimatedSupplierTotalUsd: number;
+      providerActualPaymentUsd: number; maxSupplierPaymentUsd: number;
+      externalOrderId: string; canCreate: boolean; canPay: boolean;
+      creationReason: string; paymentReason: string;
+      createConfirmation: string; paymentConfirmation: string;
+    }>(`/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/cj-manual-preview`);
+  },
+
+  async createUnpaidCjOrder(id: string, payload: {
+    snapshot: string; confirmation: string; approvedMaxUsd: number;
+    acknowledgeMerchantPays: boolean;
+  }) {
+    return request<{ fulfillment: any; createdInCj: true; paidInCj: false }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/cj-create-unpaid`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
+  async payApprovedCjOrder(id: string, payload: {
+    snapshot: string; confirmation: string; approvedMaxUsd: number;
+    acknowledgeMerchantPays: boolean;
+  }) {
+    return request<{ fulfillment: any; paidInCj: true; supplierDebitUsd: number }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/cj-pay`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
+  async reconcileCjManualOrder(id: string) {
+    return request<{ fulfillment: any; found: boolean; paid: boolean;
+      safeToRetryCreate: false; cjStatus?: string; error?: string }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/cj-reconcile`,
+      { method: "POST", body: "{}" }
+    );
+  },
+
   async executeSupplierFulfillment(id: string, force = false) {
     return request<{ fulfillment: any; executed: boolean; manual: boolean }>(
       `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/execute`,

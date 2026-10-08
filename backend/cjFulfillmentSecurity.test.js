@@ -102,3 +102,79 @@ test("CJ forced payments honor the supplier cap and previously ordered records a
   assert.match(supplier, /"ordered", "shipped", "delivered"/);
   assert.match(supplier, /return \{ fulfillment: record, executed: false, manual: false \}/);
 });
+
+test("legacy supplier execution never creates or pays CJ despite force=true", () => {
+  const start = server.indexOf("async function executeSupplierFulfillment(");
+  const end = server.indexOf("app.post(\"/api/admin/supplier-fulfillments/:id/execute\"",start);
+  assert.ok(start > 0 && end > start);
+  const source = server.slice(start,end);
+  assert.match(source, /supplierIntegrationType\(supplier\) === "cj"/);
+  assert.match(source, /return \{\s*fulfillment: \{\s*\.\.\.record,\s*blocker: "Revisa CJ/);
+});
+
+test("CJ manual create endpoint is separate from CJ payment and never calls balance payment", () => {
+  const start=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin');
+  const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin',start);
+  assert.ok(start > 0 && end > start);
+  const creation=server.slice(start,end);
+  assert.match(creation,/CJ_LIVE_ORDER_CREATION_ENABLED/);
+  assert.match(creation,/validateManualCjCreate/);
+  assert.match(creation,/verifyCjCustomerFunding/);
+  assert.match(creation,/mutateCjManualRecord/);
+  assert.match(creation,/payType: 3/);
+  assert.match(creation,/cj_creation_unknown/);
+  assert.doesNotMatch(creation,/cjPayOrder\(|payBalance\(|payBalanceV2/);
+});
+
+test("CJ balance charge is in second route with merchant confirmation, caps and reservation", () => {
+  const start=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin');
+  const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin',start);
+  assert.ok(start > 0 && end > start);
+  const payment=server.slice(start,end);
+  assert.match(server,/CJ_LIVE_PAYMENT_ENABLED/);
+  assert.match(payment,/cjManualReadyForPayment/);
+  assert.match(payment,/validateManualCjPayment/);
+  assert.match(payment,/verifyCjCustomerFunding/);
+  assert.match(payment,/cjConfirmation\("pay"/);
+  assert.match(payment,/cj_paying/);
+  assert.match(payment,/cj_payment_unknown/);
+  assert.match(payment,/await cjPayOrder\(/);
+  assert.doesNotMatch(payment,/cjRequest\("\/shopping\/order\/createOrderV2"/);
+});
+
+test("CJ non-repeatable external action ledger is reserved before outbound orders and balance payments", () => {
+  const createStart=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin');
+  const paymentStart=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin',createStart);
+  const reconcileStart=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-reconcile", requireAdmin',paymentStart);
+  const create=server.slice(createStart,paymentStart);
+  const payment=server.slice(paymentStart,reconcileStart);
+  assert.ok(create.indexOf('claimCjExternalAction("create"') > 0);
+  assert.ok(create.indexOf('claimCjExternalAction("create"') < create.indexOf('cjRequest("/shopping/order/createOrderV2"'));
+  assert.ok(payment.indexOf('claimCjExternalAction("pay"') > 0);
+  assert.ok(payment.indexOf('claimCjExternalAction("pay"') < payment.indexOf('await cjPayOrder('));
+  assert.match(server,/cjManualExternalAction:/);
+});
+
+test("CJ reconciliation only reads supplier orders; never retries unknown charge or creation", () => {
+  const start=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-reconcile", requireAdmin');
+  const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin',start);
+  assert.ok(start>0&&end>start);
+  const reconcile=server.slice(start,end);
+  assert.match(reconcile,/safeToRetryCreate: false/);
+  assert.match(reconcile,/CJ_AUDIT_ORDER_STATUSES/);
+  assert.ok(reconcile.includes('"/shopping/order/list"'));
+  assert.ok(reconcile.includes('"/shopping/order/getOrderDetail"'));
+  assert.ok(!reconcile.includes('await cjPayOrder('));
+  assert.ok(!reconcile.includes('cjRequest("/shopping/order/createOrderV2"'));
+});
+
+test("unknown CJ supplier statuses never count as ordered; admins cannot invent a CJ shipment", () => {
+  const start=server.indexOf("async function syncCjSupplierFulfillment(");
+  const end=server.indexOf("async function prepareCjDispute(",start);
+  assert.ok(start>0&&end>start);
+  const sync=server.slice(start,end);
+  assert.match(sync,/"action_required"/);
+  const edit=server.indexOf('app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin');
+  assert.ok(edit>0);
+  assert.match(server.slice(edit,edit+1800),/Los estados, pagos, referencias y tracking CJ solo se actualizan mediante la verificación del proveedor/);
+});

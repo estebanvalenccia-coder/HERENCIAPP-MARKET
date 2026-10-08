@@ -48,6 +48,8 @@ function fulfillmentBadge(status = "") {
   if (normalized === "manual_ready" || normalized === "manual_purchase_required") return "🖱️ manual";
   if (normalized === "connector_required") return "🔌 conector";
   if (normalized === "approval_required") return "🛡️ aprobación";
+  if (normalized === "cj_creating" || normalized === "cj_paying") return "⏳ operación CJ";
+  if (normalized === "cj_creation_unknown" || normalized === "cj_payment_unknown") return "⚠️ conciliar CJ";
   if (normalized === "cost_required") return "💶 coste";
   if (normalized === "mapping_required") return "🔗 SKU/VID";
   if (normalized === "address_required") return "📍 dirección";
@@ -72,6 +74,13 @@ export function AdminSuppliersPanel() {
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
   const [syncingPaidOrders, setSyncingPaidOrders] = useState(false);
+  const [cjApprovalPreview, setCjApprovalPreview] = useState<Awaited<ReturnType<typeof backendApi.getCjManualApprovalPreview>> | null>(null);
+  const [cjApprovalAction, setCjApprovalAction] = useState<"create" | "pay" | null>(null);
+  const [cjApprovalConfirmation, setCjApprovalConfirmation] = useState("");
+  const [cjApprovalMaxUsd, setCjApprovalMaxUsd] = useState("");
+  const [cjMerchantPaysAcknowledged, setCjMerchantPaysAcknowledged] = useState(false);
+  const [cjApprovalSubmitting, setCjApprovalSubmitting] = useState(false);
+  const [cjApprovalLoadingId, setCjApprovalLoadingId] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -454,6 +463,79 @@ export function AdminSuppliersPanel() {
       else toast.warning(next.blocker || "El pedido necesita revisión");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo procesar el pedido del proveedor");
+    } finally {
+      setProcessingId("");
+    }
+  };
+
+  const openCjApproval = async (fulfillment: any, action: "create" | "pay") => {
+    if (cjApprovalLoadingId) return;
+    setCjApprovalLoadingId(String(fulfillment.id));
+    try {
+      const preview = await backendApi.getCjManualApprovalPreview(String(fulfillment.id));
+      setCjApprovalPreview(preview);
+      setCjApprovalAction(action);
+      setCjApprovalConfirmation("");
+      setCjMerchantPaysAcknowledged(false);
+      const amount = action === "create" ? preview.estimatedSupplierTotalUsd : preview.providerActualPaymentUsd;
+      setCjApprovalMaxUsd(Number(amount || 0).toFixed(2));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo preparar la autorización CJ");
+    } finally {
+      setCjApprovalLoadingId("");
+    }
+  };
+
+  const submitCjApproval = async () => {
+    if (!cjApprovalPreview || !cjApprovalAction || cjApprovalSubmitting) return;
+    setCjApprovalSubmitting(true);
+    try {
+      const request = {
+        snapshot: cjApprovalPreview.snapshot,
+        confirmation: cjApprovalConfirmation,
+        approvedMaxUsd: Number(cjApprovalMaxUsd),
+        acknowledgeMerchantPays: cjMerchantPaysAcknowledged,
+      };
+      const result = cjApprovalAction === "create"
+        ? await backendApi.createUnpaidCjOrder(cjApprovalPreview.fulfillmentId, request)
+        : await backendApi.payApprovedCjOrder(cjApprovalPreview.fulfillmentId, request);
+      setFulfillments((list) => list.map((item) =>
+        String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+      toast.success(cjApprovalAction === "create"
+        ? "Pedido creado en CJ SIN pagar. Revisa el importe antes de autorizar el pago."
+        : "Pago confirmado por CJ. Estado de proveedor actualizado.");
+      setCjApprovalAction(null);
+      setCjApprovalPreview(null);
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "CJ requiere revisar este pedido");
+      // A timeout may mean CJ received the action. Refresh from the server;
+      // never automatically repeat an ambiguous create or balance payment.
+      await load();
+    } finally {
+      setCjApprovalSubmitting(false);
+    }
+  };
+
+  const reconcileCjOrder = async (fulfillment: any) => {
+    if (processingId) return;
+    setProcessingId(String(fulfillment.id));
+    try {
+      const result = await backendApi.reconcileCjManualOrder(String(fulfillment.id));
+      if (result.found && result.fulfillment) {
+        setFulfillments((current) => current.map((item) =>
+          String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+        if (result.error) toast.warning(result.error);
+        else toast.success(result.paid
+          ? "CJ ha confirmado que el pedido está pagado."
+          : "Pedido localizado en CJ. Sigue pendiente de autorización de pago.");
+      } else {
+        toast.warning(result.error || "No hay coincidencia confirmada en CJ. No vuelvas a crear el pedido.");
+      }
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "CJ no ha permitido conciliar este pedido");
+      await load();
     } finally {
       setProcessingId("");
     }
@@ -885,9 +967,24 @@ export function AdminSuppliersPanel() {
                 <div className="flex flex-wrap gap-2">
                   {sourceUrl && <button onClick={() => window.open(sourceUrl, "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><ExternalLink className="h-4 w-4"/>Proveedor</button>}
                   {item.mode === "manual" && !["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><MousePointerClick className="h-4 w-4"/>Preparar compra</button>}
-                  {canRunAuto && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>{isCjFulfillment ? "Revisar CJ (sin comprar)" : "Ejecutar Autopilot"}</button>}
-                  {(!isCjFulfillment || Boolean(item.externalOrderId)) && ["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
-                  {["ordered","shipped"].includes(String(item.status || "")) && <button onClick={() => void addTracking(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><Truck className="h-4 w-4"/>Tracking</button>}
+                  {isCjFulfillment && !["ordered","shipped","delivered","closed","cancelled","canceled"].includes(String(item.status || "")) &&
+                    <button type="button" disabled={cjApprovalLoadingId === String(item.id)}
+                      onClick={() => void openCjApproval(item, item.status === "payment_required" ? "pay" : "create")}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:opacity-50">
+                      <ShieldCheck className="h-4 w-4"/>
+                      {cjApprovalLoadingId === String(item.id) ? "Comprobando CJ…" :
+                        item.status === "payment_required" ? "Revisar y autorizar pago CJ" :
+                        ["cj_creation_unknown", "cj_payment_unknown", "cj_creating", "cj_paying"].includes(String(item.status)) ? "Revisar bloqueo CJ" :
+                        "Revisar aprobación CJ"}
+                    </button>}
+                  {isCjFulfillment && ["cj_creation_unknown","cj_payment_unknown","payment_required"].includes(String(item.status || "")) &&
+                    <button type="button" disabled={processingId === String(item.id)} onClick={() => void reconcileCjOrder(item)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                      <RefreshCw className="h-4 w-4"/>{processingId === String(item.id) ? "Consultando CJ…" : "Conciliar con CJ (sin comprar)"}
+                    </button>}
+                  {canRunAuto && !isCjFulfillment && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>{isCjFulfillment ? "Revisar CJ (sin comprar)" : "Ejecutar Autopilot"}</button>}
+                  {!isCjFulfillment && ["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
+                  {!isCjFulfillment && ["ordered","shipped"].includes(String(item.status || "")) && <button onClick={() => void addTracking(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><Truck className="h-4 w-4"/>Tracking</button>}
                   {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && item.externalOrderId && <button disabled={processingId===String(item.id)} onClick={() => void syncCjFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><RefreshCw className="h-4 w-4"/>Sincronizar CJ</button>}
                   {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && ["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void openCjDispute(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold">↩️ Devolución / reenvío</button>}
                 </div>
@@ -916,7 +1013,67 @@ export function AdminSuppliersPanel() {
             </div>
           </button>)}
       </div>
+
     </section>
+
+    {cjApprovalPreview && cjApprovalAction && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="presentation">
+      <div role="dialog" aria-modal="true" aria-labelledby="cj-manual-dialog-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-card p-6 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h3 id="cj-manual-dialog-title" className="text-xl font-bold">
+            {cjApprovalAction === "create" ? "Crear pedido CJ SIN pagar" : "Autorizar pago real al proveedor CJ"}
+          </h3>
+          <button type="button" disabled={cjApprovalSubmitting} onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
+            className="rounded-lg border px-3 py-2 text-sm font-semibold">Cerrar</button>
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">Pedido Herencia #{String(cjApprovalPreview.orderId).slice(0, 8)}. Son dos decisiones distintas: primero crear en CJ sin pagar, después autorizar el pago.</p>
+        <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
+          <p><strong>Cliente pagó:</strong> {cjApprovalPreview.customerTotalEur == null ? "No verificado" : money(cjApprovalPreview.customerTotalEur)}</p>
+          <p><strong>Coste proveedor estimado:</strong> {money(cjApprovalPreview.estimatedSupplierCostEur)}</p>
+          <p><strong>CJ presupuestado:</strong> {"$"}{Number(cjApprovalPreview.estimatedSupplierTotalUsd).toFixed(2)} USD</p>
+          {cjApprovalAction === "pay" && <p><strong>Importe real CJ a pagar:</strong> {"$"}{Number(cjApprovalPreview.providerActualPaymentUsd).toFixed(2)} USD</p>}
+          <p><strong>Límite configurado:</strong> {"$"}{Number(cjApprovalPreview.maxSupplierPaymentUsd).toFixed(2)} USD</p>
+          <p><strong>Modo proveedor:</strong> {cjApprovalPreview.sandbox ? "SANDBOX: compras bloqueadas" : "REAL"}</p>
+          {cjApprovalPreview.externalOrderId && <p><strong>Pedido CJ:</strong> {cjApprovalPreview.externalOrderId}</p>}
+        </div>
+        {cjApprovalPreview.merchantFunded && <label className="mt-4 flex items-start gap-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+          <input type="checkbox" checked={cjMerchantPaysAcknowledged} onChange={(event) => setCjMerchantPaysAcknowledged(event.target.checked)}
+            className="mt-1 h-4 w-4" />
+          Acepto expresamente que Herencia asume el coste de este pedido con descuento o cupón, aunque el cliente haya pagado 0,00 €.
+        </label>}
+        <label className="mt-4 block text-sm font-semibold">
+          Límite máximo que autorizas para esta operación (USD)
+          <input type="number" min="0.01" step="0.01" max={cjApprovalPreview.maxSupplierPaymentUsd}
+            value={cjApprovalMaxUsd} onChange={(event) => setCjApprovalMaxUsd(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base" />
+        </label>
+        <label className="mt-3 block text-sm font-semibold">
+          Escribe exactamente <code className="rounded bg-muted px-1">{cjApprovalAction === "create" ? cjApprovalPreview.createConfirmation : cjApprovalPreview.paymentConfirmation}</code>
+          <input type="text" autoComplete="off" value={cjApprovalConfirmation} onChange={(event) => setCjApprovalConfirmation(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base" placeholder="Confirmación de administrador" />
+        </label>
+        {((cjApprovalAction === "create" && !cjApprovalPreview.canCreate) || (cjApprovalAction === "pay" && !cjApprovalPreview.canPay)) &&
+          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+            {cjApprovalAction === "create" ? cjApprovalPreview.creationReason : cjApprovalPreview.paymentReason}
+            {" "}No se enviará ninguna compra ni pago mientras esté bloqueado.
+          </p>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={cjApprovalSubmitting} onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
+            className="rounded-xl border border-border px-4 py-2 font-semibold">Cancelar</button>
+          <button type="button" disabled={
+            cjApprovalSubmitting ||
+            (cjApprovalAction === "create" ? !cjApprovalPreview.canCreate : !cjApprovalPreview.canPay) ||
+            cjApprovalConfirmation !== (cjApprovalAction === "create" ? cjApprovalPreview.createConfirmation : cjApprovalPreview.paymentConfirmation) ||
+            (cjApprovalPreview.merchantFunded && !cjMerchantPaysAcknowledged) ||
+            !(Number(cjApprovalMaxUsd) > 0) ||
+            Number(cjApprovalMaxUsd) > cjApprovalPreview.maxSupplierPaymentUsd ||
+            Number(cjApprovalMaxUsd) < (cjApprovalAction === "create" ? cjApprovalPreview.estimatedSupplierTotalUsd : cjApprovalPreview.providerActualPaymentUsd)
+          } onClick={() => void submitCjApproval()}
+            className="rounded-xl bg-emerald-800 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            {cjApprovalSubmitting ? "Confirmando…" : cjApprovalAction === "create" ? "Confirmar creación SIN pagar" : "Confirmar PAGO real en CJ"}
+          </button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
