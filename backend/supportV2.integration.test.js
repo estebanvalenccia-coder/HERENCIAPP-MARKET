@@ -8,6 +8,7 @@ function makeTestApp() {
   const app = express();
   app.use(express.json({limit:"6mb"}));
   const data = new Map();
+  const lookups = [];
   const parseCookies = req => Object.fromEntries(String(req.headers.cookie||"").split(";").filter(Boolean).map(x=>{
     const [name,...value]=x.trim().split("=");return [name,decodeURIComponent(value.join("="))];
   }));
@@ -20,6 +21,12 @@ function makeTestApp() {
       {id:"user-a",name:"Ana",email:"ana@example.com"},
       {id:"user-b",name:"Beto",email:"beto@example.com"},
     ],
+    listOrdersByEmail:async email=>{
+      lookups.push(email);
+      return email==="ana@example.com"
+        ? [{status:"preparing",created_at:"2026-10-08T10:00:00",customer_email:email,address:"PRIVATE ADDRESS"}]
+        : [{status:"delivered",created_at:"2026-10-07T10:00:00",customer_email:email}];
+    },
     isAdmin:req=>parseCookies(req).admin_auth==="yes",
     readStorageValue:async key=>data.get(key)||null,
     upsertStorageValue:async(key,value)=>{data.set(key,value);},
@@ -34,7 +41,7 @@ function makeTestApp() {
     supportLimiter:(_req,_res,next)=>next(),
   });
   const server=app.listen(0);
-  return {ready:()=>new Promise(resolve=>server.listening?resolve():server.once("listening",resolve)),port:()=>server.address().port,close:()=>new Promise(resolve=>server.close(resolve))};
+  return {lookups,ready:()=>new Promise(resolve=>server.listening?resolve():server.once("listening",resolve)),port:()=>server.address().port,close:()=>new Promise(resolve=>server.close(resolve))};
 }
 test("guest tickets, ownership, internal notes, admin replies and private images",async()=>{
   // Prevent test fixtures from sending real operational emails.
@@ -117,6 +124,53 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(anonAdmin.res.status,401);
     const wrongUser=await call("/api/support/v2/tickets/"+ticket.id,{cookie:"customer_auth=user-b"});
     assert.equal(wrongUser.res.status,404);
+    // Real order lookup never sends another customer's order to a guest.
+    const guestOrder=await call("/api/support/v2/tickets",{
+      cookie,method:"POST",body:{subject:"Pedido",text:"¿Dónde está mi pedido?"},
+    });
+    assert.equal(guestOrder.res.status,201);
+    assert.match(guestOrder.payload.thread.messages.at(-1).text,/iniciar sesión/i);
+    assert.equal(app.lookups.length,0);
+    const customerOrderA=await call("/api/support/v2/tickets",{
+      cookie:"customer_auth=user-a",method:"POST",body:{subject:"Estado",text:"¿Cuál es el estado de mi pedido?"},
+    });
+    assert.equal(customerOrderA.res.status,201);
+    assert.match(customerOrderA.payload.thread.messages.at(-1).text,/preparación/i);
+    assert.doesNotMatch(customerOrderA.payload.thread.messages.at(-1).text,/ana@example|PRIVATE/i);
+    const customerOrderB=await call("/api/support/v2/tickets",{
+      cookie:"customer_auth=user-b",method:"POST",body:{subject:"Estado",text:"¿Dónde está mi pedido?"},
+    });
+    assert.equal(customerOrderB.res.status,201);
+    assert.match(customerOrderB.payload.thread.messages.at(-1).text,/entregado/i);
+    assert.deepEqual(app.lookups,["ana@example.com","beto@example.com"]);
+    const crossAccess=await call("/api/support/v2/tickets/"+customerOrderA.payload.thread.id,{cookie:"customer_auth=user-b"});
+    assert.equal(crossAccess.res.status,404);
+    // Admin settings require authentication and strict types.
+    const anonymousSettings=await call("/api/admin/support/v2/settings",{cookie});
+    assert.equal(anonymousSettings.res.status,401);
+    const defaultSettings=await call("/api/admin/support/v2/settings",{cookie:adminCookie});
+    assert.equal(defaultSettings.payload.settings.assistantEnabled,true);
+    assert.equal(defaultSettings.payload.settings.orderLookupEnabled,true);
+    const badSettings=await call("/api/admin/support/v2/settings",{
+      cookie:adminCookie,method:"PATCH",body:{assistantEnabled:"off"},
+    });
+    assert.equal(badSettings.res.status,400);
+    const forgedSettings=await call("/api/admin/support/v2/settings",{
+      cookie,method:"PATCH",body:{assistantEnabled:false},
+    });
+    assert.equal(forgedSettings.res.status,401);
+    const disabledSettings=await call("/api/admin/support/v2/settings",{
+      cookie:adminCookie,method:"PATCH",body:{assistantEnabled:false},
+    });
+    assert.equal(disabledSettings.payload.settings.assistantEnabled,false);
+    const noAI=await call("/api/support/v2/tickets",{
+      cookie,method:"POST",body:{subject:"Consulta directa",text:"Necesito ayuda con una planta"},
+    });
+    assert.equal(noAI.res.status,201);
+    assert.equal(noAI.payload.thread.humanRequested,true);
+    assert.equal(noAI.payload.thread.status,"open");
+    assert.match(noAI.payload.thread.messages.at(-1).text,/atención automática está desactivada/i);
+
     const deleteFromOther=await call("/api/support/v2/tickets/"+ticket.id,{cookie:otherCookie,method:"DELETE"});
     assert.equal(deleteFromOther.res.status,404);
     const deleteMine=await call("/api/support/v2/tickets/"+ticket.id,{cookie,method:"DELETE"});
