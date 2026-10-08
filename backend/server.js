@@ -6361,6 +6361,43 @@ async function mutateCjManualRecord(recordId, statuses, patch, validateCurrent =
   return updated;
 }
 
+// Separate immutable spend/create ledger: legacy POS writes cannot accidentally
+// erase a non-repeatable CJ external action reservation in posOperations.
+async function claimCjExternalAction(action, fulfillmentId, operationId) {
+  if (!hasNeon()) throw cjManualError("Sin base de datos segura para reservar la operación.", 503);
+  const safeAction = action === "pay" ? "pay" : "create";
+  const key = "cjManualExternalAction:" + safeAction + ":" + String(fulfillmentId);
+  await mutateNeonStorageValue(key, (raw) => {
+    if (String(raw || "").trim()) {
+      throw cjManualError("Esta compra CJ ya tiene una operación externa registrada. Concíliala antes de repetir.");
+    }
+    return JSON.stringify({
+      operationId,
+      action: safeAction,
+      fulfillmentId: String(fulfillmentId),
+      status: "claimed",
+      createdAt: new Date().toISOString(),
+    });
+  });
+  return key;
+}
+
+async function recordCjExternalActionResult(key, operationId, status, cjOrderId = "") {
+  if (!key) return;
+  await mutateNeonStorageValue(key, (raw) => {
+    const data = parseStoredJson(raw, {});
+    if (data.operationId !== operationId) {
+      throw cjManualError("El registro de acciones CJ no coincide con la operación.");
+    }
+    return JSON.stringify({
+      ...data,
+      status,
+      cjOrderId: String(cjOrderId || "").slice(0, 90),
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
 async function verifyCjCustomerFunding(order, funding) {
   if (funding.freeCoupon) return; // Admin consciously funds the free coupon.
   const paymentIntentId = String(
@@ -6484,6 +6521,9 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
       }
     );
     reservationMade = true;
+    // This reservation is independent of POS state: concurrent admin/POS
+    // writes can never turn a previous CJ call into a retryable purchase.
+    const externalActionLedger = await claimCjExternalAction("create", record.id, operationId);
     const line = reserve.items[0];
     const address = reserve.shippingAddress;
     const payload = await cjRequest("/shopping/order/createOrderV2", {
@@ -6542,6 +6582,9 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
         throw cjManualError("La reserva CJ cambió durante la creación. Revisión manual necesaria.");
       }
     });
+    await recordCjExternalActionResult(externalActionLedger, operationId, "created_unpaid", cjOrderId).catch(
+      (error) => console.warn("No se pudo completar auditoría CJ:", error?.message || "sin detalles")
+    );
     res.json({ fulfillment: recorded, createdInCj: true, paidInCj: false });
   } catch (error) {
     if (reservationMade) {
@@ -6597,6 +6640,7 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin, async (req
       validateManualCjPayment({ record: current, supplier: currentSupplier, approvedUsd: req.body?.approvedMaxUsd });
     });
     paymentReserved = true;
+    const externalPaymentLedger = await claimCjExternalAction("pay", record.id, operationId);
     // There is exactly one possible balance debit; never retry automatically.
     await cjPayOrder({
       orderId: claimed.externalOrderId,
@@ -6614,6 +6658,9 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin, async (req
         throw cjManualError("La reserva de pago CJ cambió: conciliación obligatoria.");
       }
     });
+    await recordCjExternalActionResult(externalPaymentLedger, operationId, "paid", paid.externalOrderId).catch(
+      (error) => console.warn("No se pudo completar auditoría pago CJ:", error?.message || "sin detalles")
+    );
     res.json({ fulfillment: paid, paidInCj: true, supplierDebitUsd: preview.amountUsd });
   } catch (error) {
     if (paymentReserved) {
