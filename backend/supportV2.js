@@ -163,8 +163,23 @@ export function registerSupportV2(app, db) {
     if (admin) return ticket;
     return { ...ticket, messages: ticket.messages.filter(m => m.role !== "internal") };
   }
-  async function withAI(ticket, input, askAI) {
-    if (!askAI || !input || input.length > 800) return ticket;
+  async function withAI(ticket, input) {
+    // La IA responde por defecto a consultas generales; no se usan modelos
+    // sobre conversaciones derivadas a un agente humano.
+    if (ticket.humanRequested || !input) return ticket;
+    if (input.length > 800) {
+      return mutateTicket(ticket.id, current => {
+        if (current?.status !== "open" || current.messages?.at(-1)?.role !== "customer") return current;
+        current.messages.push({
+          id: crypto.randomUUID(), role: "assistant",
+          text: "Esta consulta necesita a nuestro equipo. Pulsa «Hablar con mi Amigo Plantil» y te atenderemos por este chat.",
+          createdAt: new Date().toISOString(),
+        });
+        current.status = "handoff";
+        current.updatedAt = new Date().toISOString();
+        return current;
+      });
+    }
     const lastMessageId = ticket.messages.at(-1)?.id;
     try {
       const site = parseJSON(await readStorageValue("siteContent"), {});
@@ -180,13 +195,24 @@ export function registerSupportV2(app, db) {
         const last = current?.messages?.at(-1);
         if (!last || last.id !== lastMessageId || last.role !== "customer" || current.status !== "open") return current;
         current.messages.push({ id: crypto.randomUUID(), role: "assistant", text: answer.reply, createdAt: new Date().toISOString() });
-        if (!answer.needsHuman) current.status = "automated";
+        current.status = answer.needsHuman ? "handoff" : "automated";
         current.updatedAt = new Date().toISOString();
         return current;
       });
     } catch (error) {
       console.warn("Support v2 AI unavailable", error?.message || error);
-      return ticket;
+      return mutateTicket(ticket.id, current => {
+        const last = current?.messages?.at(-1);
+        if (!last || last.id !== lastMessageId || last.role !== "customer" || current.status !== "open") return current;
+        current.messages.push({
+          id: crypto.randomUUID(), role: "assistant",
+          text: "Ahora mismo no puedo completar la respuesta automática. Si quieres, puedo conectarte con tu Amigo Plantil para que te atienda una persona.",
+          createdAt: new Date().toISOString(),
+        });
+        current.status = "handoff";
+        current.updatedAt = new Date().toISOString();
+        return current;
+      });
     }
   }
   function route(handler) {
@@ -245,7 +271,7 @@ export function registerSupportV2(app, db) {
       customerId: actor.ownerType === "customer" ? actor.ownerId : null,
       customerName: actor.ownerType === "guest" ? safeText(req.body?.name,70) || "Visitante" : actor.name,
       customerEmail: actor.email,
-      subject, status: "open", priority: "normal", category: "general",
+      subject, status: "open", humanRequested: false, priority: "normal", category: "general",
       createdAt: now, updatedAt: now,
       messages: [{ id: crypto.randomUUID(), role:"customer", text, createdAt:now }],
     };
@@ -255,13 +281,41 @@ export function registerSupportV2(app, db) {
       const index = parseJSON(await readStorageValue("customerSupportTicketIndex"), []);
       await upsertStorageValue("customerSupportTicketIndex", JSON.stringify([...index,id]));
     }
-    const updated = await withAI(ticket, text, req.body?.allowAI === true);
-    if (updated.status === "open" && process.env.STORE_EMAIL) {
+    const updated = await withAI(ticket, text);
+    if (updated.humanRequested && updated.status === "open" && process.env.STORE_EMAIL) {
       void sendSupportEmail(process.env.STORE_EMAIL, "Nueva consulta de Herencia · " + updated.ticketId,
         "Hay una nueva consulta pendiente en Herencia Market. Ábrela desde Administración > Servicio al cliente.\n\nhttps://www.herenciamarket.es/admin",
         updated.ticketId, updated.messages[0].id);
     }
     res.status(201).json({ thread: internalView(updated) });
+  }));
+  // Human support is a deliberate escalation, not a second AI toggle.
+  app.post("/api/support/v2/tickets/:id/handoff", supportLimiter, route(async(req,res)=>{
+    const id=safeId(req.params.id);
+    if(!id)return res.status(400).json({error:"Consulta no válida"});
+    const actor=await identity(req,res);
+    const current=await loadTicket(id);
+    if(!sameOwner(current,actor))return res.status(404).json({error:"Consulta no encontrada"});
+    const firstRequest = current.humanRequested !== true;
+    const thread=await mutateTicket(id,t=>{
+      if(!sameOwner(t,actor))return null;
+      t.humanRequested=true;
+      t.status="open";
+      t.updatedAt=new Date().toISOString();
+      if(firstRequest)t.messages.push({
+        id:crypto.randomUUID(),
+        role:"assistant",
+        text:"He conectado tu consulta con nuestro equipo Amigo Plantil. Una persona te responderá desde este chat.",
+        createdAt:t.updatedAt,
+      });
+      return t;
+    });
+    if(firstRequest && process.env.STORE_EMAIL){
+      void sendSupportEmail(process.env.STORE_EMAIL,"Amigo Plantil · consulta pendiente "+thread.ticketId,
+        "Una persona solicita atención humana desde Herencia Market.\n\nEntra a Administración > Servicio al cliente:\nhttps://www.herenciamarket.es/admin",
+        thread.ticketId,thread.messages.at(-1)?.id||crypto.randomUUID());
+    }
+    res.json({thread:internalView(thread)});
   }));
   app.get("/api/support/v2/tickets/:id", route(async(req,res)=>{
     const id=safeId(req.params.id);if(!id)return res.status(400).json({error:"Consulta no válida"});
@@ -277,11 +331,11 @@ export function registerSupportV2(app, db) {
     const updated=await mutateTicket(id,t=>{
       if(!sameOwner(t,actor))return null;
       t.messages.push({id:crypto.randomUUID(),role:"customer",text,createdAt:new Date().toISOString()});
-      t.status="open";t.updatedAt=new Date().toISOString();
+      t.status=t.humanRequested ? "open" : "open";t.updatedAt=new Date().toISOString();
       return t;
     });
-    const reply=await withAI(updated,text,req.body?.allowAI === true);
-    if(reply.status==="open" && process.env.STORE_EMAIL) {
+    const reply=await withAI(updated,text);
+    if(reply.humanRequested && reply.status==="open" && process.env.STORE_EMAIL) {
       const lastHuman = [...reply.messages].reverse().find(m=>m.role==="customer");
       void sendSupportEmail(process.env.STORE_EMAIL, "Consulta pendiente · " + reply.ticketId,
         "Un cliente ha escrito en atención al cliente. Revisa la bandeja de Administración.\n\nhttps://www.herenciamarket.es/admin",
