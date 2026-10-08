@@ -5546,6 +5546,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
   if (!groups.size) return [];
 
   const created = [];
+  const toPersist = [];
   for (const group of groups.values()) {
     const dedupeKey = String(order.id) + "::" + (group.supplierId || group.sourceHost || "unassigned");
     const found = existing.find((entry) => String(entry?.dedupeKey || "") === dedupeKey);
@@ -5648,6 +5649,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     else nextExisting.unshift(record);
     operations.supplierFulfillments = nextExisting.slice(0, 2000);
     created.push(record);
+    toPersist.push(record);
   }
 
   // Dry runs exercise the same fulfillment grouping and margin safeguards without
@@ -5657,11 +5659,11 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       // Per-key SQL transaction prevents simultaneous admin resyncs from
       // overwriting each other's supplier queues or unrelated POS settings.
       await mutateNeonStorageValue("posOperations", (raw) => JSON.stringify(
-        mergePreparedSupplierFulfillments(parseStoredJson(raw, {}), created, { force })
+        mergePreparedSupplierFulfillments(parseStoredJson(raw, {}), toPersist, { force })
       ));
     } else {
       await writeSupplierOperations(
-        mergePreparedSupplierFulfillments(operations, created, { force })
+        mergePreparedSupplierFulfillments(operations, toPersist, { force })
       );
     }
   }
