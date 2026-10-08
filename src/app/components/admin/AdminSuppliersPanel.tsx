@@ -323,9 +323,9 @@ export function AdminSuppliersPanel() {
         return;
       }
 
-      const sourceHost = String(candidate.sourceHost || "").replace(/^www\./, "");
+      const sourceHost = normalizedSupplierDomain(String(candidate.sourceHost || ""));
       const matchedSupplier = suppliers.find((supplier: any) =>
-        String(supplier?.sourceHost || "").replace(/^www\./, "").toLowerCase() === sourceHost.toLowerCase()
+        normalizedSupplierDomain(String(supplier?.sourceHost || "")) === sourceHost
       );
 
       if (matchedSupplier) {
@@ -361,7 +361,7 @@ export function AdminSuppliersPanel() {
       setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio, imágenes y variantes antes de publicar." });
       toast.success(
         matchedSupplier
-          ? "Producto importado y conectado automáticamente con " + matchedSupplier.name
+          ? "Producto importado y vinculado con " + matchedSupplier.name + " (compra automática no verificada)"
           : "Producto importado como borrador. Ahora asígnale proveedor y coste."
       );
       await load();
