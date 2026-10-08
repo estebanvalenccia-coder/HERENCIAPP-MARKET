@@ -436,7 +436,13 @@ export function Checkout() {
 
             {hasPhysicalItems && (
               <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
-                {shippingLoading ? (
+                {cjOnly ? (
+                  <div className="space-y-1">
+                    <p className="font-semibold text-emerald-800">Envío directo de CJdropshipping a España</p>
+                    <p className="text-muted-foreground">El transporte está previsto dentro del precio del artículo. Antes de aceptar el pago, verificaremos el coste de CJ para tu código postal y que el producto siga disponible.</p>
+                    <p className="font-medium">Revisa la ciudad, provincia y código postal: CJ usará exactamente esos datos para entregar el paquete.</p>
+                  </div>
+                ) : shippingLoading ? (
                   <p className="text-muted-foreground">Calculando envío con Google Maps...</p>
                 ) : shippingError ? (
                   <p className="text-destructive">{shippingError}</p>
@@ -454,7 +460,7 @@ export function Checkout() {
               </div>
             )}
 
-            {businessSuite.scheduledOrdersEnabled !== false && (
+            {!cjOnly && businessSuite.scheduledOrdersEnabled !== false && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
