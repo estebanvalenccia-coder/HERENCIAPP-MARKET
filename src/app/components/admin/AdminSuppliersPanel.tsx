@@ -865,6 +865,7 @@ function ImportedProductRow({
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState("");
+  const [selectedFreightName, setSelectedFreightName] = useState("");
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
   const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
@@ -883,6 +884,7 @@ function ImportedProductRow({
     setFreightLoading(true);
     setFreightError("");
     setFreightQuote(null);
+    setSelectedFreightName("");
     try {
       const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim());
       setFreightQuote(result);
@@ -977,6 +979,7 @@ function ImportedProductRow({
             setSupplierVariantId(variant?.vid || "");
             setSupplierSku(variant?.sku || "");
             setFreightQuote(null);
+            setSelectedFreightName("");
             setFreightError("");
           }} className="min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
           <option value="">Selecciona la variante exacta que venderás</option>
@@ -1003,7 +1006,10 @@ function ImportedProductRow({
         {freightError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-900">{freightError}</p>}
         {freightQuote && freightQuote.methods?.length > 0 && <div className="space-y-2">
           <p className="text-xs font-semibold">Opciones de CJ (estimación en USD, no incluye automáticamente impuestos no declarados):</p>
-          {freightQuote.methods.slice(0, 12).map((method: any, index: number) => <div key={method.name + "-" + index} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
+          {freightQuote.methods.slice(0, 12).map((method: any, index: number) => <button type="button" key={method.name + "-" + index}
+            aria-pressed={selectedFreightName === method.name}
+            onClick={() => setSelectedFreightName(method.name)}
+            className={"flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-left text-xs transition-colors " + (selectedFreightName === method.name ? "border-emerald-700 bg-emerald-50 ring-1 ring-emerald-700" : "border-border bg-background hover:border-emerald-400")}>
             <div>
               <p className="font-semibold">{method.name}</p>
               {method.time && <p className="text-muted-foreground">Plazo orientativo: {method.time} días</p>}
@@ -1014,8 +1020,18 @@ function ImportedProductRow({
               {method.totalPostageUsd != null && <p>Franqueo total CJ: ${method.totalPostageUsd.toFixed(2)} USD</p>}
               {freightQuote.variant?.priceUsd != null && <p>Artículo + envío: ${(freightQuote.variant.priceUsd + method.shippingUsd).toFixed(2)} USD*</p>}
             </div>
-          </div>)}
+          </button>)}
           {freightQuote.methods.length > 12 && <p className="text-xs text-muted-foreground">Mostrando las primeras 12 tarifas de {freightQuote.methods.length}.</p>}
+          {selectedFreightName && <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm">
+            <p className="font-bold text-emerald-900">Transportista elegido para comparar: {selectedFreightName}</p>
+            <p className="mt-1 text-xs text-emerald-900">Selección de simulación, no guardada como método de envío de pedidos reales. No se enviará ninguna orden a CJ.</p>
+            {(() => {
+              const option = freightQuote.methods.find((entry: any) => entry.name === selectedFreightName);
+              if (!option || freightQuote.variant?.priceUsd == null) return null;
+              const shipping = option.totalPostageUsd ?? option.shippingUsd;
+              return <p className="mt-1 font-semibold">Artículo + franqueo CJ: ${(freightQuote.variant.priceUsd + shipping).toFixed(2)} USD, antes de conversión e impuestos adicionales.</p>;
+            })()}
+          </div>}
           <p className="text-xs text-amber-900">*Suma orientativa antes de conversión a EUR, IVA, posibles impuestos adicionales y comisiones. El coste final puede variar por código postal o disponibilidad de la ruta. No cambies el coste registrado sin confirmar el importe real.</p>
         </div>}
       </div>}
