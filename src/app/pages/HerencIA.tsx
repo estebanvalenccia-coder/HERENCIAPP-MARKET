@@ -1,3 +1,4 @@
+import { stageSupportHandoff } from "../lib/supportHandoff";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Crown, Heart, Leaf, Loader2, Paperclip, Send, ShoppingBag, Sparkles, UserRound } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -372,7 +373,8 @@ export function HerencIA() {
                 <p className="mt-1 text-sm text-white/65">Tu asesora de plantas, decoración y regalos</p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20" onClick={() => { stageSupportHandoff("Herenc(IA)", messages); navigate("/contacto"); }}>Servicio al cliente</button>
               <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80">
                 {groq === null ? "Conectando…" : groq.ok ? `● Groq${groq.model ? ` · ${groq.model}` : ""}` : "● Sin conexión"}
               </span>
