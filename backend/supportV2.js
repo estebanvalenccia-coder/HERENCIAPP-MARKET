@@ -43,6 +43,25 @@ export function registerSupportV2(app, db) {
     supportLimiter,
   } = db;
 
+  // Server-Sent Events: no private transcript is transmitted in the event itself.
+  const subscribers = new Set();
+  function publishChange(ticket) {
+    for (const entry of subscribers) {
+      if (!entry.admin && (entry.ownerType !== ticket.ownerType || entry.ownerId !== ticket.ownerId)) continue;
+      try { entry.response.write("event: update\ndata: {}\n\n"); }
+      catch { subscribers.delete(entry); }
+    }
+  }
+  function stream(req, res, admin) {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "private, no-store, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+    res.write("event: ready\ndata: {}\n\n");
+    return { admin, response: res, timer: null };
+  }
   function guestCookie(req) {
     try {
       const token = parseCookies(req).support_guest;
@@ -108,11 +127,14 @@ export function registerSupportV2(app, db) {
         if (!next) throw Object.assign(new Error("Consulta no encontrada"), { status: 404 });
         return JSON.stringify(next);
       });
-      return parseJSON(result.value);
+      const updated = parseJSON(result.value);
+      if (updated) publishChange(updated);
+      return updated;
     }
     const next = callback(await loadTicket(id));
     if (!next) throw Object.assign(new Error("Consulta no encontrada"), { status: 404 });
     await upsertStorageValue(key, JSON.stringify(next));
+    publishChange(next);
     return next;
   }
   function internalView(ticket, admin = false) {
@@ -157,6 +179,27 @@ export function registerSupportV2(app, db) {
     };
   }
 
+  app.get("/api/support/v2/events", route(async (req, res) => {
+    const actor = await identity(req,res);
+    if (!actor) return res.status(401).json({error:"Sesión de soporte no encontrada"});
+    const entry = stream(req,res,false);
+    entry.ownerType=actor.ownerType;
+    entry.ownerId=actor.ownerId;
+    subscribers.add(entry);
+    entry.timer=setInterval(()=>{try{res.write(": ping\n\n");}catch{res.end();}},20000);
+    const cleanup=()=>{clearInterval(entry.timer);subscribers.delete(entry);};
+    req.on("close",cleanup);
+    setTimeout(()=>{if(!res.writableEnded)res.end();cleanup();},58000).unref?.();
+  }));
+  app.get("/api/admin/support/v2/events", route(async (req,res) => {
+    if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
+    const entry=stream(req,res,true);
+    subscribers.add(entry);
+    entry.timer=setInterval(()=>{try{res.write(": ping\n\n");}catch{res.end();}},20000);
+    const cleanup=()=>{clearInterval(entry.timer);subscribers.delete(entry);};
+    req.on("close",cleanup);
+    setTimeout(()=>{if(!res.writableEnded)res.end();cleanup();},58000).unref?.();
+  }));
   app.get("/api/support/v2/session", route(async(req,res)=>{
     const actor = await identity(req,res,true);
     res.json({ actor: { type: actor.ownerType, name: actor.name, email: actor.email } });
@@ -185,6 +228,7 @@ export function registerSupportV2(app, db) {
       messages: [{ id: crypto.randomUUID(), role:"customer", text, createdAt:now }],
     };
     await upsertStorageValue(TICKET_PREFIX+id,JSON.stringify(ticket));
+    publishChange(ticket);
     if (!hasNeon()) {
       const index = parseJSON(await readStorageValue("customerSupportTicketIndex"), []);
       await upsertStorageValue("customerSupportTicketIndex", JSON.stringify([...index,id]));
