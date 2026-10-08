@@ -1,3 +1,4 @@
+import { previewApiPolicy,isNeuralPreviewService } from "./previewAccess.js";
 import http from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -24,11 +25,32 @@ const mime = {
 };
 
 async function proxy(req, res) {
+  const pathname=new URL(req.url||"/","http://localhost").pathname;
+  const previewPolicy=previewApiPolicy(req.method,pathname);
+  if(previewPolicy==="blocked"){
+    res.writeHead(403,{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-herencia-preview":"read-only"});
+    return res.end(JSON.stringify({error:"Vista previa de solo lectura. Esta versión no puede acceder a cuentas ni modificar datos reales."}));
+  }
+  if(previewPolicy==="session"||previewPolicy==="auth-config"||previewPolicy==="mode"){
+    const json=previewPolicy==="session"?{authenticated:false}:
+      previewPolicy==="auth-config"?{totpRequired:false}:
+      {enabled:true,readOnly:true,productionAccess:false};
+    res.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-herencia-preview":"read-only"});
+    return res.end(JSON.stringify(json));
+  }
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const headers = { ...req.headers };
   delete headers.host;
   delete headers["content-length"];
+  if(previewPolicy==="public"){
+    // No production credentials or session cookies leave the preview service.
+    delete headers.cookie;
+    delete headers.authorization;
+    delete headers.origin;
+    delete headers.referer;
+    delete headers["x-forwarded-host"];
+  }
   headers["x-forwarded-host"] = req.headers.host || "";
   headers["x-forwarded-proto"] = "https";
 
@@ -40,6 +62,13 @@ async function proxy(req, res) {
       redirect: "manual",
     });
     const responseHeaders = Object.fromEntries(response.headers.entries());
+    if(previewPolicy==="public"){
+      delete responseHeaders["set-cookie"];
+      delete responseHeaders["access-control-allow-origin"];
+      delete responseHeaders["access-control-allow-credentials"];
+      responseHeaders["cache-control"]="no-store";
+      responseHeaders["x-herencia-preview"]="read-only";
+    }
     res.writeHead(response.status, responseHeaders);
     if (response.body) {
       for await (const chunk of response.body) res.write(chunk);
@@ -85,7 +114,7 @@ function serveFile(file, res, { cachePolicy = "revalidate" } = {}) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
-  if (url.pathname.startsWith("/api/")) return proxy(req, res);
+  if(url.pathname.startsWith("/api/"))return proxy(req,res);
   if (!["GET", "HEAD"].includes(req.method || "GET")) {
     res.writeHead(405, { Allow: "GET, HEAD" });
     return res.end();
