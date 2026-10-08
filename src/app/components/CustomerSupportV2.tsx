@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowLeft, FileText, Headphones, ImagePlus, Loader2, MessageCircle, Plus, Send, X } from "lucide-react";
+import { ArrowLeft, FileText, Headphones, ImagePlus, Loader2, MessageCircle, Plus, Send, Trash2, X } from "lucide-react";
 import { useLocation } from "react-router";
 import { SUPPORT_HANDOFF_DRAFT_KEY } from "../lib/supportHandoff";
 import { backendStorage } from "../lib/backendStorage";
@@ -149,6 +149,18 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
     finally { setUploading(false); if (inputFileRef.current) inputFileRef.current.value = ""; }
   }
 
+  const deleteTicket = async () => {
+    if (!active?.id?.startsWith("t_") || busy) return;
+    if (!window.confirm("¿Eliminar esta consulta y sus adjuntos de forma permanente?")) return;
+    setBusy(true); setError("");
+    try {
+      await api("/tickets/" + encodeURIComponent(active.id), { method: "DELETE" });
+      setSelectedId(""); setCreating(false);
+      await update();
+    } catch (cause: any) { setError(cause.message || "No se ha podido eliminar la consulta"); }
+    finally { setBusy(false); }
+  };
+
   const startNew = () => {
     setCreating(true); setSelectedId("");
     setSubject(""); setText(""); setError("");
@@ -190,7 +202,11 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
       {active && !creating && <>
         <div className="flex items-center justify-between gap-2 bg-[#fcfdfa] px-4 py-2 text-xs text-[#859688]">
           <span>{active.ticketId} · {active.subject || "Consulta"}</span>
-          <span>{active.status==="resolved"?"Resuelta":active.status==="open"?"Pendiente":"En curso"}</span>
+          <div className="flex items-center gap-2">
+            <span>{active.status==="resolved"?"Resuelta":active.status==="open"?"Pendiente":"En curso"}</span>
+            {active.id.startsWith("t_") && <button type="button" onClick={() => void deleteTicket()} disabled={busy}
+              className="rounded-lg p-1 text-[#9f6565] hover:bg-red-50" aria-label="Eliminar consulta y adjuntos"><Trash2 size={15}/></button>}
+          </div>
         </div>
         <div className={(compact?"h-52":"h-72") + " space-y-3 overflow-y-auto bg-[#f9fbf7] px-4 py-4"} role="log" aria-live="polite">
           {active.messages.filter(m=>m.role!=="internal").map(message=>(
