@@ -2,17 +2,87 @@
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
+// CJ frequency limits apply to the same CJ account, not just one checkout.
+// Keep API requests sequential in this Node process (including token acquisition).
+// API point quotas are additional; a local throttle cannot increase an exhausted quota.
+const CJ_CALL_GAP_MS = 1250;
+const CJ_QUOTE_TTL_MS = 45_000;
+let nextCallAt = 0;
+let pauseUntil = 0;
+let callQueue = Promise.resolve();
+const recentResults = new Map();
+const inFlight = new Map();
+
+export function classifyCjApiLimit(httpStatus, apiCode) {
+  const code = Number(apiCode);
+  if (code === 1600201 || code === 429) return "CJ_QUOTA_EXHAUSTED";
+  if (code === 1600200 || Number(httpStatus) === 429) return "CJ_RATE_LIMITED";
+  return null;
+}
+function cjUnavailable(code, httpStatus, upstreamCode) {
+  const error = new Error(code === "CJ_QUOTA_EXHAUSTED"
+    ? "La cuota de consultas a CJ está agotada temporalmente."
+    : "CJ está limitando temporalmente las consultas.");
+  error.statusCode = 503;
+  error.code = code;
+  error.upstreamHttpStatus = Number(httpStatus) || undefined;
+  error.upstreamCode = Number(upstreamCode) || undefined;
+  return error;
+}
+function scheduleCjRequest(fn) {
+  const run = callQueue.then(async () => {
+    if (pauseUntil > Date.now()) {
+      throw cjUnavailable("CJ_RATE_LIMITED", 429, 1600200);
+    }
+    const wait = Math.max(0, nextCallAt - Date.now());
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    // Reserve the next slot BEFORE starting the HTTP call.
+    nextCallAt = Date.now() + CJ_CALL_GAP_MS;
+    try {
+      return await fn();
+    } catch (error) {
+      if (error?.code === "CJ_RATE_LIMITED" || error?.code === "CJ_QUOTA_EXHAUSTED") {
+        // Do not loop over rate-limit failures; fail closed with a short circuit breaker.
+        pauseUntil = Date.now() + (error.code === "CJ_QUOTA_EXHAUSTED" ? 60_000 : 30_000);
+      }
+      throw error;
+    }
+  });
+  callQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 async function cjFetch(path, options = {}) {
-  const response = await fetch(BASE + path, { ...options, signal: AbortSignal.timeout(18000) });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload || payload.result === false || payload.success === false || (payload.code && Number(payload.code) !== 200)) {
-    const error = new Error("CJ: " + String(payload?.message || ("HTTP " + response.status)).slice(0,220));
-    error.statusCode = 502;
-    error.upstreamHttpStatus = response.status;
-    error.upstreamCode = /^\d+$/.test(String(payload?.code || "")) ? Number(payload.code) : undefined;
-    throw error;
-  }
-  return payload.data;
+  const method = String(options.method || "GET").toUpperCase();
+  const cacheable = path.startsWith("/product/variant/") || path === "/logistic/freightCalculate";
+  const key = cacheable ? method + " " + path + " " + String(options.body || "") : "";
+  const previous = key && recentResults.get(key);
+  if (previous && previous.expiresAt > Date.now()) return previous.data;
+  if (key && inFlight.has(key)) return inFlight.get(key);
+
+  const pending = scheduleCjRequest(async () => {
+    const response = await fetch(BASE + path, { ...options, signal: AbortSignal.timeout(18000) });
+    const payload = await response.json().catch(() => null);
+    const upstreamCode = Number(payload?.code);
+    const limit = classifyCjApiLimit(response.status, upstreamCode);
+    if (limit) throw cjUnavailable(limit, response.status, upstreamCode);
+    if (!response.ok || !payload || payload.result === false || payload.success === false ||
+        (payload.code && upstreamCode !== 200)) {
+      const error = new Error("CJ: " + String(payload?.message || ("HTTP " + response.status)).slice(0, 220));
+      error.statusCode = 502;
+      error.upstreamHttpStatus = response.status;
+      error.upstreamCode = Number.isFinite(upstreamCode) ? upstreamCode : undefined;
+      throw error;
+    }
+    if (key) {
+      if (recentResults.size >= 120) recentResults.delete(recentResults.keys().next().value);
+      recentResults.set(key, { data: payload.data, expiresAt: Date.now() + CJ_QUOTE_TTL_MS });
+    }
+    return payload.data;
+  });
+  if (!key) return pending;
+  inFlight.set(key, pending);
+  try { return await pending; }
+  finally { inFlight.delete(key); }
 }
 async function token() {
   if (cachedToken && Date.now() < cachedUntil) return cachedToken;
