@@ -8,6 +8,8 @@ async function cjFetch(path, options = {}) {
   if (!response.ok || !payload || payload.result === false || payload.success === false || (payload.code && Number(payload.code) !== 200)) {
     const error = new Error("CJ: " + String(payload?.message || ("HTTP " + response.status)).slice(0,220));
     error.statusCode = 502;
+    error.upstreamHttpStatus = response.status;
+    error.upstreamCode = /^\d+$/.test(String(payload?.code || "")) ? Number(payload.code) : undefined;
     throw error;
   }
   return payload.data;
@@ -140,4 +142,78 @@ export async function quoteCjVariantShipping({ vid, quantity = 1, origin = "CN",
     currency: "USD", rateType: "country_estimate", source: "cj_api",
     warning: "Estimación preliminar, no una cotización final. Revisa coste total, impuestos y destino exacto antes de pagar."
   };
+}
+
+
+/**
+ * Verify a CJ supplier variant by the listed product variants first, then the
+ * official per-VID endpoint. The fallback must agree on BOTH VID and product
+ * PID; never allow a variant from another product to be charged.
+ */
+export async function queryCjVariantByVid(vidInput) {
+  const vid = String(vidInput || "").trim();
+  if (!/^[a-z0-9-]{8,100}$/i.test(vid)) {
+    const error = new Error("Identificador de variante CJ inválido");
+    error.statusCode = 422;
+    throw error;
+  }
+  const accessToken = await token();
+  const data = await cjFetch("/product/variant/queryByVid?vid=" + encodeURIComponent(vid), {
+    headers: { "CJ-Access-Token": accessToken },
+  });
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    const error = new Error("CJ no devolvió la variante solicitada");
+    error.statusCode = 502;
+    throw error;
+  }
+  const rawPrice = data.variantSellPrice;
+  const parsedPrice = rawPrice === undefined || rawPrice === null || rawPrice === "" ? null : Number(rawPrice);
+  return {
+    vid: String(data.vid || "").trim(),
+    pid: String(data.pid || "").trim(),
+    sku: String(data.variantSku || "").trim().slice(0, 100),
+    priceUsd: parsedPrice !== null && Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : null,
+    name: String(data.variantNameEn || data.variantName || "").slice(0, 220),
+  };
+}
+
+export async function verifyCjVariantPrice(
+  { pid: rawPid, vid: rawVid } = {},
+  { listVariants = queryCjProductVariants, lookupVariant = queryCjVariantByVid } = {},
+) {
+  const pid = String(rawPid || "").trim();
+  const vid = String(rawVid || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid) || !/^[a-z0-9-]{8,100}$/i.test(vid)) {
+    const error = new Error("Producto o variante CJ inválidos");
+    error.statusCode = 422;
+    throw error;
+  }
+  let originalError;
+  try {
+    const response = await listVariants(pid);
+    const matching = (Array.isArray(response?.variants) ? response.variants : []).find((entry) => String(entry?.vid || "") === vid);
+    if (matching && matching.priceUsd !== null && matching.priceUsd !== undefined &&
+        Number.isFinite(Number(matching.priceUsd)) && Number(matching.priceUsd) >= 0) {
+      return { ...matching, pid, priceUsd: Number(matching.priceUsd) };
+    }
+  } catch (error) {
+    originalError = error;
+  }
+  try {
+    const fallback = await lookupVariant(vid);
+    if (String(fallback?.vid || "") !== vid || String(fallback?.pid || "").toLowerCase() !== pid.toLowerCase() ||
+        fallback?.priceUsd == null || !Number.isFinite(Number(fallback.priceUsd)) || Number(fallback.priceUsd) < 0) {
+      const error = new Error("CJ no confirmó el vínculo PID/VID y precio actual");
+      error.code = "CJ_VARIANT_IDENTITY_MISMATCH";
+      throw error;
+    }
+    return { ...fallback, pid, priceUsd: Number(fallback.priceUsd) };
+  } catch (error) {
+    const failure = new Error("No se pudo verificar la variante CJ con ninguno de los dos métodos.");
+    failure.statusCode = 502;
+    failure.code = error?.code || originalError?.code || "CJ_VARIANT_VERIFICATION_UNAVAILABLE";
+    failure.upstreamHttpStatus = error?.upstreamHttpStatus ?? originalError?.upstreamHttpStatus;
+    failure.upstreamCode = error?.upstreamCode ?? originalError?.upstreamCode;
+    throw failure;
+  }
 }

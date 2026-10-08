@@ -327,6 +327,12 @@ export function Checkout() {
       return false;
     }
 
+    // CJ requires a real ES postal code; reject locally before initializing Stripe.
+    if (hasCjItems && !/^\d{5}$/.test(form.postalCode.trim())) {
+      toast.error("Para el envío CJ introduce un código postal español de 5 dígitos (por ejemplo, 08032).");
+      return false;
+    }
+
     if (hasPhysicalItems && !cjOnly && shippingLoading) {
       toast.error("Espera un momento, estamos calculando el envío");
       return false;
@@ -470,7 +476,7 @@ export function Checkout() {
                 <input className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Dirección" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Ciudad" value={form.city} onChange={(e) => handleChange("city", e.target.value)} />
-                  <input className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Código postal" value={form.postalCode} onChange={(e) => handleChange("postalCode", e.target.value)} />
+                  <input inputMode="numeric" autoComplete="postal-code" maxLength={10} className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Código postal" value={form.postalCode} onChange={(e) => handleChange("postalCode", e.target.value)} />
                 </div>
                 <input className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Provincia" value={form.province} onChange={(e) => handleChange("province", e.target.value)} />
               </div>

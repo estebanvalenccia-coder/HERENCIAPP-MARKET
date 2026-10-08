@@ -1,5 +1,5 @@
 // CJ-only checkout verification. All supplier requests are read-only. Never creates orders.
-import { queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
 function invalid(message) {
@@ -20,7 +20,12 @@ function countryCode(value) {
   if (v==="es"||v==="españa"||v==="spain") return "ES";
   return v.toUpperCase();
 }
-export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, suppliers = [] } = {}) {
+export function canProceedWithVerifiedCjCosts({ profitability, promotionAuthorized = false, discount = 0 } = {}) {
+  return Boolean(profitability?.available) &&
+    (Boolean(profitability?.feasible) || (promotionAuthorized === true && Number(discount) > 0));
+}
+
+export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, promotionAuthorized = false, suppliers = [] } = {}) {
   const byId = new Map((Array.isArray(catalog) ? catalog : []).map((p) => [String(p?.id || ""),p]));
   const items = Array.isArray(lines) ? lines : [];
   const cjItems = items.filter((item) => isCjProduct(byId.get(String(item?.id || ""))));
@@ -30,7 +35,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     invalid("CJdropshipping requiere una unidad por pedido en esta fase de pruebas. Divide la compra para calcular el transporte correcto.");
   }
   if (countryCode(shippingAddress?.country) !== "ES") invalid("Este artículo de CJ solo tiene envío configurado a España.");
-  if (!String(shippingAddress?.postalCode || "").trim()) invalid("Introduce el código postal español para cotizar el envío de CJ.");
+  if (!/^\d{5}$/.test(String(shippingAddress?.postalCode || "").trim())) invalid("Introduce un código postal español válido de 5 dígitos para el envío CJ.");
   const item = cjItems[0];
   const product = byId.get(String(item.id));
   const meta = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
@@ -50,7 +55,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   if (!pid) invalid("Falta el producto de origen CJ para verificar su variante.");
   // Diagnostic messages are deliberately generic: never leak supplier API payloads or credentials.
   const checks = await Promise.allSettled([
-    queryCjProductVariants(pid),
+    verifyCjVariantPrice({ pid, vid }),
     quoteCjVariantShipping({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
     getUsdToEurRate(),
   ]);
@@ -61,13 +66,19 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       "CJ no pudo cotizar el transporte para el código postal indicado.",
       "No se pudo verificar el cambio de dólares a euros.",
     ];
+    const reason = checks[failure].reason;
+    // No API key, customer address, request payload or CJ response bodies in logs.
+    console.warn("[cj.checkout] supplier validation failed", {
+      step: ["variant", "shipping", "fx"][failure],
+      code: String(reason?.code || "UPSTREAM_UNAVAILABLE").replace(/[^A-Z0-9_]/gi, "").slice(0, 60),
+      upstreamHttpStatus: Number(reason?.upstreamHttpStatus) || undefined,
+      upstreamCode: Number(reason?.upstreamCode) || undefined,
+    });
     invalid(reasons[failure] + " No se realizará ningún cobro.");
   }
-  const [variants, freight, fx] = checks.map((check) => check.value);
-  if (!Array.isArray(variants?.variants)) invalid("CJ no devolvió variantes válidas. No se realizará ningún cobro.");
+  const [selectedVariant, freight, fx] = checks.map((check) => check.value);
   if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
   if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
-  const selectedVariant = variants.variants.find((entry) => String(entry.vid)===vid);
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
   const selectedFreight = freight.methods.find((entry)=>entry.name===logisticName);
   if (!selectedFreight || selectedFreight.totalPostageUsd==null) invalid("El transportista CJ guardado no tiene un coste de envío completo para este código postal.");
@@ -78,17 +89,23 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     vatRate:Number(product.iva ?? product.taxRate ?? 21),
     minMarginPercent:Math.max(0,Number(supplier.minMarginPercent ?? 30)),
   });
-  if (!profitability.available || !profitability.feasible) {
+  // Verified admin coupons are explicit store-funded promotions. Product and
+  // freight prices MUST still be verified; only the minimum-margin requirement
+  // can be waived, and never from client-controlled discount metadata alone.
+  const storeFundedPromotion = promotionAuthorized === true && Number(discount) > 0;
+  if (!canProceedWithVerifiedCjCosts({ profitability, promotionAuthorized, discount })) {
     invalid("No se puede cobrar este artículo CJ con el precio actual: el coste con transporte e impuestos supera el margen mínimo. Revisa su precio en Administración.");
   }
   return {
-    cjOnly:true, profitability,
+    cjOnly:true, profitability, storeFundedPromotion,
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
       durationText:String(selectedFreight.time || ""),
       destination:"España", origin:"Proveedor CJdropshipping",
       deliveryProvider:"cj", logisticName, quotedAt:new Date().toISOString(),
-      warning:"El transporte del proveedor está incluido en el precio de venta. Se revisará antes del cumplimiento.",
+      warning:storeFundedPromotion
+        ? "Cupón autorizado: Herencia asume la diferencia de coste del proveedor y el envío."
+        : "El transporte del proveedor está incluido en el precio de venta. Se revisará antes del cumplimiento.",
     },
   };
 }
