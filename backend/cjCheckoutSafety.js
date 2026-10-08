@@ -20,6 +20,11 @@ function countryCode(value) {
   if (v==="es"||v==="españa"||v==="spain") return "ES";
   return v.toUpperCase();
 }
+export function canProceedWithVerifiedCjCosts({ profitability, promotionAuthorized = false, discount = 0 } = {}) {
+  return Boolean(profitability?.available) &&
+    (Boolean(profitability?.feasible) || (promotionAuthorized === true && Number(discount) > 0));
+}
+
 export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, promotionAuthorized = false, suppliers = [] } = {}) {
   const byId = new Map((Array.isArray(catalog) ? catalog : []).map((p) => [String(p?.id || ""),p]));
   const items = Array.isArray(lines) ? lines : [];
@@ -88,7 +93,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   // freight prices MUST still be verified; only the minimum-margin requirement
   // can be waived, and never from client-controlled discount metadata alone.
   const storeFundedPromotion = promotionAuthorized === true && Number(discount) > 0;
-  if (!profitability.available || (!profitability.feasible && !storeFundedPromotion)) {
+  if (!canProceedWithVerifiedCjCosts({ profitability, promotionAuthorized, discount })) {
     invalid("No se puede cobrar este artículo CJ con el precio actual: el coste con transporte e impuestos supera el margen mínimo. Revisa su precio en Administración.");
   }
   return {
