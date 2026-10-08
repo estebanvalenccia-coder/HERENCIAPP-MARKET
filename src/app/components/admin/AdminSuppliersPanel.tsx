@@ -862,6 +862,9 @@ function ImportedProductRow({
   const [cjLoading, setCjLoading] = useState(false);
   const [cjLookupError, setCjLookupError] = useState("");
   const [cjLookupComplete, setCjLookupComplete] = useState(false);
+  const [freightQuote, setFreightQuote] = useState<any>(null);
+  const [freightLoading, setFreightLoading] = useState(false);
+  const [freightError, setFreightError] = useState("");
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
   const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
@@ -875,7 +878,25 @@ function ImportedProductRow({
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
 
+  const quoteShippingToSpain = async () => {
+    if (!selectedCjVariant) return toast.error("Selecciona primero la variante real de CJ");
+    setFreightLoading(true);
+    setFreightError("");
+    setFreightQuote(null);
+    try {
+      const result = await backendApi.quoteCjProductFreight(String(product.id), selectedCjVariant.vid);
+      setFreightQuote(result);
+      if (!result.methods?.length) setFreightError("CJ no ofrece una tarifa para España desde CN. No actives este artículo para envío automático.");
+    } catch (error: any) {
+      setFreightError(String(error?.message || "CJ no pudo calcular el transporte"));
+    } finally {
+      setFreightLoading(false);
+    }
+  };
+
   const lookupCjVariants = async () => {
+    setFreightQuote(null);
+    setFreightError("");
     setCjLoading(true);
     setCjLookupError("");
     setCjLookupComplete(false);
@@ -947,6 +968,8 @@ function ImportedProductRow({
             const variant = cjVariants.find((entry) => entry.vid === event.target.value);
             setSupplierVariantId(variant?.vid || "");
             setSupplierSku(variant?.sku || "");
+            setFreightQuote(null);
+            setFreightError("");
           }} className="min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
           <option value="">Selecciona la variante exacta que venderás</option>
           {cjVariants.map((variant) => <option key={variant.vid} value={variant.vid}>
@@ -960,6 +983,36 @@ function ImportedProductRow({
         <p className="mt-1 break-all">VID: {selectedCjVariant.vid} · SKU: {selectedCjVariant.sku || "No disponible"}</p>
         <p className="mt-1 font-semibold">Precio de CJ: {selectedCjVariant.priceUsd == null ? "Sin dato" : "$" + selectedCjVariant.priceUsd.toFixed(2) + " USD"} (sin transporte)</p>
         <p className="mt-1 text-muted-foreground">Pulsa «Conectar» para guardar esta selección. Tu precio público no se modifica.</p>
+      </div>}
+      {selectedCjVariant && <div className="space-y-3 rounded-xl border border-border bg-background/80 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-bold">Calcular transporte CJ a España</p>
+            <p className="text-xs text-muted-foreground">Una unidad · salida de China (CN) · destino España (ES). No crea pedidos ni realiza pagos.</p>
+          </div>
+          <button type="button" disabled={freightLoading} onClick={() => void quoteShippingToSpain()}
+            className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-50">
+            {freightLoading ? "Calculando…" : "Consultar envío a España"}
+          </button>
+        </div>
+        {freightError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-900">{freightError}</p>}
+        {freightQuote && freightQuote.methods?.length > 0 && <div className="space-y-2">
+          <p className="text-xs font-semibold">Opciones de CJ (estimación en USD, no incluye automáticamente impuestos no declarados):</p>
+          {freightQuote.methods.slice(0, 12).map((method: any, index: number) => <div key={method.name + "-" + index} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
+            <div>
+              <p className="font-semibold">{method.name}</p>
+              {method.time && <p className="text-muted-foreground">Plazo orientativo: {method.time} días</p>}
+              {(method.taxesUsd != null || method.clearanceUsd != null) && <p className="text-muted-foreground">Impuestos CJ: {method.taxesUsd == null ? "sin dato" : "$" + method.taxesUsd.toFixed(2)} · despacho: {method.clearanceUsd == null ? "sin dato" : "$" + method.clearanceUsd.toFixed(2)}</p>}
+            </div>
+            <div className="text-right">
+              <p className="font-semibold">Envío: ${method.shippingUsd.toFixed(2)} USD</p>
+              {method.totalPostageUsd != null && <p>Franqueo total CJ: ${method.totalPostageUsd.toFixed(2)} USD</p>}
+              {selectedCjVariant.priceUsd != null && <p>Artículo + envío: ${(selectedCjVariant.priceUsd + method.shippingUsd).toFixed(2)} USD*</p>}
+            </div>
+          </div>)}
+          {freightQuote.methods.length > 12 && <p className="text-xs text-muted-foreground">Mostrando las primeras 12 tarifas de {freightQuote.methods.length}.</p>}
+          <p className="text-xs text-amber-900">*Suma orientativa antes de conversión a EUR, IVA, posibles impuestos adicionales y comisiones. El coste final puede variar por código postal o disponibilidad de la ruta. No cambies el coste registrado sin confirmar el importe real.</p>
+        </div>}
       </div>}
       {cjLookupComplete && cjVariants.length > 1 && <p className="text-xs font-semibold text-amber-800">CJ ofrece varias variantes. Si la ficha pública no tiene opciones para el cliente, debes vender solo la variante seleccionada; todavía no hay asignación automática individual para varias opciones.</p>}
       <p className="text-xs text-muted-foreground">El precio consultado está en USD. El campo «Coste proveedor» debe introducirse en EUR tras verificar conversión y gastos; el transporte final depende del destino. No actives pedidos reales sin confirmar ambos costes.</p>
