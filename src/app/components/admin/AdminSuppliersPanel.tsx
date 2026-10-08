@@ -41,6 +41,9 @@ function fulfillmentBadge(status = "") {
   if (normalized === "connector_required") return "🔌 conector";
   if (normalized === "approval_required") return "🛡️ aprobación";
   if (normalized === "cost_required") return "💶 coste";
+  if (normalized === "mapping_required") return "🔗 SKU/VID";
+  if (normalized === "address_required") return "📍 dirección";
+  if (normalized === "payment_required") return "💳 pago";
   if (normalized === "action_required") return "⚠️ revisar";
   return normalized || "pendiente";
 }
@@ -51,6 +54,10 @@ export function AdminSuppliersPanel() {
   const [orders, setOrders] = useState<any[]>([]);
   const [fulfillments, setFulfillments] = useState<any[]>([]);
   const [connectorReady, setConnectorReady] = useState(false);
+  const [cjConfigured, setCjConfigured] = useState(false);
+  const [cjLiveEnabled, setCjLiveEnabled] = useState(false);
+  const [cjTesting, setCjTesting] = useState(false);
+  const [cjBalance, setCjBalance] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
@@ -67,6 +74,11 @@ export function AdminSuppliersPanel() {
     fulfillmentMode: "manual" as SupplierMode,
     maxAutoOrderTotal: 80,
     minMarginPercent: 30,
+    integrationType: "manual",
+    cjSandbox: true,
+    cjLogisticName: "CJPacket Ordinary",
+    cjFromCountryCode: "CN",
+    cjMaxPaymentUsd: 50,
     active: true,
   });
   const [purchase, setPurchase] = useState({ supplierId: "", reference: "", productId: "", quantity: 1, unitCost: 0 });
@@ -85,6 +97,8 @@ export function AdminSuppliersPanel() {
       setOrders(Array.isArray(onlineOrders.orders) ? onlineOrders.orders : []);
       setFulfillments(Array.isArray(queue.fulfillments) ? queue.fulfillments : []);
       setConnectorReady(Boolean(queue.autopilotConnectorConfigured));
+      setCjConfigured(Boolean(queue.cjConfigured));
+      setCjLiveEnabled(Boolean(queue.cjLiveEnabled));
     } catch (error: any) {
       toast.error(error?.message || "No se pudo cargar Supplier Hub");
     } finally {
@@ -121,6 +135,11 @@ export function AdminSuppliersPanel() {
         fulfillmentMode: "manual",
         maxAutoOrderTotal: 80,
         minMarginPercent: 30,
+        integrationType: "manual",
+        cjSandbox: true,
+        cjLogisticName: "CJPacket Ordinary",
+        cjFromCountryCode: "CN",
+        cjMaxPaymentUsd: 50,
         active: true,
       });
       toast.success("Proveedor guardado");
@@ -140,6 +159,11 @@ export function AdminSuppliersPanel() {
       fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
       maxAutoOrderTotal: Number(supplier.maxAutoOrderTotal || 0),
       minMarginPercent: Number(supplier.minMarginPercent || 0),
+      integrationType: ["cj","webhook","manual"].includes(String(supplier.integrationType || "")) ? supplier.integrationType : "manual",
+      cjSandbox: supplier.cjSandbox !== false,
+      cjLogisticName: supplier.cjLogisticName || "CJPacket Ordinary",
+      cjFromCountryCode: supplier.cjFromCountryCode || "CN",
+      cjMaxPaymentUsd: Number(supplier.cjMaxPaymentUsd || 0),
       active: supplier.active !== false,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -233,7 +257,14 @@ export function AdminSuppliersPanel() {
     }
   };
 
-  const assignDropship = async (product: any, supplierId: string, mode: SupplierMode, supplierCost: number) => {
+  const assignDropship = async (
+    product: any,
+    supplierId: string,
+    mode: SupplierMode,
+    supplierCost: number,
+    supplierVariantId = "",
+    supplierSku = ""
+  ) => {
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
     if (!supplier) return toast.error("Proveedor no encontrado");
@@ -249,6 +280,8 @@ export function AdminSuppliersPanel() {
           supplierId: supplier.id,
           fulfillmentMode: mode,
           supplierCost: Math.max(0, Number(supplierCost || 0)),
+          supplierVariantId: String(supplierVariantId || "").trim(),
+          supplierSku: String(supplierSku || "").trim(),
           sourceHost: metadata.sourceHost || supplier.sourceHost || sourceHostFromProduct(product),
           supplierAssignedAt: new Date().toISOString(),
         },
@@ -330,6 +363,57 @@ export function AdminSuppliersPanel() {
       toast.success("Tracking guardado");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo guardar el tracking");
+    }
+  };
+
+  const testCjConnection = async () => {
+    setCjTesting(true);
+    try {
+      const result = await backendApi.testCjSupplierConnection();
+      setCjConfigured(Boolean(result.configured));
+      setCjLiveEnabled(Boolean(result.liveEnabled));
+      setCjBalance(result.balance || null);
+      toast.success("CJ conectado correctamente");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo conectar con CJ");
+    } finally {
+      setCjTesting(false);
+    }
+  };
+
+  const syncCjFulfillment = async (fulfillment: any) => {
+    setProcessingId(String(fulfillment.id));
+    try {
+      const result = await backendApi.syncSupplierFulfillment(String(fulfillment.id));
+      setFulfillments((current) => current.map((item) => String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+      toast.success("Estado y tracking sincronizados con CJ");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo sincronizar CJ");
+    } finally {
+      setProcessingId("");
+    }
+  };
+
+  const openCjDispute = async (fulfillment: any) => {
+    const kind = window.prompt("Escribe 1 para REEMBOLSO o 2 para REENVÍO", "1");
+    if (kind == null) return;
+    const expectType = kind.trim() === "2" ? 2 : 1;
+    const messageText = window.prompt(
+      "Describe brevemente el motivo para CJ",
+      expectType === 2 ? "El cliente solicita un reemplazo." : "El cliente solicita un reembolso."
+    );
+    if (messageText == null) return;
+    setProcessingId(String(fulfillment.id));
+    try {
+      await backendApi.createSupplierDispute(String(fulfillment.id), {
+        expectType: expectType as 1 | 2,
+        messageText,
+      });
+      toast.success(expectType === 2 ? "Solicitud de reenvío abierta en CJ" : "Solicitud de reembolso abierta en CJ");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo abrir la devolución en CJ");
+    } finally {
+      setProcessingId("");
     }
   };
 
@@ -415,6 +499,11 @@ export function AdminSuppliersPanel() {
             <option value="manual">🖱️ Manual / 1 clic</option>
             <option value="autopilot">🤖 Autopilot</option>
           </select>
+          <select value={form.integrationType} onChange={(e) => setForm({ ...form, integrationType: e.target.value })} className="rounded-xl border border-border bg-background p-3">
+            <option value="manual">Proveedor manual</option>
+            <option value="cj">CJdropshipping API · gratis</option>
+            <option value="webhook">Conector/API externo</option>
+          </select>
           <label className="rounded-xl border border-border p-3 text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">Máximo por pedido automático</span>
             <input type="number" min="0" step="0.01" value={form.maxAutoOrderTotal} onChange={(e) => setForm({ ...form, maxAutoOrderTotal: Math.max(0, Number(e.target.value || 0)) })} className="mt-1 w-full bg-transparent font-semibold outline-none"/>
@@ -426,6 +515,24 @@ export function AdminSuppliersPanel() {
               <span className="font-semibold">%</span>
             </div>
           </label>
+          {form.integrationType === "cj" && <>
+            <label className="rounded-xl border border-border p-3 text-sm">
+              <span className="block text-xs font-semibold text-muted-foreground">Logística CJ</span>
+              <input value={form.cjLogisticName} onChange={(e)=>setForm({...form,cjLogisticName:e.target.value})} className="mt-1 w-full bg-transparent font-semibold outline-none" placeholder="CJPacket Ordinary"/>
+            </label>
+            <label className="rounded-xl border border-border p-3 text-sm">
+              <span className="block text-xs font-semibold text-muted-foreground">País de salida</span>
+              <input value={form.cjFromCountryCode} onChange={(e)=>setForm({...form,cjFromCountryCode:e.target.value.toUpperCase().slice(0,2)})} className="mt-1 w-full bg-transparent font-semibold outline-none" placeholder="CN"/>
+            </label>
+            <label className="rounded-xl border border-border p-3 text-sm">
+              <span className="block text-xs font-semibold text-muted-foreground">Máximo real CJ</span>
+              <div className="mt-1 flex items-center gap-1"><span>$</span><input type="number" min="0" step="0.01" value={form.cjMaxPaymentUsd} onChange={(e)=>setForm({...form,cjMaxPaymentUsd:Math.max(0,Number(e.target.value||0))})} className="w-full bg-transparent font-semibold outline-none"/><span>USD</span></div>
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm font-semibold">
+              <input type="checkbox" checked={form.cjSandbox !== false} onChange={(e)=>setForm({...form,cjSandbox:e.target.checked})}/>
+              Modo pruebas CJ (no cobra)
+            </label>
+          </>}
           <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm font-semibold">
             <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })}/>
             Proveedor activo
@@ -435,8 +542,20 @@ export function AdminSuppliersPanel() {
           <button onClick={() => void saveSupplier()} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">
             <Save className="h-4 w-4"/>Guardar proveedor
           </button>
-          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,minMarginPercent:30,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
+          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,minMarginPercent:30,integrationType:"manual",cjSandbox:true,cjLogisticName:"CJPacket Ordinary",cjFromCountryCode:"CN",cjMaxPaymentUsd:50,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
         </div>
+        {form.integrationType === "cj" && <div className="mt-4 rounded-2xl border border-border bg-muted/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-bold">CJdropshipping Autopilot</p>
+              <p className="text-xs text-muted-foreground">{cjConfigured ? "API Key detectada en el backend" : "Falta CJ_API_KEY en Railway"} · {cjLiveEnabled ? "pago real habilitado" : "pago real bloqueado por seguridad"}</p>
+              {cjBalance && <p className="mt-1 text-xs font-semibold">Saldo CJ disponible: {String(cjBalance?.amount ?? cjBalance?.balance ?? "consultado")}</p>}
+            </div>
+            <button disabled={cjTesting} onClick={() => void testCjConnection()} className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold disabled:opacity-50">
+              <RefreshCw className={`h-4 w-4 ${cjTesting ? "animate-spin" : ""}`}/>{cjTesting ? "Probando…" : "Probar conexión CJ"}
+            </button>
+          </div>
+        </div>}
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-6">
@@ -496,7 +615,7 @@ export function AdminSuppliersPanel() {
       <div className="mt-4 space-y-3">
         {!fulfillments.length ? <p className="text-sm text-muted-foreground">No hay compras de proveedor preparadas todavía.</p> :
           fulfillments.slice(0, 200).map((item: any) => {
-            const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","action_required"].includes(String(item.status || ""));
+            const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","mapping_required","address_required","payment_required","action_required"].includes(String(item.status || ""));
             const sourceUrl = item.items?.[0]?.sourceProductUrl || "";
             return <div key={item.id} className="rounded-2xl border border-border p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -518,6 +637,8 @@ export function AdminSuppliersPanel() {
                   {canRunAuto && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>Ejecutar Autopilot</button>}
                   {["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
                   {["ordered","shipped"].includes(String(item.status || "")) && <button onClick={() => void addTracking(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><Truck className="h-4 w-4"/>Tracking</button>}
+                  {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && item.externalOrderId && <button disabled={processingId===String(item.id)} onClick={() => void syncCjFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><RefreshCw className="h-4 w-4"/>Sincronizar CJ</button>}
+                  {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && ["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void openCjDispute(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold">↩️ Devolución / reenvío</button>}
                 </div>
               </div>
             </div>;
@@ -539,6 +660,7 @@ export function AdminSuppliersPanel() {
                 <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{supplier.fulfillmentMode === "autopilot" ? "🤖 Autopilot" : "🖱️ Manual"}</span>
                 {supplier.fulfillmentMode === "autopilot" && <span className="rounded-full bg-muted px-2.5 py-1 text-xs"><ShieldCheck className="mr-1 inline h-3.5 w-3.5"/>máx. {money(supplier.maxAutoOrderTotal)}</span>}
                 {supplier.fulfillmentMode === "autopilot" && Number(supplier.minMarginPercent || 0) > 0 && <span className="rounded-full bg-muted px-2.5 py-1 text-xs">margen mín. {Number(supplier.minMarginPercent).toFixed(0)}%</span>}
+                {supplier.integrationType === "cj" && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800">CJ API {supplier.cjSandbox !== false ? "SANDBOX" : "REAL"}</span>}
               </div>
             </div>
           </button>)}
@@ -556,12 +678,21 @@ function ImportedProductRow({
   product: any;
   suppliers: any[];
   saving: boolean;
-  onSave: (product: any, supplierId: string, mode: SupplierMode, supplierCost: number) => Promise<void>;
+  onSave: (
+    product: any,
+    supplierId: string,
+    mode: SupplierMode,
+    supplierCost: number,
+    supplierVariantId?: string,
+    supplierSku?: string
+  ) => Promise<void>;
 }) {
   const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
   const [supplierId, setSupplierId] = useState(String(metadata.supplierId || ""));
   const [mode, setMode] = useState<SupplierMode>(metadata.fulfillmentMode === "autopilot" ? "autopilot" : "manual");
   const [cost, setCost] = useState(Number(metadata.supplierCost || 0));
+  const [supplierVariantId, setSupplierVariantId] = useState(String(metadata.supplierVariantId || metadata.cjVid || ""));
+  const [supplierSku, setSupplierSku] = useState(String(metadata.supplierSku || metadata.cjSku || ""));
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
   const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
@@ -570,7 +701,8 @@ function ImportedProductRow({
   const grossMargin = salePrice > 0 && cost > 0 ? salePrice - cost : 0;
   const grossPercent = salePrice > 0 && cost > 0 ? (grossMargin / salePrice) * 100 : 0;
 
-  return <div className="grid gap-3 rounded-2xl border border-border p-4 xl:grid-cols-[minmax(0,1.4fr)_220px_180px_160px_auto] xl:items-center">
+  const selectedSupplier = suppliers.find((supplier:any)=>String(supplier.id)===String(supplierId));
+  return <div className="grid gap-3 rounded-2xl border border-border p-4 xl:grid-cols-[minmax(0,1.3fr)_200px_160px_150px_210px_auto] xl:items-center">
     <div className="min-w-0">
       <div className="flex items-center gap-3">
         {product.image ? <img src={product.image} alt="" className="h-14 w-14 rounded-xl object-cover"/> : <div className="grid h-14 w-14 place-items-center rounded-xl bg-muted">📦</div>}
@@ -594,9 +726,14 @@ function ImportedProductRow({
       <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor</span>
       <input type="number" min="0" step="0.01" value={cost} onChange={(e)=>setCost(Math.max(0,Number(e.target.value||0)))} className="w-full bg-transparent text-sm font-semibold outline-none"/>
     </label>
+    <div className="space-y-2 rounded-xl border border-border px-3 py-2">
+      <span className="block text-[11px] font-semibold text-muted-foreground">{selectedSupplier?.integrationType === "cj" ? "CJ VID o SKU" : "ID/SKU proveedor"}</span>
+      <input value={supplierVariantId} onChange={(e)=>setSupplierVariantId(e.target.value)} placeholder="VID (preferido)" className="w-full bg-transparent text-xs font-semibold outline-none"/>
+      <input value={supplierSku} onChange={(e)=>setSupplierSku(e.target.value)} placeholder="SKU proveedor" className="w-full bg-transparent text-xs outline-none"/>
+    </div>
     <div className="flex gap-2">
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
-      <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost)} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
+      <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku)} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
   </div>;
 }
