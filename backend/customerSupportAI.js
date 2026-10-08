@@ -35,3 +35,11 @@ export async function answerGeneralSupport(question, publicContext = "") {
   if (!reply) throw new Error("Support model returned empty reply");
   return { reply, needsHuman: parsed.needsHuman !== false };
 }
+
+// Evita respuestas automáticas que llegan después de la intervención humana,
+// de una consulta nueva o del cierre de la conversación.
+export function canAppendSupportAIReply(thread, sourceMessageId) {
+  if (!thread || !sourceMessageId || thread.status !== "open") return false;
+  const last = Array.isArray(thread.messages) ? thread.messages.at(-1) : null;
+  return last?.id === sourceMessageId && last?.role === "customer";
+}
