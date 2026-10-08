@@ -1390,7 +1390,7 @@ app.use((req, res, next) => {
   ) {
     return passwordResetRateLimit(req, res, next);
   }
-  if (req.method === "POST" && path === "/api/stripe/create-payment-intent") {
+  if (req.method === "POST" && ["/api/stripe/create-payment-intent", "/api/coupons/preview"].includes(path)) {
     return checkoutRateLimit(req, res, next);
   }
   next();
@@ -7770,7 +7770,6 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const couponCode = String(metadata?.coupon || "").trim().toUpperCase();
     let verifiedPromotion = null;
     if (couponCode) {
-      const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
       verifiedPromotion = await quoteCoupon(couponCode, authoritativeItems);
       if ((await availableCouponUses(verifiedPromotion.rule)) === 0) {
         return res.status(409).json({ error: "Este código ha alcanzado su límite de usos" });
@@ -7779,7 +7778,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
-    await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
+    if (!serviceOnly) await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
 
     const shippingAddress = metadata?.shippingAddress || {};
     const shippingQuote = serviceOnly ? null : await calculateShippingQuote(shippingAddress);
@@ -7875,6 +7874,23 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           shippingQuote,
         });
       } catch (error) {
+        console.error("Error al procesar un pedido gratuito:", error);
+        const current = await getOrderPrimary(orderId).catch(() => null);
+        if (current?.metadata?.inventoryCommittedAt) {
+          // A committed stock movement is a sale. Never free the coupon and allow a second sale.
+          await patchOrderPrimary(orderId, {
+            status: "paid",
+            metadata: { ...(current.metadata || {}), freeCouponRecovery: String(error?.message || error) },
+          }).catch(() => null);
+          await addAutomationNotification({
+            type: "free_coupon_order_recovery",
+            title: "Pedido gratuito requiere revisión",
+            message: "Pedido #" + orderId.slice(0, 8) + ": revisar confirmación de cupón y email",
+            entityType: "order", entityId: orderId, dedupeKey: "free-coupon:" + orderId,
+          }).catch(() => null);
+          return res.json({ freeOrder: true, orderId, paymentIntentId: null,
+            totals: { subtotal: authoritativeSubtotal, discount: authoritativeDiscount, shipping: authoritativeShipping, total: 0 }, shippingQuote });
+        }
         await patchOrderPrimary(orderId, { status: "payment_error", metadata: { ...secureMetadata, freeOrderError: String(error?.message || error) } }).catch(() => null);
         if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
         await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
