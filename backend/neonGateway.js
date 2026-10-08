@@ -20,6 +20,7 @@ import {
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -266,7 +267,26 @@ const server=http.createServer(async(req,res)=>{try{
     const result=await quoteCjVariantShipping({
       vid,quantity:1,origin:"CN",destination:"ES",zip:String(body?.zip||"")
     });
-    return json(res,200,{ok:true,productId,variant:matching,...result});
+    // The rate source is independent of CJ. A failed rate lookup never pretends
+    // that USD and EUR are interchangeable or invents a valid profit margin.
+    const fx = await getUsdToEurRate().catch((error)=>({ unavailable:true, reason:String(error?.message||"Tipo de cambio no disponible") }));
+    const salePriceEur=Number(product?.onSale && product?.salePrice != null ? product.salePrice : product?.price || 0);
+    const vatRate=Number(product?.taxRate ?? product?.iva ?? 21);
+    const rate=Number(fx?.rate || 0);
+    const methods=result.methods.map((method)=>({
+      ...method,
+      profitability: estimateCjProfitability({
+        salePriceEur,productUsd:matching.priceUsd,
+        shippingUsd:method.shippingUsd,postageUsd:method.totalPostageUsd,
+        usdEurRate:rate > 0 ? rate : null,
+        vatRate,minMarginPercent:30,
+      }),
+    }));
+    return json(res,200,{ok:true,productId,variant:matching,...result,methods,
+      fx:rate>0?fx:null,
+      pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
+      pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar para el código postal concreto antes de enviar un pedido real.",
+    });
   }
 
   // Read-only CJ variants lookup for an existing Commerce product. Never creates or pays orders.
