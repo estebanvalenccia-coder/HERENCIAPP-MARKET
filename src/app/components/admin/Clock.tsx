@@ -24,7 +24,7 @@ export default function Clock() {
   }, []);
 
   return (
-    <div className="text-emerald-800 font-mono text-sm" title="Hora actual de Madrid">
+    <div className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 font-mono text-sm font-semibold tabular-nums text-emerald-900 shadow-sm" role="timer" aria-label={`Hora de Madrid: ${time}`} title="Hora actual de Madrid"><span className="font-sans text-[11px] font-bold uppercase tracking-wide text-emerald-700">Madrid</span>
       {time}
     </div>
   );
