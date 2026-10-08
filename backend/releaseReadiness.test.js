@@ -97,6 +97,8 @@ test("CJ real no crea pedidos sin autorización explícita ni cobro Stripe valid
 test("Simulación CJ no persiste ni crea pedidos reales", async () => {
   const server = await read("backend/server.js");
   assert.match(server, /buildSupplierFulfillmentsForOrder\(simulatedOrder, \{ dryRun: true \}\)/);
-  assert.match(server, /if \(!dryRun\) await writeSupplierOperations\(operations\)/);
+  assert.match(server, /if \(!dryRun\) \{/);
+  assert.match(server, /mutateNeonStorageValue\("posOperations"/);
+  assert.match(server, /mergePreparedSupplierFulfillments\(/);
   assert.match(server, /simulationOnly: true, safe: true/);
 });
