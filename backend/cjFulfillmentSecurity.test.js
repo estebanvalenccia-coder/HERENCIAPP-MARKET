@@ -40,3 +40,22 @@ test("free-coupon checkout queues supplier fulfillment for review without CJ pur
   assert.doesNotMatch(freeFlow, /executeSupplierFulfillment\(/);
   assert.doesNotMatch(freeFlow, /executeCjSupplierFulfillment\(/);
 });
+
+test("Supplier Hub persists CJ EUR quotation from either shipping save button", () => {
+  const ui = readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx", import.meta.url), "utf8");
+  const saveQuoteCalls = ui.match(/onSave\(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave\)/g) || [];
+  assert.equal(saveQuoteCalls.length, 2, "both shipping save buttons must keep the selected freight quotation");
+  assert.match(ui, /prepareSupplierFulfillments\(String\(order\.id\), true\)/);
+});
+
+test("Refreshing CJ supplier quote never recreates already submitted orders", () => {
+  const start = server.indexOf("async function buildSupplierFulfillmentsForOrder(");
+  const end = server.indexOf("async function executeSupplierFulfillment(", start);
+  assert.ok(start > 0 && end > start);
+  const source = server.slice(start, end);
+  assert.match(source, /found\?\.externalOrderId/);
+  assert.match(source, /alreadySubmitted/);
+  assert.match(source, /found && \(!force \|\| alreadySubmitted\)/);
+  assert.match(source, /"ordered", "shipped", "delivered"/);
+  assert.match(source, /quoteVerified\s*=\s*isCj/);
+});
