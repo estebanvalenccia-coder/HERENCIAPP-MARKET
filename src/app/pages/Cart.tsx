@@ -18,6 +18,7 @@ interface CartItem {
   trackInventory?: boolean;
   variants?: Array<{ name?: string; stock?: number } | string>;
   collection?: string;
+  category?: string;
   collections?: string[];
   type?: string;
   metadata?: Record<string, any>;
@@ -32,7 +33,8 @@ const isServiceItem = (item: CartItem) =>
   item.serviceBooking === true ||
   item.type === "service" ||
   item.collection === "servicios" ||
-  (Array.isArray(item.collections) && item.collections.includes("servicios"));
+  (Array.isArray(item.collections) && item.collections.includes("servicios")) ||
+  String(item.category || "").toLowerCase() === "servicios";
 
 const serviceRules = (item: CartItem) => {
   const min = Math.max(1, Number(item.serviceMinHours ?? item.metadata?.serviceMinHours ?? 1));
