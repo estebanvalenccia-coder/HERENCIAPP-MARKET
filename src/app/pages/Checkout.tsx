@@ -16,7 +16,8 @@ const isServiceItem = (item: any) =>
   item?.serviceBooking === true ||
   item?.type === "service" ||
   item?.collection === "servicios" ||
-  (Array.isArray(item?.collections) && item.collections.includes("servicios"));
+  (Array.isArray(item?.collections) && item.collections.includes("servicios")) ||
+  String(item?.category || "").toLowerCase() === "servicios";
 
 const serviceHoursOf = (item: any) => {
   const min = Math.max(1, Number(item?.serviceMinHours ?? item?.metadata?.serviceMinHours ?? 1));
