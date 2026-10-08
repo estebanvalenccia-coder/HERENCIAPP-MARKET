@@ -1294,13 +1294,13 @@ app.post(
       
       try {
         const supplierFulfillments = await buildSupplierFulfillmentsForOrder(inventoryOrder);
-        for (const fulfillment of supplierFulfillments) {
-          if (fulfillment.mode === "autopilot" && fulfillment.status === "autopilot_ready") {
-            void executeSupplierFulfillment(fulfillment.id).catch((supplierError) =>
-              console.error("Autopilot proveedor:", supplierError?.message || supplierError)
-            );
-          }
-        }
+        // Stripe confirms payment, not permission to spend money with a supplier.
+        // Paid orders are queued for admin review; nothing is sent to CJ or any
+        // supplier connector from a payment webhook.
+        console.info("[supplier-fulfillment] queued after Stripe confirmation", {
+          orderId: String(inventoryOrder.id),
+          prepared: supplierFulfillments.length,
+        });
       } catch (supplierError) {
         console.error("No se pudo preparar Autopilot de proveedor:", supplierError?.message || supplierError);
         await addAutomationNotification({
@@ -4992,6 +4992,19 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
+  // Real CJ order creation has a separate explicit kill switch. Even with a paid
+  // customer order and a live API key, regular Autopilot must not submit it.
+  if (!force || String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() !== "true") {
+    return {
+      fulfillment: {
+        ...record, status: "approval_required", provider: "cj",
+        blocker: "Pedido preparado. Envío real a CJ bloqueado hasta habilitación expresa y aprobación del administrador.",
+        updatedAt: now,
+      },
+      executed: false, manual: false,
+    };
+  }
+
   const missingMapping = (record.items || []).filter((item) => !String(item?.supplierVariantId || "").trim() && !String(item?.supplierSku || "").trim());
   if (missingMapping.length) {
     return {
@@ -5050,7 +5063,17 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
-  const logisticName = String(supplier?.cjLogisticName || process.env.CJ_DEFAULT_LOGISTIC_NAME || "CJPacket Ordinary").trim();
+  const shippingCountry = countryCodeFromAddress(address.country || "ES");
+  const preferredMethods = [...new Set((record.items || []).map((item) =>
+    item?.cjPreferredLogisticCountry === shippingCountry ? String(item?.cjPreferredLogisticName || "").trim() : ""
+  ).filter(Boolean))];
+  if (preferredMethods.length > 1) {
+    return {
+      fulfillment: { ...record, status: "approval_required", blocker: "Un pedido agrupa transportistas CJ incompatibles; revisar antes de enviarlo.", updatedAt: now },
+      executed: false, manual: false,
+    };
+  }
+  const logisticName = String(preferredMethods[0] || supplier?.cjLogisticName || process.env.CJ_DEFAULT_LOGISTIC_NAME || "CJPacket Ordinary").trim();
   const fromCountryCode = String(supplier?.cjFromCountryCode || "CN").trim().toUpperCase().slice(0, 2);
   const orderNumber = ("HM-" + String(record.orderId || "") + "-" + String(record.id || "").slice(0, 8)).slice(0, 50);
 
@@ -5437,8 +5460,10 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: true };
   }
 
+  const integrationType = supplierIntegrationType(supplier);
   const allCostsKnown = (record.items || []).every((item) => Number(item?.supplierCost || 0) > 0);
-  if (!allCostsKnown && !force) {
+  // force never overrides missing CJ costs, mismatched mapping or a negative margin.
+  if (!allCostsKnown && (integrationType === "cj" || !force)) {
     const updated = { ...record, status: "cost_required", blocker: "Falta el coste proveedor de uno o más productos.", updatedAt: now };
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
@@ -5453,8 +5478,33 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
 
-  const integrationType = supplierIntegrationType(supplier);
   if (integrationType === "cj") {
+    const currentOrder = await getOrderPrimary(record.orderId);
+    if (!currentOrder || !["paid","confirmed","preparing","processing","ready"].includes(String(currentOrder.status || ""))) {
+      const updated = { ...record, status: "approval_required", blocker: "El pedido no tiene un estado pagado/confirmado válido.", updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
+    const unsafe = (record.items || []).some((item) => !item.cjPricingEstimate?.feasible ||
+      !item.cjPricingEstimate?.available || !item.cjPricingEstimate?.checkedAt ||
+      Date.now() - Date.parse(item.cjPricingEstimate.checkedAt) > 24 * 60 * 60 * 1000);
+    if (unsafe) {
+      const updated = { ...record, status: "approval_required",
+        blocker: "Coste, transportista o margen CJ sin verificación reciente y rentable. Recalcula antes de autorizar.",
+        updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
+    if (force && !String(currentOrder.stripe_payment_intent_id || "").trim()) {
+      const updated = { ...record, status: "approval_required",
+        blocker: "Para enviar realmente a CJ falta verificar el identificador de pago Stripe del pedido.",
+        updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
     try {
       const result = await executeCjSupplierFulfillment(record, supplier, { force });
       operations.supplierFulfillments[index] = result.fulfillment;
