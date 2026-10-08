@@ -1,5 +1,9 @@
-/** Private chat storage must only be accessed through authenticated support routes. */
+/** Private support records are only available through authenticated support routes. */
 export function isPrivateSupportStorageKey(key) {
   const value = String(key || "");
-  return value === "customerSupportIndex" || value.startsWith("customerSupport:");
+  return value === "customerSupportIndex" ||
+    value === "customerSupportTicketIndex" ||
+    value.startsWith("customerSupport:") ||
+    value.startsWith("customerSupportTicket:") ||
+    value.startsWith("customerSupportAttachment:");
 }
