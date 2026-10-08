@@ -1,3 +1,4 @@
+import { registerSupportV2 } from "./supportV2.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
@@ -2557,12 +2558,15 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
       reviews,
       waitlist,
       supportConversation: await readStorageValue("customerSupport:" + String(account.id)).then(value => parseStoredJson(value, null)),
+      supportTickets: await supportV2Export(String(account.id)),
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudieron exportar tus datos" });
   }
 });
 
+let supportV2Cleanup = async () => {};
+let supportV2Export = async () => [];
 app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) => {
   try {
     const accounts = await loadCustomerAccounts();
@@ -2573,6 +2577,7 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
     const customerId = account.id;
     const deletedAt = new Date().toISOString();
 
+    await supportV2Cleanup(String(customerId));
     await deleteStorageValue("customerSupport:" + String(customerId));
     const supportIndex = parseStoredJson(await readStorageValue("customerSupportIndex"), []);
     if (supportIndex.includes(customerId)) await upsertStorageValue("customerSupportIndex", JSON.stringify(supportIndex.filter(id => id !== customerId)));
@@ -9187,7 +9192,10 @@ app.get("/api/customer/support", requireCustomer, async (req, res) => {
   try {
     const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
     if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
-    res.json({ thread: (await loadSupportThread(account.id)) || customerSupportInitial(account) });
+    {
+      const legacyThread = (await loadSupportThread(account.id)) || customerSupportInitial(account);
+      res.json({ thread: { ...legacyThread, messages: (legacyThread.messages || []).filter(message => message.role !== "internal") } });
+    }
   } catch (error) {
     console.error("Support read error", error);
     res.status(500).json({ error: "No se pudo cargar el chat" });
@@ -9224,7 +9232,7 @@ app.post("/api/customer/support", requireCustomer, supportLimiter, async (req, r
           sourceMessageId, true);
       }
     }
-    res.json({ thread });
+    res.json({ thread: { ...thread, messages: (thread.messages || []).filter(message => message.role !== "internal") } });
   } catch (error) {
     console.error("Support write error", error);
     res.status(500).json({ error: "No se pudo enviar el mensaje" });
@@ -9300,6 +9308,14 @@ app.patch("/api/admin/support/:customerId/meta", requireAdmin, supportLimiter, a
     return res.status(500).json({ error: "No se pudo actualizar la consulta" });
   }
 });
+
+const supportV2 = registerSupportV2(app, {
+  getCustomerSession, loadCustomerAccounts, isAdmin, readStorageValue, upsertStorageValue,
+  deleteStorageValue, hasNeon, listNeonStorageByPrefix, mutateNeonStorageValue,
+  requirePrimaryDatabase, sign, parseCookies, cookieOptions, supportLimiter,
+});
+supportV2Cleanup = supportV2.removeCustomerTickets;
+supportV2Export = supportV2.exportCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
