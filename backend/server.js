@@ -8908,6 +8908,63 @@ app.use("/api/neural", requireAdmin, async (req, res) => {
   }
 });
 
+
+const SUPPORT_INDEX_KEY = "customerSupportIndex";
+const supportKey = (id) => "customerSupport:" + String(id);
+async function loadSupportThread(id) {
+  return parseStoredJson(await readStorageValue(supportKey(id)), null);
+}
+async function listSupportThreads() {
+  const index = parseStoredJson(await readStorageValue(SUPPORT_INDEX_KEY), []);
+  const rows = await Promise.all(index.map(id => loadSupportThread(id)));
+  return rows.filter(Boolean).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+app.get("/api/customer/support", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
+    if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
+    const thread = await loadSupportThread(account.id);
+    res.json({ thread: thread || { customerId: account.id, customerName: account.name, customerEmail: account.email, status: "open", messages: [], updatedAt: new Date().toISOString() } });
+  } catch (error) { console.error("Support read error", error); res.status(500).json({ error: "No se pudo cargar el chat" }); }
+});
+app.post("/api/customer/support", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const text = String(req.body?.text || "").trim();
+  if (!text || text.length > 2000) return res.status(400).json({ error: "El mensaje debe tener entre 1 y 2000 caracteres" });
+  try {
+    const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
+    if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
+    const now = new Date().toISOString();
+    const thread = (await loadSupportThread(account.id)) || { customerId: account.id, customerName: account.name, customerEmail: account.email, status: "open", messages: [], updatedAt: now };
+    thread.messages.push({ id: crypto.randomUUID(), role: "customer", text, createdAt: now });
+    thread.messages = thread.messages.slice(-300); thread.status = "open"; thread.updatedAt = now;
+    await upsertStorageValue(supportKey(account.id), JSON.stringify(thread));
+    const index = parseStoredJson(await readStorageValue(SUPPORT_INDEX_KEY), []);
+    if (!index.includes(account.id)) await upsertStorageValue(SUPPORT_INDEX_KEY, JSON.stringify([...index, account.id]));
+    res.json({ thread });
+  } catch (error) { console.error("Support write error", error); res.status(500).json({ error: "No se pudo enviar el mensaje" }); }
+});
+app.get("/api/admin/support", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try { res.json({ threads: await listSupportThreads() }); }
+  catch (error) { console.error("Admin support list error", error); res.status(500).json({ error: "No se pudo cargar la bandeja" }); }
+});
+app.post("/api/admin/support/:customerId", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const text = String(req.body?.text || "").trim();
+  if (!text || text.length > 2000) return res.status(400).json({ error: "El mensaje debe tener entre 1 y 2000 caracteres" });
+  try {
+    const thread = await loadSupportThread(req.params.customerId);
+    if (!thread) return res.status(404).json({ error: "Conversación no encontrada" });
+    const now = new Date().toISOString();
+    thread.messages.push({ id: crypto.randomUUID(), role: "agent", text, createdAt: now });
+    thread.messages = thread.messages.slice(-300); thread.updatedAt = now;
+    await upsertStorageValue(supportKey(thread.customerId), JSON.stringify(thread));
+    res.json({ thread });
+  } catch (error) { console.error("Admin support reply error", error); res.status(500).json({ error: "No se pudo enviar la respuesta" }); }
+});
+
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
   const runBackgroundChecks = async () => {
