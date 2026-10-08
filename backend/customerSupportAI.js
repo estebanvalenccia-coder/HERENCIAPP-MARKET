@@ -7,9 +7,9 @@ export function needsHumanSupport(text = "") {
 }
 
 export async function answerGeneralSupport(question, publicContext = "") {
-  if (needsHumanSupport(question) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s-]{7,}\d)/.test(String(question))) return { reply: "Voy a dejar tu consulta pendiente para que una persona de Herencia pueda ayudarte directamente desde este chat.", needsHuman: true };
+  if (needsHumanSupport(question) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s-]{7,}\d)/.test(String(question))) return { reply: "Esta consulta requiere atención personalizada. Pulsa «Hablar con mi Amigo Plantil» y una persona de Herencia te responderá desde el chat interno.", needsHuman: true };
   const key = String(process.env.GROQ_API_KEY || "").trim();
-  if (!key) return { reply: "He recibido tu mensaje. Nuestro equipo te responderá en este mismo chat.", needsHuman: true };
+  if (!key) return { reply: "Por ahora no puedo responder automáticamente. Si quieres, pulsa «Hablar con mi Amigo Plantil» para enviar esta conversación al equipo.", needsHuman: true };
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(12000),
@@ -21,7 +21,7 @@ export async function answerGeneralSupport(question, publicContext = "") {
       max_tokens: 270,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "Eres el asistente de ATENCIÓN AL CLIENTE de Herencia Market, distinto al asistente de ventas. Contesta en español, breve y con amabilidad. Usa SOLO el contexto público facilitado. No inventes horarios, direcciones, precios, pedidos, disponibilidad, leyes, devoluciones ni plazos. No dices que has realizado una acción. Si falta información, marca needsHuman true. Nunca solicites datos bancarios ni contraseñas. Devuelve JSON exacto: {\\\"reply\\\":\\\"texto\\\",\\\"needsHuman\\\":boolean}." },
+        { role: "system", content: "Eres Herencia IA, asistente automático de ATENCIÓN AL CLIENTE de Herencia Market. Atiendes primero tú, y cuando necesitas atención humana debes ofrecer «Hablar con mi Amigo Plantil». Eres distinto al asistente de ventas. Contesta en español, breve y con amabilidad. Usa SOLO el contexto público facilitado. No inventes horarios, direcciones, precios, pedidos, disponibilidad, leyes, devoluciones ni plazos. No dices que has realizado una acción. Si falta información, marca needsHuman true. Nunca solicites datos bancarios ni contraseñas. Devuelve JSON exacto: {\\\"reply\\\":\\\"texto\\\",\\\"needsHuman\\\":boolean}." },
         { role: "system", content: "Contexto público: " + String(publicContext || "").slice(0, 1500) },
         { role: "user", content: String(question || "").slice(0, 800) }
       ],
