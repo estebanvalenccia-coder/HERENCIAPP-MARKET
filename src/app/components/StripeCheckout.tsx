@@ -50,6 +50,7 @@ export function StripeCheckout({
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const mountedElement = useRef<any>(null);
+  const initializationStarted = useRef(false);
   const orderIdRef = useRef<string>("");
   const paymentIntentIdRef = useRef<string>("");
   const isBizum = paymentMethod === "bizum";
@@ -60,6 +61,8 @@ export function StripeCheckout({
   }).format(amount);
 
   useEffect(() => {
+    if (initializationStarted.current) return;
+    initializationStarted.current = true;
     const initStripe = async () => {
       try {
         await backendApi.health();
