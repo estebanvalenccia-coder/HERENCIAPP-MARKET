@@ -5718,6 +5718,16 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     // Before permitting ANY live CJ call, independently verify the charge with Stripe.
     // Fail closed on missing credentials, incomplete/cancelled charges, test-mode
     // payments and insufficient payment amount. Sandbox never reaches CJ order creation.
+    // Never create a live CJ order from automatic status changes or background jobs.
+    // Only an explicit admin approval may call CJ, after payment verification.
+    if (supplier?.cjSandbox === false && !force) {
+      const updated = { ...record, status: "approval_required",
+        blocker: "Pedido CJ preparado para revisión. La creación real requiere aprobación manual y verificación de Stripe.",
+        updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
     if (force && supplier?.cjSandbox === false && cjLiveAutopilotEnabled()) {
       const paymentIntentId = String(
         currentOrder.stripe_payment_intent_id || currentOrder.stripePaymentIntentId || ""
