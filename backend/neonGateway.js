@@ -287,6 +287,7 @@ const server=http.createServer(async(req,res)=>{try{
     const sourcePrice=Math.max(0,Number(input?.supplierPrice||input?.supplierCost||0));
     const sourceCurrency=String(input?.supplierCurrency||input?.currency||"").trim().toUpperCase().slice(0,8);
     const safeSupplierCost=(!sourceCurrency||sourceCurrency==="EUR")?sourcePrice:0;
+    if(/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(name)||/human machine check|verify you are human/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
     if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
     if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
 
