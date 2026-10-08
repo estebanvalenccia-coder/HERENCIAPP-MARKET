@@ -54,8 +54,6 @@ export function calculateCouponDiscount({ code, rules, items, now = new Date() }
   return { code: normalized, discount, eligibleSubtotal, rule };
 }
 
-const HOLD_MS = 24 * 60 * 60 * 1000;
-
 export function claimCouponUse(data, rule, orderId, now = new Date()) {
   const key = normalizeCouponCode(rule.code);
   const id = String(orderId || "");
@@ -63,8 +61,7 @@ export function claimCouponUse(data, rule, orderId, now = new Date()) {
   const state = data && typeof data === "object" && !Array.isArray(data) ? { ...data } : {};
   const rows = Array.isArray(state[key]) ? [...state[key]] : [];
   if (rows.some((row) => row.orderId === id)) return state;
-  const used = rows.filter((row) => row.status === "redeemed" ||
-    (row.status === "held" && new Date(row.at).getTime() + HOLD_MS > now.getTime()));
+  const used = rows.filter((row) => row.status === "redeemed" || row.status === "held");
   if (rule.maxUses > 0 && used.length >= rule.maxUses) {
     throw new Error("Este código promocional ha alcanzado su límite de usos");
   }
