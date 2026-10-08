@@ -69,6 +69,8 @@ export function AdminHerenciaNeural(){
  const [bulkDiscardBusy,setBulkDiscardBusy]=useState(false);
  const [checkingPreviewId,setCheckingPreviewId]=useState<string|null>(null);
  const [previewFeedback,setPreviewFeedback]=useState<{id:string;message:string}|null>(null);
+ const [codePollWarning,setCodePollWarning]=useState<string|null>(null);
+ const [codeLastSynced,setCodeLastSynced]=useState<string|null>(null);
  const previewLastChecked=useRef(new Map<string,number>());
  const approvingTaskIds=useRef(new Set<string>());
 
@@ -138,6 +140,8 @@ export function AdminHerenciaNeural(){
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"&&(t.intent!=="code_change"||validCodeApproval(t)));
  const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
  const pendingCodeCount=tasks.filter((t:any)=>reviewableCodeTask(t)||validCodeApproval(t)).length;
+ const runningCodeTasks=tasks.filter((t:any)=>t.intent==="code_change"&&t.status==="RUNNING");
+ const runningCodeIds=runningCodeTasks.map((t:any)=>String(t.id)).sort().join("|");
  // Resolve visual URLs automatically on entering Neural Code, at most once per task per 90 seconds.
  useEffect(()=>{
   const task=activeCodeReview;
@@ -183,6 +187,48 @@ export function AdminHerenciaNeural(){
   const timer=window.setInterval(()=>void poll(),15_000);
   return ()=>{live=false;window.clearInterval(timer)};
  },[tab,activeCodeReview?.id,activeCodeReview?.result?.preview?.state,activeCodeReview?.result?.result?.preview?.state]);
+ // Approval returns HTTP 202 while the server programs in the background.
+ // Poll RUNNING jobs by ID, independently from the heavy dashboard refresh.
+ // Never infer success from 202: use the persisted task's terminal state.
+ useEffect(()=>{
+  if(tab!=="code"||!runningCodeIds)return;
+  const ids=runningCodeIds.split("|").filter(Boolean);
+  let cancelled=false, inFlight=false, failures=0;
+  const poll=async()=>{
+   if(cancelled||inFlight||document.visibilityState!=="visible")return;
+   inFlight=true;
+   try{
+    const results=await Promise.allSettled(ids.map(id=>backendApi.neuralCodeTask(id)));
+    if(cancelled)return;
+    let anySuccess=false;
+    for(let i=0;i<results.length;i++){
+     const result=results[i];
+     if(result.status!=="fulfilled"||result.value?.task?.id!==ids[i])continue;
+     const updated=result.value.task;
+     anySuccess=true;
+     setTasks(prev=>prev.some((t:any)=>t.id===updated.id)
+      ?prev.map((t:any)=>t.id===updated.id?updated:t)
+      :[updated,...prev]);
+     if(updated.status==="REVIEW_REQUIRED"){
+      setPinnedCodeReview(updated);
+      setPreviewFeedback({id:updated.id,message:"Código preparado. Neural está comprobando la vista previa."});
+     }
+     if(updated.status==="FAILED")setCodePollWarning("La programación ha fallado: "+String(updated.error||"consulta el detalle de la tarea"));
+    }
+    if(anySuccess){
+     failures=0;
+     setCodeLastSynced(new Date().toLocaleTimeString("es-ES"));
+     if(!results.some(r=>r.status==="fulfilled"&&r.value?.task?.status==="FAILED"))setCodePollWarning(null);
+    }else if(++failures>=2)setCodePollWarning("No se puede actualizar el progreso. Los cambios siguen protegidos: vuelve a comprobar la conexión.");
+   }finally{inFlight=false}
+  };
+  void poll();
+  const interval=window.setInterval(()=>void poll(),8000);
+  const onVisibility=()=>{if(document.visibilityState==="visible")void poll()};
+  document.addEventListener("visibilitychange",onVisibility);
+  return()=>{cancelled=true;window.clearInterval(interval);document.removeEventListener("visibilitychange",onVisibility)};
+ },[tab,runningCodeIds]);
+
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -340,6 +386,16 @@ export function AdminHerenciaNeural(){
     </div>
     <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
+     {runningCodeTasks.length>0&&<div role="status" aria-live="polite" className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+      <div className="flex items-center gap-2 font-black text-amber-950"><RefreshCw className="h-4 w-4 animate-spin"/> Neural sigue programando</div>
+      <p className="mt-1 text-xs text-amber-900">La aprobación fue recibida. El servidor está trabajando: no es necesario pulsar otra vez. Esta pantalla consulta cada 8 segundos el estado real de la tarea.</p>
+      {runningCodeTasks.map((task:any)=><div key={task.id} className="mt-3 rounded-lg bg-white/80 p-3 text-xs">
+       <div className="font-bold text-amber-950">{task.title||"Cambio de código"}</div>
+       <div className="mt-1 text-amber-900">Estado: {task.stage||task.status} · Tarea: {task.id}</div>
+      </div>)}
+      {codeLastSynced&&<p className="mt-2 text-[11px] text-amber-800">Última comprobación: {codeLastSynced}</p>}
+      {codePollWarning&&<p className="mt-2 text-xs font-bold text-red-800">{codePollWarning}</p>}
+     </div>
     {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const ready=Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";const providerDetails=safeVercelDetailsHref(preview.detailsUrl);return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":preview.state==="unavailable"?"SIN ENLACE PÚBLICO":"PREVIEW EN PREPARACIÓN"}</span></div>
       <p className="mt-2 text-xs font-semibold text-indigo-900">Abre la página de prueba para utilizar el cambio y luego decide si publicarlo o descartarlo.</p>
@@ -385,7 +441,9 @@ export function AdminHerenciaNeural(){
     {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};const preview=result.preview||{};const review=reviewableCodeTask(t);const href=safePreviewHref(preview.url);const details=safeVercelDetailsHref(preview.detailsUrl);return <div key={t.id} className={`rounded-xl border p-4 text-sm ${review?"border-indigo-200 bg-indigo-50/40":""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p></div>{review&&<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">ESPERA TU DECISIÓN</span>}</div>
       {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
-      {result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Código escrito e integrado</p>}
+      {result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Archivos escritos y comprobados en GitHub (no equivale a pruebas funcionales)</p>}
+       {t.status==="RUNNING"&&<p className="mt-2 text-xs font-bold text-amber-800">Programando en segundo plano; seguimiento automático activo.</p>}
+       {t.status==="FAILED"&&<p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-800">Error de Neural: {String(t.error||"La tarea falló sin detalle. Consulta los registros.")}</p>}
       {review&&<div className="mt-4 rounded-xl border bg-background p-3">
        <p className="text-xs"><b>Preview:</b> {preview.state||"pending"}</p>
        <div className="mt-3 grid gap-2 md:grid-cols-2">
