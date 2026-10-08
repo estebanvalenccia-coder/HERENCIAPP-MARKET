@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
@@ -5548,12 +5549,13 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
   for (const group of groups.values()) {
     const dedupeKey = String(order.id) + "::" + (group.supplierId || group.sourceHost || "unassigned");
     const found = existing.find((entry) => String(entry?.dedupeKey || "") === dedupeKey);
-    // Admin resync may refresh an unfulfilled quote, but must never reset or
-    // duplicate a supplier order already submitted, shipped or closed.
-    const alreadySubmitted = Boolean(String(found?.externalOrderId || "").trim()) ||
-      ["ordered", "shipped", "delivered", "cancelled", "canceled", "closed", "refunded", "returned", "disputed"]
-        .includes(String(found?.status || "").toLowerCase());
-    if (found && (!force || alreadySubmitted)) {
+    // Unsent rows with missing CJ costs can self-heal when the catalog has
+    // since saved a verified EUR quote, even if a cached UI sends force=false.
+    // Do not overwrite externally submitted or already approved purchases.
+    if (preserveSupplierFulfillment(found, {
+      estimatedCost: group.estimatedCost,
+      items: group.items,
+    }, { force })) {
       created.push(found);
       continue;
     }
@@ -5650,7 +5652,19 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
 
   // Dry runs exercise the same fulfillment grouping and margin safeguards without
   // creating any order in the database or modifying the real supplier queue.
-  if (!dryRun) await writeSupplierOperations(operations);
+  if (!dryRun) {
+    if (hasNeon()) {
+      // Per-key SQL transaction prevents simultaneous admin resyncs from
+      // overwriting each other's supplier queues or unrelated POS settings.
+      await mutateNeonStorageValue("posOperations", (raw) => JSON.stringify(
+        mergePreparedSupplierFulfillments(parseStoredJson(raw, {}), created, { force })
+      ));
+    } else {
+      await writeSupplierOperations(
+        mergePreparedSupplierFulfillments(operations, created, { force })
+      );
+    }
+  }
   return created;
 }
 
@@ -6117,7 +6131,10 @@ app.post("/api/admin/supplier-fulfillments/cj-preflight", requireAdmin, async (r
     const simulatedRecords = await buildSupplierFulfillmentsForOrder(simulatedOrder, { dryRun: true });
     const simulated = simulatedRecords.find((entry) => String(entry.supplierId || "") === String(supplier?.id || ""));
     if (!simulated) checks.push("La cola real no reconoce este producto como artículo CJdropshipping");
-    if (simulated?.status !== "autopilot_ready") {
+    // Manual approval is the desired safe outcome for CJ, not a failing preflight.
+    const approvalExpected = simulated?.status === "approval_required" &&
+      String(simulated?.blocker || "") === "Pedido CJ preparado para aprobación manual. Sin compras automáticas.";
+    if (simulated?.status !== "autopilot_ready" && !approvalExpected) {
       const detail = String(simulated?.blocker || "").trim();
       if (simulated) checks.push(detail || "El motor de preparación aún no considera el pedido apto");
     }
