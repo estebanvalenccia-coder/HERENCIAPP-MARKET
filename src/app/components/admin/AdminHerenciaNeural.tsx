@@ -438,7 +438,7 @@ export function AdminHerenciaNeural(){
         <summary className="cursor-pointer font-black">ERROR REAL DE COMPILACIÓN · Ver diagnóstico de Railway</summary>
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">{String(preview.buildErrors)}</pre>
         <p className="mt-2 font-semibold">No se ha publicado este cambio. Corrige el código de la rama y vuelve a comprobar.</p>
-       </details>
+       </details>}
        {failed&&preview.buildErrors&&Number(result.repairAttempts||0)<1&&<button type="button" disabled={Boolean(repairingCodeId)} onClick={()=>void repairPreview(activeCodeReview.id)} className="mt-3 w-full rounded-xl border border-amber-500 bg-amber-100 px-4 py-3 text-sm font-black text-amber-950 disabled:opacity-50">{repairingCodeId===activeCodeReview.id?"INICIANDO REPARACIÓN…":"INTENTAR REPARACIÓN AUTOMÁTICA (1 VEZ)"}</button>}
        {Number(result.repairAttempts||0)>=1&&<p className="mt-2 text-xs font-bold text-amber-900">Ya se utilizó el intento automático de reparación. Si vuelve a fallar, revisa el PR en GitHub. {result.repairError||""}</p>}
       {activeCodeReview.error&&<p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950">Neural informa: {String(activeCodeReview.error)}</p>}
