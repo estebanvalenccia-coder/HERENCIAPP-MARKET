@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { verifyCjVariantPrice } from "./cjCatalogImporter.js";
+import { canProceedWithVerifiedCjCosts } from "./cjCheckoutSafety.js";
 
 const pid = "12345678-1234-1234-1234-123456789abc";
 const otherPid = "aaaaaaaa-1234-1234-1234-123456789abc";
@@ -64,4 +65,22 @@ test("CJ does not allow untrusted or malformed variant IDs", async () => {
   await assert.rejects(verifyCjVariantPrice({ pid, vid: "../x" }, {
     listVariants: async () => { throw new Error("must never be called"); },
   }), (error) => error.statusCode === 422);
+});
+
+test("CJ rejects loss-making checkout without a server-validated coupon", () => {
+  const loss = { available: true, feasible: false };
+  assert.equal(canProceedWithVerifiedCjCosts({ profitability: loss, discount: 20 }), false);
+  assert.equal(canProceedWithVerifiedCjCosts({ profitability: loss, discount: 0, promotionAuthorized: true }), false);
+});
+
+test("CJ allows Herencia-funded discounts only with a verified coupon and known costs", () => {
+  assert.equal(canProceedWithVerifiedCjCosts({
+    profitability: { available: true, feasible: false }, discount: 20, promotionAuthorized: true,
+  }), true);
+  assert.equal(canProceedWithVerifiedCjCosts({
+    profitability: { available: false, feasible: false }, discount: 20, promotionAuthorized: true,
+  }), false);
+  assert.equal(canProceedWithVerifiedCjCosts({
+    profitability: { available: true, feasible: true }, discount: 0, promotionAuthorized: false,
+  }), true);
 });
