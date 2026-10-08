@@ -60,6 +60,9 @@ export function AdminHerenciaNeural(){
  const [activeCodeApproval,setActiveCodeApproval]=useState<any>(null);
  const [pinnedCodeReview,setPinnedCodeReview]=useState<any>(null);
  const [approvingCode,setApprovingCode]=useState(false);
+ const [discardingCodeId,setDiscardingCodeId]=useState<string|null>(null);
+ const [bulkDiscardConfirm,setBulkDiscardConfirm]=useState(false);
+ const [bulkDiscardBusy,setBulkDiscardBusy]=useState(false);
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -120,6 +123,7 @@ export function AdminHerenciaNeural(){
  const autonomy=status?.policy?.autonomy==="ACTIVE";
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL");
  const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
+ const pendingCodeCount=tasks.filter((t:any)=>t.intent==="code_change"&&["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)).length;
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -142,8 +146,34 @@ export function AdminHerenciaNeural(){
  };
  const refreshPreview=async(id:string)=>{try{const r=await backendApi.neuralCodePreview(id);const p=r?.preview||{};if(p.state==="success"&&safePreviewHref(p.url))toast.success("Preview disponible");else toast.info(p.description||"No hay un despliegue público de preview disponible");await refresh()}catch(e:any){toast.error(e.message||"No se pudo actualizar la preview")}};
  const acceptPreview=async(id:string)=>{if(!window.confirm("¿Aceptar este cambio y publicarlo en main?"))return;try{await backendApi.neuralAcceptCodePreview(id);toast.success("Cambio aceptado. Se ha enviado a main para despliegue.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo aceptar el cambio")}};
- const discardPreview=async(id:string)=>{if(!window.confirm("¿Descartar esta preview? Se cerrará el PR y se eliminará la rama neural/*."))return;try{const r=await backendApi.neuralDiscardCodePreview(id);setPinnedCodeReview(null);setTasks(prev=>prev.filter(t=>t.id!==id));setActiveCodeApproval(null);if(r?.cleanup?.warnings?.length)toast.warning("Cambio descartado, pero GitHub dejó incidencias: "+r.cleanup.warnings.join("; "));else toast.success("Cambio descartado definitivamente. Producción no cambió.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar la preview")}};
- const discardAllCode=async()=>{if(!window.confirm("¿Descartar TODOS los cambios de código pendientes y sus previews? No se publicará nada en producción."))return;try{const result=await backendApi.neuralDiscardAllPendingCode();setPinnedCodeReview(null);setActiveCodeApproval(null);setTasks(prev=>prev.filter(t=>t.intent!=="code_change"||!["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)));if(result.failed)toast.warning(`${result.count} cambios descartados; ${result.failed} requieren revisión.`);else toast.success(`${result.count} cambios pendientes descartados.`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo vaciar la cola de código")}};
+ const discardPreview=async(id:string)=>{
+  if(discardingCodeId||bulkDiscardBusy)return;
+  setDiscardingCodeId(id);
+  try{
+   const r=await backendApi.neuralDiscardCodePreview(id);
+   setPinnedCodeReview(current=>current?.id===id?null:current);
+   setTasks(prev=>prev.filter(t=>t.id!==id));
+   setActiveCodeApproval(current=>current?.id===id?null:current);
+   if(r?.cleanup?.warnings?.length)toast.warning("Cambio descartado. La limpieza de GitHub dio avisos: "+r.cleanup.warnings.join("; "));
+   else toast.success("Cambio descartado. No se publicará en tu tienda.");
+   await refresh();
+  }catch(e:any){toast.error(e.message||"No se pudo descartar la preview")}
+  finally{setDiscardingCodeId(null)}
+ };
+ const discardAllCode=async()=>{
+  if(bulkDiscardBusy)return;
+  if(!bulkDiscardConfirm){setBulkDiscardConfirm(true);return;}
+  setBulkDiscardBusy(true);setBulkDiscardConfirm(false);
+  try{
+   const result=await backendApi.neuralDiscardAllPendingCode();
+   setPinnedCodeReview(null);setActiveCodeApproval(null);
+   setTasks(prev=>prev.filter(t=>t.intent!=="code_change"||!["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)));
+   if(result.failed)toast.warning(`${result.count} cambios descartados; ${result.failed} pendientes requieren revisión.`);
+   else toast.success(`${result.count} cambios de código descartados. Producción intacta.`);
+   await refresh();
+  }catch(e:any){toast.error(e.message||"No se pudo vaciar la cola")}
+  finally{setBulkDiscardBusy(false)}
+ };
  const rejectCode=async(id?:string)=>{const taskId=id||activeCodeApproval?.id;if(!taskId)return;try{await backendApi.neuralRejectTask(taskId);setActiveCodeApproval(null);toast.success("Cambio descartado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar el cambio")}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -220,7 +250,7 @@ export function AdminHerenciaNeural(){
   </div>}
 
   {tab==="code"&&<div className="grid xl:grid-cols-3 gap-5">
-   {(approvals.some((t:any)=>t.intent==="code_change")||Boolean(activeCodeReview))&&<div className="xl:col-span-3 flex flex-wrap justify-end gap-3"><button type="button" onClick={()=>void discardAllCode()} className="rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-black text-red-700 hover:bg-red-50">DESCARTAR TODOS LOS CAMBIOS PENDIENTES</button></div>}
+   {(approvals.some((t:any)=>t.intent==="code_change")||Boolean(activeCodeReview))&&<div className="xl:col-span-3 flex flex-wrap justify-end gap-3">{bulkDiscardConfirm?<div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm"><span className="font-bold text-red-800">¿Descartar los ${pendingCodeCount} cambios pendientes? No afecta a producción.</span><button type="button" disabled={bulkDiscardBusy} onClick={()=>void discardAllCode()} className="rounded-lg bg-red-700 px-4 py-2 font-black text-white disabled:opacity-50">SÍ, DESCARTAR TODO</button><button type="button" onClick={()=>setBulkDiscardConfirm(false)} className="rounded-lg bg-white px-4 py-2 font-bold text-slate-800">VOLVER</button></div>:<button type="button" disabled={bulkDiscardBusy} onClick={()=>void discardAllCode()} className="rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-black text-red-700 hover:bg-red-50 disabled:opacity-50">VACIAR TODA LA COLA ({pendingCodeCount})</button>}</div>}
    {approvals.some((t:any)=>t.intent==="code_change")&&<div className="xl:col-span-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Hay un cambio esperando tu aprobación</div><div className="mt-1 font-bold text-amber-950">Pulsa para ver el plan y aprobar la programación.</div></div><button type="button" onClick={()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"})} className="rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600">VER APROBACIÓN</button></div>}
    <Panel title="Neural Code · Programación" icon={Code2} className="xl:col-span-2">
     <div className="rounded-2xl border bg-emerald-50/60 p-4 text-sm text-emerald-950">
@@ -229,14 +259,14 @@ export function AdminHerenciaNeural(){
     <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
     {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const ready=Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":"PREVIEW EN PREPARACIÓN"}</span></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":"PREVIEW EN PREPARACIÓN"}</span></div>
       {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
-      {failed&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">El código está preparado, pero el proveedor de preview no pudo generar la vista. Puedes reintentar el estado; producción sigue intacta.</p>}
+      {failed&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">El proveedor de preview no ha generado una vista pública. {preview.description||"Puedes volver a comprobar su estado."} Producción sigue intacta.</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-2">
        {ready?<a href={previewHref} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(activeCodeReview.id)} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white hover:bg-indigo-700">{failed?"REINTENTAR PREVIEW":"BUSCAR PREVIEW"}</button>}
        {prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="rounded-xl border bg-white px-4 py-3 text-center font-black">VER PR</a>}
       </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2"><button onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700">DESCARTAR</button><button onClick={()=>void acceptPreview(activeCodeReview.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">ACEPTAR CAMBIO</button></div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2"><button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 disabled:opacity-50">{discardingCodeId===activeCodeReview.id?"DESCARTANDO…":"DESCARTAR ESTE CAMBIO"}</button><button onClick={()=>void acceptPreview(activeCodeReview.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">ACEPTAR CAMBIO</button></div>
      </div>})()}
     {activeCodeApproval&&(()=>{const plan=activeCodeApproval.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Cambio listo para aprobar</div><h3 className="mt-1 font-black text-amber-950">{activeCodeApproval.title}</h3></div>{plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}</div>
@@ -275,7 +305,7 @@ export function AdminHerenciaNeural(){
         <button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">ACTUALIZAR ESTADO</button>
        </div>
        <div className="mt-3 grid gap-2 md:grid-cols-2">
-        <button onClick={()=>void discardPreview(t.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 hover:bg-red-50">DESCARTAR</button>
+        <button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(t.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 hover:bg-red-50 disabled:opacity-50">{discardingCodeId===t.id?"DESCARTANDO…":"DESCARTAR ESTE CAMBIO"}</button>
         <button onClick={()=>void acceptPreview(t.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white hover:bg-emerald-700">ACEPTAR CAMBIO</button>
        </div>
        <p className="mt-2 text-xs text-muted-foreground">Aceptar fusiona el PR a main y permite el despliegue. Descartar deja producción intacta.</p>
