@@ -256,6 +256,22 @@ export function registerSupportV2(app, db) {
     const reply=await withAI(updated,text,req.body?.allowAI === true);
     res.json({thread:internalView(reply)});
   }));
+  // Any authenticated guest/customer can remove a new ticket and its private media.
+  app.delete("/api/support/v2/tickets/:id",supportLimiter,route(async(req,res)=>{
+    const id=safeId(req.params.id);
+    if(!id||!id.startsWith("t_"))return res.status(400).json({error:"Consulta no válida"});
+    const actor=await identity(req,res);
+    const ticket=await loadTicket(id);
+    if(!sameOwner(ticket,actor))return res.status(404).json({error:"Consulta no encontrada"});
+    for(const msg of ticket.messages||[])if(msg.attachmentId)await deleteStorageValue(ATTACHMENT_PREFIX+msg.attachmentId);
+    await deleteStorageValue(ticketKey(id));
+    if(!hasNeon()){
+      const index=parseJSON(await readStorageValue("customerSupportTicketIndex"),[]);
+      await upsertStorageValue("customerSupportTicketIndex",JSON.stringify(index.filter(x=>x!==id)));
+    }
+    publishChange(ticket);
+    res.json({ok:true});
+  }));
   app.get("/api/admin/support/v2/tickets", route(async(req,res)=>{
     if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
     res.json({threads:await listTickets()});
