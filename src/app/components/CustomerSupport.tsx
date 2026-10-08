@@ -3,6 +3,7 @@ import { Headphones, MessageCircle, Send, X } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, normalizeWhatsAppPhone, parseSiteContent } from "../lib/siteContent";
+import { SUPPORT_HANDOFF_DRAFT_KEY } from "../lib/supportHandoff";
 
 type Message = {
   id: string;
@@ -43,7 +44,10 @@ function roleName(role: Message["role"]) {
 export function CustomerSupport({ compact = false }: { compact?: boolean }) {
   const location = useLocation();
   const [thread, setThread] = useState<Thread | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => {
+    try { return sessionStorage.getItem(SUPPORT_HANDOFF_DRAFT_KEY) || ""; }
+    catch { return ""; }
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [requiresLogin, setRequiresLogin] = useState(false);
@@ -85,6 +89,7 @@ export function CustomerSupport({ compact = false }: { compact?: boolean }) {
       });
       setThread(result.thread);
       setText("");
+      try { sessionStorage.removeItem(SUPPORT_HANDOFF_DRAFT_KEY); } catch {}
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -139,9 +144,13 @@ export function CustomerSupport({ compact = false }: { compact?: boolean }) {
             <p className="mb-2 text-xs text-[#315b42]">Consulta resuelta. Si escribes de nuevo, volveremos a abrirla.</p>
           )}
           {error && <p role="alert" className="mb-3 text-sm text-red-700">{error}</p>}
+          {text.startsWith("Consulta derivada desde") && (
+            <p className="mb-2 text-xs text-[#315b42]">Hemos preparado el resumen de tu conversación anterior. Puedes editarlo antes de enviarlo al equipo.</p>
+          )}
           <form onSubmit={send}>
             <div className="flex gap-2">
-              <input
+              <textarea
+                rows={text.length > 150 ? 4 : 2}
                 aria-label="Mensaje para atención al cliente"
                 className="min-w-0 flex-1 rounded-xl border border-[#dfdbd1] px-3 py-2 text-sm outline-none focus:border-[#315b42]"
                 maxLength={2000}
