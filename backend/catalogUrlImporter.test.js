@@ -6,6 +6,9 @@ import {
   assertSafeExternalUrl,
   extractProductGalleryImages,
   productDetailsFromHtml,
+  normalizeSupplierHost,
+  supportsManualCatalogFallback,
+  analyzeCatalogUrl,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -93,4 +96,55 @@ test("extrae precio y moneda estructurados del proveedor", () => {
   assert.equal(product.name, "Maceta autorregable");
   assert.equal(product.supplierPrice, 8.95);
   assert.equal(product.supplierCurrency, "EUR");
+});
+
+
+test("normaliza subdominios regionales de AliExpress, Alibaba y 1688 sin afectar otros proveedores", () => {
+  assert.equal(normalizeSupplierHost("es.aliexpress.com"), "aliexpress.com");
+  assert.equal(normalizeSupplierHost("www.aliexpress.com"), "aliexpress.com");
+  assert.equal(normalizeSupplierHost("spanish.alibaba.com"), "alibaba.com");
+  assert.equal(normalizeSupplierHost("m.1688.com"), "1688.com");
+  assert.equal(normalizeSupplierHost("semillasbatlle.com"), "semillasbatlle.com");
+  assert.equal(normalizeSupplierHost("evilaliexpress.com"), "evilaliexpress.com");
+});
+
+test("no convierte errores de seguridad o de URL mal formada en importaciones manuales", () => {
+  assert.equal(supportsManualCatalogFallback({ statusCode: 400 }), false);
+  assert.equal(supportsManualCatalogFallback({ statusCode: 401 }), false);
+  assert.equal(supportsManualCatalogFallback({ statusCode: 502 }), true);
+  assert.equal(supportsManualCatalogFallback({ statusCode: 504 }), true);
+  assert.equal(supportsManualCatalogFallback({ statusCode: 422 }), true);
+});
+
+test("un bucle de redirecciones de AliExpress ofrece borrador manual y no HTTP 502", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("", { status: 302, headers: { location: "https://www.aliexpress.com/item/1005000000000.html" } }));
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.ok, true);
+  assert.equal(result.requiresManual, true);
+  assert.equal(result.sourceHost, "aliexpress.com");
+  assert.deepEqual(result.products, []);
+  assert.match(result.message, /rediri|borrador/i);
+});
+
+test("un producto con JSON-LD en una web pública se importa automáticamente", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><script type="application/ld+json">' + JSON.stringify({
+    "@type": "Product", name: "Maceta de prueba", image: ["https://cdn.example.com/maceta.jpg"],
+    offers: { price: "8.90", priceCurrency: "EUR" }
+  }) + '</script></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  const result = await analyzeCatalogUrl("https://spanish.alibaba.com/product-detail/example.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, undefined);
+  assert.equal(result.sourceHost, "alibaba.com");
+  assert.equal(result.products[0].name, "Maceta de prueba");
+  assert.equal(result.products[0].supplierPrice, 8.9);
+});
+
+test("un enlace a una red privada sigue bloqueado", async () => {
+  await assert.rejects(() => analyzeCatalogUrl("http://127.0.0.1/item/1234"), /redes privadas/i);
 });

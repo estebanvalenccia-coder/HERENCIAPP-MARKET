@@ -389,6 +389,8 @@ export const backendApi = {
       sourceHost: string;
       count: number;
       truncated?: boolean;
+      requiresManual?: boolean;
+      message?: string;
       products: any[];
       source?: string;
     }>("/api/admin/catalog/import-url/preview", {
@@ -451,6 +453,7 @@ export const backendApi = {
       reason?: string;
       product?: any;
       copiedImages?: number;
+      imageImportWarning?: string;
       source?: string;
     }>("/api/admin/catalog/import-url/product", {
       method: "POST",

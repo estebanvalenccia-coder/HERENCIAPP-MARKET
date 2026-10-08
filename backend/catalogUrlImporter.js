@@ -5,6 +5,40 @@ const MAX_HTML_BYTES = 3 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const USER_AGENT = "HerenciaMarketCatalogImporter/1.0 (+https://www.herenciamarket.es)";
 
+// Regional storefronts are the same supplier. Retain the original link separately
+// so merchants can still open the exact item they selected.
+export function normalizeSupplierHost(hostname = "") {
+  const host = String(hostname).trim().toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  for (const domain of ["aliexpress.com", "alibaba.com", "1688.com"]) {
+    if (host === domain || host.endsWith("." + domain)) return domain;
+  }
+  return host;
+}
+
+export function supportsManualCatalogFallback(error) {
+  return [415, 422, 429, 502, 503, 504].includes(Number(error?.statusCode));
+}
+
+function manualCatalogPreview(url, reason) {
+  const source = new URL(url);
+  return {
+    ok: true,
+    sourceUrl: source.toString(),
+    sourceHost: normalizeSupplierHost(source.hostname),
+    count: 0,
+    truncated: false,
+    requiresManual: true,
+    message: reason || "El proveedor no permite leer esta ficha automáticamente. Puedes crear un borrador con el nombre y los datos que veas en su web.",
+    products: [],
+  };
+}
+
+function supplierChallengeHtml(html = "") {
+  const sample = String(html).slice(0, 50000).toLowerCase();
+  return /(?:captcha|verify you are human|human machine check|just a moment|checking your browser|security verification|access denied)/.test(sample)
+    && !sample.includes("application/ld+json");
+}
+
 function decodeEntities(value = "") {
   return String(value)
     .replace(/&nbsp;/gi, " ")
@@ -330,8 +364,15 @@ export async function assertSafeExternalUrl(value) {
 
 async function safeFetch(urlValue, { maxBytes, accept, timeoutMs = 12000 } = {}) {
   let current = await assertSafeExternalUrl(urlValue);
+  const visited = new Set();
 
   for (let redirect = 0; redirect <= 4; redirect += 1) {
+    // Detect regional/consent redirect loops early instead of retrying the same URL.
+    const key = current.toString();
+    if (visited.has(key)) {
+      throw Object.assign(new Error("El proveedor redirige la ficha repetidamente"), { statusCode: 422 });
+    }
+    visited.add(key);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response;
@@ -354,7 +395,11 @@ async function safeFetch(urlValue, { maxBytes, accept, timeoutMs = 12000 } = {})
       current = await assertSafeExternalUrl(new URL(location, current).toString());
       continue;
     }
-    if (!response.ok) throw Object.assign(new Error("El proveedor respondió con HTTP " + response.status), { statusCode: 502 });
+    if (!response.ok) {
+      // A blocked remote storefront is not an internal server failure.
+      const statusCode = [401, 403, 407, 429, 451, 503].includes(response.status) ? 422 : 502;
+      throw Object.assign(new Error("El proveedor no permite leer la ficha (HTTP " + response.status + ")"), { statusCode });
+    }
 
     const declared = Number(response.headers.get("content-length") || 0);
     if (declared && maxBytes && declared > maxBytes) throw Object.assign(new Error("La respuesta del proveedor es demasiado grande"), { statusCode: 413 });
@@ -437,13 +482,27 @@ export function guessCatalogTaxonomy(urlValue = "", label = "") {
 }
 
 export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
-  const page = await fetchHtml(urlValue);
+  let page;
+  try {
+    page = await fetchHtml(urlValue);
+  } catch (error) {
+    // Invalid or private-network links still fail closed (400). Only remote
+    // storefront restrictions permit a supervised, unpublished manual draft.
+    if (!supportsManualCatalogFallback(error)) throw error;
+    return manualCatalogPreview(urlValue, "No pudimos leer automáticamente la ficha de este proveedor (" + error.message + "). Completa los datos para guardarla como borrador.");
+  }
   const baseUrl = page.url;
+  if (supplierChallengeHtml(page.html)) {
+    return manualCatalogPreview(urlValue, "Este proveedor solicita una verificación en su web. Introduce los datos visibles para guardar un borrador; no intentaremos saltar su protección.");
+  }
   let candidates = extractCatalogCandidates(page.html, baseUrl).slice(0, Math.max(1, Math.min(100, Number(maxProducts) || 60)));
 
   if (!candidates.length) {
     const single = productDetailsFromHtml(page.html, baseUrl, {});
-    if (single.name && single.images.length) candidates = [single];
+    if (single.name && single.images.length && !/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(single.name)) candidates = [single];
+  }
+  if (!candidates.length) {
+    return manualCatalogPreview(urlValue, "No encontramos una ficha estructurada en esa web. Puedes guardar el artículo como borrador introduciendo su nombre.");
   }
 
   const enriched = await mapWithConcurrency(candidates, 4, async (candidate) => {
@@ -460,7 +519,7 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
   return {
     ok: true,
     sourceUrl: baseUrl,
-    sourceHost: source.hostname,
+    sourceHost: normalizeSupplierHost(source.hostname),
     count: enriched.length,
     truncated: enriched.length >= limit,
     products: enriched.map((item) => {
@@ -471,7 +530,7 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
         description: item.description || "",
         productUrl: item.productUrl,
         sourceCatalogUrl: baseUrl,
-        sourceHost: source.hostname,
+        sourceHost: normalizeSupplierHost(source.hostname),
         image: item.image || item.images?.[0] || "",
         images: (item.images || []).slice(0, 8),
         supplierCategory: item.category || "",
