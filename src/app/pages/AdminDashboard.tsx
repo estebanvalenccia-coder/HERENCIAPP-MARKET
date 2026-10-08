@@ -1,4 +1,5 @@
 import { AdminSupportPro } from "../components/admin/AdminSupportPro";
+import ClockMadrid from "../components/admin/ClockMadrid";
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -751,6 +752,7 @@ export function AdminDashboard() {
 
       <div className="flex-1 min-w-0 flex flex-col min-h-screen">
         <header className="bg-card/80 backdrop-blur-lg border-b border-border/50 sticky top-0 z-40 shadow-sm">
+          <ClockMadrid />
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4">
