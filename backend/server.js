@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
@@ -255,6 +256,7 @@ const protectedKeys = new Set([
   "adminFlowerCosts",
   "bouquetCatalog",
   "adminLatestFlowerQuote",
+  "discountCodes",
   "heroBanner",
   "ctaBanner",
   "siteContent",
@@ -293,6 +295,7 @@ const adminOnlyStorageKeys = [
   "adminAutomationNotifications",
   "customerAccounts",
   "customerReferrals",
+  "discountCodes",
 ];
 
 function parseCookies(req) {
@@ -3589,6 +3592,95 @@ async function validateCommerceOrderPayload(order = {}) {
     shippingQuote,
   };
 }
+
+const COUPON_USAGE_KEY = "discountCodeRedemptions";
+
+async function getCouponRules() {
+  const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
+  return Array.isArray(rules) ? rules : [];
+}
+
+async function quoteCoupon(code, items) {
+  return calculateCouponDiscount({ code, rules: await getCouponRules(), items });
+}
+
+async function availableCouponUses(rule) {
+  if (!rule || !rule.maxUses) return null;
+  const usage = parseStoredJson(await readStorageValue(COUPON_USAGE_KEY), {});
+  const now = Date.now();
+  const used = (Array.isArray(usage[rule.code]) ? usage[rule.code] : []).filter(
+    (row) => row.status === "redeemed" || (row.status === "held" && new Date(row.at).getTime() + 86400000 > now)
+  ).length;
+  return Math.max(0, rule.maxUses - used);
+}
+
+async function changeCouponUsage(action, quote, orderId) {
+  if (!quote?.code || !quote.rule?.maxUses) return;
+  if (!hasNeon()) {
+    const error = new Error("El control seguro de cupones requiere Neon. No se procesó el pedido.");
+    error.statusCode = 503;
+    throw error;
+  }
+  await mutateNeonStorageValue(COUPON_USAGE_KEY, (raw) => {
+    const state = parseStoredJson(raw, {});
+    const next = action === "claim"
+      ? claimCouponUse(state, quote.rule, orderId)
+      : settleCouponUse(state, quote.code, orderId, action);
+    return JSON.stringify(next);
+  });
+}
+
+async function updateOrderCouponUsage(order, action) {
+  const code = normalizeCouponCode(order?.metadata?.coupon);
+  if (!code) return;
+  const rules = await getCouponRules();
+  const rule = rules.find((row) => normalizeCouponCode(row.code) === code);
+  if (!rule?.maxUses) return;
+  await changeCouponUsage(action, { code, rule }, order.id);
+}
+
+async function authoritativeCouponPreviewItems(rawItems) {
+  if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > 100) throw new Error("El carrito está vacío o supera el límite");
+  const products = await loadAuthoritativeProducts();
+  const byId = new Map((Array.isArray(products) ? products : []).map((row) => [String(row.id), row]));
+  const items = [];
+  for (const raw of rawItems) {
+    const bouquet = await authoritativeCustomBouquetItem(raw);
+    if (bouquet) { items.push(bouquet); continue; }
+    const product = byId.get(String(raw?.id ?? ""));
+    if (!product || product.active === false || product.deletedAt) throw new Error("Uno de los productos no está disponible");
+    const variantName = String(raw?.selectedVariant || "");
+    const variant = variantName ? (product.variants || []).find((row) => String(row?.name || row) === variantName) : null;
+    if (variantName && !variant) throw new Error("Variante no disponible");
+    const service = isServiceProduct(product);
+    const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+    const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+    const quantity = Number(service ? (raw?.serviceHours ?? raw?.quantity) : raw?.quantity);
+    if (!Number.isInteger(quantity) || quantity < (service ? minHours : 1) || quantity > (service ? maxHours : 1000)) {
+      throw new Error("Cantidad u horas de servicio no válidas");
+    }
+    const basePrice = product.onSale && Number(product.salePrice) > 0 ? Number(product.salePrice) : Number(product.price);
+    const price = Number(variant?.price ?? basePrice);
+    if (!Number.isFinite(price) || price <= 0) throw new Error("Precio de producto no válido");
+    items.push({ id: product.id, price, quantity, serviceBooking: service, type: service ? "service" : "product" });
+  }
+  return items;
+}
+
+app.post("/api/coupons/preview", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const code = normalizeCouponCode(req.body?.code);
+    const items = await authoritativeCouponPreviewItems(req.body?.items);
+    const quote = await quoteCoupon(code, items);
+    if (quote.rule && (await availableCouponUses(quote.rule)) === 0) {
+      return res.status(409).json({ error: "El cupón ha alcanzado su límite de usos" });
+    }
+    res.json({ ok: true, code: quote.code, discount: quote.discount, eligibleSubtotal: quote.eligibleSubtotal });
+  } catch (error) {
+    res.status(409).json({ error: error.message || "No se pudo validar el cupón" });
+  }
+});
 
 app.post("/api/orders", async (req, res) => {
   let order = req.body;
