@@ -189,8 +189,9 @@ export function registerSupportV2(app, db) {
         .slice(0, 20).map(x => x.name || x.title).filter(Boolean).join(", ") : "";
       const context = "Herencia Market, Barcelona. Horario publicado: " + hours.slice(0, 800) +
         ". Productos publicados (referencias, no confirmar existencias sin comprobar): " + known.slice(0, 700) +
-        ". Para pedidos, devoluciones, pagos, incidencias o consultas sobre identidad deriva a una persona.";
-      const answer = await answerGeneralSupport(input, context);
+        ". Para pedidos, devoluciones y pagos, ofrece orientación general sin inventar datos; nunca afirmes haber consultado un pedido real.";
+      const previousMessages = ticket.messages.slice(0,-1).filter(m=>m.role==="customer"||m.role==="assistant").slice(-8);
+      const answer = await answerGeneralSupport(input, context, previousMessages);
       return mutateTicket(ticket.id, current => {
         const last = current?.messages?.at(-1);
         if (!last || last.id !== lastMessageId || last.role !== "customer" || current.status !== "open") return current;
