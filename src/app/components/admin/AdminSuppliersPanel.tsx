@@ -64,6 +64,10 @@ export function AdminSuppliersPanel() {
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [existingSearch, setExistingSearch] = useState("");
+  const [existingProductId, setExistingProductId] = useState("");
+  const [existingProductUrl, setExistingProductUrl] = useState("");
+  const [linkingExisting, setLinkingExisting] = useState(false);
 
   const [form, setForm] = useState<any>({
     id: "",
@@ -120,6 +124,69 @@ export function AdminSuppliersPanel() {
       }),
     [products]
   );
+
+  const existingMatches = products.filter((product: any) => {
+    if (String(product.status || "") === "archived") return false;
+    const query = existingSearch.toLocaleLowerCase("es").trim();
+    return !query || String(product.name || "").toLocaleLowerCase("es").includes(query) ||
+      String(product.sku || "").toLocaleLowerCase("es").includes(query);
+  }).slice(0, 100);
+  const selectedExistingProduct = products.find((product: any) => String(product.id) === existingProductId);
+
+  // Reconnect an existing Commerce/Neon product: only supplier metadata and inventory mode change.
+  // Never re-import the article or overwrite the seller's price, publication, images or description.
+  const linkExistingProduct = async () => {
+    const product = products.find((item: any) => String(item.id) === existingProductId);
+    if (!product) return toast.error("Elige primero un producto de tu catálogo");
+    if (String(product.status || "") === "archived") return toast.error("No se puede vincular un producto de la papelera");
+    let parsed: URL;
+    try { parsed = new URL(existingProductUrl.trim()); }
+    catch { return toast.error("Pega la URL real del producto en CJdropshipping"); }
+    if (parsed.protocol !== "https:") return toast.error("La URL del proveedor debe ser HTTPS");
+    const sourceHost = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const supplier = suppliers.find((entry: any) =>
+      String(entry.sourceHost || "").toLowerCase().replace(/^www\./, "") === sourceHost
+    );
+    if (!supplier) return toast.error("No hay un proveedor registrado para este dominio. Revisa la URL.");
+    const cjMatch = parsed.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
+    if (supplier.integrationType === "cj" && !cjMatch) {
+      return toast.error("La URL CJ debe contener su identificador de producto (-p-...html)");
+    }
+    const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    setLinkingExisting(true);
+    try {
+      const saved = await backendApi.updateCommerceProduct(product.id, {
+        metadata: {
+          ...metadata,
+          importedFromUrl: true,
+          fulfillmentType: "dropship",
+          supplierId: supplier.id,
+          fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+          sourceProductUrl: parsed.toString(),
+          sourceCatalogUrl: metadata.sourceCatalogUrl || parsed.toString(),
+          sourceHost,
+          ...(cjMatch ? { supplierProductId: cjMatch[1] } : {}),
+          supplierCost: Math.max(0, Number(metadata.supplierCost || 0)),
+          supplierCurrency: metadata.supplierCurrency || (cjMatch ? "USD" : "EUR"),
+          supplierAssignedAt: new Date().toISOString(),
+        },
+        trackInventory: false,
+      });
+      const updated = saved.product;
+      if (!updated || !updated.metadata?.sourceProductUrl) {
+        throw new Error("El producto se ha guardado, pero la vinculación no pudo verificarse. Recarga Proveedores.");
+      }
+      toast.success("Producto existente vinculado a " + supplier.name + " sin cambiar su precio, fotos ni publicación");
+      setExistingProductId("");
+      setExistingProductUrl("");
+      setExistingSearch("");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo vincular el artículo existente");
+    } finally {
+      setLinkingExisting(false);
+    }
+  };
 
   const saveSupplier = async () => {
     if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
@@ -590,6 +657,41 @@ export function AdminSuppliersPanel() {
         </button>
       </section>
     </div>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <h2 className="text-xl font-bold">Vincular un producto que ya existe</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Recupera la conexión con CJdropshipping sin duplicar el artículo ni cambiar su precio, fotografías o estado publicado.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Buscar artículo del catálogo</label>
+          <input value={existingSearch} onChange={(event) => { setExistingSearch(event.target.value); setExistingProductId(""); }} placeholder="Por ejemplo: Garden irrigation controller" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+          <select value={existingProductId} onChange={(event) => {
+            const id = event.target.value;
+            setExistingProductId(id);
+            const current = products.find((item: any) => String(item.id) === id);
+            setExistingProductUrl(String(current?.metadata?.sourceProductUrl || ""));
+          }} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+            <option value="">Selecciona el producto existente</option>
+            {existingMatches.map((item: any) => <option key={item.id} value={String(item.id)}>{item.name} · {money(Number(item.price || 0))}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">URL original del producto en CJdropshipping</label>
+          <input type="url" value={existingProductUrl} onChange={(event) => setExistingProductUrl(event.target.value)} placeholder="https://www.cjdropshipping.com/product/..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+          <p className="text-xs text-muted-foreground">Solo vincula productos de proveedores ya registrados. El precio de CJ, los envíos y las variantes se revisan después.</p>
+        </div>
+      </div>
+      {selectedExistingProduct && <div className="mt-3 flex items-center gap-3 rounded-xl bg-muted/50 p-3 text-sm">
+        {selectedExistingProduct.image && <img src={selectedExistingProduct.image} alt="" className="h-12 w-12 rounded-lg object-cover"/>}
+        <div>
+          <p className="font-semibold">{selectedExistingProduct.name}</p>
+          <p className="text-xs text-muted-foreground">Precio actual: {money(Number(selectedExistingProduct.price || 0))} · {selectedExistingProduct.status === "active" ? "Publicado" : "Borrador"} · Se mantendrá sin cambios</p>
+        </div>
+      </div>}
+      <button disabled={linkingExisting || !existingProductId || !existingProductUrl.trim()} onClick={() => void linkExistingProduct()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">
+        <Link2 className="h-4 w-4"/>{linkingExisting ? "Vinculando…" : "Vincular producto existente"}
+      </button>
+    </section>
 
     <section className="rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
