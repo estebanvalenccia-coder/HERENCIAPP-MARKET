@@ -1,5 +1,5 @@
 // Read-only production release check. Never alters DNS, payments or active deployments.
-import { compareDeploymentVersions } from "../shared/deploymentParity.js";
+import { compareDeploymentVersions, normalizeCommit } from "../shared/deploymentParity.js";
 
 const siteUrl = process.env.HERENCIA_SITE_URL || "https://www.herenciamarket.es";
 const origin = new URL(siteUrl);
@@ -25,8 +25,10 @@ try {
   console.log("Frontend:", result.frontendPlatform, result.frontendCommit || "no verificable");
   console.log("API:", result.backendPlatform, result.backendCommit || "no verificable");
   console.log("Coordinación:", result.state);
-  if (!result.synced) {
-    console.error("La web y la API no están confirmadas en el mismo commit. No declares la publicación completa.");
+  const expected = normalizeCommit(process.env.HERENCIA_EXPECTED_SHA);
+  if (expected) console.log("GitHub main esperado:", expected);
+  if (!result.synced || (expected && (result.frontendCommit !== expected || result.backendCommit !== expected))) {
+    console.error("La web y la API deben coincidir entre sí Y con el commit esperado de GitHub main. Publicación incompleta.");
     process.exitCode = 1;
   }
 } catch (error) {
