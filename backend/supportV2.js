@@ -319,11 +319,21 @@ export function registerSupportV2(app, db) {
     res.send(buffer);
   }));
   return {
+    async exportCustomerTickets(customerId) {
+      return (await listTickets())
+        .filter(t => t.ownerType === "customer" && t.ownerId === String(customerId))
+        .map(t => internalView(t));
+    },
     async removeCustomerTickets(customerId) {
       const mine=(await listTickets()).filter(t=>t.ownerType==="customer"&&t.ownerId===customerId&&t.id!==customerId);
       for(const thread of mine) {
         for(const message of thread.messages||[])if(message.attachmentId)await deleteStorageValue(ATTACHMENT_PREFIX+message.attachmentId);
         await deleteStorageValue(TICKET_PREFIX+thread.id);
+      }
+      if(!hasNeon()) {
+        const index=parseJSON(await readStorageValue("customerSupportTicketIndex"),[]);
+        await upsertStorageValue("customerSupportTicketIndex",
+          JSON.stringify(index.filter(id=>!mine.some(ticket=>ticket.id===id))));
       }
     },
   };
