@@ -18,6 +18,7 @@ export function AdminOffers() {
       catch { setCodes([]); }
     };
     load();
+    void backendStorage.refresh().then(load).catch(() => null);
     window.addEventListener("backend-storage", load);
     return () => window.removeEventListener("backend-storage", load);
   }, []);
