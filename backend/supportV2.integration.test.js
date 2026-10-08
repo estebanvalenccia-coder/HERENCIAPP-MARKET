@@ -51,10 +51,27 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(session.res.status,200);
     assert.equal(session.payload.actor.type,"guest");
     const cookie=session.res.headers.get("set-cookie").split(";")[0];
-    const start=await call("/api/support/v2/tickets",{cookie,method:"POST",body:{subject:"Primera",text:"Mi planta ha llegado mal"}});
+    const start=await call("/api/support/v2/tickets",{cookie,method:"POST",body:{subject:"Primera",text:"Mi pedido ha llegado roto"}});
     assert.equal(start.res.status,201);
     assert.match(start.payload.thread.id,/^t_/);
     const ticket=start.payload.thread;
+    // Una pregunta sensible pasa primero por IA local de derivación,
+    // pero NO avisa al equipo hasta que el cliente pulsa el botón humano.
+    assert.equal(ticket.status,"handoff");
+    assert.equal(ticket.humanRequested,false);
+    assert.equal(ticket.messages.length,2);
+    assert.match(ticket.messages[1].text,/Amigo Plantil/i);
+    const human=await call("/api/support/v2/tickets/"+ticket.id+"/handoff",{
+      cookie,method:"POST",
+    });
+    assert.equal(human.res.status,200);
+    assert.equal(human.payload.thread.humanRequested,true);
+    assert.equal(human.payload.thread.status,"open");
+    const humanRepeat=await call("/api/support/v2/tickets/"+ticket.id+"/handoff",{
+      cookie,method:"POST",
+    });
+    assert.equal(humanRepeat.payload.thread.messages.length,human.payload.thread.messages.length);
+
     const second=await call("/api/support/v2/tickets",{cookie,method:"POST",body:{subject:"Otra consulta",text:"Me interesa un servicio"}});
     assert.equal(second.res.status,201);
     const list=await call("/api/support/v2/tickets",{cookie});
@@ -73,13 +90,13 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(note.res.status,200);
     assert.equal(note.payload.thread.messages.at(-1).role,"internal");
     const customerRead=await call("/api/support/v2/tickets/"+ticket.id,{cookie});
-    assert.equal(customerRead.payload.thread.messages.length,1);
+    assert.equal(customerRead.payload.thread.messages.length,3);
     const reply=await call("/api/admin/support/v2/tickets/"+ticket.id+"/messages",{
       cookie:adminCookie,method:"POST",body:{text:"Vamos a ayudarte"},
     });
     assert.equal(reply.payload.thread.status,"answered");
     const afterReply=await call("/api/support/v2/tickets/"+ticket.id,{cookie});
-    assert.equal(afterReply.payload.thread.messages.length,2);
+    assert.equal(afterReply.payload.thread.messages.length,4);
     const picture="data:image/jpeg;base64,"+Buffer.from("ffd8ff00aabbaa","hex").toString("base64");
     const attachment=await call("/api/support/v2/tickets/"+ticket.id+"/attachments",{
       cookie,method:"POST",body:{filename:"planta.jpg",dataUrl:picture},
