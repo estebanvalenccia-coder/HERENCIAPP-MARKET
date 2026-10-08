@@ -45,6 +45,7 @@ export function StripeCheckout({
   const [elements, setElements] = useState<StripeElements | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [verifiedAmount, setVerifiedAmount] = useState(amount);
   const [cardholderName, setCardholderName] = useState(customerName);
   const [email, setEmail] = useState(customerEmail);
   const [showError, setShowError] = useState(false);
@@ -58,7 +59,7 @@ export function StripeCheckout({
     style: "currency",
     currency: currency.toUpperCase(),
     maximumFractionDigits: currency === "cop" ? 0 : 2,
-  }).format(amount);
+  }).format(verifiedAmount);
 
   useEffect(() => {
     if (initializationStarted.current) return;
@@ -101,6 +102,13 @@ export function StripeCheckout({
         if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
         const stripeInstance = await loadStripe(publishableKey);
         if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
+
+        const serverAmount = Number(paymentIntentResponse.totals?.total);
+        if (!Number.isFinite(serverAmount) || serverAmount <= 0) throw new Error("El backend no devolvió un importe válido");
+        setVerifiedAmount(serverAmount);
+        if (Math.abs(serverAmount - amount) > 0.01) {
+          toast.info("El importe final ha sido actualizado por el servidor (descuento o gastos de envío). Revisa el total antes de confirmar.");
+        }
 
         const { clientSecret, orderId, paymentIntentId } = paymentIntentResponse;
         if (!clientSecret || !orderId || !paymentIntentId) {
