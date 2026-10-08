@@ -53,9 +53,18 @@ test("Refreshing CJ supplier quote never recreates already submitted orders", ()
   const end = server.indexOf("async function executeSupplierFulfillment(", start);
   assert.ok(start > 0 && end > start);
   const source = server.slice(start, end);
-  assert.match(source, /found\?\.externalOrderId/);
-  assert.match(source, /alreadySubmitted/);
-  assert.match(source, /found && \(!force \|\| alreadySubmitted\)/);
-  assert.match(source, /"ordered", "shipped", "delivered"/);
+  assert.match(source, /preserveSupplierFulfillment\(found,/);
+  assert.match(source, /mergePreparedSupplierFulfillments\(/);
+  assert.match(source, /mutateNeonStorageValue\("posOperations"/);
   assert.match(source, /quoteVerified\s*=\s*isCj/);
+});
+
+test("CJ manual approval is a successful preflight when price and shipping are verified", () => {
+  const preflightStart = server.indexOf('app.post("/api/admin/supplier-fulfillments/cj-preflight"');
+  const preflightEnd = server.indexOf('app.post("/api/admin/supplier-fulfillments/prepare', preflightStart);
+  assert.ok(preflightStart > 0 && preflightEnd > preflightStart);
+  const preflight = server.slice(preflightStart, preflightEnd);
+  assert.match(preflight, /approvalExpected/);
+  assert.match(preflight, /simulated\?\.status !== "autopilot_ready" && !approvalExpected/);
+  assert.match(preflight, /simulationOnly: true/);
 });
