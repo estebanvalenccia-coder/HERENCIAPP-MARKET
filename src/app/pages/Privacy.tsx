@@ -85,7 +85,7 @@ export function Privacy() {
 
             <section>
               <h2 className="text-2xl font-bold mb-4">Atención al cliente e inteligencia artificial</h2>
-              <p className="text-muted-foreground">Las consultas enviadas desde el sitio y la cuenta registrada se guardan en la bandeja privada de atención al cliente, asociadas a tu cuenta. Si marcas expresamente la opción de asistencia con IA, el texto de esa consulta puede enviarse al proveedor de IA para generar una respuesta automática. Puedes dejar la opción desmarcada y escribir directamente al equipo. No incluyas contraseñas, números de tarjeta u otros datos especialmente sensibles en el chat.</p>
+              <p className="text-muted-foreground">El servicio de atención comienza con Herencia IA, un asistente automático. Las preguntas generales pueden enviarse al proveedor de inteligencia artificial para ofrecer una respuesta; las consultas sobre pedidos, pagos, devoluciones y otros asuntos personales se derivan sin enviar esos datos al modelo. Cuando la IA no pueda resolver una consulta o prefieras atención humana, pulsa «Hablar con mi Amigo Plantil»: solo entonces se activará el seguimiento por nuestro equipo de atención al cliente. Las conversaciones y los archivos adjuntos se guardan de forma privada y se asocian a tu cuenta o a una sesión temporal de visitante. No incluyas contraseñas, números de tarjeta ni otros datos especialmente sensibles. Los visitantes pueden eliminar sus consultas; las conversaciones de visitantes inactivas se eliminan periódicamente.</p>
             </section>
 
             <section>
