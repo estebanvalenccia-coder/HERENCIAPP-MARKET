@@ -134,12 +134,15 @@ type AdminOrderAlert = {
   read: boolean;
 };
 
+// Preview branches show the admin UI without any production account access.
+const NEURAL_PREVIEW_HOST=/^neural-preview-[a-f0-9]{32}-production\.up\.railway\.app$/i;
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const previewOnly=typeof window!=="undefined"&&NEURAL_PREVIEW_HOST.test(window.location.hostname);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(previewOnly);
 
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [isCheckingSession, setIsCheckingSession] = useState(!previewOnly);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -172,6 +175,11 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
+    if(previewOnly){
+      setIsAuthenticated(true);
+      setIsCheckingSession(false);
+      return;
+    }
     if (!backendApi.enabled) {
       setIsAuthenticated(false);
       setIsCheckingSession(false);
@@ -194,6 +202,7 @@ export function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    if(previewOnly)return;
     const onExpired = () => {
       setIsAuthenticated(false);
       setIsCheckingSession(false);
@@ -204,6 +213,7 @@ export function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    if(previewOnly)return;
     if (!isAuthenticated || !backendApi.enabled) {
       setRealtimeConnected(false);
       return;
@@ -335,6 +345,7 @@ export function AdminDashboard() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(previewOnly){toast.info("Esta preview no acepta credenciales reales.");return;}
 
     if (!backendApi.enabled) {
       toast.error("Backend no disponible. Configura VITE_API_URL y vuelve a intentar.");
@@ -362,6 +373,7 @@ export function AdminDashboard() {
   };
 
   const handleLogout = async () => {
+    if(previewOnly){navigate("/");return;}
     await backendApi.adminLogout().catch(() => null);
     setIsAuthenticated(false);
     setUsername("");
@@ -750,6 +762,9 @@ export function AdminDashboard() {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col min-h-screen">
+        {previewOnly&&<div role="status" className="sticky top-0 z-[60] border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-semibold text-amber-950">
+          PREVIEW SEGURA · MODO DEMOSTRACIÓN SOLO LECTURA · No introduzcas contraseñas reales · Los datos privados y los cambios en producción están bloqueados
+        </div>}
         <header className="bg-card/80 backdrop-blur-lg border-b border-border/50 sticky top-0 z-40 shadow-sm">
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
