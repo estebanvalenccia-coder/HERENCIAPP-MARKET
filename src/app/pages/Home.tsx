@@ -16,6 +16,7 @@ import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteCon
 import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
+import { EasyCarePlants } from "../components/site/EasyCarePlants";
 
 const DEFAULT_HERO = "/herencia-portada.avif";
 
@@ -332,7 +333,7 @@ export function Home() {
         </div>
       </section>
 
-      <section className=\"mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10\">\n  <div className=\"flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between\">\n    <div>\n      <p className=\"text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]\">Plantas fáciles de cuidar</p>\n      <h2 className=\"mt-2 text-3xl font-medium sm:text-4xl\">Descubre nuestras opciones</h2>\n    </div>\n  </div>\n  <div className=\"mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4\">\n    {catalog.slice(0,4).filter(p=>p?.image && Number(p?.price||p?.salePrice||0)>0).map(product=>(\n      <article key={product.id} className=\"overflow-hidden rounded-2xl border border-[#e5e1d8] bg-white shadow-sm\">\n        <Link to={\`/producto/${product.id}\`} className=\"block h-40 overflow-hidden bg-[#f1eee7]\">\n          <img src={product.image} alt={product.name} className=\"h-full w-full object-cover transition duration-500 hover:scale-105\"/>\n        </Link>\n        <div className=\"p-3\">\n          <Link to={\`/producto/${product.id}\`} className=\"line-clamp-2 min-h-10 text-sm font-black\">{product.name}</Link>\n          <p className=\"mt-2 text-base font-black text-[#315b42]\">{money(Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0))}</p>\n          <Link to={\`/producto/${product.id}\`} className=\"mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white transition hover:bg-[#234832]\">\n            Ver producto <ArrowRight className=\"h-4 w-4\"/>\n          </Link>\n        </div>\n      </article>\n    ))}\n    {catalog.filter(p=>p?.image && Number(p?.price||p?.salePrice||0)>0).length===0 && (\n      <p className=\"col-span-full text-center text-sm text-[#6d7d72]\">No hay plantas disponibles en este momento.</p>\n    )}\n  </div>\n</section>\n<StorefrontFeed />
+      <EasyCarePlants catalog={catalog} />
 
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
