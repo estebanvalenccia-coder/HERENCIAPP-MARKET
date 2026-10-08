@@ -36,7 +36,7 @@ function manualCatalogPreview(url, reason) {
 function supplierChallengeHtml(html = "") {
   const sample = String(html).slice(0, 50000).toLowerCase();
   return /(?:captcha|verify you are human|human machine check|just a moment|checking your browser|security verification|access denied)/.test(sample)
-    && !/<script[^>]+application\\/ld\\+json/i.test(sample);
+    && !sample.includes("application/ld+json");
 }
 
 function decodeEntities(value = "") {
