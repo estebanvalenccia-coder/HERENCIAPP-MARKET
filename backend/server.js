@@ -2558,6 +2558,7 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
       reviews,
       waitlist,
       supportConversation: await readStorageValue("customerSupport:" + String(account.id)).then(value => parseStoredJson(value, null)),
+      supportTickets: await supportV2Export(String(account.id)),
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudieron exportar tus datos" });
@@ -2565,6 +2566,7 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
 });
 
 let supportV2Cleanup = async () => {};
+let supportV2Export = async () => [];
 app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) => {
   try {
     const accounts = await loadCustomerAccounts();
@@ -9152,6 +9154,7 @@ const supportV2 = registerSupportV2(app, {
   requirePrimaryDatabase, sign, parseCookies, cookieOptions, supportLimiter,
 });
 supportV2Cleanup = supportV2.removeCustomerTickets;
+supportV2Export = supportV2.exportCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
