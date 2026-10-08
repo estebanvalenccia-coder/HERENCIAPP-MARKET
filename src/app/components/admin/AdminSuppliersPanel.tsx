@@ -369,7 +369,8 @@ export function AdminSuppliersPanel() {
     supplierCost: number,
     supplierVariantId = "",
     supplierSku = "",
-    cjPreferredLogisticName = ""
+    cjPreferredLogisticName = "",
+    cjProfitabilityQuote: any = null
   ) => {
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
@@ -391,6 +392,14 @@ export function AdminSuppliersPanel() {
           cjPreferredLogisticName: String(cjPreferredLogisticName || "").trim().slice(0, 120),
           cjPreferredLogisticCountry: cjPreferredLogisticName ? "ES" : "",
           cjPreferredLogisticUpdatedAt: cjPreferredLogisticName ? new Date().toISOString() : "",
+          // Advisory quote only. Neither the quotation nor its presence authorizes payment.
+          cjPricingEstimate: cjProfitabilityQuote?.available &&
+            cjProfitabilityQuote?.methodName === cjPreferredLogisticName &&
+            cjProfitabilityQuote?.vid === String(supplierVariantId || "").trim()
+            ? cjProfitabilityQuote
+            : (metadata.cjPricingEstimate?.vid === String(supplierVariantId || "").trim() &&
+               metadata.cjPricingEstimate?.methodName === cjPreferredLogisticName
+                ? metadata.cjPricingEstimate : null),
           sourceHost: metadata.sourceHost || supplier.sourceHost || sourceHostFromProduct(product),
           supplierAssignedAt: new Date().toISOString(),
         },
@@ -854,7 +863,8 @@ function ImportedProductRow({
     supplierCost: number,
     supplierVariantId?: string,
     supplierSku?: string,
-    cjPreferredLogisticName?: string
+    cjPreferredLogisticName?: string,
+    cjProfitabilityQuote?: any
   ) => Promise<void>;
 }) {
   const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
@@ -883,6 +893,15 @@ function ImportedProductRow({
   const isCjSupplier = selectedSupplier?.integrationType === "cj";
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
+  const chosenFreight = freightQuote?.methods?.find((item: any) => item.name === selectedFreightName);
+  const profitability = chosenFreight?.profitability;
+  const quoteForSave = profitability?.available && freightQuote?.fx?.rate
+    ? {
+        ...profitability, methodName: selectedFreightName,
+        vid: supplierVariantId, fx: freightQuote.fx,
+        checkedAt: new Date().toISOString(), destination: "ES", origin: "CN", quantity: 1,
+      }
+    : null;
 
   const quoteShippingToSpain = async () => {
     if (!String(supplierVariantId || "").trim()) return toast.error("Selecciona primero una variante CJ con VID válido");
@@ -1008,7 +1027,7 @@ function ImportedProductRow({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {selectedFreightName && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
-              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName)}
+              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
               {saving ? "Guardando…" : "Guardar transportista preferido"}
             </button>}
@@ -1030,13 +1049,24 @@ function ImportedProductRow({
             <div className="text-right">
               <p className="font-semibold">Envío: ${method.shippingUsd.toFixed(2)} USD</p>
               {method.totalPostageUsd != null && <p>Franqueo total CJ: ${method.totalPostageUsd.toFixed(2)} USD</p>}
-              {freightQuote.variant?.priceUsd != null && <p>Artículo + envío: ${(freightQuote.variant.priceUsd + method.shippingUsd).toFixed(2)} USD*</p>}
+              {freightQuote.variant?.priceUsd != null && <p>Artículo + franqueo: ${(freightQuote.variant.priceUsd + (method.totalPostageUsd ?? method.shippingUsd)).toFixed(2)} USD*</p>}
+              {method.profitability?.available && <p className={"font-bold " + (method.profitability.feasible ? "text-emerald-700" : "text-red-700")}>
+                Resultado estimado: {Number(method.profitability.estimatedProfitEur).toFixed(2)} €
+              </p>}
             </div>
           </button>)}
           {freightQuote.methods.length > 12 && <p className="text-xs text-muted-foreground">Mostrando las primeras 12 tarifas de {freightQuote.methods.length}.</p>}
           {selectedFreightName && <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm">
             <p className="font-bold text-emerald-900">Transportista elegido para comparar: {selectedFreightName}</p>
-            <p className="mt-1 text-xs text-emerald-900">Puedes guardar esta preferencia en el producto. No se aplicará automáticamente a pedidos reales ni se enviará ninguna orden a CJ.</p>
+            <p className="mt-1 text-xs text-emerald-900">Puedes guardar esta preferencia y la cotización estimada. Ninguna compra se enviará automáticamente.</p>
+            {freightQuote.fx?.rate ? <p className="mt-2 text-xs font-medium">Cambio USD/EUR: {Number(freightQuote.fx.rate).toFixed(5)} (fecha {freightQuote.fx.date}).</p>
+              : <p className="mt-2 text-xs font-semibold text-amber-900">Tipo de cambio no disponible: no se puede estimar un margen fiable.</p>}
+            {profitability?.available && <div className="mt-2 rounded-lg border border-emerald-300 bg-background p-3 text-sm">
+              <p>Coste estimado proveedor y transporte: <strong>{money(profitability.costEur)} €</strong>.</p>
+              <p>Resultado estimado: <strong className={profitability.feasible ? "text-emerald-800" : "text-red-700"}>{money(profitability.estimatedProfitEur)} €</strong> · margen {Number(profitability.estimatedMarginPercent).toFixed(1)}%.</p>
+              {!profitability.feasible && <p className="mt-1 font-bold text-red-700">Margen insuficiente. Precio orientativo para un margen del 30%: {money(profitability.recommendedMinimumPriceEur)} €. Tu precio de venta no cambia.</p>}
+              <p className="mt-1 text-xs text-muted-foreground">Hipótesis: IVA, comisión de pago aproximada y reserva del 3% por cambio de divisa; el importe final puede variar.</p>
+            </div>}
             <button type="button" disabled={saving || !supplierId || !supplierVariantId}
               onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName)}
               className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
