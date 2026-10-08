@@ -104,7 +104,11 @@ export function Contact() {
           </p>
 
           <div className="mt-7"><CustomerSupport compact /></div>
-          <form onSubmit={submit} className="mt-7 space-y-5">
+          <div className="mt-7 border-t border-[#dfdbd1] pt-6">
+            <h3 className="text-base font-black">¿Prefieres WhatsApp?</h3>
+            <p className="mt-1 text-xs text-[#6c786f]">Este canal es externo: los mensajes de WhatsApp todavía no se sincronizan con el historial de servicio al cliente de tu cuenta.</p>
+          </div>
+          <form onSubmit={submit} className="mt-5 space-y-5">
             <label className="block">
               <span className="mb-2 block text-sm font-black">Nombre</span>
               <input
