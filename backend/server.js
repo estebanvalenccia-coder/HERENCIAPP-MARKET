@@ -8198,6 +8198,26 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         await consumeCommerceStockReservation(orderId);
         await changeCouponUsage("redeem", verifiedPromotion, orderId);
         const paidOrder = await patchOrderPrimary(orderId, { status: "paid" });
+        // A free customer checkout is still a real supplier obligation. Enqueue
+        // the CJ fulfillment for human approval exactly like Stripe-paid orders.
+        // Never execute a supplier purchase from checkout (even in autopilot mode).
+        try {
+          const supplierFulfillments = await buildSupplierFulfillmentsForOrder(paidOrder);
+          console.info("[supplier-fulfillment] queued after free coupon confirmation", {
+            orderId: String(orderId),
+            prepared: supplierFulfillments.length,
+          });
+        } catch (supplierError) {
+          console.error("No se pudo preparar proveedor para pedido gratuito:", supplierError?.message || supplierError);
+          await addAutomationNotification({
+            type: "supplier_fulfillment_error",
+            title: "Pedido gratuito con incidencia de proveedor",
+            message: "Pedido #" + orderId.slice(0, 8) + ": no se pudo preparar la compra de proveedor; revisión manual necesaria.",
+            entityType: "order",
+            entityId: orderId,
+            dedupeKey: "supplier-fulfillment:" + orderId,
+          }).catch(() => null);
+        }
         broadcastAdminOrderEvent(paidOrder, "order_paid");
         void emitNeuralBusinessEvent("order.paid", normalizeOrder(paidOrder));
         try { await sendOrderConfirmationEmails(paidOrder, "free_coupon_order"); }
