@@ -372,6 +372,26 @@ export function registerSupportV2(app, db) {
     res.setHeader("Content-Disposition",(asset.mime==="application/pdf"?"attachment":"inline")+'; filename="adjunto"');
     res.send(buffer);
   }));
+  // Guest transcripts expire automatically. A signed cookie lasts 30 days;
+  // old anonymous conversations are removed after 45 days of inactivity.
+  async function purgeExpiredGuestTickets() {
+    const expiry=Date.now()-45*86400_000;
+    const expired=(await listTickets()).filter(t=>t.id?.startsWith("t_")&&t.ownerType==="guest"&&
+      Number.isFinite(new Date(t.updatedAt).getTime())&&new Date(t.updatedAt).getTime()<expiry);
+    for(const ticket of expired) {
+      for(const m of ticket.messages||[])if(m.attachmentId)await deleteStorageValue(ATTACHMENT_PREFIX+m.attachmentId);
+      await deleteStorageValue(TICKET_PREFIX+ticket.id);
+      publishChange(ticket);
+    }
+    if(!hasNeon()&&expired.length){
+      const index=parseJSON(await readStorageValue("customerSupportTicketIndex"),[]);
+      const removed=new Set(expired.map(t=>t.id));
+      await upsertStorageValue("customerSupportTicketIndex",JSON.stringify(index.filter(id=>!removed.has(id))));
+    }
+  }
+  setTimeout(()=>void purgeExpiredGuestTickets().catch(error=>console.warn("[support] Guest cleanup:",error.message)),90000).unref?.();
+  setInterval(()=>void purgeExpiredGuestTickets().catch(error=>console.warn("[support] Guest cleanup:",error.message)),12*3600_000).unref?.();
+
   return {
     async exportCustomerTickets(customerId) {
       return (await listTickets())
