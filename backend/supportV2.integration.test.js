@@ -34,10 +34,11 @@ function makeTestApp() {
     supportLimiter:(_req,_res,next)=>next(),
   });
   const server=app.listen(0);
-  return {port:()=>server.address().port,close:()=>new Promise(resolve=>server.close(resolve))};
+  return {ready:()=>new Promise(resolve=>server.listening?resolve():server.once("listening",resolve)),port:()=>server.address().port,close:()=>new Promise(resolve=>server.close(resolve))};
 }
 test("guest tickets, ownership, internal notes, admin replies and private images",async()=>{
   const app=makeTestApp();
+  await app.ready();
   const base="http://127.0.0.1:"+app.port();
   const call=async(path,{method="GET",cookie="",body}={})=>{
     const res=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
