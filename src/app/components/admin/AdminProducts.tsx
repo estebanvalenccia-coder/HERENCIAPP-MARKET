@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
+import { cleanProductDescription } from "../../lib/productDescription";
 import { MediaLibraryPicker } from "./MediaLibraryPicker";
 import {
   COMMERCE_COLLECTIONS,
@@ -165,6 +166,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiCopyGenerating, setAiCopyGenerating] = useState(false);
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editVariants, setEditVariants] = useState<EditVariant[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
@@ -593,7 +595,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     );
     setEditForm({
       name: product.name || "",
-      description: product.description || "",
+      description: cleanProductDescription(product.description),
       collection,
       category: product.category || getCommerceCollection(collection).categories[0]?.id || collection,
       image: product.image || "",
@@ -620,7 +622,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       allowDedication: product.allowDedication !== false,
       tags: Array.isArray(product.tags) ? product.tags.join(", ") : String(product.tags || ""),
       seoTitle: product.seoTitle || product.name || "",
-      seoDescription: product.seoDescription || product.description || "",
+      seoDescription: cleanProductDescription(product.seoDescription || product.description, 170),
       serviceMinHours: Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1)),
       serviceMaxHours: Math.max(
         Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1)),
@@ -639,6 +641,26 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
     setEditRelatedIds([]);
     setRelatedSearch("");
     setAiPrompt("");
+  }
+
+  async function generateEditableDescription() {
+    if (!editForm.name.trim() || aiCopyGenerating) return;
+    try {
+      setAiCopyGenerating(true);
+      const { result } = await backendApi.generateGeneralProductDescription({
+        productName: editForm.name,
+        collection: editForm.collection,
+        baseDescription: cleanProductDescription(editForm.description, 3000),
+      });
+      const description = String(result?.description || "").trim();
+      if (!description) throw new Error("Groq no devolvió una descripción");
+      setEditForm((current) => ({ ...current, description, seoDescription: description.slice(0, 170) }));
+      toast.success("Descripción preparada con Groq. Revisa y guarda los cambios.");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo generar la descripción");
+    } finally {
+      setAiCopyGenerating(false);
+    }
   }
 
   async function generateAiImage() {
@@ -1244,9 +1266,14 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
                   <label className="sm:col-span-2 text-sm font-bold">Nombre
                     <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                   </label>
-                  <label className="sm:col-span-2 text-sm font-bold">Descripción
-                    <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
-                  </label>
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="block text-sm font-bold">Descripción
+                      <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={5} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
+                    </label>
+                    {!isPlantCareProduct({ collection: editForm.collection, category: editForm.category }) && <button type="button" onClick={() => void generateEditableDescription()} disabled={aiCopyGenerating || !editForm.name.trim()} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/5 disabled:opacity-50">
+                      {aiCopyGenerating ? "Generando…" : "✨ Mejorar descripción con Groq"}
+                    </button>}
+                  </div>
 
                   <label className="text-sm font-bold">Colección
                     <select
