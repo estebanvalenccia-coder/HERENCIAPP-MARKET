@@ -1,3 +1,4 @@
+import { stageSupportHandoff } from "../lib/supportHandoff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -887,6 +888,9 @@ export function SalesChatWidget() {
                   {catalogLoading ? "Sincronizando catálogo…" : catalog.length ? `${catalog.length} productos reales conectados` : "Catálogo real conectado desde servidor"}
                 </p>
               </div>
+              <button type="button" onClick={() => { stageSupportHandoff("HERENCIA SALES", messages); setOpen(false); navigate("/contacto"); }} className="rounded-full border border-white/25 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10" aria-label="Enviar conversación a atención al cliente">
+                Atención al cliente
+              </button>
               <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 transition hover:bg-white/10" aria-label="Cerrar">
                 <X className="h-5 w-5" />
               </button>
