@@ -8921,6 +8921,11 @@ app.use("/api/neural", requireAdmin, async (req, res) => {
 
 
 
+app.use(["/api/customer/support", "/api/admin/support"], (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Vary", "Cookie");
+  next();
+});
 const SUPPORT_INDEX_KEY = "customerSupportIndex";
 const supportKey = (id) => "customerSupport:" + String(id);
 const supportLimiter = createRateLimiter({
