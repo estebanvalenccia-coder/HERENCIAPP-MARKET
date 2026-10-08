@@ -29,6 +29,7 @@ type SupportThread = {
   customerEmail: string;
   ticketId?: string;
   status: SupportStatus;
+  humanRequested?: boolean;
   priority?: SupportPriority;
   category?: SupportCategory;
   updatedAt: string;
@@ -230,6 +231,21 @@ export function AdminSupportPro() {
     resolved: threads.filter(t => t.status === "resolved").length,
   }), [threads]);
 
+  const operations = useMemo(() => {
+    const now = Date.now();
+    const handoffs = threads.filter(t => t.humanRequested === true && t.status !== "resolved");
+    const awaiting = handoffs.filter(t => !t.messages.some(m => m.role === "agent"));
+    const overdue = awaiting.filter(t => {
+      const lastCustomer = [...t.messages].reverse().find(m => m.role === "customer");
+      const timestamp = Date.parse(lastCustomer?.createdAt || t.updatedAt);
+      return Number.isFinite(timestamp) && now - timestamp > 60 * 60 * 1000;
+    });
+    const automated = threads.filter(t => t.status === "automated").length;
+    const total = threads.length;
+    return {handoffs:handoffs.length, awaiting:awaiting.length, overdue:overdue.length,
+      automated, automatedRate:total ? Math.round(automated / total * 100) : 0};
+  }, [threads]);
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return threads.filter(thread => {
@@ -377,6 +393,17 @@ export function AdminSupportPro() {
           <SupportCard value={counts.progress} label="En curso" icon={MessageCircle} sub="Con respuesta o asistencia IA" accent="bg-[#eaf2fe] text-[#4676b8]" />
           <SupportCard value={counts.resolved} label="Resueltos" icon={CheckCheck} sub="Consultas finalizadas" accent="bg-[#eaf5ed] text-[#417c58]" />
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-3" aria-label="Indicadores de atención al cliente">
+          <SupportCard value={operations.awaiting} label="Esperando a Plantil" icon={Headphones} sub="Derivaciones sin primera respuesta humana" accent="bg-[#fff5e6] text-[#b47824]" />
+          <SupportCard value={operations.overdue} label="Más de una hora" icon={Clock3} sub="Derivaciones pendientes de respuesta" accent="bg-[#fce9e7] text-[#b55349]" />
+          <SupportCard value={operations.automatedRate} label="IA en curso (%)" icon={Sparkles} sub={`${operations.automated} de ${threads.length} conversaciones; no equivale a casos resueltos`} accent="bg-[#eaf5ed] text-[#417c58]" />
+        </div>
+        {operations.overdue > 0 && (
+          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+            Hay {operations.overdue} {operations.overdue === 1 ? "conversación" : "conversaciones"} esperando atención humana desde hace más de una hora. Revisa las pendientes de Amigo Plantil.
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
