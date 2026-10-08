@@ -20,7 +20,7 @@ function countryCode(value) {
   if (v==="es"||v==="españa"||v==="spain") return "ES";
   return v.toUpperCase();
 }
-export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, suppliers = [] } = {}) {
+export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, promotionAuthorized = false, suppliers = [] } = {}) {
   const byId = new Map((Array.isArray(catalog) ? catalog : []).map((p) => [String(p?.id || ""),p]));
   const items = Array.isArray(lines) ? lines : [];
   const cjItems = items.filter((item) => isCjProduct(byId.get(String(item?.id || ""))));
@@ -84,17 +84,23 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     vatRate:Number(product.iva ?? product.taxRate ?? 21),
     minMarginPercent:Math.max(0,Number(supplier.minMarginPercent ?? 30)),
   });
-  if (!profitability.available || !profitability.feasible) {
+  // Verified admin coupons are explicit store-funded promotions. Product and
+  // freight prices MUST still be verified; only the minimum-margin requirement
+  // can be waived, and never from client-controlled discount metadata alone.
+  const storeFundedPromotion = promotionAuthorized === true && Number(discount) > 0;
+  if (!profitability.available || (!profitability.feasible && !storeFundedPromotion)) {
     invalid("No se puede cobrar este artículo CJ con el precio actual: el coste con transporte e impuestos supera el margen mínimo. Revisa su precio en Administración.");
   }
   return {
-    cjOnly:true, profitability,
+    cjOnly:true, profitability, storeFundedPromotion,
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
       durationText:String(selectedFreight.time || ""),
       destination:"España", origin:"Proveedor CJdropshipping",
       deliveryProvider:"cj", logisticName, quotedAt:new Date().toISOString(),
-      warning:"El transporte del proveedor está incluido en el precio de venta. Se revisará antes del cumplimiento.",
+      warning:storeFundedPromotion
+        ? "Cupón autorizado: Herencia asume la diferencia de coste del proveedor y el envío."
+        : "El transporte del proveedor está incluido en el precio de venta. Se revisará antes del cumplimiento.",
     },
   };
 }
