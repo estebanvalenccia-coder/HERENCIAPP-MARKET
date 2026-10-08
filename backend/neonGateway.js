@@ -488,7 +488,7 @@ const server=http.createServer(async(req,res)=>{try{
       void fetch(`${legacyUrl}/api/admin/supplier-fulfillments/prepare/${encodeURIComponent(orderId)}`,{
         method:"POST",
         headers:{"content-type":"application/json",cookie:cookies(req)},
-        body:JSON.stringify({executeAutopilot:true})
+        body:JSON.stringify({executeAutopilot:false})
       }).then(async(response)=>{
         if(!response.ok){
           const message=await response.text().catch(()=>"");
