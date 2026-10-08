@@ -64,15 +64,6 @@ export function StripeCheckout({
       try {
         await backendApi.health();
 
-        const settings = backendStorage.getItem("stripeSettings");
-        if (!settings) throw new Error("Stripe no está configurado en ajustes");
-
-        const { publishableKey, enabled } = JSON.parse(settings);
-        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
-
-        const stripeInstance = await loadStripe(publishableKey);
-        if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
-
         const storedCart = JSON.parse(backendStorage.getItem("cart") || "[]");
         const cart = Array.isArray(providedItems) && providedItems.length ? providedItems : storedCart;
         if (!Array.isArray(cart) || !cart.length) throw new Error("El carrito está vacío");
@@ -92,6 +83,21 @@ export function StripeCheckout({
             requestedPaymentMethod: paymentMethod,
           },
         });
+
+        if (paymentIntentResponse.freeOrder && paymentIntentResponse.orderId) {
+          const cartResult = await backendStorage.setItem("cart", JSON.stringify([]));
+          if (!cartResult.ok) console.warn("Pedido gratuito confirmado; no se pudo vaciar el carrito remoto");
+          toast.success("Pedido gratuito confirmado. Recibirás el resumen por correo.");
+          onSuccess({ orderId: paymentIntentResponse.orderId, paymentIntentId: "", status: "succeeded" });
+          return;
+        }
+
+        const settings = backendStorage.getItem("stripeSettings");
+        if (!settings) throw new Error("Stripe no está configurado en ajustes");
+        const { publishableKey, enabled } = JSON.parse(settings);
+        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
+        const stripeInstance = await loadStripe(publishableKey);
+        if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
         const { clientSecret, orderId, paymentIntentId } = paymentIntentResponse;
         if (!clientSecret || !orderId || !paymentIntentId) {
