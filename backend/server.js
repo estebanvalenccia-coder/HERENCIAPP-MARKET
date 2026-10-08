@@ -6090,6 +6090,10 @@ app.post("/api/admin/supplier-fulfillments/cj-preflight", requireAdmin, async (r
     const simulatedRecords = await buildSupplierFulfillmentsForOrder(simulatedOrder, { dryRun: true });
     const simulated = simulatedRecords.find((entry) => String(entry.supplierId || "") === String(supplier?.id || ""));
     if (!simulated) checks.push("La cola real no reconoce este producto como artículo CJdropshipping");
+    if (simulated?.status !== "autopilot_ready") {
+      const detail = String(simulated?.blocker || "").trim();
+      if (simulated) checks.push(detail || "El motor de preparación aún no considera el pedido apto");
+    }
     // Even passing every check is NOT authorization to place or pay a CJ order.
     return res.json({
       ok: true, simulationOnly: true, safe: true, readyForManualReview: checks.length === 0,
