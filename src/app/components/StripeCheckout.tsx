@@ -52,26 +52,21 @@ export function StripeCheckout({
   const mountedElement = useRef<any>(null);
   const orderIdRef = useRef<string>("");
   const paymentIntentIdRef = useRef<string>("");
+  const startedRef = useRef(false);
+  const [verifiedTotal, setVerifiedTotal] = useState<number | null>(null);
   const isBizum = paymentMethod === "bizum";
   const formattedAmount = new Intl.NumberFormat(currency === "cop" ? "es-CO" : "es-ES", {
     style: "currency",
     currency: currency.toUpperCase(),
     maximumFractionDigits: currency === "cop" ? 0 : 2,
-  }).format(amount);
+  }).format(verifiedTotal ?? amount);
 
   useEffect(() => {
     const initStripe = async () => {
+      if (startedRef.current) return;
+      startedRef.current = true;
       try {
         await backendApi.health();
-
-        const settings = backendStorage.getItem("stripeSettings");
-        if (!settings) throw new Error("Stripe no está configurado en ajustes");
-
-        const { publishableKey, enabled } = JSON.parse(settings);
-        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
-
-        const stripeInstance = await loadStripe(publishableKey);
-        if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
         const storedCart = JSON.parse(backendStorage.getItem("cart") || "[]");
         const cart = Array.isArray(providedItems) && providedItems.length ? providedItems : storedCart;
@@ -94,9 +89,26 @@ export function StripeCheckout({
         });
 
         const { clientSecret, orderId, paymentIntentId } = paymentIntentResponse;
+        if (paymentIntentResponse.freeOrder === true && orderId) {
+          const result = await backendStorage.setItem("cart", JSON.stringify([]));
+          if (!result.ok) console.warn("Pedido gratuito confirmado; no se pudo limpiar el carrito remoto:", result.error);
+          toast.success("Pedido gratuito confirmado. No necesitas tarjeta.");
+          onSuccess({ orderId, paymentIntentId: "", status: "succeeded" });
+          return;
+        }
         if (!clientSecret || !orderId || !paymentIntentId) {
           throw new Error("El backend no devolvió los datos necesarios para iniciar el pago");
         }
+        if (Number.isFinite(Number(paymentIntentResponse.totals?.total))) {
+          setVerifiedTotal(Number(paymentIntentResponse.totals?.total));
+        }
+
+        const settings = backendStorage.getItem("stripeSettings");
+        if (!settings) throw new Error("Stripe no está configurado en ajustes");
+        const { publishableKey, enabled } = JSON.parse(settings);
+        if (!enabled || !publishableKey) throw new Error("Stripe no está habilitado o falta la clave pública");
+        const stripeInstance = await loadStripe(publishableKey);
+        if (!stripeInstance) throw new Error("No se pudo cargar Stripe");
 
         orderIdRef.current = orderId;
         paymentIntentIdRef.current = paymentIntentId;
