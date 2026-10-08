@@ -1,10 +1,11 @@
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
+import { normalizeCouponCode, settleCouponUse } from "./promoCodes.js";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
-  listNeonOrders, patchNeonOrder,
+  listNeonOrders, getNeonOrder, patchNeonOrder, mutateNeonStorageValue,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct
@@ -534,6 +535,15 @@ const server=http.createServer(async(req,res)=>{try{
     const allowed=new Set(["pending","payment_pending","pending_bizum_review","pending_manual_review","pending_transfer_review","pending_store_confirmation","paid","confirmed","preparing","processing","ready","delivered","completed","cancelled","refunded","payment_error","payment_canceled"]);
     if(!allowed.has(status))return json(res,400,{error:"Estado no válido"});
     const orderId=decodeURIComponent(orderStatusMatch[1]);
+    const previous=await getNeonOrder(orderId);
+    if(!previous)return json(res,404,{error:"Pedido no encontrado"});
+    const promoCode=normalizeCouponCode(previous?.metadata?.coupon);
+    if(promoCode&&(["paid","confirmed","preparing","processing","ready","delivered","completed","cancelled","refunded","payment_error","payment_canceled"].includes(status))){
+      const action=["cancelled","refunded","payment_error","payment_canceled"].includes(status)?"release":"redeem";
+      await mutateNeonStorageValue("discountCodeRedemptions",(raw)=>
+        JSON.stringify(settleCouponUse(JSON.parse(raw||"{}"),promoCode,orderId,action))
+      );
+    }
     const updated=await patchNeonOrder(orderId,{status});
     if(!updated)return json(res,404,{error:"Pedido no encontrado"});
     if(["paid","confirmed","preparing","processing","ready"].includes(status)){
