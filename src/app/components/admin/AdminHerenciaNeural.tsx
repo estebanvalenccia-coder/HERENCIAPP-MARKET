@@ -181,7 +181,7 @@ export function AdminHerenciaNeural(){
    const r=await backendApi.neuralCodePreview(id);
    const p=r?.preview||{};
    const href=safePreviewHref(p.url);
-   const message=href?"Preview pública disponible: pulsa ABRIR PREVIEW."
+   const message=href?"Página visual disponible: pulsa VER PÁGINA DE PRUEBA."
     :(p.description||"Todavía no hay una URL pública de preview. Revisa el estado del proveedor.");
    setPreviewFeedback({id,message});
    if(r?.task?.id){
@@ -311,15 +311,19 @@ export function AdminHerenciaNeural(){
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
     {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const ready=Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";const providerDetails=safeVercelDetailsHref(preview.detailsUrl);return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":preview.state==="unavailable"?"SIN ENLACE PÚBLICO":"PREVIEW EN PREPARACIÓN"}</span></div>
-      {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
+      <p className="mt-2 text-xs font-semibold text-indigo-900">Abre la página de prueba para utilizar el cambio y luego decide si publicarlo o descartarlo.</p>
       {!ready&&(failed||preview.state==="unavailable")&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{preview.description||"No hay un enlace público de preview por el momento."} Producción sigue intacta.</p>}
       {previewFeedback?.id===activeCodeReview.id&&<p role="status" className="mt-3 rounded-xl border border-indigo-200 bg-white p-3 text-xs font-semibold text-indigo-950">{previewFeedback.message}</p>}
-      {providerDetails&&!ready&&<a href={providerDetails} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-xs font-bold underline text-indigo-700">VER DESPLIEGUE EN VERCEL (requiere acceso)</a>}
-      <div className="mt-4 grid gap-2 md:grid-cols-2">
-       {ready?<a href={previewHref} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button disabled={Boolean(checkingPreviewId)} onClick={()=>void refreshPreview(activeCodeReview.id)} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white hover:bg-indigo-700 disabled:opacity-50">{checkingPreviewId===activeCodeReview.id?"COMPROBANDO…":"COMPROBAR DESPLIEGUE"}</button>}
-       {prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="rounded-xl border bg-white px-4 py-3 text-center font-black">VER PR</a>}
+
+      <div className="mt-4">
+       {ready?<a href={previewHref} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-4 text-center text-base font-black text-white hover:bg-indigo-700"><Globe2 className="h-5 w-5"/> VER PÁGINA DE PRUEBA ↗</a>:<button disabled={Boolean(checkingPreviewId)} onClick={()=>void refreshPreview(activeCodeReview.id)} className="w-full rounded-xl bg-indigo-600 px-4 py-4 text-base font-black text-white hover:bg-indigo-700 disabled:opacity-50">{checkingPreviewId===activeCodeReview.id?"BUSCANDO PÁGINA…":"GENERAR / COMPROBAR PÁGINA DE PRUEBA"}</button>}
       </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2"><button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 disabled:opacity-50">{discardingCodeId===activeCodeReview.id?"DESCARTANDO…":"DESCARTAR ESTE CAMBIO"}</button><button onClick={()=>void acceptPreview(activeCodeReview.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">ACEPTAR CAMBIO</button></div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+       <button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 disabled:opacity-50">{discardingCodeId===activeCodeReview.id?"DESCARTANDO…":"DESCARTAR CAMBIO"}</button>
+       <button disabled={!ready||Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void acceptPreview(activeCodeReview.id)} title={!ready?"Primero debes disponer de una página visual funcional":undefined} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-40">PUBLICAR CAMBIO</button>
+      </div>
+      {!ready&&<p className="mt-2 text-xs text-amber-900">Publicación bloqueada: primero debe estar disponible la página de prueba.</p>}
+      {(prUrl||providerDetails)&&<details className="mt-3 text-xs text-slate-600"><summary className="cursor-pointer font-semibold">Detalles técnicos (opcional)</summary><div className="mt-2 flex flex-wrap gap-3">{prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="underline">GitHub</a>}{providerDetails&&<a href={providerDetails} target="_blank" rel="noreferrer" className="underline">Vercel</a>}</div>{result.branch&&<p className="mt-2 break-all">{result.branch}</p>}</details> 
      </div>})()}
     {activeCodeApproval&&(()=>{const plan=activeCodeApproval.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Cambio listo para aprobar</div><h3 className="mt-1 font-black text-amber-950">{activeCodeApproval.title}</h3></div>{plan?.risk&&<span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800">Riesgo {plan.risk}</span>}</div>
