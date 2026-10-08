@@ -355,9 +355,11 @@ const server=http.createServer(async(req,res)=>{try{
 
   if(path==="/api/admin/catalog/import-url/product"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
-    if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para copiar las imágenes del proveedor"});
     const body=await bodyJson(req);
     const input=body?.product&&typeof body.product==="object"?body.product:{};
+    const requestedImages=Array.isArray(input?.images)?input.images.filter(Boolean):(input?.image?[input.image]:[]);
+    // Plain drafts may be created without photos; copying remote media still needs R2.
+    if(!hasR2&&requestedImages.length)return json(res,503,{error:"Cloudflare R2 debe estar configurado para copiar las imágenes del proveedor. Puedes guardar el borrador sin imagen."});
     const name=String(input?.name||"").trim().slice(0,220);
     const sourceProductUrl=String(input?.productUrl||"").trim();
     const sourceCatalogUrl=String(input?.sourceCatalogUrl||sourceProductUrl||"").trim();
@@ -368,6 +370,8 @@ const server=http.createServer(async(req,res)=>{try{
     if(/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(name)||/human machine check|verify you are human/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
     if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
     if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
+    try{const parsed=new URL(sourceProductUrl);if(!["https:","http:"].includes(parsed.protocol)||parsed.username||parsed.password||!parsed.hostname.includes("."))throw new Error("bad link");}
+    catch{return json(res,400,{error:"La URL original debe ser una dirección pública http(s) válida"});}
 
     const existing=await listNeonCommerceProducts({includeArchived:true});
     const duplicate=existing.find((product)=>{
@@ -382,7 +386,17 @@ const server=http.createServer(async(req,res)=>{try{
       return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
     }
 
-    const mirrored=await mirrorRemoteProductImages(input,{maxImages:8});
+    let mirrored=[];
+    let imageImportWarning="";
+    if(requestedImages.length){
+      try{mirrored=await mirrorRemoteProductImages(input,{maxImages:8});}
+      catch(error){
+        // Do not discard a merchant's work just because a marketplace also blocks image downloads.
+        // Keep the draft unpublished and report that the images must be uploaded by the merchant.
+        if(!input?.manualImport||![502,504].includes(Number(error?.statusCode)))throw error;
+        imageImportWarning="No se pudieron copiar las imágenes remotas; sube imágenes propias desde la biblioteca antes de publicar.";
+      }
+    }
     const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
     const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
     const now=new Date().toISOString();
@@ -428,6 +442,7 @@ const server=http.createServer(async(req,res)=>{try{
         reason:"refreshed_imported_draft",
         product:refreshed,
         copiedImages:imageUrls.length,
+        imageImportWarning,
         source:"neon"
       });
     }
@@ -466,7 +481,7 @@ const server=http.createServer(async(req,res)=>{try{
         importedAt:now,
       },
     });
-    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,source:"neon"});
+    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,imageImportWarning,source:"neon"});
   }
 
   if(path==="/api/admin/catalog/import-url/repair-drafts"&&req.method==="POST"){
