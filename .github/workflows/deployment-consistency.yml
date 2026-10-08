@@ -1,45 +1,48 @@
-name: Herencia - comprobar sincronización Vercel y Railway
-
+name: Herencia - verificar 4 componentes de la publicacion
 on:
   push:
     branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
-
 permissions:
   contents: read
-
 concurrency:
   group: herencia-public-release-consistency
   cancel-in-progress: true
-
 jobs:
   verify-public-release:
-    name: Verificar que web y API son el GitHub main
+    name: GitHub, Vercel, Railway frontend, Railway backend
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Esperar publicación del merge
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Esperar los despliegues
         if: github.event_name == 'push'
         run: sleep 180
-      - name: Comparar versiones reales de Vercel y Railway
+      - name: Comparar revisiones de los cuatro destinos
         env:
-          HERENCIA_SITE_URL: https://www.herenciamarket.es
-          HERENCIA_EXPECTED_SHA: ${{ github.sha }}
+          HERENCIA_EXPECTED_SHA: ${{ github.event_name == 'schedule' && '' || github.sha }}
+          HERENCIA_REPORT_PATH: herencia-deployment-report.json
         shell: bash
         run: |
           set -euo pipefail
           for intento in 1 2 3 4 5; do
-            echo "Comprobación $intento de 5: web + API + GitHub main"
-            if node scripts/checkDeploymentParity.mjs; then
-              echo "Publicación sincronizada."
-              exit 0
-            fi
+            if node scripts/checkDeploymentParity.mjs; then exit 0; fi
             if [ "$intento" -lt 5 ]; then sleep 45; fi
           done
-          echo "::error::Vercel y Railway no están ambos publicados desde el commit principal. Revisa cuota, permisos y despliegues antes de dar la actualización por terminada."
+          echo "::error::Sincronización no verificada. Mantener la versión anterior."
           exit 1
+      - name: Conservar resultado de auditoría
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: herencia-deployment-audit
+          path: herencia-deployment-report.json
+          if-no-files-found: ignore
+          retention-days: 7
