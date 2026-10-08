@@ -6407,7 +6407,7 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   const sourceUrl = String(line.sourceProductUrl || "");
   const pid = (() => {
     try {
-      return new URL(sourceUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\\.html$/i)?.[1] || "";
+      return new URL(sourceUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)?.[1] || "";
     } catch { return ""; }
   })();
   if (!pid) throw cjManualError("Falta la URL original válida de CJ para verificar el precio.");
