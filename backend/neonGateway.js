@@ -18,7 +18,7 @@ import {
   checkR2Connection,
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
-import { previewCjProductUrl, queryCjProductVariants } from "./cjCatalogImporter.js";
+import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -237,6 +237,32 @@ const server=http.createServer(async(req,res)=>{try{
     if(req.method==="GET"){const value=await readNeonStorageValue(dbKey);return json(res,200,{value:sanitize(key,value,isAdmin),source:"neon"});}
     if(req.method==="PUT"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});if(!protectedKeys.has(key)&&key!=="cart"&&key!=="user")return json(res,403,{error:"Clave no permitida"});const body=await bodyJson(req);await upsertNeonStorageValue(dbKey,body.value);return json(res,200,{ok:true,source:"neon"});}
     if(req.method==="DELETE"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});await deleteNeonStorageValue(dbKey);return json(res,200,{ok:true,source:"neon"});}
+  }
+
+  // Read-only CJ shipping-rate estimate: no order creation or payment.
+  if(path==="/api/admin/catalog/cj-freight"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const productId=String(body?.productId||"").trim();
+    const vid=String(body?.vid||"").trim();
+    if(!productId||!vid)return json(res,400,{error:"Selecciona un producto y una variante CJ"});
+    const product=await getNeonCommerceProduct(productId,{includeArchived:true});
+    if(!product||product.status==="archived")return json(res,404,{error:"Producto no encontrado"});
+    const metadata=product.metadata&&typeof product.metadata==="object"?product.metadata:{};
+    let sourceUrl;
+    try{sourceUrl=new URL(String(metadata.sourceProductUrl||""))}catch{return json(res,422,{error:"Falta la URL original de CJ del producto"});}
+    if(sourceUrl.protocol!=="https:"||!["cjdropshipping.com","www.cjdropshipping.com"].includes(sourceUrl.hostname.toLowerCase())){
+      return json(res,422,{error:"El producto no está vinculado a CJdropshipping"});
+    }
+    const sourceMatch=sourceUrl.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
+    if(!sourceMatch)return json(res,422,{error:"La URL vinculada no incluye el producto CJ"});
+    const variants=await queryCjProductVariants(sourceMatch[1]);
+    const matching=variants.variants.find((item)=>String(item.vid)===vid);
+    if(!matching)return json(res,422,{error:"Esta variante no pertenece al artículo CJ enlazado"});
+    const result=await quoteCjVariantShipping({
+      vid,quantity:1,origin:"CN",destination:"ES",zip:String(body?.zip||"")
+    });
+    return json(res,200,{ok:true,productId,variant:matching,...result});
   }
 
   // Read-only CJ variants lookup for an existing Commerce product. Never creates or pays orders.
