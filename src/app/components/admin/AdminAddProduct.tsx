@@ -118,6 +118,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [publishDestination, setPublishDestination] = useState<"main" | "colombia" | "both">("main");
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
+  const [generatingProductDescription, setGeneratingProductDescription] = useState(false);
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualError, setVisualError] = useState("");
   const [visualProgress, setVisualProgress] = useState("");
@@ -258,8 +259,30 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
     }
   }
 
+  async function generateGeneralInfoFromName(force = false) {
+    const productName = formData.name.trim();
+    if (plantLike || !productName || generatingProductDescription || (!force && formData.description.trim())) return;
+    try {
+      setGeneratingProductDescription(true);
+      const { result } = await backendApi.generateGeneralProductDescription({
+        productName,
+        collection: formData.collection,
+        baseDescription: force ? formData.description : "",
+      });
+      const description = String(result?.description || "").trim();
+      if (!description) throw new Error("Groq no devolvió una descripción");
+      patch({ description, seoDescription: description.slice(0, 170) });
+      toast.success("Descripción preparada con Groq. Revísala antes de publicar.");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo generar la descripción");
+    } finally {
+      setGeneratingProductDescription(false);
+    }
+  }
+
   async function handleNameBlur() {
-    await generatePlantInfoFromName();
+    if (plantLike) await generatePlantInfoFromName();
+    else await generateGeneralInfoFromName();
   }
 
   async function handleVisualReferenceUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -988,6 +1011,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               </label>
 
               {plantLike && generatingPlantInfo && <p className="text-xs font-semibold text-primary">Groq está preparando descripción y cuidados…</p>}
+              {!plantLike && generatingProductDescription && <p className="text-xs font-semibold text-primary">Groq está preparando la descripción comercial…</p>}
 
               <label className="block text-sm font-bold">
                 Descripción
@@ -999,6 +1023,9 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3"
                 />
               </label>
+              {!plantLike && <button type="button" disabled={!formData.name.trim() || generatingProductDescription} onClick={() => void generateGeneralInfoFromName(true)} className="rounded-xl border border-primary/30 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/5 disabled:opacity-50">
+                {generatingProductDescription ? "Generando…" : "✨ Generar o mejorar descripción con Groq"}
+              </button>}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-bold">
