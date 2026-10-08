@@ -1,4 +1,6 @@
 import { Link } from "react-router";
+import {REAL_PLANT_CATALOG_DRAFTS} from "../../data/realPlantCatalogDrafts";
+import {selectEasyCareProducts} from "../../lib/easyCareSelection";
 
 type Product = {
   id: string;
@@ -18,9 +20,7 @@ function formatMoney(value: unknown) {
 }
 
 export function EasyCarePlants({ catalog }: { catalog: any[] }) {
-  const plants = catalog
-    .filter((p) => p?.image && (Number(p?.price) > 0 || Number(p?.salePrice) > 0))
-    .slice(0, 4);
+  const plants = selectEasyCareProducts(catalog, REAL_PLANT_CATALOG_DRAFTS);
 
   if (!plants.length) {
     return (
@@ -31,7 +31,7 @@ export function EasyCarePlants({ catalog }: { catalog: any[] }) {
   }
 
   return (
-    <section className="bg-[#e8f5e9]">
+    <section className="bg-[#f4f1e8]">
       <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex items-end justify-between gap-4 mb-8">
           <div>
@@ -48,7 +48,7 @@ export function EasyCarePlants({ catalog }: { catalog: any[] }) {
             <div key={p.id} className="group overflow-hidden rounded-3xl border border-[#e5e1d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
               <div className="h-44 overflow-hidden bg-[#efece4]">
                 <img
-                  src={p.image}
+                  src={p.image || p.imageUrl}
                   alt={p.name}
                   className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                 />
