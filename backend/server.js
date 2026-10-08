@@ -10,6 +10,10 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
+import {
+  cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
+  validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
+} from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
@@ -5701,6 +5705,18 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   const supplier = (operations.suppliers || []).find((entry) => String(entry?.id || "") === String(record.supplierId || ""));
   if (!supplier) throw Object.assign(new Error("Asigna un proveedor antes de continuar"), { statusCode: 409 });
   if (supplier.active === false) throw Object.assign(new Error("El proveedor está desactivado"), { statusCode: 409 });
+
+  // The generic execution endpoint can NEVER create/pay CJ orders. Supplier
+  // purchases require separate, clearly labelled two-step admin routes.
+  if (supplierIntegrationType(supplier) === "cj" || record.provider === "cj") {
+    return {
+      fulfillment: {
+        ...record,
+        blocker: "Revisa CJ desde las acciones explícitas «Crear sin pagar» y «Pagar». Este botón no compra.",
+      },
+      executed: false, manual: false,
+    };
+  }
 
   const now = new Date().toISOString();
   // Never replay an already purchased, delivered or closed supplier order.
