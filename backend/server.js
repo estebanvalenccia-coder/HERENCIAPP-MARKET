@@ -3721,6 +3721,18 @@ app.post("/api/orders", async (req, res) => {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
 
+  let reservedCoupon = null;
+  try {
+    const code = normalizeCouponCode(order?.metadata?.coupon);
+    if (code) {
+      reservedCoupon = await quoteCoupon(code, order.items);
+      order.metadata.couponMaxUses = reservedCoupon.rule?.maxUses || 0;
+      await changeCouponUsage("claim", reservedCoupon, id);
+    }
+  } catch (error) {
+    return res.status(error.statusCode || 409).json({ error: error.message || "No se pudo reservar el cupón" });
+  }
+
   let data;
   try {
     data = await insertOrderPrimary({
@@ -3739,6 +3751,7 @@ app.post("/api/orders", async (req, res) => {
       metadata: order.metadata || {},
     });
   } catch (error) {
+    if (reservedCoupon) await changeCouponUsage("release", reservedCoupon, id).catch(() => null);
     return res.status(500).json({ error: error.message });
   }
 
@@ -3852,6 +3865,12 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     data = await patchOrderPrimary(req.params.id, { status, metadata: nextMetadata });
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+
+  if (status === "cancelled") {
+    await updateOrderCouponUsage(data, "release").catch((error) => console.warn("Cupón no liberado al cancelar:", error.message));
+  } else if (["paid", "confirmed", "preparing", "processing", "ready", "delivered"].includes(status)) {
+    await updateOrderCouponUsage(data, "redeem").catch((error) => console.warn("Cupón no confirmado:", error.message));
   }
 
   // Pedidos online no-Stripe (transferencia / confirmación manual) comprometen
