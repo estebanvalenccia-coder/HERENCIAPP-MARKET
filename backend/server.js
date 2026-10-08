@@ -3621,9 +3621,8 @@ async function quoteCoupon(code, items) {
 async function availableCouponUses(rule) {
   if (!rule || !rule.maxUses) return null;
   const usage = parseStoredJson(await readStorageValue(COUPON_USAGE_KEY), {});
-  const now = Date.now();
   const used = (Array.isArray(usage[rule.code]) ? usage[rule.code] : []).filter(
-    (row) => row.status === "redeemed" || (row.status === "held" && new Date(row.at).getTime() + 86400000 > now)
+    (row) => row.status === "redeemed" || row.status === "held"
   ).length;
   return Math.max(0, rule.maxUses - used);
 }
