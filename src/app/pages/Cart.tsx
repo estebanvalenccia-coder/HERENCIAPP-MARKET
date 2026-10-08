@@ -58,6 +58,9 @@ export function Cart() {
   const [shippingCost, setShippingCost] = useState(5);
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [couponBasis, setCouponBasis] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
 
   const loadCart = () => {
     try {
@@ -95,7 +98,12 @@ export function Cart() {
   const onlyServices = hasServices && !hasPhysicalItems;
   const subtotal = cartItems.reduce((sum, item) => sum + lineTotal(item), 0);
   const shipping = hasPhysicalItems ? shippingCost : 0;
-  const total = Math.max(0, subtotal - discount + shipping);
+  const cartSignature = JSON.stringify(cartItems.map((item) => ({
+    id: item.id, selectedVariant: item.selectedVariant, quantity: item.quantity,
+    serviceHours: item.serviceHours, serviceBooking: item.serviceBooking,
+  })));
+  const calculatedDiscount = couponBasis === cartSignature ? discount : 0;
+  const total = Math.max(0, subtotal - calculatedDiscount + shipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
@@ -145,19 +153,30 @@ export function Cart() {
     toast.success(isServiceItem(removed as CartItem) ? "Servicio eliminado de la reserva" : "Producto eliminado");
   };
 
-  const applyCoupon = () => {
-    const codes: any[] = (() => {
-      try { return JSON.parse(backendStorage.getItem("discountCodes") || "[]"); } catch { return []; }
-    })();
-    const rule = codes.find((x: any) =>
-      String(x.code || "").toUpperCase() === coupon.trim().toUpperCase() &&
-      x.active !== false &&
-      (!x.expiresAt || new Date(x.expiresAt) >= new Date())
-    );
-    if (!rule) return toast.error("Cupón no válido o caducado");
-    const amount = rule.type === "fixed" ? Number(rule.value || 0) : subtotal * Number(rule.value || 0) / 100;
-    setDiscount(Math.min(subtotal, Math.max(0, amount)));
-    toast.success("Cupón aplicado");
+  const applyCoupon = async () => {
+    const entered = coupon.trim().toUpperCase();
+    if (!entered) return toast.error("Introduce un código promocional");
+    const applyingTo = cartSignature;
+    setCouponBusy(true);
+    try {
+      const response = await fetch("/api/coupons/preview", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: entered, items: cartItems }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo validar el código");
+      if (!Number.isFinite(Number(data.discount)) || Number(data.discount) <= 0) throw new Error("Este cupón no ofrece descuento");
+      setDiscount(Number(data.discount));
+      setCouponBasis(applyingTo);
+      setAppliedCoupon(data.code || entered);
+      toast.success("Cupón validado y aplicado");
+    } catch (error) {
+      setDiscount(0);
+      setCouponBasis("");
+      setAppliedCoupon("");
+      toast.error(error instanceof Error ? error.message : "No se pudo validar el cupón");
+    } finally { setCouponBusy(false); }
   };
 
   const goCheckout = () => {
@@ -166,8 +185,8 @@ export function Cart() {
       state: {
         paymentMethod,
         shippingCost: shipping,
-        discount,
-        coupon: discount > 0 ? coupon : "",
+        discount: calculatedDiscount,
+        coupon: calculatedDiscount > 0 ? appliedCoupon : "",
       },
     });
   };
@@ -338,7 +357,7 @@ export function Cart() {
             <label className="text-sm font-black">Cupón</label>
             <div className="mt-2 flex gap-2">
               <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Código promocional" className="min-w-0 flex-1 rounded-xl border border-[#ded9cd] px-3 py-2" />
-              <button onClick={applyCoupon} className="rounded-xl bg-[#eef2eb] px-3 py-2 text-sm font-black text-[#315b42]">Aplicar</button>
+              <button onClick={applyCoupon} disabled={couponBusy} className="rounded-xl bg-[#eef2eb] px-3 py-2 text-sm font-black text-[#315b42] disabled:opacity-50">{couponBusy ? "Validando..." : "Aplicar"}</button>
             </div>
           </div>
 
@@ -347,9 +366,9 @@ export function Cart() {
               <span className="text-[#6c786f]">{onlyServices ? "Horas reservadas" : "Subtotal"}</span>
               <span className="font-black">€{subtotal.toFixed(2)}</span>
             </div>
-            {discount > 0 ? (
+            {calculatedDiscount > 0 ? (
               <div className="flex justify-between gap-4 text-emerald-700">
-                <span>Descuento</span><span className="font-black">−€{discount.toFixed(2)}</span>
+                <span>Descuento</span><span className="font-black">−€{calculatedDiscount.toFixed(2)}</span>
               </div>
             ) : null}
             {hasPhysicalItems && (
