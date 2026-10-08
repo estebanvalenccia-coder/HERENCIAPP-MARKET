@@ -3697,7 +3697,7 @@ app.post("/api/coupons/preview", async (req, res) => {
 
 app.post("/api/orders", async (req, res) => {
   let order = req.body;
-  const id = order.id || crypto.randomUUID();
+  const id = isAdmin(req) && order?.id ? String(order.id) : crypto.randomUUID();
   try {
     const verified = await validateCommerceOrderPayload(order);
     order = {
@@ -3724,6 +3724,19 @@ app.post("/api/orders", async (req, res) => {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
 
+  let promotionQuote = null;
+  if (order?.metadata?.coupon) {
+    try {
+      promotionQuote = await quoteCoupon(order.metadata.coupon, order.items);
+      if ((await availableCouponUses(promotionQuote.rule)) === 0) {
+        return res.status(409).json({ error: "El cupón ha alcanzado su límite de usos" });
+      }
+      await changeCouponUsage("claim", promotionQuote, id);
+    } catch (error) {
+      return res.status(error.statusCode || 409).json({ error: error.message || "No se pudo reservar el cupón" });
+    }
+  }
+
   let data;
   try {
     data = await insertOrderPrimary({
@@ -3742,6 +3755,7 @@ app.post("/api/orders", async (req, res) => {
       metadata: order.metadata || {},
     });
   } catch (error) {
+    if (promotionQuote) await changeCouponUsage("release", promotionQuote, id).catch(() => null);
     return res.status(500).json({ error: error.message });
   }
 
