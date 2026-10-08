@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 
-type SupportStatus = "open" | "answered" | "automated" | "resolved";
+type SupportStatus = "open" | "answered" | "automated" | "handoff" | "resolved";
 type SupportPriority = "low" | "normal" | "high" | "urgent";
 type SupportCategory = "general" | "orders" | "delivery" | "refunds" | "products" | "services" | "other";
 type SupportMessage = {
@@ -70,7 +70,7 @@ const quickReplies = [
 ];
 
 const statusLabels: Record<SupportStatus, string> = {
-  open: "Pendiente", answered: "En curso", automated: "IA atendida", resolved: "Resuelto",
+  open: "Pendiente · equipo", answered: "En curso", automated: "IA atendida", handoff: "IA · pendiente de confirmación", resolved: "Resuelto",
 };
 const priorityColors: Record<SupportPriority, string> = {
   low: "bg-slate-100 text-slate-600",
@@ -110,6 +110,7 @@ function money(value: unknown) {
 }
 function statusPill(status: SupportStatus) {
   if (status === "open") return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (status === "handoff") return "bg-violet-50 text-violet-700 ring-violet-200";
   if (status === "resolved") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
   return "bg-blue-50 text-blue-700 ring-blue-200";
 }
@@ -202,7 +203,7 @@ export function AdminSupportPro() {
   const counts = useMemo(() => ({
     all: threads.length,
     open: threads.filter(t => t.status === "open").length,
-    progress: threads.filter(t => t.status === "answered" || t.status === "automated").length,
+    progress: threads.filter(t => t.status === "answered" || t.status === "automated" || t.status === "handoff").length,
     resolved: threads.filter(t => t.status === "resolved").length,
   }), [threads]);
 
@@ -210,7 +211,7 @@ export function AdminSupportPro() {
     const normalized = query.trim().toLowerCase();
     return threads.filter(thread => {
       if (filter === "open" && thread.status !== "open") return false;
-      if (filter === "progress" && !["answered", "automated"].includes(thread.status)) return false;
+      if (filter === "progress" && !["answered", "automated", "handoff"].includes(thread.status)) return false;
       if (filter === "resolved" && thread.status !== "resolved") return false;
       if (priorityFilter !== "all" && (thread.priority || "normal") !== priorityFilter) return false;
       if (!normalized) return true;
@@ -514,7 +515,7 @@ export function AdminSupportPro() {
                       <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#dcebdc] font-bold text-[#486d51]">{firstLetters(active.customerName)}</span>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold">{active.customerName || "Cliente"}</p>
-                        <p className="truncate text-xs text-[#6c8270]">Cliente registrado</p>
+                        <p className="truncate text-xs text-[#6c8270]">{active.ownerType === "guest" ? "Visitante · sin cuenta" : "Cliente registrado"}</p>
                       </div>
                     </div>
                     <div>
@@ -529,7 +530,7 @@ export function AdminSupportPro() {
                     <div className="border-t border-[#e7ece4] pt-5">
                       <h4 className="flex items-center gap-2 text-sm font-semibold text-[#36533d]"><Package size={16}/> Pedidos asociados</h4>
                       {activeOrders.length === 0 ? (
-                        <p className="mt-2 text-xs leading-5 text-[#8c9a8f]">No se han encontrado pedidos vinculados a este correo en el listado disponible.</p>
+                        <p className="mt-2 text-xs leading-5 text-[#8c9a8f]">No hay pedidos asociados a esta conversación en el listado disponible.</p>
                       ) : (
                         <div className="mt-3 space-y-2">
                           {activeOrders.map((order, index)=>(
