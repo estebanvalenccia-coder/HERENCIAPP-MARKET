@@ -1,4 +1,5 @@
 import { BarChart3, Boxes, BrainCircuit, CreditCard, LayoutDashboard, Package2, Receipt, Settings, ShoppingBag, Truck, Users, Wallet } from 'lucide-react'
+import Clock from './Clock';
 
 const sections = [
   { icon: LayoutDashboard, label: 'Dashboard' },
@@ -69,6 +70,9 @@ export function AdminERPLayout(){
                 <h1 className='text-5xl font-black tracking-tight text-zinc-950'>Sistema empresarial conectado</h1>
                 <p className='mt-4 max-w-3xl text-lg font-medium text-zinc-500'>TPV, stock, clientes, finanzas, tickets, facturación, caja, mermas y analíticas sincronizadas en tiempo real.</p>
               </div>
+
+              {/* Clock positioned at the top‑right of the header */}
+              <Clock />
 
               <div className='grid grid-cols-2 gap-4'>
                 <Metric title='Ventas hoy' value='LIVE' />
