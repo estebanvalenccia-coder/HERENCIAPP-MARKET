@@ -22,6 +22,7 @@ type SupportThread = {
   customerName: string;
   customerEmail: string;
   status: string;
+  humanRequested?: boolean;
   updatedAt: string;
   messages: SupportMessage[];
 };
@@ -52,7 +53,6 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
   const [text, setText] = useState(() => {
     try { return sessionStorage.getItem(SUPPORT_HANDOFF_DRAFT_KEY) || ""; } catch { return ""; }
   });
-  const [allowAI, setAllowAI] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -109,12 +109,12 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
           method: "POST", body: JSON.stringify({
             subject: subject.trim() || text.trim().slice(0, 55),
             name: actor?.type === "guest" ? name.trim() : undefined,
-            text: text.trim(), allowAI,
+            text: text.trim(),
           }),
         });
       } else {
         response = await api<{thread:SupportThread}>("/tickets/" + encodeURIComponent(active.id) + "/messages", {
-          method: "POST", body: JSON.stringify({ text: text.trim(), allowAI }),
+          method: "POST", body: JSON.stringify({ text: text.trim() }),
         });
       }
       setText(""); setSubject(""); setCreating(false);
@@ -123,6 +123,20 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
       setSelectedId(response.thread.id);
     } catch (cause: any) { setError(cause.message || "No se ha enviado el mensaje"); }
     finally { setBusy(false); }
+  };
+
+  const callAmigoPlantil = async () => {
+    if (!active || busy || active.humanRequested) return;
+    setBusy(true); setError("");
+    try {
+      const result = await api<{thread:SupportThread}>("/tickets/" + encodeURIComponent(active.id) + "/handoff", {
+        method: "POST",
+      });
+      setThreads(rows => rows.map(row => row.id === active.id ? result.thread : row));
+      await update(true);
+    } catch (cause: any) {
+      setError(cause.message || "No se pudo conectar con tu Amigo Plantil");
+    } finally { setBusy(false); }
   };
 
   async function attachFile(event: ChangeEvent<HTMLInputElement>) {
@@ -172,8 +186,8 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
       <div className="flex items-center gap-3">
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#2c6545] text-white"><Headphones size={19}/></span>
         <div>
-          <h2 className="text-lg font-bold">Servicio al cliente</h2>
-          <p className="text-xs text-[#6d8573]">{actor?.type === "customer" ? "Tus conversaciones de Herencia" : "Estamos aquí para ayudarte"}</p>
+          <h2 className="text-lg font-bold">Herencia IA · Atención al cliente</h2>
+          <p className="text-xs text-[#6d8573]">{actor?.type === "customer" ? "Ayuda automática y equipo humano cuando lo necesites" : "Primero te ayuda Herencia IA; después tu Amigo Plantil"}</p>
         </div>
       </div>
       {!creating && <button type="button" onClick={startNew} className="flex items-center gap-1 rounded-xl bg-[#28543a] px-3 py-2 text-xs font-bold text-white" aria-label="Nueva consulta"><Plus size={15}/> Nueva</button>}
@@ -203,7 +217,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
         <div className="flex items-center justify-between gap-2 bg-[#fcfdfa] px-4 py-2 text-xs text-[#859688]">
           <span>{active.ticketId} · {active.subject || "Consulta"}</span>
           <div className="flex items-center gap-2">
-            <span>{active.status==="resolved"?"Resuelta":active.status==="open"?"Pendiente":"En curso"}</span>
+            <span>{active.humanRequested ? "Atención humana" : active.status==="handoff" ? "Tu Amigo Plantil puede ayudarte" : active.status==="resolved"?"Resuelta":active.status==="open"?"Consultando":"Herencia IA"}</span>
             {active.id.startsWith("t_") && <button type="button" onClick={() => void deleteTicket()} disabled={busy}
               className="rounded-lg p-1 text-[#9f6565] hover:bg-red-50" aria-label="Eliminar consulta y adjuntos"><Trash2 size={15}/></button>}
           </div>
@@ -226,6 +240,25 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
           <div ref={bottomRef}/>
         </div>
       </>}
+      {active && !creating && !active.humanRequested && (
+        <div className="mx-4 my-3 rounded-2xl border border-[#d6e8d8] bg-[#f0f7ef] p-3">
+          {active.status === "handoff" ? (
+            <p className="mb-2 text-sm font-semibold text-[#2e6243]">Herencia IA necesita la ayuda de tu Amigo Plantil para resolver esta consulta.</p>
+          ) : (
+            <p className="mb-2 text-xs text-[#51755b]">¿Prefieres que una persona revise tu consulta?</p>
+          )}
+          <button type="button" onClick={() => void callAmigoPlantil()} disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#28583a] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+            <Headphones size={17}/> Hablar con mi Amigo Plantil
+          </button>
+          <p className="mt-2 text-[11px] text-[#64816c]">Tu conversación se enviará directamente a nuestro equipo de atención al cliente.</p>
+        </div>
+      )}
+      {active?.humanRequested && !creating && (
+        <p className="mx-4 my-3 rounded-xl bg-[#e9f4e9] p-3 text-xs font-semibold text-[#326746]">
+          <Headphones size={15} className="mr-1 inline"/> Ya estás conectado con tu Amigo Plantil. Te responderemos en este mismo chat.
+        </p>
+      )}
       {error && <p className="mx-4 my-2 rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{error}</p>}
       <form onSubmit={send} className="space-y-3 border-t border-[#ebf0e9] bg-white px-4 py-4">
         <div className="flex items-end gap-2">
@@ -241,10 +274,11 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
             {busy?<Loader2 className="animate-spin" size={19}/>:<Send size={19}/>}
           </button>
         </div>
-        <label className="flex items-start gap-2 text-[11px] leading-4 text-[#738779]">
-          <input className="mt-0.5" type="checkbox" checked={allowAI} onChange={e=>setAllowAI(e.target.checked)}/>
-          <span>Quiero recibir una respuesta automática con IA para preguntas generales; entiendo que el texto de mi consulta se enviará al proveedor de IA. No incluyas datos bancarios ni contraseñas.</span>
-        </label>
+        <p className="text-[11px] leading-5 text-[#738779]">
+          Te atiende primero Herencia IA. Las preguntas generales pueden procesarse mediante nuestro proveedor de IA.
+          Si necesita ayuda o prefieres hablar con una persona, podrás contactar con tu Amigo Plantil desde este chat.
+          No escribas contraseñas ni datos bancarios.
+        </p>
         {active && <p className="text-[11px] text-[#8ca091]">Puedes adjuntar JPG, PNG, WebP o PDF de hasta 1,5 MB. Solo los participantes autorizados pueden abrirlos.</p>}
       </form>
     </>}
