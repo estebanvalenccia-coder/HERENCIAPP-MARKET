@@ -2,6 +2,8 @@
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
+// Share a single authentication request across concurrent CJ operations.
+let tokenInFlight = null;
 // CJ frequency limits apply to the same CJ account, not just one checkout.
 // Keep API requests sequential in this Node process (including token acquisition).
 // API point quotas are additional; a local throttle cannot increase an exhausted quota.
@@ -90,14 +92,22 @@ async function token() {
   if (cachedToken && Date.now() < cachedUntil) return cachedToken;
   const key = String(process.env.CJ_API_KEY || "").trim();
   if (!key) { const e = new Error("Falta CJ_API_KEY en Railway"); e.statusCode = 503; throw e; }
-  const data = await cjFetch("/authentication/getAccessToken", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ apiKey: key })
-  });
-  if (!data?.accessToken) throw new Error("CJ no devolvió un accessToken");
-  cachedToken = data.accessToken;
-  cachedUntil = Date.now() + 12 * 60 * 60 * 1000;
-  return cachedToken;
+  // The auth path is intentionally not part of the general freight cache.
+  // Without a single-flight guard two simultaneous quotes can both obtain
+  // their own CJ token, wasting one of the provider's rate-limited requests.
+  if (tokenInFlight) return tokenInFlight;
+  tokenInFlight = (async () => {
+    const data = await cjFetch("/authentication/getAccessToken", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apiKey: key })
+    });
+    if (!data?.accessToken) throw new Error("CJ no devolvió un accessToken");
+    cachedToken = data.accessToken;
+    cachedUntil = Date.now() + 12 * 60 * 60 * 1000;
+    return cachedToken;
+  })();
+  try { return await tokenInFlight; }
+  finally { tokenInFlight = null; }
 }
 export async function previewCjProductUrl(input) {
   const url = new URL(input);
