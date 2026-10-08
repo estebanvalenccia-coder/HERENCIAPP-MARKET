@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import { Truck, Save, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
-import { backendStorage } from "../../lib/backendStorage";
+import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { COMMERCE_COLLECTIONS } from "../../lib/commerceCatalog";
 import { parseShippingSettings, shippingQuoteForCart, validateShippingSettings } from "../../../../backend/shippingPolicy.js";
 
-const sectors = [
-  ["plantas","Plantas"],["semillas","Semillas"],["jardineria","Jardinería"],
-  ["tierra-y-sustratos","Tierra y sustratos"],["decoracion","Decoración"],
-  ["dulce","Dulce"],["moda","Moda"]
-];
+const sectors = COMMERCE_COLLECTIONS.filter(item => item.id !== "servicios").map(item => [item.id,item.name]);
 const inputStyle = "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm";
 const labelStyle = "text-xs font-semibold text-muted-foreground";
 const currency = (n: number) => Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
@@ -19,11 +16,13 @@ export function AdminShippingRules() {
   const [policy,setPolicy] = useState<ShippingSettings>(() => parseShippingSettings(backendStorage.getItem("shippingSettings")));
   const [saving,setSaving] = useState(false);
   const [productId,setProductId] = useState("");
+  const [catalogProducts,setCatalogProducts] = useState<Array<{id:string | number;name:string}>>([]);
   const [previewKm,setPreviewKm] = useState(6);
   const [previewAmount,setPreviewAmount] = useState(35);
   const [previewCategory,setPreviewCategory] = useState("plantas");
   const [previewResult,setPreviewResult] = useState<string | null>(null);
   useEffect(() => {
+    void backendApi.listCommerceProducts().then(result => setCatalogProducts(result.products || [])).catch(() => {});
     const refresh = () => setPolicy(parseShippingSettings(backendStorage.getItem("shippingSettings")));
     window.addEventListener("backend-storage",refresh);
     return () => window.removeEventListener("backend-storage",refresh);
@@ -147,7 +146,8 @@ export function AdminShippingRules() {
       <div className="space-y-2">
         <h4 className="font-semibold text-sm">Excepciones por producto</h4>
         <div className="flex gap-2">
-          <input className={inputStyle} placeholder="ID del producto del catálogo" value={productId} onChange={e=>setProductId(e.target.value)}/>
+          <input className={inputStyle} list="shipping-product-options" placeholder="Busca por ID (o elige del catálogo)" value={productId} onChange={e=>setProductId(e.target.value)}/>
+          <datalist id="shipping-product-options">{catalogProducts.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}</datalist>
           <button type="button" className="rounded-xl border px-3 text-sm" onClick={()=>{if(productId.trim()) {setRule("products",productId.trim().toLowerCase(),"shippingEnabled",true);setProductId("");}}}>Añadir</button>
         </div>
         {Object.keys(policy.products).map(id=><div key={id} className="flex flex-wrap items-center gap-2 text-xs">
