@@ -413,7 +413,7 @@ export const backendApi = {
   async preflightCjProduct(productId: string) {
     return request<{
       ok: boolean; simulationOnly: boolean; safe: boolean; readyForManualReview: boolean;
-      checks: string[]; product: { id: string; name: string; salePriceEur: number };
+      checks: string[]; queueSimulation?: { status: string; blocker: string; estimatedCostEur: number; marginPercentBeforeVat: number | null; itemCount: number; persistido: false } | null; product: { id: string; name: string; salePriceEur: number };
       supplier: { name: string; sandbox: boolean };
       variant: { vid: string; sku: string };
       shipping: { method: string; destination: string };
