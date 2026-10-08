@@ -67,6 +67,19 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       "No se pudo verificar el cambio de dólares a euros.",
     ];
     const reason = checks[failure].reason;
+    if (reason?.code === "CJ_RATE_LIMITED" || reason?.code === "CJ_QUOTA_EXHAUSTED" ||
+        Number(reason?.upstreamCode) === 1600200 || Number(reason?.upstreamHttpStatus) === 429) {
+      console.warn("[cj.checkout] CJ API throttled", {
+        step: ["variant", "shipping", "fx"][failure],
+        code: String(reason?.code || "CJ_RATE_LIMITED").slice(0, 35),
+      });
+      const error = new Error(reason?.code === "CJ_QUOTA_EXHAUSTED"
+        ? "CJdropshipping ha agotado temporalmente su cuota de API. El código postal es correcto, pero el proveedor no permite cotizar el transporte ahora. No se realizará ningún cobro."
+        : "CJdropshipping está limitando temporalmente las solicitudes de transporte (API 429). No es un problema con tu código postal. Inténtalo más tarde; no se realizará ningún cobro.");
+      error.code = reason?.code || "CJ_RATE_LIMITED";
+      error.statusCode = 503;
+      throw error;
+    }
     // No API key, customer address, request payload or CJ response bodies in logs.
     console.warn("[cj.checkout] supplier validation failed", {
       step: ["variant", "shipping", "fx"][failure],
