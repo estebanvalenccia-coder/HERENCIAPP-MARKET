@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo, Code2, GitPullRequest } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { toast } from "sonner";
@@ -68,6 +68,7 @@ export function AdminHerenciaNeural(){
  const [bulkDiscardBusy,setBulkDiscardBusy]=useState(false);
  const [checkingPreviewId,setCheckingPreviewId]=useState<string|null>(null);
  const [previewFeedback,setPreviewFeedback]=useState<{id:string;message:string}|null>(null);
+ const previewLastChecked=useRef(new Map<string,number>());
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -135,6 +136,24 @@ export function AdminHerenciaNeural(){
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL");
  const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
  const pendingCodeCount=tasks.filter((t:any)=>t.intent==="code_change"&&["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)).length;
+ // Resolve visual URLs automatically on entering Neural Code, at most once per task per 90 seconds.
+ useEffect(()=>{
+  const task=activeCodeReview;
+  if(tab!=="code"||!task?.id||safePreviewHref(task?.result?.preview?.url))return;
+  if(Date.now()-(previewLastChecked.current.get(task.id)||0)<90_000)return;
+  previewLastChecked.current.set(task.id,Date.now());
+  let live=true;
+  void backendApi.neuralCodePreview(task.id).then(r=>{
+   if(!live)return;
+   if(r?.task?.id){
+    setPinnedCodeReview(current=>current?.id===task.id?r.task:current);
+    setTasks(prev=>prev.map(t=>t.id===task.id?r.task:t));
+   }
+   const p=r?.preview||{};
+   setPreviewFeedback({id:task.id,message:safePreviewHref(p.url)?"Página de prueba disponible. Pulsa VER PÁGINA DE PRUEBA.":p.description||"Esperando la página de prueba."});
+  }).catch(e=>{if(live)setPreviewFeedback({id:task.id,message:"No se pudo comprobar la página: "+String(e?.message||e)})});
+  return ()=>{live=false};
+ },[tab,activeCodeReview?.id]);
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
