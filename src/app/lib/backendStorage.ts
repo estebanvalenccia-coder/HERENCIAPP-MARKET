@@ -410,6 +410,19 @@ export const backendApi = {
     }>(`/api/admin/catalog/cj-variants?productId=${encodeURIComponent(productId)}`);
   },
 
+  async quoteCjProductFreight(productId: string, vid: string, zip = "") {
+    return request<{
+      ok: boolean; productId: string;
+      variant: { vid: string; sku: string; name: string; option: string; priceUsd: number | null };
+      origin: string; destination: string; currency: "USD"; rateType: string;
+      methods: Array<{ name: string; time: string; shippingUsd: number; taxesUsd: number | null; clearanceUsd: number | null; totalPostageUsd: number | null }>;
+      warning: string;
+    }>("/api/admin/catalog/cj-freight", {
+      method: "POST",
+      body: JSON.stringify({ productId, vid, zip }),
+    });
+  },
+
   async importCatalogUrlProduct(product: any) {
     const result = await request<{
       ok: boolean;
