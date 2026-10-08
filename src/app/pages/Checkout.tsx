@@ -16,7 +16,8 @@ const isServiceItem = (item: any) =>
   item?.serviceBooking === true ||
   item?.type === "service" ||
   item?.collection === "servicios" ||
-  (Array.isArray(item?.collections) && item.collections.includes("servicios"));
+  (Array.isArray(item?.collections) && item.collections.includes("servicios")) ||
+  String(item?.category || "").toLowerCase() === "servicios";
 
 const isCjSupplierItem = (item: any) => {
   const meta = item?.metadata && typeof item.metadata === "object" ? item.metadata : item || {};
@@ -359,7 +360,7 @@ export function Checkout() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
-    if (isStripePayment) {
+    if (isStripePayment || (coupon && total === 0)) {
       setShowStripe(true);
       return;
     }
@@ -578,7 +579,9 @@ export function Checkout() {
                   ? "Procesando..."
                   : hasPhysicalItems && shippingLoading
                     ? "Calculando envío..."
-                    : isStripePayment
+                    : coupon && total === 0
+                      ? "Confirmar pedido gratuito"
+                      : isStripePayment
                       ? onlyServices
                         ? "Pagar y reservar"
                         : "Continuar al pago seguro"
