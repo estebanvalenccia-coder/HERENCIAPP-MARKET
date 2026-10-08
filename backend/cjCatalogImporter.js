@@ -50,3 +50,39 @@ export async function previewCjProductUrl(input) {
   };
   return { ok: true, sourceUrl: url.toString(), sourceHost: url.hostname, count: 1, products: [product], source: "cj_api" };
 }
+
+/**
+ * Read-only variant lookup, authenticated with the same CJ API key as catalog import.
+ * Prices returned by CJ are in USD and exclude shipping; never convert them into
+ * a supplier cost in EUR without an exchange-rate/shipping calculation.
+ */
+export async function queryCjProductVariants(pidInput) {
+  const pid = String(pidInput || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid)) {
+    const error = new Error("Identificador de producto CJ no válido");
+    error.statusCode = 422;
+    throw error;
+  }
+  const accessToken = await token();
+  const data = await cjFetch("/product/variant/query?pid=" + encodeURIComponent(pid), {
+    headers: { "CJ-Access-Token": accessToken }
+  });
+  if (!Array.isArray(data)) {
+    const error = new Error("CJ no devolvió la lista de variantes del producto");
+    error.statusCode = 502;
+    throw error;
+  }
+  const variants = data.filter((entry) => entry && String(entry.vid || "").trim()).slice(0, 200).map((entry) => {
+    const rawUsd = entry.variantSellPrice;
+    const parsedPrice = rawUsd === null || rawUsd === undefined || rawUsd === "" ? null : Number(rawUsd);
+    return {
+      vid: String(entry.vid).trim().slice(0, 100),
+      sku: String(entry.variantSku || "").trim().slice(0, 100),
+      name: String(entry.variantNameEn || entry.variantName || entry.variantKey || "").trim().slice(0, 220),
+      option: String(entry.variantKey || "").trim().slice(0, 150),
+      priceUsd: parsedPrice != null && Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : null,
+      image: /^https:\/\//i.test(String(entry.variantImage || "")) ? String(entry.variantImage).slice(0, 2000) : "",
+    };
+  });
+  return { pid, variants, total: data.length, truncated: data.length > variants.length, currency: "USD", source: "cj_api" };
+}
