@@ -1,4 +1,4 @@
-import { CustomerSupport } from "../components/CustomerSupport";
+import { CustomerSupportV2 } from "../components/CustomerSupportV2";
 import { FormEvent, useEffect, useState } from "react";
 import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
@@ -103,7 +103,7 @@ export function Contact() {
 {site.contactPage.helpIntro}
           </p>
 
-          <div className="mt-7"><CustomerSupport compact /></div>
+          <div className="mt-7"><CustomerSupportV2 compact /></div>
           <div className="mt-7 border-t border-[#dfdbd1] pt-6">
             <h3 className="text-base font-black">¿Prefieres WhatsApp?</h3>
             <p className="mt-1 text-xs text-[#6c786f]">Este canal es externo: los mensajes de WhatsApp todavía no se sincronizan con el historial de servicio al cliente de tu cuenta.</p>
