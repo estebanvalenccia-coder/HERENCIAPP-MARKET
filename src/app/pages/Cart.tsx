@@ -152,11 +152,18 @@ export function Cart() {
     const rule = codes.find((x: any) =>
       String(x.code || "").toUpperCase() === coupon.trim().toUpperCase() &&
       x.active !== false &&
-      (!x.expiresAt || new Date(x.expiresAt) >= new Date())
+      (!x.expiresAt || new Date(String(x.expiresAt).slice(0,10) + "T23:59:59") >= new Date())
     );
     if (!rule) return toast.error("Cupón no válido o caducado");
-    const amount = rule.type === "fixed" ? Number(rule.value || 0) : subtotal * Number(rule.value || 0) / 100;
-    setDiscount(Math.min(subtotal, Math.max(0, amount)));
+    const eligibleSubtotal = cartItems.reduce((sum, item) => {
+      const service = isServiceItem(item);
+      if (rule.scope === "services" && !service) return sum;
+      if (rule.scope === "products" && service) return sum;
+      return sum + lineTotal(item);
+    }, 0);
+    if (!eligibleSubtotal) return toast.error("Este cupón no se aplica a los artículos del carrito");
+    const amount = rule.type === "fixed" ? Number(rule.value || 0) : eligibleSubtotal * Number(rule.value || 0) / 100;
+    setDiscount(Math.min(eligibleSubtotal, Math.max(0, amount)));
     toast.success("Cupón aplicado");
   };
 
