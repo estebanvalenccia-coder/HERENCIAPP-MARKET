@@ -1027,6 +1027,12 @@ function ImportedProductRow({
           {preflight.checks.map((issue: string, i: number) => <li key={i}>{issue}</li>)}
         </ul>}
         {preflight.estimate?.estimatedCostEur != null && <p className="mt-2 text-xs font-semibold">Coste estimado: {money(preflight.estimate.estimatedCostEur)} € · Resultado estimado: {money(preflight.estimate.estimatedProfitEur)} €</p>}
+        {preflight.queueSimulation && <div className="mt-2 rounded-lg border border-border bg-background/70 p-2 text-xs">
+          <p className="font-bold">Prueba del motor real de preparación: {fulfillmentBadge(preflight.queueSimulation.status)}</p>
+          <p>Artículos procesados: {preflight.queueSimulation.itemCount} · Coste estimado: {money(preflight.queueSimulation.estimatedCostEur)} €</p>
+          {preflight.queueSimulation.blocker && <p className="font-medium">{preflight.queueSimulation.blocker}</p>}
+          <p className="mt-1 text-muted-foreground">No se ha creado ningún pedido ni registro en la cola real.</p>
+        </div>}
         <p className="mt-1 text-xs font-semibold">La simulación no envía órdenes, datos personales ni pagos a CJ.</p>
       </div>}
       {cjLookupError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">{cjLookupError}</p>}
