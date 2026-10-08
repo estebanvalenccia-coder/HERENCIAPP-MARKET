@@ -258,9 +258,7 @@ export function registerSupportV2(app, db) {
     const updated = await withAI(ticket, text, req.body?.allowAI === true);
     if (updated.status === "open" && process.env.STORE_EMAIL) {
       void sendSupportEmail(process.env.STORE_EMAIL, "Nueva consulta de Herencia · " + updated.ticketId,
-        "Hay una nueva consulta pendiente en Herencia Market. Ábrela desde Administración > Servicio al cliente.
-
-https://www.herenciamarket.es/admin",
+        "Hay una nueva consulta pendiente en Herencia Market. Ábrela desde Administración > Servicio al cliente.\n\nhttps://www.herenciamarket.es/admin",
         updated.ticketId, updated.messages[0].id);
     }
     res.status(201).json({ thread: internalView(updated) });
@@ -286,9 +284,7 @@ https://www.herenciamarket.es/admin",
     if(reply.status==="open" && process.env.STORE_EMAIL) {
       const lastHuman = [...reply.messages].reverse().find(m=>m.role==="customer");
       void sendSupportEmail(process.env.STORE_EMAIL, "Consulta pendiente · " + reply.ticketId,
-        "Un cliente ha escrito en atención al cliente. Revisa la bandeja de Administración.
-
-https://www.herenciamarket.es/admin",
+        "Un cliente ha escrito en atención al cliente. Revisa la bandeja de Administración.\n\nhttps://www.herenciamarket.es/admin",
         reply.ticketId,lastHuman?.id||crypto.randomUUID());
     }
     res.json({thread:internalView(reply)});
@@ -325,10 +321,7 @@ https://www.herenciamarket.es/admin",
     });
     if(!note && thread.ownerType==="customer" && thread.customerEmail) {
       void sendSupportEmail(thread.customerEmail, "Herencia ha respondido · " + thread.ticketId,
-        "El equipo de Herencia Market ha respondido a tu consulta.
-
-Para consultar la respuesta, entra a tu cuenta:
-https://www.herenciamarket.es/perfil",
+        "El equipo de Herencia Market ha respondido a tu consulta.\n\nPara consultar la respuesta, entra a tu cuenta:\nhttps://www.herenciamarket.es/perfil",
         thread.ticketId,thread.messages.at(-1)?.id||crypto.randomUUID());
     }
     res.json({thread});
