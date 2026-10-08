@@ -5309,6 +5309,8 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       supplierCost,
       supplierVariantId: String(metadata.supplierVariantId || metadata.cjVid || "").trim().slice(0, 100),
       supplierSku: String(metadata.supplierSku || metadata.cjSku || "").trim().slice(0, 100),
+      cjPreferredLogisticName: String(metadata.cjPreferredLogisticName || "").trim().slice(0, 120),
+      cjPreferredLogisticCountry: String(metadata.cjPreferredLogisticCountry || "").trim().slice(0, 2),
       estimatedCost: normalizeMoney(supplierCost * quantity),
       salePrice,
       revenue,
@@ -5351,6 +5353,16 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       if (!group.allCostsKnown) {
         status = "cost_required";
         blocker = "Configura el coste proveedor de todos los productos antes de usar Autopilot.";
+      }
+      if (!blocker && String(supplier?.integration || "").toLowerCase().includes("cj") &&
+          group.items.some((entry) => !entry.supplierVariantId && !entry.supplierSku)) {
+        status = "mapping_required";
+        blocker = "Falta asignar el VID o SKU de CJ para todos los productos.";
+      }
+      if (!blocker && group.items.some((entry) => entry.cjPreferredLogisticCountry === "ES" &&
+          !entry.cjPreferredLogisticName)) {
+        status = "approval_required";
+        blocker = "Falta confirmar el transportista CJ para España.";
       }
       const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
       if (!blocker && maxAutoOrderTotal > 0 && group.estimatedCost > maxAutoOrderTotal) {
