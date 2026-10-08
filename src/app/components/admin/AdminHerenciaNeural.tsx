@@ -9,6 +9,7 @@ type Mode="AUTO"|"ASK"|"BLOCK";
 type Message={role:"user"|"neural";text:string;activity?:string[];kind?:string};
 const labels:Record<string,string>={read_business_state:"Leer estado del negocio",internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",prepare_web_changes:"Preparar borradores web",modify_stock:"Modificar stock",change_prices:"Cambiar precios",publish_web_changes:"Publicar cambios web",rollback_web_changes:"Restaurar versiones web",create_products:"Crear productos",edit_products:"Editar productos",delete_products:"Eliminar productos",record_expenses:"Registrar gastos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails",contact_suppliers:"Contactar proveedores",manage_crm:"Gestionar CRM",manage_suppliers:"Gestionar proveedores",create_promotions:"Crear promociones",issue_invoices:"Emitir facturas",purchases:"Realizar compras",refunds:"Hacer devoluciones",payments:"Realizar pagos"};
 
+function validCodeApproval(t:any){return t?.intent==="code_change"&&t?.status==="WAITING_APPROVAL"&&Array.isArray(t?.payload?.codePlan?.changes)&&t.payload.codePlan.changes.length>0}
 function reviewableCodeTask(t:any){return t?.intent==="code_change"&&t?.status==="REVIEW_REQUIRED"}
 function safePreviewHref(raw:any){
  try{const url=new URL(String(raw||""));return url.protocol==="https:"&&/(?:\.vercel\.app|\.up\.railway\.app)$/i.test(url.hostname)?url.origin:null}catch{return null}
@@ -79,8 +80,8 @@ export function AdminHerenciaNeural(){
   if(t.status==="fulfilled"){
     const nextTasks=t.value.tasks||[];
     setTasks(nextTasks);
-    const waitingCode=nextTasks.find((task:any)=>task.intent==="code_change"&&(task.status==="WAITING_APPROVAL"||task.requiresApproval));
-    setActiveCodeApproval((current:any)=>current?.id&&nextTasks.some((task:any)=>task.id===current.id&&(task.status==="WAITING_APPROVAL"||task.requiresApproval))?current:(waitingCode||null));
+    const waitingCode=nextTasks.find(validCodeApproval);
+    setActiveCodeApproval((current:any)=>current?.id&&nextTasks.some((task:any)=>task.id===current.id&&validCodeApproval(task))?current:(waitingCode||null));
   }
   if(reviews.status==="fulfilled"){
     const activeReviews=(reviews.value.reviews||[]).filter(reviewableCodeTask);
@@ -133,9 +134,9 @@ export function AdminHerenciaNeural(){
 
  const permissions:Record<string,Mode>=status?.policy?.permissions||{};
  const autonomy=status?.policy?.autonomy==="ACTIVE";
- const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL");
+ const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"&&(t.intent!=="code_change"||validCodeApproval(t)));
  const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
- const pendingCodeCount=tasks.filter((t:any)=>t.intent==="code_change"&&["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)).length;
+ const pendingCodeCount=tasks.filter((t:any)=>reviewableCodeTask(t)||validCodeApproval(t)).length;
  // Resolve visual URLs automatically on entering Neural Code, at most once per task per 90 seconds.
  useEffect(()=>{
   const task=activeCodeReview;
@@ -159,10 +160,11 @@ export function AdminHerenciaNeural(){
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
  const cycle=async(key:string)=>{const order:Mode[]=["AUTO","ASK","BLOCK"],current=(permissions[key]||"BLOCK") as Mode,next=order[(order.indexOf(current)+1)%3];try{await backendApi.neuralSetPermission(key,next);toast.success(`${labels[key]||key}: ${next}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const send=async()=>{const q=message.trim();if(!q||chatStage)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");setChatStage("Entendiendo tu mensaje…");try{const r=await backendApi.neuralChat(q,"admin:command-center");setMessages(m=>[...m,{role:"neural",text:r.message||"He procesado tu mensaje.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setChatStage(null)}};
- const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;const existing=approvals.find((t:any)=>t.intent==="code_change");if(existing){setActiveCodeApproval(existing);setTab("code");toast.info("Ya tienes un cambio esperando aprobación. Apruébalo o descártalo antes de crear otro.");window.setTimeout(()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"}),80);return;}setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id){const normalized={...r.task,status:r.status||r.task.status||"WAITING_APPROVAL",requiresApproval:true};setActiveCodeApproval(normalized);setTasks(prev=>[normalized,...prev.filter((t:any)=>t.id!==normalized.id)]);}else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
+ const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;const existing=approvals.find(validCodeApproval);if(existing){setActiveCodeApproval(existing);setTab("code");toast.info("Ya tienes un cambio esperando aprobación. Apruébalo o descártalo antes de crear otro.");window.setTimeout(()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"}),80);return;}setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id){const normalized={...r.task,status:r.status||r.task.status||"WAITING_APPROVAL",requiresApproval:true};if(!validCodeApproval(normalized)){toast.error("Neural devolvió una propuesta sin plan válido. No se puede aprobar.");await refresh();return;}setActiveCodeApproval(normalized);setTasks(prev=>[normalized,...prev.filter((t:any)=>t.id!==normalized.id)]);}else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
  const approveCode=async()=>{
   const task=activeCodeApproval;
   if(!task?.id||approvingCode)return;
+  if(!validCodeApproval(task)){setActiveCodeApproval(null);toast.error("Esta propuesta no tiene un plan válido. No puede aprobarse; crea una nueva solicitud.");await refresh();return;}
   setApprovingCode(true);
   try{
    const r=await backendApi.neuralApproveCodeTask(task.id);
