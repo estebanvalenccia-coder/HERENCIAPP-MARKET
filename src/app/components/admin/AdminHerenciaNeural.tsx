@@ -417,6 +417,11 @@ export function AdminHerenciaNeural(){
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":preview.state==="unavailable"?"SIN ENLACE PÚBLICO":"PREVIEW EN PREPARACIÓN"}</span></div>
       <p className="mt-2 text-xs font-semibold text-indigo-900">Abre la página de prueba para utilizar el cambio y luego decide si publicarlo o descartarlo.</p>
       {!ready&&(failed||preview.state==="unavailable")&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{preview.description||"No hay un enlace público de preview por el momento."} Producción sigue intacta.</p>}
+       {failed&&preview.buildErrors&&<details className="mt-3 rounded-xl border border-red-200 bg-white p-3 text-xs text-red-900" open>
+        <summary className="cursor-pointer font-black">ERROR REAL DE COMPILACIÓN · Ver diagnóstico de Railway</summary>
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">{String(preview.buildErrors)}</pre>
+        <p className="mt-2 font-semibold">No se ha publicado este cambio. Corrige el código de la rama y vuelve a comprobar.</p>
+       </details>
       {previewFeedback?.id===activeCodeReview.id&&<p role="status" className="mt-3 rounded-xl border border-indigo-200 bg-white p-3 text-xs font-semibold text-indigo-950">{previewFeedback.message}</p>}
 
       <div className="mt-4">
@@ -463,6 +468,7 @@ export function AdminHerenciaNeural(){
        {t.status==="FAILED"&&<p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-800">Error de Neural: {String(t.error||"La tarea falló sin detalle. Consulta los registros.")}</p>}
       {review&&<div className="mt-4 rounded-xl border bg-background p-3">
        <p className="text-xs"><b>Preview:</b> {preview.state||"pending"}</p>
+        {preview.state==="failure"&&preview.buildErrors&&<pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-2 font-mono text-[11px] text-red-900">{String(preview.buildErrors)}</pre>}
        <div className="mt-3 grid gap-2 md:grid-cols-2">
         {href&&preview.state==="success"?<a href={href} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button disabled={Boolean(checkingPreviewId)} onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black disabled:opacity-50">{checkingPreviewId===t.id?"COMPROBANDO…":"COMPROBAR DESPLIEGUE"}</button>}
         {details?<a href={details} target="_blank" rel="noreferrer" className="rounded-xl border px-4 py-3 text-center font-black">VER EN VERCEL</a>:<button disabled={Boolean(checkingPreviewId)} onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black disabled:opacity-50">ACTUALIZAR ESTADO</button>}
