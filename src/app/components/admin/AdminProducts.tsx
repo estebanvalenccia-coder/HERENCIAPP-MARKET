@@ -159,6 +159,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   const [editRelatedIds, setEditRelatedIds] = useState<string[]>([]);
   const [relatedSearch, setRelatedSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [showTrash, setShowTrash] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState("todos");
   const [search, setSearch] = useState("");
@@ -559,6 +560,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       : [];
     const regularPrice = Number(product.price || 0);
     const salePrice = product.onSale ? Number(product.salePrice || 0) : 0;
+    setSaveError("");
     setEditingProduct(product);
     setEditExtraCollections(extraCollections);
     setAiPrompt("");
@@ -756,8 +758,10 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
 
   async function saveEdit() {
     if (!editingProduct) return;
-    if (!editForm.name.trim()) return toast.error("El nombre es obligatorio");
+    setSaveError("");
+    if (!editForm.name.trim()) { setSaveError("Escribe el nombre del producto."); return toast.error("El nombre es obligatorio"); }
     if (editForm.status === "active" && editForm.price <= 0) {
+      setSaveError("No se puede publicar con precio 0 €. Selecciona «Borrador» en Estado para guardar ahora sin precio, o introduce un precio de venta válido.");
       return toast.error("Para publicar, el precio debe ser mayor que 0");
     }
     if (editForm.onSale && editForm.price <= 0) {
@@ -879,6 +883,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
       toast.success("Artículo actualizado en Neon");
       cancelEdit();
     } catch (error: any) {
+      setSaveError(String(error?.message || "No se pudo guardar el artículo"));
       toast.error(error?.message || "No se pudo guardar el artículo");
     } finally {
       setSaving(false);
@@ -1544,6 +1549,7 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
               </div>
             </div>
 
+            {saveError && <div role="alert" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-900">{saveError}</div>}
             <div className="sticky bottom-0 mt-7 flex justify-end gap-2 border-t border-border bg-card/95 pt-4 backdrop-blur">
               <button onClick={cancelEdit} className="rounded-xl border border-border px-5 py-3 font-bold">Cancelar</button>
               <button onClick={() => void saveEdit()} disabled={saving} className="rounded-xl bg-primary px-6 py-3 font-black text-primary-foreground disabled:opacity-60">{saving ? "Guardando…" : "Guardar cambios"}</button>
