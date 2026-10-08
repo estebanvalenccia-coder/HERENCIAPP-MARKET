@@ -9,6 +9,23 @@ type Mode="AUTO"|"ASK"|"BLOCK";
 type Message={role:"user"|"neural";text:string;activity?:string[];kind?:string};
 const labels:Record<string,string>={read_business_state:"Leer estado del negocio",internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",prepare_web_changes:"Preparar borradores web",modify_stock:"Modificar stock",change_prices:"Cambiar precios",publish_web_changes:"Publicar cambios web",rollback_web_changes:"Restaurar versiones web",create_products:"Crear productos",edit_products:"Editar productos",delete_products:"Eliminar productos",record_expenses:"Registrar gastos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails",contact_suppliers:"Contactar proveedores",manage_crm:"Gestionar CRM",manage_suppliers:"Gestionar proveedores",create_promotions:"Crear promociones",issue_invoices:"Emitir facturas",purchases:"Realizar compras",refunds:"Hacer devoluciones",payments:"Realizar pagos"};
 
+function reviewableCodeTask(t:any){return t?.intent==="code_change"&&t?.status==="REVIEW_REQUIRED"}
+function safePreviewHref(raw:any){
+ try{const url=new URL(String(raw||""));return url.protocol==="https:"&&/(?:\.vercel\.app|\.up\.railway\.app)$/i.test(url.hostname)?url.origin:null}catch{return null}
+}
+function safePullRequestHref(raw:any){
+ try{
+  const url=new URL(String(raw||""));
+  if(url.protocol!=="https:")return null;
+  if(url.hostname==="github.com"&&/^\/[^/]+\/[^/]+\/pull\/\d+\/?$/.test(url.pathname))return url.href;
+  if(url.hostname==="api.github.com"){
+   const match=url.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/);
+   if(match)return "https://github.com/"+match[1]+"/"+match[2]+"/pull/"+match[3];
+  }
+  return null;
+ }catch{return null}
+}
+
 export function AdminHerenciaNeural(){
  const [tab,setTab]=useState("command");
  const [status,setStatus]=useState<any>(null);
@@ -57,7 +74,7 @@ export function AdminHerenciaNeural(){
     setActiveCodeApproval((current:any)=>current?.id&&nextTasks.some((task:any)=>task.id===current.id&&(task.status==="WAITING_APPROVAL"||task.requiresApproval))?current:(waitingCode||null));
   }
   if(reviews.status==="fulfilled"){
-    const review=reviews.value.reviews?.[0]||null;
+    const review=(reviews.value.reviews||[]).find(reviewableCodeTask)||null;
     setPinnedCodeReview(review);
     if(review?.id)setTasks(prev=>[review,...prev.filter((x:any)=>x.id!==review.id)]);
   }
@@ -101,8 +118,8 @@ export function AdminHerenciaNeural(){
 
  const permissions:Record<string,Mode>=status?.policy?.permissions||{};
  const autonomy=status?.policy?.autonomy==="ACTIVE";
- const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"||t.requiresApproval);
- const activeCodeReview=pinnedCodeReview||tasks.find((t:any)=>t.intent==="code_change"&&(t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY"||t.result?.stage==="PREVIEW_READY"))||null;
+ const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL");
+ const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -123,9 +140,10 @@ export function AdminHerenciaNeural(){
    await refresh();
   }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
  };
- const refreshPreview=async(id:string)=>{try{await backendApi.neuralCodePreview(id);toast.success("Estado de preview actualizado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo actualizar la preview")}};
+ const refreshPreview=async(id:string)=>{try{const r=await backendApi.neuralCodePreview(id);const p=r?.preview||{};if(p.state==="success"&&safePreviewHref(p.url))toast.success("Preview disponible");else toast.info(p.description||"No hay un despliegue público de preview disponible");await refresh()}catch(e:any){toast.error(e.message||"No se pudo actualizar la preview")}};
  const acceptPreview=async(id:string)=>{if(!window.confirm("¿Aceptar este cambio y publicarlo en main?"))return;try{await backendApi.neuralAcceptCodePreview(id);toast.success("Cambio aceptado. Se ha enviado a main para despliegue.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo aceptar el cambio")}};
- const discardPreview=async(id:string)=>{if(!window.confirm("¿Descartar esta preview? Se cerrará el PR y se eliminará la rama neural/*."))return;try{await backendApi.neuralDiscardCodePreview(id);toast.success("Preview descartada. Producción no cambió.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar la preview")}};
+ const discardPreview=async(id:string)=>{if(!window.confirm("¿Descartar esta preview? Se cerrará el PR y se eliminará la rama neural/*."))return;try{const r=await backendApi.neuralDiscardCodePreview(id);setPinnedCodeReview(null);setTasks(prev=>prev.filter(t=>t.id!==id));setActiveCodeApproval(null);if(r?.cleanup?.warnings?.length)toast.warning("Cambio descartado, pero GitHub dejó incidencias: "+r.cleanup.warnings.join("; "));else toast.success("Cambio descartado definitivamente. Producción no cambió.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar la preview")}};
+ const discardAllCode=async()=>{if(!window.confirm("¿Descartar TODOS los cambios de código pendientes y sus previews? No se publicará nada en producción."))return;try{const result=await backendApi.neuralDiscardAllPendingCode();setPinnedCodeReview(null);setActiveCodeApproval(null);setTasks(prev=>prev.filter(t=>t.intent!=="code_change"||!["WAITING_APPROVAL","REVIEW_REQUIRED"].includes(t.status)));if(result.failed)toast.warning(`${result.count} cambios descartados; ${result.failed} requieren revisión.`);else toast.success(`${result.count} cambios pendientes descartados.`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo vaciar la cola de código")}};
  const rejectCode=async(id?:string)=>{const taskId=id||activeCodeApproval?.id;if(!taskId)return;try{await backendApi.neuralRejectTask(taskId);setActiveCodeApproval(null);toast.success("Cambio descartado");await refresh()}catch(e:any){toast.error(e.message||"No se pudo descartar el cambio")}};
  const addGoal=async()=>{const text=goal.trim();if(!text)return;try{await backendApi.neuralCreateGoal(text);setGoal("");toast.success("Objetivo creado en Neural Core");await refresh()}catch(e:any){toast.error(e.message)}};
  const updateGoal=async(id:string,patch:Record<string,any>)=>{try{await backendApi.neuralUpdateGoal(id,patch);toast.success("Objetivo actualizado");await refresh()}catch(e:any){toast.error(e.message)}};
@@ -202,6 +220,7 @@ export function AdminHerenciaNeural(){
   </div>}
 
   {tab==="code"&&<div className="grid xl:grid-cols-3 gap-5">
+   {(approvals.some((t:any)=>t.intent==="code_change")||Boolean(activeCodeReview))&&<div className="xl:col-span-3 flex flex-wrap justify-end gap-3"><button type="button" onClick={()=>void discardAllCode()} className="rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-black text-red-700 hover:bg-red-50">DESCARTAR TODOS LOS CAMBIOS PENDIENTES</button></div>}
    {approvals.some((t:any)=>t.intent==="code_change")&&<div className="xl:col-span-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-amber-700">Hay un cambio esperando tu aprobación</div><div className="mt-1 font-bold text-amber-950">Pulsa para ver el plan y aprobar la programación.</div></div><button type="button" onClick={()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"})} className="rounded-xl bg-amber-500 px-4 py-3 font-black text-white hover:bg-amber-600">VER APROBACIÓN</button></div>}
    <Panel title="Neural Code · Programación" icon={Code2} className="xl:col-span-2">
     <div className="rounded-2xl border bg-emerald-50/60 p-4 text-sm text-emerald-950">
@@ -209,12 +228,12 @@ export function AdminHerenciaNeural(){
     </div>
     <div className="mt-4 h-64 overflow-y-auto space-y-3 pr-2">{codeMessages.map((m,i)=><div key={i} className={`max-w-[90%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`code-${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {codeStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{codeStage}</div>}
-    {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=result.pullRequest?.url||result.pullRequest?.html_url||result.pullRequest?.result?.url||null;const ready=preview.url&&preview.state==="success";const failed=preview.state==="failure";return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
+    {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const ready=Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":"PREVIEW EN PREPARACIÓN"}</span></div>
       {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
       {failed&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">El código está preparado, pero el proveedor de preview no pudo generar la vista. Puedes reintentar el estado; producción sigue intacta.</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-2">
-       {ready?<a href={preview.url} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(activeCodeReview.id)} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white hover:bg-indigo-700">{failed?"REINTENTAR PREVIEW":"BUSCAR PREVIEW"}</button>}
+       {ready?<a href={previewHref} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(activeCodeReview.id)} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white hover:bg-indigo-700">{failed?"REINTENTAR PREVIEW":"BUSCAR PREVIEW"}</button>}
        {prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="rounded-xl border bg-white px-4 py-3 text-center font-black">VER PR</a>}
       </div>
       <div className="mt-3 grid gap-2 md:grid-cols-2"><button onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700">DESCARTAR</button><button onClick={()=>void acceptPreview(activeCodeReview.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">ACEPTAR CAMBIO</button></div>
@@ -245,14 +264,14 @@ export function AdminHerenciaNeural(){
     {approvals.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{approvals.filter((t:any)=>t.intent==="code_change").slice(0,10).map((t:any)=>{const plan=t.payload?.codePlan;const files=plan?.changes?.map((x:any)=>x.path)||[];return <div key={t.id} className="rounded-2xl border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.status} · {t.assignedCell||"developer"}</p></div>{plan?.risk&&<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-800">Riesgo {plan.risk}</span>}</div>{plan&&<div className="mt-3 rounded-xl bg-muted/50 p-3 text-xs"><p>{plan.summary}</p>{files.length>0&&<p className="mt-2"><b>Archivos:</b> {files.join(", ")}</p>}</div>}<div className="mt-3 grid gap-2 md:grid-cols-3"><button onClick={()=>void rejectCode(t.id)} className="rounded-xl border border-red-200 bg-white px-3 py-2 font-black text-red-700">Descartar</button><button onClick={()=>void approve(t.id)} className="md:col-span-2 rounded-xl bg-amber-100 px-3 py-2 font-black text-amber-900">Aprobar y programar en rama</button></div></div>})}</div>:<Empty text="No hay cambios de código esperando aprobación."/>}
    </Panel></div>
    <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
-    {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};const preview=result.preview||{};const review=t.status==="REVIEW_REQUIRED"||t.stage==="PREVIEW_READY";return <div key={t.id} className={`rounded-xl border p-4 text-sm ${review?"border-indigo-200 bg-indigo-50/40":""}`}>
+    {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};const preview=result.preview||{};const review=reviewableCodeTask(t);const href=safePreviewHref(preview.url);return <div key={t.id} className={`rounded-xl border p-4 text-sm ${review?"border-indigo-200 bg-indigo-50/40":""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p></div>{review&&<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">ESPERA TU DECISIÓN</span>}</div>
       {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
       {result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Código escrito e integrado</p>}
       {review&&<div className="mt-4 rounded-xl border bg-background p-3">
        <p className="text-xs"><b>Preview:</b> {preview.state||"pending"}</p>
        <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {preview.url?<a href={preview.url} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">BUSCAR PREVIEW</button>}
+        {href&&preview.state==="success"?<a href={href} target="_blank" rel="noreferrer" className="rounded-xl bg-indigo-600 px-4 py-3 text-center font-black text-white hover:bg-indigo-700">ABRIR PREVIEW</a>:<button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">BUSCAR PREVIEW</button>}
         <button onClick={()=>void refreshPreview(t.id)} className="rounded-xl border px-4 py-3 font-black">ACTUALIZAR ESTADO</button>
        </div>
        <div className="mt-3 grid gap-2 md:grid-cols-2">
