@@ -3570,7 +3570,7 @@ async function validateCommerceOrderPayload(order = {}) {
     throw new Error("Los productos físicos requieren entrega");
   }
 
-  let shipping = normalizeMoney(order.shipping || 0);
+  let shipping = hasPhysicalItems ? normalizeMoney(order.shipping || 0) : 0;
   let shippingQuote = null;
 
   if (source === "frontend_checkout" && hasPhysicalItems) {
