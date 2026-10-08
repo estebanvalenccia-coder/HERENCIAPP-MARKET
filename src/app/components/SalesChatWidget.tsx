@@ -329,6 +329,11 @@ export function SalesChatWidget() {
   const navigate = useNavigate();
   const conversationId = useMemo(() => getConversationId(), []);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const closeOnSupport = () => setOpen(false);
+    window.addEventListener("herencia:support-open", closeOnSupport);
+    return () => window.removeEventListener("herencia:support-open", closeOnSupport);
+  }, []);
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [catalog, setCatalog] = useState<SalesProduct[]>(() => {
     try {
@@ -849,6 +854,7 @@ export function SalesChatWidget() {
   };
 
   const openSales = () => {
+    window.dispatchEvent(new Event("herencia:sales-open"));
     setOpen(true);
     trackSalesEvent("sales_open", { conversationId, eventLabel: "HERENCIA SALES" });
   };
