@@ -1008,7 +1008,7 @@ export const backendApi = {
   },
 
   async createPaymentIntent(payload: any) {
-    return request<{ clientSecret: string; paymentIntentId: string; orderId: string; totals?: { subtotal: number; shipping: number; total: number }; shippingQuote?: any }>("/api/stripe/create-payment-intent", {
+    return request<{ clientSecret?: string; paymentIntentId?: string | null; orderId: string; freeOrder?: boolean; totals?: { subtotal: number; discount?: number; shipping: number; total: number }; shippingQuote?: any }>("/api/stripe/create-payment-intent", {
       method: "POST",
       body: JSON.stringify(payload),
     });
