@@ -6631,6 +6631,122 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin, async (req
   }
 });
 
+// Recover an ambiguous CJ create/payment using ONLY supplier read endpoints.
+// Never retries createOrderV2 or a balance debit. A missing order in a paginated
+// CJ result is NOT grounds for clearing the duplicate-protection reservation.
+app.post("/api/admin/supplier-fulfillments/:id/cj-reconcile", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    if (!cjConfigured()) throw cjManualError("CJ_API_KEY no está disponible.");
+    const { record } = await loadCjManualOrder(req.params.id);
+    const allowed = ["cj_creation_unknown", "cj_payment_unknown", "payment_required"];
+    if (!allowed.includes(String(record.status || ""))) {
+      throw cjManualError("Este pedido CJ no requiere conciliación de creación o pago.");
+    }
+    let remote = null;
+    if (record.externalOrderId) {
+      const payload = await cjRequest("/shopping/order/getOrderDetail", {
+        query: { orderId: record.externalOrderId },
+      });
+      const data = payload?.data || {};
+      if (String(data.orderId || record.externalOrderId) !== String(record.externalOrderId)) {
+        throw cjManualError("CJ respondió con un identificador distinto. Revisión manual necesaria.");
+      }
+      remote = {
+        orderId: record.externalOrderId,
+        orderNumber: String(data.orderNum || data.orderNumber || record.cjOrderNumber || ""),
+        status: String(data.orderStatus || ""),
+        actualPayment: data.actualPayment ?? data.orderAmount,
+        shipmentOrderId: data.shipmentOrderId || "",
+      };
+    } else if (record.cjOrderNumber) {
+      // Narrow search by the deterministic orderNumber sent by Herencia.
+      for (let index = 0; index < CJ_AUDIT_ORDER_STATUSES.length; index++) {
+        const status = CJ_AUDIT_ORDER_STATUSES[index];
+        const payload = await cjRequest("/shopping/order/list", {
+          query: { pageNum: 1, pageSize: 50, status },
+        });
+        const rows = Array.isArray(payload?.data?.list) ? payload.data.list : [];
+        const match = rows.find((row) =>
+          String(row?.orderNum || row?.orderNumber || "") === String(record.cjOrderNumber));
+        if (match) {
+          remote = {
+            orderId: String(match.orderId || ""),
+            orderNumber: String(record.cjOrderNumber),
+            status: String(match.orderStatus || status),
+            actualPayment: match.actualPayment ?? match.orderAmount,
+            shipmentOrderId: match.shipmentOrderId || "",
+          };
+          break;
+        }
+        if (index + 1 < CJ_AUDIT_ORDER_STATUSES.length) {
+          await new Promise((resolve) => setTimeout(resolve, 1100));
+        }
+      }
+    }
+    if (!remote?.orderId) {
+      // Never unblock unknown orders without proof from CJ.
+      return res.json({
+        found: false, paid: false, safeToRetryCreate: false,
+        error: "No se encontró una coincidencia concluyente en CJ. Mantén el bloqueo y comprueba tu cuenta CJ manualmente.",
+        fulfillment: record,
+      });
+    }
+    const status = String(remote.status || "").toUpperCase();
+    const isPaid = ["UNSHIPPED", "PROCESSING", "SHIPPED", "DELIVERED", "PAID", "COMPLETED"].includes(status);
+    const isUnpaid = ["CREATED", "IN_CART", "UNPAID"].includes(status);
+    const expectedUsd = Number(remote.actualPayment);
+    const paidStatus = status === "DELIVERED" ? "delivered" : status === "SHIPPED" ? "shipped" : "ordered";
+    const initialCap = Number(record.cjManualAuthorization?.approvedMaxUsd || 0);
+    const supplierCap = Number((await readSupplierOperations()).suppliers?.find((entry) =>
+      String(entry.id || "") === String(record.supplierId || ""))?.cjMaxPaymentUsd || 0);
+    if ((!isPaid && !isUnpaid) || !(expectedUsd > 0) ||
+        expectedUsd > initialCap || expectedUsd > supplierCap) {
+      return res.json({
+        found: true, paid: isPaid, safeToRetryCreate: false,
+        error: "CJ encontró el pedido, pero el estado o importe requiere revisión manual.",
+        cjStatus: status, fulfillment: record,
+      });
+    }
+    // If we previously issued a balance payment and the provider still says
+    // UNPAID, do NOT unlock another payment: propagation may be delayed.
+    if (record.status === "cj_payment_unknown" && !isPaid) {
+      return res.json({
+        found: true, paid: false, safeToRetryCreate: false,
+        error: "CJ aún indica impagado. Mantén el bloqueo y comprueba el saldo antes de cualquier reintento.",
+        cjStatus: status, fulfillment: record,
+      });
+    }
+    const updated = await mutateCjManualRecord(record.id, [record.status], {
+      provider: "cj",
+      status: isPaid ? paidStatus : "payment_required",
+      blocker: isPaid ? "" : "Pedido encontrado en CJ pendiente de pago. Necesita autorización manual.",
+      externalOrderId: remote.orderId,
+      cjShipmentOrderId: String(remote.shipmentOrderId || record.cjShipmentOrderId || ""),
+      providerActualPayment: Math.round(expectedUsd * 100) / 100,
+      providerCurrency: "USD",
+      providerOrderStatus: status,
+      providerSyncedAt: new Date().toISOString(),
+    }, (current) => {
+      if (String(current.externalOrderId || "") &&
+          String(current.externalOrderId) !== remote.orderId) {
+        throw cjManualError("CJ devolvió una referencia externa distinta.");
+      }
+      if (String(current.cjOrderNumber || "") !== String(record.cjOrderNumber || "")) {
+        throw cjManualError("La referencia de creación cambió: recarga antes de conciliar.");
+      }
+    });
+    res.json({
+      found: true, paid: isPaid, safeToRetryCreate: false,
+      cjStatus: status, fulfillment: updated,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 502).json({
+      error: String(error?.message || "CJ no respondió a la conciliación").slice(0, 220),
+    });
+  }
+});
+
 app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
