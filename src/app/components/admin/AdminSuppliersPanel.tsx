@@ -858,6 +858,10 @@ function ImportedProductRow({
   const [cost, setCost] = useState(Number(metadata.supplierCost || 0));
   const [supplierVariantId, setSupplierVariantId] = useState(String(metadata.supplierVariantId || metadata.cjVid || ""));
   const [supplierSku, setSupplierSku] = useState(String(metadata.supplierSku || metadata.cjSku || ""));
+  const [cjVariants, setCjVariants] = useState<Array<{ vid: string; sku: string; name: string; option: string; priceUsd: number | null; image: string }>>([]);
+  const [cjLoading, setCjLoading] = useState(false);
+  const [cjLookupError, setCjLookupError] = useState("");
+  const [cjLookupComplete, setCjLookupComplete] = useState(false);
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
   const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
@@ -867,6 +871,30 @@ function ImportedProductRow({
   const grossPercent = salePrice > 0 && cost > 0 ? (grossMargin / salePrice) * 100 : 0;
 
   const selectedSupplier = suppliers.find((supplier:any)=>String(supplier.id)===String(supplierId));
+  const isCjSupplier = selectedSupplier?.integrationType === "cj";
+  const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
+  const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
+
+  const lookupCjVariants = async () => {
+    setCjLoading(true);
+    setCjLookupError("");
+    setCjLookupComplete(false);
+    try {
+      const result = await backendApi.listCjProductVariants(String(product.id));
+      setCjVariants(Array.isArray(result.variants) ? result.variants : []);
+      setCjLookupComplete(true);
+      if (!result.variants?.length) {
+        setCjLookupError("CJ no devolvió variantes disponibles para este producto. Comprueba su disponibilidad en CJ.");
+      }
+      if (result.truncated) toast.warning("CJ tiene más de 200 variantes: solo se muestran las primeras 200.");
+    } catch (error: any) {
+      setCjVariants([]);
+      setCjLookupError(String(error?.message || "No se pudieron obtener las variantes de CJ"));
+    } finally {
+      setCjLoading(false);
+    }
+  };
+
   return <div className="grid gap-3 rounded-2xl border border-border p-4 xl:grid-cols-[minmax(0,1.3fr)_200px_160px_150px_210px_auto] xl:items-center">
     <div className="min-w-0">
       <div className="flex items-center gap-3">
@@ -888,7 +916,7 @@ function ImportedProductRow({
       <option value="autopilot">🤖 Autopilot</option>
     </select>
     <label className="rounded-xl border border-border px-3 py-2">
-      <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor</span>
+      <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor (€)</span>
       <input type="number" min="0" step="0.01" value={cost} onChange={(e)=>setCost(Math.max(0,Number(e.target.value||0)))} className="w-full bg-transparent text-sm font-semibold outline-none"/>
     </label>
     <div className="space-y-2 rounded-xl border border-border px-3 py-2">
@@ -900,6 +928,42 @@ function ImportedProductRow({
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku)} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
+    {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-bold text-emerald-900">Variantes reales de CJdropshipping</p>
+          <p className="text-xs text-muted-foreground">Consulta de solo lectura: nunca crea un pedido ni cobra nada.</p>
+        </div>
+        <button type="button" disabled={cjLoading} onClick={() => void lookupCjVariants()}
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
+          <RefreshCw className={"h-4 w-4" + (cjLoading ? " animate-spin" : "")}/>
+          {cjLoading ? "Consultando CJ…" : "Consultar variantes CJ"}
+        </button>
+      </div>
+      {cjLookupError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">{cjLookupError}</p>}
+      {cjVariants.length > 0 && <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <select aria-label="Seleccionar variante real de CJ" value={cjVariants.some((entry) => entry.vid === supplierVariantId) ? supplierVariantId : ""}
+          onChange={(event) => {
+            const variant = cjVariants.find((entry) => entry.vid === event.target.value);
+            setSupplierVariantId(variant?.vid || "");
+            setSupplierSku(variant?.sku || "");
+          }} className="min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+          <option value="">Selecciona la variante exacta que venderás</option>
+          {cjVariants.map((variant) => <option key={variant.vid} value={variant.vid}>
+            {(variant.option || variant.name || variant.sku || variant.vid).slice(0, 90)} · {variant.priceUsd == null ? "Precio CJ no disponible" : "$" + variant.priceUsd.toFixed(2) + " USD"} · {variant.sku || "sin SKU"}
+          </option>)}
+        </select>
+        <span className="text-xs text-muted-foreground">{cjVariants.length} variantes consultadas</span>
+      </div>}
+      {selectedCjVariant && <div className="rounded-lg bg-background/80 px-3 py-2 text-xs">
+        <p className="font-semibold">Variante seleccionada: {selectedCjVariant.option || selectedCjVariant.name}</p>
+        <p className="mt-1 break-all">VID: {selectedCjVariant.vid} · SKU: {selectedCjVariant.sku || "No disponible"}</p>
+        <p className="mt-1 font-semibold">Precio de CJ: {selectedCjVariant.priceUsd == null ? "Sin dato" : "$" + selectedCjVariant.priceUsd.toFixed(2) + " USD"} (sin transporte)</p>
+        <p className="mt-1 text-muted-foreground">Pulsa «Conectar» para guardar esta selección. Tu precio público no se modifica.</p>
+      </div>}
+      {cjLookupComplete && cjVariants.length > 1 && <p className="text-xs font-semibold text-amber-800">CJ ofrece varias variantes. Si la ficha pública no tiene opciones para el cliente, debes vender solo la variante seleccionada; todavía no hay asignación automática individual para varias opciones.</p>}
+      <p className="text-xs text-muted-foreground">El precio consultado está en USD. El campo «Coste proveedor» debe introducirse en EUR tras verificar conversión y gastos; el transporte final depende del destino. No actives pedidos reales sin confirmar ambos costes.</p>
+    </div>}
   </div>;
 }
 
