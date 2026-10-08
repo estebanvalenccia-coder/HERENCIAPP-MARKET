@@ -102,3 +102,42 @@ test("CJ forced payments honor the supplier cap and previously ordered records a
   assert.match(supplier, /"ordered", "shipped", "delivered"/);
   assert.match(supplier, /return \{ fulfillment: record, executed: false, manual: false \}/);
 });
+
+test("legacy supplier execution never creates or pays CJ despite force=true", () => {
+  const start = server.indexOf("async function executeSupplierFulfillment(");
+  const end = server.indexOf("app.post(\"/api/admin/supplier-fulfillments/:id/execute\"",start);
+  assert.ok(start > 0 && end > start);
+  const source = server.slice(start,end);
+  assert.match(source, /supplierIntegrationType\(supplier\) === "cj"/);
+  assert.match(source, /return \{\s*fulfillment: \{\s*\.\.\.record,\s*blocker: "Revisa CJ/);
+});
+
+test("CJ manual create endpoint is separate from CJ payment and never calls balance payment", () => {
+  const start=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin');
+  const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin',start);
+  assert.ok(start > 0 && end > start);
+  const creation=server.slice(start,end);
+  assert.match(creation,/CJ_LIVE_ORDER_CREATION_ENABLED/);
+  assert.match(creation,/validateManualCjCreate/);
+  assert.match(creation,/verifyCjCustomerFunding/);
+  assert.match(creation,/mutateCjManualRecord/);
+  assert.match(creation,/payType: 3/);
+  assert.match(creation,/cj_creation_unknown/);
+  assert.doesNotMatch(creation,/cjPayOrder\(|payBalance\(|payBalanceV2/);
+});
+
+test("CJ balance charge is in second route with merchant confirmation, caps and reservation", () => {
+  const start=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay", requireAdmin');
+  const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin',start);
+  assert.ok(start > 0 && end > start);
+  const payment=server.slice(start,end);
+  assert.match(payment,/CJ_LIVE_PAYMENT_ENABLED/);
+  assert.match(payment,/cjManualReadyForPayment/);
+  assert.match(payment,/validateManualCjPayment/);
+  assert.match(payment,/verifyCjCustomerFunding/);
+  assert.match(payment,/cjConfirmation\("pay"/);
+  assert.match(payment,/cj_paying/);
+  assert.match(payment,/cj_payment_unknown/);
+  assert.match(payment,/await cjPayOrder\(/);
+  assert.doesNotMatch(payment,/createOrderV2/);
+});
