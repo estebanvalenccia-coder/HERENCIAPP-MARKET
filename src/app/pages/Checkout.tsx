@@ -16,16 +16,8 @@ const isServiceItem = (item: any) =>
   item?.serviceBooking === true ||
   item?.type === "service" ||
   item?.collection === "servicios" ||
-  (Array.isArray(item?.collections) && item.collections.includes("servicios"));
-
-const isCjSupplierItem = (item: any) => {
-  const meta = item?.metadata && typeof item.metadata === "object" ? item.metadata : item || {};
-  const sourceHost = String(meta.sourceHost || "").replace(/^www\./, "").toLowerCase();
-  let fromUrl = "";
-  try { fromUrl = new URL(String(meta.sourceProductUrl || "")).hostname.toLowerCase().replace(/^www\./, ""); } catch {}
-  return String(meta.fulfillmentType || "").toLowerCase() === "dropship" &&
-    (sourceHost === "cjdropshipping.com" || fromUrl === "cjdropshipping.com");
-};
+  (Array.isArray(item?.collections) && item.collections.includes("servicios")) ||
+  String(item?.category || "").toLowerCase() === "servicios";
 
 const serviceHoursOf = (item: any) => {
   const min = Math.max(1, Number(item?.serviceMinHours ?? item?.metadata?.serviceMinHours ?? 1));
@@ -84,9 +76,6 @@ export function Checkout() {
   const hasServices = useMemo(() => cartItems.some(isServiceItem), [cartItems]);
   const hasPhysicalItems = useMemo(() => cartItems.some((item: any) => !isServiceItem(item)), [cartItems]);
   const onlyServices = hasServices && !hasPhysicalItems;
-  const hasCjItems = useMemo(() => cartItems.some(isCjSupplierItem), [cartItems]);
-  const cjOnly = useMemo(() => cartItems.length > 0 && cartItems.every(isCjSupplierItem), [cartItems]);
-  const mixedCjCart = hasCjItems && !cjOnly;
   const deliveryMethod = onlyServices ? "servicio" : "envio";
 
   const salesAttribution = useMemo(() => {
@@ -146,13 +135,6 @@ export function Checkout() {
   }, []);
 
   useEffect(() => {
-    if (cjOnly) {
-      setShippingCost(0);
-      setShippingInfo({ distanceText: "Envío directo CJ a España", destination: "España" });
-      setShippingError("");
-      setShippingLoading(false);
-      return;
-    }
     if (!hasPhysicalItems) {
       setShippingCost(0);
       setShippingInfo(null);
@@ -209,7 +191,6 @@ export function Checkout() {
     return () => window.clearTimeout(timeoutId);
   }, [
     hasPhysicalItems,
-    cjOnly,
     form.address,
     form.city,
     form.postalCode,
@@ -222,7 +203,6 @@ export function Checkout() {
   useEffect(() => {
     if (
       !hasPhysicalItems ||
-      cjOnly ||
       !form.requestedDate ||
       businessSuite.scheduledOrdersEnabled === false
     ) {
@@ -255,7 +235,7 @@ export function Checkout() {
       });
 
     return () => { active = false; };
-  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, cjOnly, businessSuite.scheduledOrdersEnabled]);
+  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, businessSuite.scheduledOrdersEnabled]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + lineTotal(item), 0);
   const shipping = hasPhysicalItems ? shippingCost : 0;
@@ -265,10 +245,6 @@ export function Checkout() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const validateForm = () => {
-    if (mixedCjCart) {
-      toast.error("El envío directo de CJ y los productos de reparto local deben comprarse en pedidos separados.");
-      return false;
-    }
     if (!cartItems.length) {
       toast.error("Tu carrito está vacío");
       navigate("/carrito");
@@ -285,22 +261,22 @@ export function Checkout() {
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && shippingLoading) {
+    if (hasPhysicalItems && shippingLoading) {
       toast.error("Espera un momento, estamos calculando el envío");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && shippingError) {
+    if (hasPhysicalItems && shippingError) {
       toast.error("Revisa la dirección de envío antes de continuar");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && form.requestedDate && deliveryAvailabilityError) {
+    if (hasPhysicalItems && form.requestedDate && deliveryAvailabilityError) {
       toast.error(deliveryAvailabilityError);
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && deliveryAvailabilityLoading) {
+    if (hasPhysicalItems && deliveryAvailabilityLoading) {
       toast.error("Espera un momento, estamos comprobando la capacidad de reparto");
       return false;
     }
@@ -332,8 +308,8 @@ export function Checkout() {
     serviceBooking: hasServices,
     serviceOnly: onlyServices,
     shippingDistance: hasPhysicalItems ? shippingInfo : null,
-    requestedDate: cjOnly ? null : form.requestedDate || null,
-    requestedTimeSlot: cjOnly ? null : form.requestedTimeSlot || null,
+    requestedDate: form.requestedDate || null,
+    requestedTimeSlot: form.requestedTimeSlot || null,
     deliveryInstructions: hasPhysicalItems ? form.deliveryInstructions || null : null,
     serviceAddress: hasServices
       ? {
@@ -349,9 +325,6 @@ export function Checkout() {
           city: form.city,
           postalCode: form.postalCode,
           province: form.province,
-          country: "ES",
-          name: form.name,
-          phone: form.phone,
         }
       : null,
   };
@@ -359,7 +332,7 @@ export function Checkout() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
-    if (isStripePayment) {
+    if (isStripePayment || (coupon && total === 0)) {
       setShowStripe(true);
       return;
     }
@@ -436,13 +409,7 @@ export function Checkout() {
 
             {hasPhysicalItems && (
               <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
-                {cjOnly ? (
-                  <div className="space-y-1">
-                    <p className="font-semibold text-emerald-800">Envío directo de CJdropshipping a España</p>
-                    <p className="text-muted-foreground">El transporte está previsto dentro del precio del artículo. Antes de aceptar el pago, verificaremos el coste de CJ para tu código postal y que el producto siga disponible.</p>
-                    <p className="font-medium">Revisa la ciudad, provincia y código postal: CJ usará exactamente esos datos para entregar el paquete.</p>
-                  </div>
-                ) : shippingLoading ? (
+                {shippingLoading ? (
                   <p className="text-muted-foreground">Calculando envío con Google Maps...</p>
                 ) : shippingError ? (
                   <p className="text-destructive">{shippingError}</p>
@@ -460,7 +427,7 @@ export function Checkout() {
               </div>
             )}
 
-            {!cjOnly && businessSuite.scheduledOrdersEnabled !== false && (
+            {businessSuite.scheduledOrdersEnabled !== false && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
@@ -578,7 +545,9 @@ export function Checkout() {
                   ? "Procesando..."
                   : hasPhysicalItems && shippingLoading
                     ? "Calculando envío..."
-                    : isStripePayment
+                    : coupon && total === 0
+                      ? "Confirmar pedido gratuito"
+                      : isStripePayment
                       ? onlyServices
                         ? "Pagar y reservar"
                         : "Continuar al pago seguro"
