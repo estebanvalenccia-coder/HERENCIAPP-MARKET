@@ -38,6 +38,8 @@ test("CJ auth and freight are paced, identical quotes coalesced and cached", asy
   assert.deepEqual(first, second);
   assert.equal(first.zip, "08032");
   assert.equal(calls.length, 2, "one auth call + one freight quote for two simultaneous requests");
+  assert.equal(calls.filter(call => call.url.includes("authentication/getAccessToken")).length, 1, "only one CJ token request is made");
+  assert.equal(calls.filter(call => call.url.includes("logistic/freightCalculate")).length, 1, "only one CJ freight request is made");
   assert.ok(calls[1].time - calls[0].time >= 1100, "CJ requests are not fired in a burst");
   const third = await quoteCjVariantShipping(input);
   assert.equal(third.methods[0].totalPostageUsd, 5.25);
