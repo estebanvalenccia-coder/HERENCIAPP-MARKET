@@ -184,6 +184,11 @@ export function CustomerSupport({ compact = false }: { compact?: boolean }) {
 export function FloatingCustomerSupport() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const closeOnSales = () => setOpen(false);
+    window.addEventListener("herencia:sales-open", closeOnSales);
+    return () => window.removeEventListener("herencia:sales-open", closeOnSales);
+  }, []);
   const [whatsapp, setWhatsapp] = useState("");
   useEffect(() => {
     const update = () => {
@@ -209,7 +214,7 @@ export function FloatingCustomerSupport() {
       )}
       <button
         type="button"
-        onClick={() => setOpen(value => !value)}
+        onClick={() => { if (!open) window.dispatchEvent(new Event("herencia:support-open")); setOpen(value => !value); }}
         aria-label={open ? "Cerrar servicio al cliente" : "Abrir servicio al cliente"}
         aria-expanded={open}
         className="flex items-center gap-2 rounded-full bg-[#315b42] px-5 py-3.5 font-bold text-white shadow-xl hover:bg-[#244b36]"
