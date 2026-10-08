@@ -424,7 +424,7 @@ export function AdminSuppliersPanel() {
     let errors = 0;
     for (const order of candidates.slice(0, 100)) {
       try {
-        const result = await backendApi.prepareSupplierFulfillments(String(order.id));
+        const result = await backendApi.prepareSupplierFulfillments(String(order.id), true);
         prepared += Array.isArray(result.fulfillments) ? result.fulfillments.length : 0;
       } catch {
         errors += 1;
@@ -784,7 +784,7 @@ export function AdminSuppliersPanel() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-bold">Cola de pedidos a proveedores</h2>
-          <p className="text-sm text-muted-foreground">Los pedidos pagados se preparan automáticamente. También puedes reconstruir la cola para pedidos anteriores.</p>
+          <p className="text-sm text-muted-foreground">Los pedidos pagados y gratuitos se preparan para revisión. Sincronizar actualiza presupuestos pendientes sin volver a comprar pedidos enviados.</p>
         </div>
         <button onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold">
           <RefreshCw className="h-4 w-4"/>Sincronizar pedidos pagados
@@ -1109,7 +1109,7 @@ function ImportedProductRow({
               <p className="mt-1 text-xs text-muted-foreground">Hipótesis: IVA, comisión de pago aproximada y reserva del 3% por cambio de divisa; el importe final puede variar.</p>
             </div>}
             <button type="button" disabled={saving || !supplierId || !supplierVariantId}
-              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName)}
+              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
               {saving ? "Guardando…" : "Guardar transportista preferido"}
             </button>

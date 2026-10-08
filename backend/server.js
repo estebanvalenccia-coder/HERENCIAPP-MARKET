@@ -5548,7 +5548,12 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
   for (const group of groups.values()) {
     const dedupeKey = String(order.id) + "::" + (group.supplierId || group.sourceHost || "unassigned");
     const found = existing.find((entry) => String(entry?.dedupeKey || "") === dedupeKey);
-    if (found && !force) {
+    // Admin resync may refresh an unfulfilled quote, but must never reset or
+    // duplicate a supplier order already submitted, shipped or closed.
+    const alreadySubmitted = Boolean(String(found?.externalOrderId || "").trim()) ||
+      ["ordered", "shipped", "delivered", "cancelled", "canceled", "closed", "refunded", "returned", "disputed"]
+        .includes(String(found?.status || "").toLowerCase());
+    if (found && (!force || alreadySubmitted)) {
       created.push(found);
       continue;
     }
