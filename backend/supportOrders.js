@@ -18,6 +18,26 @@ export function isOrderStatusQuestion(question = "") {
   const status=/(estado|seguimiento|d[oó]nde|localiz|llegar[aá]|cu[aá]ndo llega|cu[aá]ndo recibir|ya ha salid|en camino|rastre)/i.test(text);
   return order && status;
 }
+function deliveryDetails(row) {
+  // A tracking number or carrier is displayed only when recorded on the order.
+  const metadata=row.metadata && typeof row.metadata==="object" ? row.metadata : {};
+  const shipment=metadata.shipment && typeof metadata.shipment==="object" ? metadata.shipment : {};
+  const shipping=metadata.shipping && typeof metadata.shipping==="object" ? metadata.shipping : {};
+  const method=String(row.fulfillment_method||row.delivery_method||metadata.fulfillmentMethod||metadata.deliveryMethod||metadata.shippingMethod||"").toLowerCase();
+  const dropship=/dropship|cj.*fulfill|proveedor externo/.test(method)||metadata.isDropshipping===true;
+  const own=/local_delivery|own_delivery|reparto propio|entrega propia|herencia delivery/.test(method)||metadata.isLocalDelivery===true;
+  if(own){
+    return " Es una entrega gestionada directamente por Herencia en Barcelona; no necesita transportista externo ni código de seguimiento. El estado se actualizará cuando el equipo registre la preparación y la entrega.";
+  }
+  if(!dropship)return "";
+  const carrier=String(row.carrier||row.shipping_carrier||shipment.carrier||shipping.carrier||metadata.carrier||"").trim();
+  const tracking=String(row.tracking_number||row.trackingNumber||shipment.trackingNumber||shipment.tracking_number||shipping.trackingNumber||metadata.trackingNumber||"").trim();
+  const details=[" Es un envío gestionado por el proveedor de dropshipping."];
+  if(carrier && carrier.length<=90)details.push(" Transportista registrado: "+carrier.replace(/[<>]/g,"")+".");
+  if(tracking && tracking.length<=110)details.push(" Código de seguimiento registrado: "+tracking.replace(/[<>]/g,"")+".");
+  if(!carrier&&!tracking)details.push(" El proveedor todavía no ha facilitado datos de seguimiento; no puedo confirmar qué transportista utilizará.");
+  return details.join("");
+}
 export function summarizeOwnOrders(orders) {
   const rows=(Array.isArray(orders)?orders:[])
     .filter(o=>o&&typeof o==="object")
@@ -27,9 +47,9 @@ export function summarizeOwnOrders(orders) {
   const summary=rows.map((row,index)=>{
     const raw=String(row.status||"").trim().toLowerCase();
     const label=STATUS_LABELS[raw]||"pendiente de consultar";
-    return (index===0?"Tu pedido más reciente":"Otro pedido") + " figura como «"+label+"»";
+    return (index===0?"Tu pedido más reciente":"Otro pedido") + " figura como «"+label+"»."+deliveryDetails(row);
   });
-  return summary.join(". ")+". Puedes entrar a Mi cuenta para ver tus pedidos. Este estado procede de los registros de Herencia, pero no confirma la ubicación exacta de un transportista.";
+  return summary.join(" ")+" Puedes entrar a Mi cuenta para ver tus pedidos. Este estado procede de los registros de Herencia y no garantiza la ubicación en tiempo real.";
 }
 export async function answerOwnOrderStatus({ question, ownerType, ownerId, loadCustomerAccounts, listOrdersByEmail }) {
   if(!isOrderStatusQuestion(question)) return null;
