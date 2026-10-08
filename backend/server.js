@@ -1,3 +1,4 @@
+import { registerSupportV2 } from "./supportV2.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
@@ -2563,6 +2564,7 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
   }
 });
 
+let supportV2Cleanup = async () => {};
 app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) => {
   try {
     const accounts = await loadCustomerAccounts();
@@ -2573,6 +2575,7 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
     const customerId = account.id;
     const deletedAt = new Date().toISOString();
 
+    await supportV2Cleanup(String(customerId));
     await deleteStorageValue("customerSupport:" + String(customerId));
     const supportIndex = parseStoredJson(await readStorageValue("customerSupportIndex"), []);
     if (supportIndex.includes(customerId)) await upsertStorageValue("customerSupportIndex", JSON.stringify(supportIndex.filter(id => id !== customerId)));
@@ -9142,6 +9145,13 @@ app.patch("/api/admin/support/:customerId/meta", requireAdmin, supportLimiter, a
     return res.status(500).json({ error: "No se pudo actualizar la consulta" });
   }
 });
+
+const supportV2 = registerSupportV2(app, {
+  getCustomerSession, loadCustomerAccounts, isAdmin, readStorageValue, upsertStorageValue,
+  deleteStorageValue, hasNeon, listNeonStorageByPrefix, mutateNeonStorageValue,
+  requirePrimaryDatabase, sign, parseCookies, cookieOptions, supportLimiter,
+});
+supportV2Cleanup = supportV2.removeCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
