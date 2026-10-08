@@ -453,6 +453,7 @@ export const backendApi = {
       reason?: string;
       product?: any;
       copiedImages?: number;
+      imageImportWarning?: string;
       source?: string;
     }>("/api/admin/catalog/import-url/product", {
       method: "POST",
