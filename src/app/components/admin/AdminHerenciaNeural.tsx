@@ -18,6 +18,7 @@ const neuralCodeStageLabels:Record<string,string>={
  PREVIEW_PENDING:"Esperando la compilación de Railway",
  PREVIEW_READY:"Vista previa verificada",
  PREVIEW_FAILED:"Falló la compilación de la vista previa",
+ REPAIRING_BUILD:"Neural está reparando el error en la rama de pruebas",
  PROGRAMMING:"Neural está programando",
  RUNNING:"Programación en curso",
  FAILED:"La tarea ha fallado",
@@ -85,6 +86,7 @@ export function AdminHerenciaNeural(){
  const [bulkDiscardConfirm,setBulkDiscardConfirm]=useState(false);
  const [bulkDiscardBusy,setBulkDiscardBusy]=useState(false);
  const [checkingPreviewId,setCheckingPreviewId]=useState<string|null>(null);
+ const [repairingCodeId,setRepairingCodeId]=useState<string|null>(null);
  const [previewFeedback,setPreviewFeedback]=useState<{id:string;message:string}|null>(null);
  const [codePollWarning,setCodePollWarning]=useState<string|null>(null);
  const [codeLastSynced,setCodeLastSynced]=useState<string|null>(null);
@@ -290,6 +292,21 @@ export function AdminHerenciaNeural(){
    toast.error(e.message||"No se pudo actualizar la preview");
   }finally{setCheckingPreviewId(null)}
  };
+ const repairPreview=async(id:string)=>{
+  if(repairingCodeId||!window.confirm("¿Pedir a Neural UN intento de reparación en esta rama de prueba? No se publicará nada en producción."))return;
+  setRepairingCodeId(id);
+  try{
+   const response=await backendApi.neuralRepairCodePreview(id);
+   if(response?.task?.id){
+    setTasks(prev=>prev.map((task:any)=>task.id===id?response.task:task));
+    setPinnedCodeReview(response.task?.status==="REVIEW_REQUIRED"?response.task:null);
+   }
+   if(response?.outcome?.repairFailed)toast.error(response?.outcome?.error||"No se pudo reparar");
+   else toast.success("Reparación solicitada. Neural trabaja en la rama y comprobará la nueva preview.");
+   await refresh();
+  }catch(e:any){toast.error(e?.message||"No se pudo iniciar la reparación")}
+  finally{setRepairingCodeId(null)}
+ };
  const acceptPreview=async(id:string)=>{if(!window.confirm("¿Aceptar este cambio y publicarlo en main?"))return;try{await backendApi.neuralAcceptCodePreview(id);toast.success("Cambio aceptado. Se ha enviado a main para despliegue.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo aceptar el cambio")}};
  const discardPreview=async(id:string)=>{
   if(discardingCodeId||bulkDiscardBusy)return;
@@ -422,6 +439,8 @@ export function AdminHerenciaNeural(){
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">{String(preview.buildErrors)}</pre>
         <p className="mt-2 font-semibold">No se ha publicado este cambio. Corrige el código de la rama y vuelve a comprobar.</p>
        </details>
+       {failed&&preview.buildErrors&&Number(result.repairAttempts||0)<1&&<button type="button" disabled={Boolean(repairingCodeId)} onClick={()=>void repairPreview(activeCodeReview.id)} className="mt-3 w-full rounded-xl border border-amber-500 bg-amber-100 px-4 py-3 text-sm font-black text-amber-950 disabled:opacity-50">{repairingCodeId===activeCodeReview.id?"INICIANDO REPARACIÓN…":"INTENTAR REPARACIÓN AUTOMÁTICA (1 VEZ)"}</button>}
+       {Number(result.repairAttempts||0)>=1&&<p className="mt-2 text-xs font-bold text-amber-900">Ya se utilizó el intento automático de reparación. Si vuelve a fallar, revisa el PR en GitHub. {result.repairError||""}</p>}
       {previewFeedback?.id===activeCodeReview.id&&<p role="status" className="mt-3 rounded-xl border border-indigo-200 bg-white p-3 text-xs font-semibold text-indigo-950">{previewFeedback.message}</p>}
 
       <div className="mt-4">
