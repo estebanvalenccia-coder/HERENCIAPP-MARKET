@@ -27,3 +27,16 @@ test("CJ pricing requires a recent matching quote before queue auto-readiness", 
   assert.match(server,/Date\.now\(\) - quoteTimestamp < 24/);
   assert.match(server,/record\.items\s*\|\|\s*\[\]\)\.some\(\(item\) => !item\.cjPricingEstimate\?\.feasible/);
 });
+
+test("free-coupon checkout queues supplier fulfillment for review without CJ purchases", () => {
+  const checkoutStart = server.indexOf('app.post("/api/stripe/create-payment-intent"');
+  const freeStart = server.indexOf("    if (totalCents === 0) {\n      try {", checkoutStart);
+  const stripeIntentStart = server.indexOf("      const paymentIntentParams = {", freeStart);
+  assert.ok(checkoutStart > 0 && freeStart > checkoutStart && stripeIntentStart > freeStart);
+  const freeFlow = server.slice(freeStart, stripeIntentStart);
+  assert.match(freeFlow, /const paidOrder = await patchOrderPrimary\(orderId, \{ status: "paid" \}\);/);
+  assert.match(freeFlow, /buildSupplierFulfillmentsForOrder\(paidOrder\)/);
+  assert.match(freeFlow, /supplier_fulfillment_error/);
+  assert.doesNotMatch(freeFlow, /executeSupplierFulfillment\(/);
+  assert.doesNotMatch(freeFlow, /executeCjSupplierFulfillment\(/);
+});
