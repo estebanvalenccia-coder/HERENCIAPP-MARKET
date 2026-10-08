@@ -7660,7 +7660,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
     if (!["envio", "servicio"].includes(normalizedDeliveryMethod)) {
-      return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
+      return res.status(400).json({ error: "Método de entrega no válido" });
     }
 
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
@@ -7677,8 +7677,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       }
 
       const id = String(raw?.id ?? "").trim();
-      const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
-      if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
+      const requestedQuantity = Number(raw?.quantity ?? raw?.qty ?? 0);
+      if (!id || !Number.isInteger(requestedQuantity) || requestedQuantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
 
       const product = byId.get(id);
       if (!product || product.active === false || product.deletedAt) {
@@ -7695,7 +7695,14 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         return res.status(409).json({ error: `Variante no disponible para ${product.name}` });
       }
 
-      const trackInventory = product.trackInventory !== false;
+      const service = isServiceProduct(product);
+      const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+      const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+      const quantity = service ? Number(raw?.serviceHours ?? requestedQuantity) : requestedQuantity;
+      if (!Number.isInteger(quantity) || quantity < (service ? minHours : 1) || quantity > (service ? maxHours : 1000)) {
+        return res.status(400).json({ error: "Cantidad u horas de servicio no válidas" });
+      }
+      const trackInventory = !service && product.trackInventory !== false;
       const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
       const stockKey = `${id}::${selectedVariantName || "base"}`;
       const requested = Number(requestedByProduct.get(stockKey) || 0) + quantity;
@@ -7726,7 +7733,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
-        serviceBooking: isServiceProduct(product),
+        serviceBooking: service,
+        serviceHours: service ? quantity : undefined,
         type: product.type,
         collection: product.collection,
         collections: product.collections,
@@ -7735,7 +7743,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       });
     }
 
-    const serviceOnly = authoritativeItems.length > 0 && authoritativeItems.every(promotionIsService);
+    const serviceOnly = authoritativeItems.length > 0 && authoritativeItems.every(isServiceProduct);
     if (normalizedDeliveryMethod === "servicio" && !serviceOnly) {
       return res.status(400).json({ error: "Los productos físicos requieren entrega a domicilio" });
     }
@@ -7753,12 +7761,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
-    await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
+    if (!serviceOnly) await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
 
     const shippingAddress = metadata?.shippingAddress || {};
     const shippingQuote = serviceOnly ? null : await calculateShippingQuote(shippingAddress);
     const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+    if (shippingQuote && maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
       return res.status(400).json({
         error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
         distanceKm: shippingQuote.distanceKm,
