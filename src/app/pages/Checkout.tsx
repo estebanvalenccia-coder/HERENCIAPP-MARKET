@@ -18,6 +18,15 @@ const isServiceItem = (item: any) =>
   item?.collection === "servicios" ||
   (Array.isArray(item?.collections) && item.collections.includes("servicios"));
 
+const isCjSupplierItem = (item: any) => {
+  const meta = item?.metadata && typeof item.metadata === "object" ? item.metadata : item || {};
+  const sourceHost = String(meta.sourceHost || "").replace(/^www\./, "").toLowerCase();
+  let fromUrl = "";
+  try { fromUrl = new URL(String(meta.sourceProductUrl || "")).hostname.toLowerCase().replace(/^www\./, ""); } catch {}
+  return String(meta.fulfillmentType || "").toLowerCase() === "dropship" &&
+    (sourceHost === "cjdropshipping.com" || fromUrl === "cjdropshipping.com");
+};
+
 const serviceHoursOf = (item: any) => {
   const min = Math.max(1, Number(item?.serviceMinHours ?? item?.metadata?.serviceMinHours ?? 1));
   const max = Math.max(min, Number(item?.serviceMaxHours ?? item?.metadata?.serviceMaxHours ?? 3));
@@ -75,6 +84,9 @@ export function Checkout() {
   const hasServices = useMemo(() => cartItems.some(isServiceItem), [cartItems]);
   const hasPhysicalItems = useMemo(() => cartItems.some((item: any) => !isServiceItem(item)), [cartItems]);
   const onlyServices = hasServices && !hasPhysicalItems;
+  const hasCjItems = useMemo(() => cartItems.some(isCjSupplierItem), [cartItems]);
+  const cjOnly = useMemo(() => cartItems.length > 0 && cartItems.every(isCjSupplierItem), [cartItems]);
+  const mixedCjCart = hasCjItems && !cjOnly;
   const deliveryMethod = onlyServices ? "servicio" : "envio";
 
   const salesAttribution = useMemo(() => {
@@ -134,6 +146,13 @@ export function Checkout() {
   }, []);
 
   useEffect(() => {
+    if (cjOnly) {
+      setShippingCost(0);
+      setShippingInfo({ distanceText: "Envío directo CJ a España", destination: "España" });
+      setShippingError("");
+      setShippingLoading(false);
+      return;
+    }
     if (!hasPhysicalItems) {
       setShippingCost(0);
       setShippingInfo(null);
@@ -190,6 +209,7 @@ export function Checkout() {
     return () => window.clearTimeout(timeoutId);
   }, [
     hasPhysicalItems,
+    cjOnly,
     form.address,
     form.city,
     form.postalCode,
@@ -202,6 +222,7 @@ export function Checkout() {
   useEffect(() => {
     if (
       !hasPhysicalItems ||
+      cjOnly ||
       !form.requestedDate ||
       businessSuite.scheduledOrdersEnabled === false
     ) {
@@ -234,7 +255,7 @@ export function Checkout() {
       });
 
     return () => { active = false; };
-  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, businessSuite.scheduledOrdersEnabled]);
+  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, cjOnly, businessSuite.scheduledOrdersEnabled]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + lineTotal(item), 0);
   const shipping = hasPhysicalItems ? shippingCost : 0;
@@ -244,6 +265,10 @@ export function Checkout() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const validateForm = () => {
+    if (mixedCjCart) {
+      toast.error("El envío directo de CJ y los productos de reparto local deben comprarse en pedidos separados.");
+      return false;
+    }
     if (!cartItems.length) {
       toast.error("Tu carrito está vacío");
       navigate("/carrito");
@@ -260,22 +285,22 @@ export function Checkout() {
       return false;
     }
 
-    if (hasPhysicalItems && shippingLoading) {
+    if (hasPhysicalItems && !cjOnly && shippingLoading) {
       toast.error("Espera un momento, estamos calculando el envío");
       return false;
     }
 
-    if (hasPhysicalItems && shippingError) {
+    if (hasPhysicalItems && !cjOnly && shippingError) {
       toast.error("Revisa la dirección de envío antes de continuar");
       return false;
     }
 
-    if (hasPhysicalItems && form.requestedDate && deliveryAvailabilityError) {
+    if (hasPhysicalItems && !cjOnly && form.requestedDate && deliveryAvailabilityError) {
       toast.error(deliveryAvailabilityError);
       return false;
     }
 
-    if (hasPhysicalItems && deliveryAvailabilityLoading) {
+    if (hasPhysicalItems && !cjOnly && deliveryAvailabilityLoading) {
       toast.error("Espera un momento, estamos comprobando la capacidad de reparto");
       return false;
     }
@@ -307,8 +332,8 @@ export function Checkout() {
     serviceBooking: hasServices,
     serviceOnly: onlyServices,
     shippingDistance: hasPhysicalItems ? shippingInfo : null,
-    requestedDate: form.requestedDate || null,
-    requestedTimeSlot: form.requestedTimeSlot || null,
+    requestedDate: cjOnly ? null : form.requestedDate || null,
+    requestedTimeSlot: cjOnly ? null : form.requestedTimeSlot || null,
     deliveryInstructions: hasPhysicalItems ? form.deliveryInstructions || null : null,
     serviceAddress: hasServices
       ? {
@@ -324,6 +349,9 @@ export function Checkout() {
           city: form.city,
           postalCode: form.postalCode,
           province: form.province,
+          country: "ES",
+          name: form.name,
+          phone: form.phone,
         }
       : null,
   };
