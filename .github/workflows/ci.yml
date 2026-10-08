@@ -18,10 +18,15 @@ jobs:
         run: npm install
 
       - name: Full tests and frontend build
-        run: npm run build 2>&1 | tee full-build.log
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee full-build.log
 
       - name: Backend syntax
+        shell: bash
         run: |
+          set -o pipefail
           node --check backend/server.js 2>&1 | tee backend-syntax.log
           node --check backend/neonGateway.js 2>&1 | tee -a backend-syntax.log
           node --check backend/neonDb.js 2>&1 | tee -a backend-syntax.log
