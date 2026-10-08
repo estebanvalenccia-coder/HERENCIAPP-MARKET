@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
   cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
@@ -6399,6 +6400,50 @@ async function recordCjExternalActionResult(key, operationId, status, cjOrderId 
   });
 }
 
+// Re-quote the exact Spanish postcode before creating an external order.
+// This is read-only and sends no customer's name, phone or street to CJ.
+async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUsd) {
+  const line = record.items?.[0] || {};
+  const sourceUrl = String(line.sourceProductUrl || "");
+  const pid = (() => {
+    try {
+      return new URL(sourceUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\\.html$/i)?.[1] || "";
+    } catch { return ""; }
+  })();
+  if (!pid) throw cjManualError("Falta la URL original válida de CJ para verificar el precio.");
+  const vid = String(line.supplierVariantId || "");
+  const zip = String(record.shippingAddress?.postalCode || "");
+  let variant, freight;
+  try {
+    [variant, freight] = await Promise.all([
+      verifyCjVariantPrice({ pid, vid }),
+      quoteCjVariantShipping({
+        vid, quantity: 1,
+        origin: String(supplier.cjFromCountryCode || "CN").toUpperCase(),
+        destination: "ES", zip,
+      }),
+    ]);
+  } catch {
+    throw cjManualError("CJ no pudo confirmar la variante o el envío al código postal. No se creará ningún pedido.");
+  }
+  const method = (freight?.methods || []).find((row) =>
+    String(row.name || "") === String(line.cjPreferredLogisticName || ""));
+  const postageUsd = Number(method?.totalPostageUsd);
+  const productUsd = Number(variant?.priceUsd);
+  if (!(productUsd >= 0 && postageUsd >= 0) ||
+      !Number.isFinite(productUsd) || !Number.isFinite(postageUsd) ||
+      !method || !variant || variant.vid !== vid) {
+    throw cjManualError("El transportista o la variante CJ no están disponibles para ese código postal.");
+  }
+  const liveTotalUsd = Math.round((productUsd + postageUsd) * 100) / 100;
+  const limitUsd = Number(supplier.cjMaxPaymentUsd);
+  if (!(liveTotalUsd > 0) || liveTotalUsd > maxApprovedUsd || liveTotalUsd > limitUsd ||
+      Math.abs(liveTotalUsd - savedUsd) > Math.max(0.50, savedUsd * 0.02)) {
+    throw cjManualError("CJ ha cambiado el coste o transporte para el código postal. Recalcula la cotización y autoriza el nuevo importe.");
+  }
+  return { liveTotalUsd, verifiedZip: zip, logisticName: method.name };
+}
+
 async function verifyCjCustomerFunding(order, funding) {
   if (funding.freeCoupon) return; // Admin consciously funds the free coupon.
   const paymentIntentId = String(
@@ -6496,6 +6541,7 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
       throw cjManualError("Debes confirmar expresamente que Herencia asume el coste del cupón.");
     }
     await verifyCjCustomerFunding(order, preview.funding);
+    await verifyCjManualLiveCosts(record, supplier, approvedMaxUsd, preview.estimatedPaymentUsd);
     const operationId = crypto.randomUUID();
     const now = new Date().toISOString();
     const reserve = await mutateCjManualRecord(record.id,
