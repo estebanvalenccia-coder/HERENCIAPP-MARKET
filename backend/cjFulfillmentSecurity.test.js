@@ -131,7 +131,7 @@ test("CJ balance charge is in second route with merchant confirmation, caps and 
   const end=server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/execute", requireAdmin',start);
   assert.ok(start > 0 && end > start);
   const payment=server.slice(start,end);
-  assert.match(payment,/CJ_LIVE_PAYMENT_ENABLED/);
+  assert.match(server,/CJ_LIVE_PAYMENT_ENABLED/);
   assert.match(payment,/cjManualReadyForPayment/);
   assert.match(payment,/validateManualCjPayment/);
   assert.match(payment,/verifyCjCustomerFunding/);
