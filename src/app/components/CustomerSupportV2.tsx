@@ -83,10 +83,16 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
     }).catch(cause => {
       if (live) { setError(cause.message || "No se pudo iniciar la conversación"); setLoading(false); }
     });
+    // EventSource updates are immediate when the server supports streaming.
+    // Periodic refresh remains as a fallback after a disconnect.
+    const eventSource = typeof EventSource !== "undefined" ? new EventSource("/api/support/v2/events", { withCredentials: true }) : null;
+    eventSource?.addEventListener("update", () => {
+      if (document.visibilityState === "visible") void update(true);
+    });
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible" && live) void update(true);
-    }, 4500);
-    return () => { live = false; window.clearInterval(timer); };
+    }, 20000);
+    return () => { live = false; eventSource?.close(); window.clearInterval(timer); };
   }, []);
   const active = threads.find(t => t.id === selectedId) || null;
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [selectedId, active?.messages?.length]);
