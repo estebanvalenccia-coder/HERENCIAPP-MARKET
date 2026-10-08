@@ -4975,6 +4975,23 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
+  // A sandbox flag in our database is NOT proof that CJ's endpoint is isolated.
+  // Never send customer addresses or create supplier orders during simulation.
+  if (sandbox) {
+    return {
+      fulfillment: {
+        ...record,
+        provider: "cj",
+        providerSandbox: true,
+        status: "approval_required",
+        blocker: "Simulación segura: no se ha enviado ninguna solicitud de pedido a CJ. Revisa variante, envío, coste y margen antes de activar el modo real.",
+        updatedAt: now,
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
   const missingMapping = (record.items || []).filter((item) => !String(item?.supplierVariantId || "").trim() && !String(item?.supplierSku || "").trim());
   if (missingMapping.length) {
     return {
