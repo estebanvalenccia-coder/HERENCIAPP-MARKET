@@ -19,7 +19,7 @@ export function Privacy() {
             </h1>
           </motion.div>
           <p className="text-muted-foreground">
-            Última actualización: 3 de octubre de 2026
+            Última actualización: 8 de octubre de 2026
           </p>
         </div>
       </div>
@@ -42,6 +42,7 @@ export function Privacy() {
                 <li>Dirección de entrega para pedidos</li>
                 <li>Información de pago (procesada de forma segura)</li>
                 <li>Historial de pedidos y preferencias</li>
+                <li>Mensajes y respuestas enviados a través del servicio de atención al cliente</li>
                 <li>Datos de navegación y cookies</li>
               </ul>
             </section>
@@ -54,6 +55,7 @@ export function Privacy() {
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li>Procesar y entregar tus pedidos</li>
                 <li>Comunicarnos contigo sobre tus pedidos y servicios</li>
+                <li>Gestionar consultas, incidencias y conversaciones del chat de atención al cliente</li>
                 <li>Mejorar nuestros productos y servicios</li>
                 <li>Enviarte ofertas y promociones (con tu consentimiento)</li>
                 <li>Cumplir con obligaciones legales</li>
@@ -79,6 +81,11 @@ export function Privacy() {
                 <li>Proveedores de inteligencia artificial únicamente cuando una función solicitada lo requiera</li>
                 <li>Autoridades u organismos cuando exista una obligación legal</li>
               </ul>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold mb-4">Atención al cliente e inteligencia artificial</h2>
+              <p className="text-muted-foreground">Las consultas enviadas desde el sitio y la cuenta registrada se guardan en la bandeja privada de atención al cliente, asociadas a tu cuenta. Si marcas expresamente la opción de asistencia con IA, el texto de esa consulta puede enviarse al proveedor de IA para generar una respuesta automática. Puedes dejar la opción desmarcada y escribir directamente al equipo. No incluyas contraseñas, números de tarjeta u otros datos especialmente sensibles en el chat.</p>
             </section>
 
             <section>
