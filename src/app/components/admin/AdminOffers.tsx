@@ -10,6 +10,7 @@ export function AdminOffers() {
   const [percent, setPercent] = useState(10);
   const [maxUses, setMaxUses] = useState(1);
   const [expiresAt, setExpiresAt] = useState("");
+  const [scope, setScope] = useState("all");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     const load = () => {
@@ -35,7 +36,7 @@ export function AdminOffers() {
     if (![10,50,100].includes(percent)) return alert("Selecciona 10, 50 o 100 %.");
     if (!Number.isInteger(maxUses) || maxUses < 1) return alert("Límite de usos no válido.");
     const previous = codes.find((x) => String(x.code).toUpperCase() === normalized);
-    await persistCodes([...codes.filter((x) => String(x.code).toUpperCase() !== normalized), { ...previous, code: normalized, type: "percent", value: percent, active: true, maxUses, expiresAt: expiresAt || null }]);
+    await persistCodes([...codes.filter((x) => String(x.code).toUpperCase() !== normalized), { ...previous, code: normalized, type: "percent", value: percent, active: true, maxUses, scope, expiresAt: expiresAt || null }]);
   };
 
 
@@ -89,19 +90,20 @@ export function AdminOffers() {
 
       <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
         <h3 className="text-xl font-bold">Códigos promocionales</h3>
-        <p className="text-sm text-muted-foreground">Crea descuentos para tus clientes. La validación del pedido debe realizarse en el servidor.</p>
+        <p className="text-sm text-muted-foreground">Por defecto se aplica a todos los productos, servicios y categorías. La validación del pedido debe realizarse en el servidor.</p>
         <div className="grid gap-3 sm:grid-cols-4">
           <label>Código<input className="mt-1 w-full rounded-lg border p-2" value={code} onChange={(e) => setCode(e.target.value)} placeholder="HERENCIA100" /></label>
           <label>Descuento<select className="mt-1 w-full rounded-lg border p-2" value={percent} onChange={(e) => setPercent(Number(e.target.value))}><option value={10}>10 %</option><option value={50}>50 %</option><option value={100}>100 %</option></select></label>
           <label>Usos máximos<input type="number" min={1} className="mt-1 w-full rounded-lg border p-2" value={maxUses} onChange={(e) => setMaxUses(Number(e.target.value))} /></label>
           <label>Caducidad<input type="date" className="mt-1 w-full rounded-lg border p-2" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></label>
         </div>
+        <label className="block text-sm">Aplicar a<select className="mt-1 w-full max-w-sm rounded-lg border p-2" value={scope} onChange={(e) => setScope(e.target.value)}><option value="all">Toda la tienda (predeterminado)</option><option value="products">Solo productos</option><option value="services">Solo servicios</option></select></label>
         <button disabled={saving} onClick={saveCode} className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50">Guardar cupón</button>
         {codes.map((entry) => <div key={entry.code} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
           <span className="font-semibold">{entry.code} · {entry.value}{entry.type === "fixed" ? " €" : " %"}</span>
           <div className="flex gap-2">
             <button className="rounded-lg border px-3 py-1" disabled={saving} onClick={() => persistCodes(codes.map((x) => x.code === entry.code ? { ...x, active: x.active === false } : x))}>{entry.active === false ? "Activar" : "Desactivar"}</button>
-            <button className="rounded-lg border px-3 py-1" disabled={saving} onClick={() => { setCode(entry.code); setPercent(Number(entry.value) || 10); setMaxUses(Number(entry.maxUses) || 1); setExpiresAt(entry.expiresAt || ""); }}>Editar</button>
+            <button className="rounded-lg border px-3 py-1" disabled={saving} onClick={() => { setCode(entry.code); setPercent(Number(entry.value) || 10); setMaxUses(Number(entry.maxUses) || 1); setExpiresAt(entry.expiresAt || ""); setScope(entry.scope || "all"); }}>Editar</button>
             <button className="rounded-lg border px-3 py-1" disabled={saving} onClick={() => persistCodes(codes.filter((x) => x.code !== entry.code))}>Eliminar</button>
           </div>
         </div>)}
