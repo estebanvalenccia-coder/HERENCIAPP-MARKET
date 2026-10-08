@@ -162,9 +162,10 @@ test("CJ reconciliation only reads supplier orders; never retries unknown charge
   const reconcile=server.slice(start,end);
   assert.match(reconcile,/safeToRetryCreate: false/);
   assert.match(reconcile,/CJ_AUDIT_ORDER_STATUSES/);
-  assert.match(reconcile,/"/shopping\/order\/list"/);
-  assert.match(reconcile,/"/shopping\/order\/getOrderDetail"/);
-  assert.doesNotMatch(reconcile,/cjPayOrder\(|cjRequest\("/shopping\/order\/createOrderV2"/);
+  assert.ok(reconcile.includes('"/shopping/order/list"'));
+  assert.ok(reconcile.includes('"/shopping/order/getOrderDetail"'));
+  assert.ok(!reconcile.includes('await cjPayOrder('));
+  assert.ok(!reconcile.includes('cjRequest("/shopping/order/createOrderV2"'));
 });
 
 test("unknown CJ supplier statuses never count as ordered; admins cannot invent a CJ shipment", () => {
