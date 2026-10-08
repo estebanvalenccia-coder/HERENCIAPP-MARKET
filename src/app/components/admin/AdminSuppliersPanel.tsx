@@ -984,7 +984,67 @@ export function AdminSuppliersPanel() {
             </div>
           </button>)}
       </div>
+
     </section>
+
+    {cjApprovalPreview && cjApprovalAction && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="presentation">
+      <div role="dialog" aria-modal="true" aria-labelledby="cj-manual-dialog-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-card p-6 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h3 id="cj-manual-dialog-title" className="text-xl font-bold">
+            {cjApprovalAction === "create" ? "Crear pedido CJ SIN pagar" : "Autorizar pago real al proveedor CJ"}
+          </h3>
+          <button type="button" disabled={cjApprovalSubmitting} onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
+            className="rounded-lg border px-3 py-2 text-sm font-semibold">Cerrar</button>
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">Pedido Herencia #{String(cjApprovalPreview.orderId).slice(0, 8)}. Son dos decisiones distintas: primero crear en CJ sin pagar, después autorizar el pago.</p>
+        <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
+          <p><strong>Cliente pagó:</strong> {cjApprovalPreview.customerTotalEur == null ? "No verificado" : money(cjApprovalPreview.customerTotalEur)}</p>
+          <p><strong>Coste proveedor estimado:</strong> {money(cjApprovalPreview.estimatedSupplierCostEur)}</p>
+          <p><strong>CJ presupuestado:</strong> {"$"}{Number(cjApprovalPreview.estimatedSupplierTotalUsd).toFixed(2)} USD</p>
+          {cjApprovalAction === "pay" && <p><strong>Importe real CJ a pagar:</strong> {"$"}{Number(cjApprovalPreview.providerActualPaymentUsd).toFixed(2)} USD</p>}
+          <p><strong>Límite configurado:</strong> {"$"}{Number(cjApprovalPreview.maxSupplierPaymentUsd).toFixed(2)} USD</p>
+          <p><strong>Modo proveedor:</strong> {cjApprovalPreview.sandbox ? "SANDBOX: compras bloqueadas" : "REAL"}</p>
+          {cjApprovalPreview.externalOrderId && <p><strong>Pedido CJ:</strong> {cjApprovalPreview.externalOrderId}</p>}
+        </div>
+        {cjApprovalPreview.merchantFunded && <label className="mt-4 flex items-start gap-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+          <input type="checkbox" checked={cjMerchantPaysAcknowledged} onChange={(event) => setCjMerchantPaysAcknowledged(event.target.checked)}
+            className="mt-1 h-4 w-4" />
+          Acepto expresamente que Herencia asume el coste de este pedido con descuento o cupón, aunque el cliente haya pagado 0,00 €.
+        </label>}
+        <label className="mt-4 block text-sm font-semibold">
+          Límite máximo que autorizas para esta operación (USD)
+          <input type="number" min="0.01" step="0.01" max={cjApprovalPreview.maxSupplierPaymentUsd}
+            value={cjApprovalMaxUsd} onChange={(event) => setCjApprovalMaxUsd(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base" />
+        </label>
+        <label className="mt-3 block text-sm font-semibold">
+          Escribe exactamente <code className="rounded bg-muted px-1">{cjApprovalAction === "create" ? cjApprovalPreview.createConfirmation : cjApprovalPreview.paymentConfirmation}</code>
+          <input type="text" autoComplete="off" value={cjApprovalConfirmation} onChange={(event) => setCjApprovalConfirmation(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-base" placeholder="Confirmación de administrador" />
+        </label>
+        {((cjApprovalAction === "create" && !cjApprovalPreview.canCreate) || (cjApprovalAction === "pay" && !cjApprovalPreview.canPay)) &&
+          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+            {cjApprovalAction === "create" ? cjApprovalPreview.creationReason : cjApprovalPreview.paymentReason}
+            {" "}No se enviará ninguna compra ni pago mientras esté bloqueado.
+          </p>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={cjApprovalSubmitting} onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
+            className="rounded-xl border border-border px-4 py-2 font-semibold">Cancelar</button>
+          <button type="button" disabled={
+            cjApprovalSubmitting ||
+            (cjApprovalAction === "create" ? !cjApprovalPreview.canCreate : !cjApprovalPreview.canPay) ||
+            cjApprovalConfirmation !== (cjApprovalAction === "create" ? cjApprovalPreview.createConfirmation : cjApprovalPreview.paymentConfirmation) ||
+            (cjApprovalPreview.merchantFunded && !cjMerchantPaysAcknowledged) ||
+            !(Number(cjApprovalMaxUsd) > 0) ||
+            Number(cjApprovalMaxUsd) > cjApprovalPreview.maxSupplierPaymentUsd ||
+            Number(cjApprovalMaxUsd) < (cjApprovalAction === "create" ? cjApprovalPreview.estimatedSupplierTotalUsd : cjApprovalPreview.providerActualPaymentUsd)
+          } onClick={() => void submitCjApproval()}
+            className="rounded-xl bg-emerald-800 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            {cjApprovalSubmitting ? "Confirmando…" : cjApprovalAction === "create" ? "Confirmar creación SIN pagar" : "Confirmar PAGO real en CJ"}
+          </button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
