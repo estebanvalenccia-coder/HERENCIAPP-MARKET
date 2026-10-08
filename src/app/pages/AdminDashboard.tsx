@@ -1,4 +1,4 @@
-import { AdminSupport } from "../components/CustomerSupport";
+import { AdminSupportPro } from "../components/admin/AdminSupportPro";
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -961,7 +961,7 @@ export function AdminDashboard() {
           {currentSection === "business-suite" && <AdminBusinessSuite />}
 
           {currentSection === "crm" && <AdminCRMClients />}
-          {currentSection === "support" && <AdminSupport />}
+          {currentSection === "support" && <AdminSupportPro />}
 
           {currentSection === "suppliers" && <AdminSuppliersPanel />}
 
