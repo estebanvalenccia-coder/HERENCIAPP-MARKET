@@ -1266,6 +1266,9 @@ app.post(
         if (orderUpdateError || !updatedOrder) {
           console.error("Error actualizando pedido pagado:", orderUpdateError?.message || "Pedido no encontrado");
         } else {
+          await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) =>
+            console.error("No se pudo contabilizar el cupón pagado:", error?.message || error)
+          );
           let inventoryOrder = updatedOrder;
           try {
             if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
@@ -1332,6 +1335,11 @@ app.post(
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
       if (orderId) {
+        const failedOrder = await getOrderPrimary(orderId).catch(() => null);
+        if (failedOrder && failedOrder.status !== "paid") {
+          await updateOrderCouponUsage(failedOrder, "release").catch((error) =>
+            console.error("No se pudo liberar el cupón tras pago fallido:", error?.message || error));
+        }
         await releaseCommerceStockReservation(orderId).catch((error) =>
           console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
         );
@@ -8163,6 +8171,8 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   }
 
   if (!isPaid && !isProcessing) {
+    if (!wasAlreadyPaidForIntent) await updateOrderCouponUsage(updatedOrder, "release").catch((error) =>
+      console.error("No se pudo liberar el cupón:", error?.message || error));
     await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
       error: `Stripe devolvió estado: ${paymentIntent.status}`,
@@ -8174,6 +8184,8 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   let emailResults = null;
 
   if (isPaid) {
+    await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) =>
+      console.error("No se pudo contabilizar el cupón pagado:", error?.message || error));
     let inventoryOrder = updatedOrder;
     try {
       if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
