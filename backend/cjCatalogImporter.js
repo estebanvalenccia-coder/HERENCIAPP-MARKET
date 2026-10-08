@@ -86,3 +86,58 @@ export async function queryCjProductVariants(pidInput) {
   });
   return { pid, variants, total: data.length, truncated: data.length > variants.length, currency: "USD", source: "cj_api" };
 }
+
+/**
+ * Read-only shipping quotation for one CJ VID. Queries destination-country rates;
+ * final freight/taxes can differ once the customer's full postal address is known.
+ */
+export async function quoteCjVariantShipping({ vid, quantity = 1, origin = "CN", destination = "ES", zip = "" } = {}) {
+  const safeVid = String(vid || "").trim();
+  if (!/^[a-z0-9-]{8,100}$/i.test(safeVid)) {
+    const error = new Error("Selecciona una variante CJ válida"); error.statusCode = 422; throw error;
+  }
+  const from = String(origin || "").trim().toUpperCase();
+  const to = String(destination || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(from) || !/^[A-Z]{2}$/.test(to)) {
+    const error = new Error("Origen o destino inválido"); error.statusCode = 422; throw error;
+  }
+  const qty = Math.max(1, Math.min(20, Math.floor(Number(quantity || 1))));
+  const postal = String(zip || "").trim();
+  if (postal && !/^[a-z0-9 -]{2,15}$/i.test(postal)) {
+    const error = new Error("Código postal no válido"); error.statusCode = 422; throw error;
+  }
+  const accessToken = await token();
+  const data = await cjFetch("/logistic/freightCalculate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "CJ-Access-Token": accessToken },
+    body: JSON.stringify({
+      startCountryCode: from,
+      endCountryCode: to,
+      ...(postal ? {zip:postal}:{}),
+      products: [{ quantity: qty, vid: safeVid }],
+    }),
+  });
+  if (!Array.isArray(data)) {
+    const error = new Error("CJ no devolvió opciones de transporte para el producto");
+    error.statusCode = 502; throw error;
+  }
+  const price = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+  };
+  const methods = data.slice(0, 60).map((entry) => ({
+    name: String(entry?.logisticName || "").slice(0, 120),
+    time: String(entry?.logisticAging || "").slice(0, 80),
+    shippingUsd: price(entry?.logisticPrice),
+    taxesUsd: price(entry?.taxesFee),
+    clearanceUsd: price(entry?.clearanceOperationFee),
+    totalPostageUsd: price(entry?.totalPostageFee),
+  })).filter(entry => entry.name && entry.shippingUsd !== null);
+  return {
+    origin: from, destination: to, zip: postal, vid:safeVid, quantity:qty,
+    methods: methods.sort((a,b) => (a.totalPostageUsd ?? a.shippingUsd) - (b.totalPostageUsd ?? b.shippingUsd)),
+    currency: "USD", rateType: "country_estimate", source: "cj_api",
+    warning: "Estimación preliminar, no una cotización final. Revisa coste total, impuestos y destino exacto antes de pagar."
+  };
+}
