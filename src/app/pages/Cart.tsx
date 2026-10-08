@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { ArrowRight, Clock3, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { backendStorage } from "../lib/backendStorage";
+import { parseShippingSettings } from "../../../backend/shippingPolicy.js";
 
 interface CartItem {
   id: number | string;
@@ -77,8 +78,13 @@ export function Cart() {
     loadCart();
     try {
       const shippingSettings = JSON.parse(backendStorage.getItem("shippingSettings") || "{}");
-      const cost = Number(shippingSettings.cost);
-      if (Number.isFinite(cost) && cost >= 0) setShippingCost(cost);
+      const policy = parseShippingSettings(shippingSettings);
+      if (policy.advancedEnabled) {
+        setShippingCost(policy.enabled ? Number(policy.basePrice || 0) : 0);
+      } else {
+        const cost = Number(shippingSettings.cost);
+        if (Number.isFinite(cost) && cost >= 0) setShippingCost(cost);
+      }
     } catch {}
 
     window.addEventListener("storage", loadCart);
