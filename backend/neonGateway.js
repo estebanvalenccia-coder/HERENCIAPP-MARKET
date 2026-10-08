@@ -18,6 +18,7 @@ import {
   checkR2Connection,
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
+import { previewCjProductUrl } from "./cjCatalogImporter.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -243,7 +244,10 @@ const server=http.createServer(async(req,res)=>{try{
     const body=await bodyJson(req);
     const url=String(body?.url||"").trim();
     if(!url)return json(res,400,{error:"Pega la URL del catálogo del proveedor"});
-    const result=await analyzeCatalogUrl(url,{maxProducts:Math.max(1,Math.min(100,Number(body?.maxProducts||60)))});
+    const hostname=(()=>{try{return new URL(url).hostname.toLowerCase()}catch{return ""}})();
+    const result=["cjdropshipping.com","www.cjdropshipping.com"].includes(hostname)
+      ? await previewCjProductUrl(url)
+      : await analyzeCatalogUrl(url,{maxProducts:Math.max(1,Math.min(100,Number(body?.maxProducts||60)))});
     return json(res,200,{...result,source:"supplier_url"});
   }
 
