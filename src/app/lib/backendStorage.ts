@@ -780,6 +780,8 @@ export const backendApi = {
       fulfillments: any[];
       suppliers: any[];
       autopilotConnectorConfigured: boolean;
+      cjConfigured?: boolean;
+      cjLiveEnabled?: boolean;
     }>("/api/admin/supplier-fulfillments");
   },
 
@@ -810,6 +812,35 @@ export const backendApi = {
         method: "PATCH",
         body: JSON.stringify(payload),
       }
+    );
+  },
+
+  async testCjSupplierConnection() {
+    return request<{
+      configured: boolean;
+      liveEnabled?: boolean;
+      account?: { name?: string; email?: string };
+      balance?: any;
+      error?: string;
+    }>("/api/admin/suppliers/cj/test", { method: "POST", body: JSON.stringify({}) });
+  },
+
+  async syncSupplierFulfillment(id: string) {
+    return request<{ fulfillment: any }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/sync`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+  },
+
+  async createSupplierDispute(id: string, payload: {
+    expectType: 1 | 2;
+    messageText?: string;
+    imageUrl?: string[];
+    videoUrl?: string[];
+  }) {
+    return request<{ supplierReturn: any }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/dispute`,
+      { method: "POST", body: JSON.stringify(payload) }
     );
   },
 
