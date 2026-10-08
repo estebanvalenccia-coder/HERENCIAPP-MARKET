@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
@@ -258,6 +259,7 @@ const protectedKeys = new Set([
   "adminFlowerCosts",
   "bouquetCatalog",
   "adminLatestFlowerQuote",
+  "discountCodes",
   "heroBanner",
   "ctaBanner",
   "siteContent",
@@ -296,6 +298,7 @@ const adminOnlyStorageKeys = [
   "adminAutomationNotifications",
   "customerAccounts",
   "customerReferrals",
+  "discountCodes",
 ];
 
 function parseCookies(req) {
@@ -1266,6 +1269,9 @@ app.post(
         if (orderUpdateError || !updatedOrder) {
           console.error("Error actualizando pedido pagado:", orderUpdateError?.message || "Pedido no encontrado");
         } else {
+          await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) =>
+            console.error("No se pudo contabilizar el cupón pagado:", error?.message || error)
+          );
           let inventoryOrder = updatedOrder;
           try {
             if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
@@ -1332,6 +1338,11 @@ app.post(
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
       if (orderId) {
+        const failedOrder = await getOrderPrimary(orderId).catch(() => null);
+        if (failedOrder && failedOrder.status !== "paid") {
+          await updateOrderCouponUsage(failedOrder, "release").catch((error) =>
+            console.error("No se pudo liberar el cupón tras pago fallido:", error?.message || error));
+        }
         await releaseCommerceStockReservation(orderId).catch((error) =>
           console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
         );
@@ -1382,7 +1393,7 @@ app.use((req, res, next) => {
   ) {
     return passwordResetRateLimit(req, res, next);
   }
-  if (req.method === "POST" && path === "/api/stripe/create-payment-intent") {
+  if (req.method === "POST" && ["/api/stripe/create-payment-intent", "/api/coupons/preview"].includes(path)) {
     return checkoutRateLimit(req, res, next);
   }
   next();
@@ -3538,38 +3549,44 @@ async function validateCommerceOrderPayload(order = {}) {
     const variantName = String(item?.selectedVariant || "");
     const variant = variantName ? (product.variants || []).find(v => String(v?.name || v) === variantName) : null;
     if (variantName && !variant) throw new Error(`Variante no disponible: ${product.name}`);
-    const qty = Math.max(1, Math.floor(Number(item?.quantity || 1)));
-    const trackInventory = product.trackInventory !== false;
+    const service = isServiceProduct(product);
+    const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+    const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+    const qty = Number(service ? (item?.serviceHours ?? item?.quantity) : item?.quantity);
+    if (!Number.isInteger(qty) || qty < (service ? minHours : 1) || qty > (service ? maxHours : 1000)) throw new Error("Cantidad u horas no válidas");
+    const trackInventory = !service && product.trackInventory !== false;
     const available = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
     if (trackInventory && available < qty) throw new Error(`Stock insuficiente para ${product.name}`);
     const unitPrice = normalizeMoney(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price));
     subtotal += unitPrice * qty;
-    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty,trackInventory});
+    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty,serviceBooking:service,type:service?"service":"product",trackInventory});
   }
 
   subtotal = normalizeMoney(subtotal);
   let discount = 0;
   const couponCode = String(order?.metadata?.coupon || "").trim().toUpperCase();
   if (couponCode) {
-    const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
-    const rule = (Array.isArray(rules) ? rules : []).find(r => String(r.code||"").trim().toUpperCase()===couponCode && r.active!==false && (!r.expiresAt || new Date(r.expiresAt)>=new Date()));
-    if (!rule) throw new Error("El cupón ya no es válido");
-    discount = rule.type === "fixed" ? Number(rule.value||0) : subtotal * Number(rule.value||0) / 100;
-    discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
+    const quote = await quoteCoupon(couponCode, normalizedItems);
+    if (quote.rule && (await availableCouponUses(quote.rule)) === 0) throw new Error("El cupón ha alcanzado su límite de usos");
+    discount = quote.discount;
   }
   const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
   const source = String(order?.metadata?.source || "");
   const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
 
-  if (source === "frontend_checkout" && deliveryMethod !== "envio") {
-    throw new Error("Herencia Market solo ofrece entrega a domicilio");
+  const hasPhysicalItems = normalizedItems.some((item) => !isServiceProduct(item));
+  if (source === "frontend_checkout" && !["envio", "servicio"].includes(deliveryMethod)) {
+    throw new Error("Método de entrega no válido");
+  }
+  if (source === "frontend_checkout" && hasPhysicalItems && deliveryMethod !== "envio") {
+    throw new Error("Los productos físicos requieren entrega");
   }
 
   let shipping = normalizeMoney(order.shipping || 0);
   let shippingQuote = null;
 
   let directCjShipping = false;
-  if (source === "frontend_checkout") {
+  if (source === "frontend_checkout" && hasPhysicalItems) {
     const shippingAddress = order?.metadata?.shippingAddress || {};
     const supplierOperations = await readSupplierOperations();
     const cjCheckout = await evaluateCjCheckout({
@@ -3592,7 +3609,7 @@ async function validateCommerceOrderPayload(order = {}) {
     }
   }
 
-  if (!directCjShipping) await assertDeliveryAvailability({
+  if (hasPhysicalItems && !directCjShipping) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
     suite,
@@ -3604,14 +3621,102 @@ async function validateCommerceOrderPayload(order = {}) {
     shipping,
     discount,
     total: normalizeMoney(subtotal - discount + shipping),
-    deliveryMethod: source === "frontend_checkout" ? "envio" : deliveryMethod,
+    deliveryMethod: source === "frontend_checkout" ? (hasPhysicalItems ? "envio" : "servicio") : deliveryMethod,
     shippingQuote,
   };
 }
 
+const COUPON_USAGE_KEY = "discountCodeRedemptions";
+
+async function getCouponRules() {
+  const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
+  return Array.isArray(rules) ? rules : [];
+}
+
+async function quoteCoupon(code, items) {
+  return calculateCouponDiscount({ code, rules: await getCouponRules(), items });
+}
+
+async function availableCouponUses(rule) {
+  if (!rule || !rule.maxUses) return null;
+  const usage = parseStoredJson(await readStorageValue(COUPON_USAGE_KEY), {});
+  const used = (Array.isArray(usage[rule.code]) ? usage[rule.code] : []).filter(
+    (row) => row.status === "redeemed" || row.status === "held"
+  ).length;
+  return Math.max(0, rule.maxUses - used);
+}
+
+async function changeCouponUsage(action, quote, orderId) {
+  if (!quote?.code || !quote.rule?.maxUses) return;
+  if (!hasNeon()) {
+    const error = new Error("El control seguro de cupones requiere Neon. No se procesó el pedido.");
+    error.statusCode = 503;
+    throw error;
+  }
+  await mutateNeonStorageValue(COUPON_USAGE_KEY, (raw) => {
+    const state = parseStoredJson(raw, {});
+    const next = action === "claim"
+      ? claimCouponUse(state, quote.rule, orderId)
+      : settleCouponUse(state, quote.code, orderId, action);
+    return JSON.stringify(next);
+  });
+}
+
+async function updateOrderCouponUsage(order, action) {
+  const code = normalizeCouponCode(order?.metadata?.coupon);
+  if (!code) return;
+  const rules = await getCouponRules();
+  const rule = rules.find((row) => normalizeCouponCode(row.code) === code);
+  if (!rule?.maxUses) return;
+  await changeCouponUsage(action, { code, rule }, order.id);
+}
+
+async function authoritativeCouponPreviewItems(rawItems) {
+  if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > 100) throw new Error("El carrito está vacío o supera el límite");
+  const products = await loadAuthoritativeProducts();
+  const byId = new Map((Array.isArray(products) ? products : []).map((row) => [String(row.id), row]));
+  const items = [];
+  for (const raw of rawItems) {
+    const bouquet = await authoritativeCustomBouquetItem(raw);
+    if (bouquet) { items.push(bouquet); continue; }
+    const product = byId.get(String(raw?.id ?? ""));
+    if (!product || product.active === false || product.deletedAt) throw new Error("Uno de los productos no está disponible");
+    const variantName = String(raw?.selectedVariant || "");
+    const variant = variantName ? (product.variants || []).find((row) => String(row?.name || row) === variantName) : null;
+    if (variantName && !variant) throw new Error("Variante no disponible");
+    const service = isServiceProduct(product);
+    const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+    const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+    const quantity = Number(service ? (raw?.serviceHours ?? raw?.quantity) : raw?.quantity);
+    if (!Number.isInteger(quantity) || quantity < (service ? minHours : 1) || quantity > (service ? maxHours : 1000)) {
+      throw new Error("Cantidad u horas de servicio no válidas");
+    }
+    const basePrice = product.onSale && Number(product.salePrice) > 0 ? Number(product.salePrice) : Number(product.price);
+    const price = Number(variant?.price ?? basePrice);
+    if (!Number.isFinite(price) || price <= 0) throw new Error("Precio de producto no válido");
+    items.push({ id: product.id, price, quantity, serviceBooking: service, type: service ? "service" : "product" });
+  }
+  return items;
+}
+
+app.post("/api/coupons/preview", async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const code = normalizeCouponCode(req.body?.code);
+    const items = await authoritativeCouponPreviewItems(req.body?.items);
+    const quote = await quoteCoupon(code, items);
+    if (quote.rule && (await availableCouponUses(quote.rule)) === 0) {
+      return res.status(409).json({ error: "El cupón ha alcanzado su límite de usos" });
+    }
+    res.json({ ok: true, code: quote.code, discount: quote.discount, eligibleSubtotal: quote.eligibleSubtotal });
+  } catch (error) {
+    res.status(409).json({ error: error.message || "No se pudo validar el cupón" });
+  }
+});
+
 app.post("/api/orders", async (req, res) => {
   let order = req.body;
-  const id = order.id || crypto.randomUUID();
+  const id = isAdmin(req) && order?.id ? String(order.id) : crypto.randomUUID();
   try {
     const verified = await validateCommerceOrderPayload(order);
     order = {
@@ -3638,6 +3743,19 @@ app.post("/api/orders", async (req, res) => {
     return res.status(409).json({error:validationError.message,code:"commerce_validation_failed"});
   }
 
+  let promotionQuote = null;
+  if (order?.metadata?.coupon) {
+    try {
+      promotionQuote = await quoteCoupon(order.metadata.coupon, order.items);
+      if ((await availableCouponUses(promotionQuote.rule)) === 0) {
+        return res.status(409).json({ error: "El cupón ha alcanzado su límite de usos" });
+      }
+      await changeCouponUsage("claim", promotionQuote, id);
+    } catch (error) {
+      return res.status(error.statusCode || 409).json({ error: error.message || "No se pudo reservar el cupón" });
+    }
+  }
+
   let data;
   try {
     data = await insertOrderPrimary({
@@ -3646,7 +3764,9 @@ app.post("/api/orders", async (req, res) => {
       customer_name: order.customerName || order.name || null,
       payment_method: order.paymentMethod || "manual",
       delivery_method: order.deliveryMethod || "envio",
-      status: order.status || "pending",
+      status: isAdmin(req)
+        ? (order.status || "pending")
+        : (String(order.paymentMethod || "") === "transferencia" ? "pending_transfer_review" : "pending_store_confirmation"),
       subtotal: order.subtotal || 0,
       shipping: order.shipping || 0,
       total: order.total || 0,
@@ -3654,6 +3774,7 @@ app.post("/api/orders", async (req, res) => {
       metadata: order.metadata || {},
     });
   } catch (error) {
+    if (promotionQuote) await changeCouponUsage("release", promotionQuote, id).catch(() => null);
     return res.status(500).json({ error: error.message });
   }
 
@@ -7639,8 +7760,6 @@ async function restockColombiaOrderInventory(order) {
 }
 
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
-  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
-
   try {
     const {
       currency = "eur",
@@ -7661,6 +7780,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     const checkoutMarket = String(metadata?.checkoutMarket || "").toLowerCase();
     if (checkoutMarket === "colombia") {
+      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
       const normalizedCurrency = String(currency || "").toLowerCase();
       if (normalizedCurrency !== "cop") {
         return res.status(400).json({ error: "Los pedidos de Colombia deben cobrarse en COP" });
@@ -7793,7 +7913,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
-    if (normalizedDeliveryMethod !== "envio") {
+    if (!["envio", "servicio"].includes(normalizedDeliveryMethod)) {
       return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
     }
 
@@ -7811,12 +7931,16 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       }
 
       const id = String(raw?.id ?? "").trim();
-      const quantity = Math.max(0, Math.floor(Number(raw?.quantity ?? raw?.qty ?? 0)));
-      if (!id || quantity <= 0) return res.status(400).json({ error: "Artículo o cantidad inválida" });
-
       const product = byId.get(id);
       if (!product || product.active === false || product.deletedAt) {
         return res.status(409).json({ error: `Producto no disponible: ${raw?.name || id}` });
+      }
+      const service = isServiceProduct(product);
+      const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+      const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+      const quantity = Number(service ? (raw?.serviceHours ?? raw?.quantity) : (raw?.quantity ?? raw?.qty));
+      if (!Number.isInteger(quantity) || quantity < (service ? minHours : 1) || quantity > (service ? maxHours : 1000)) {
+        return res.status(400).json({ error: "Cantidad u horas de servicio inválidas" });
       }
 
       const selectedVariantName = String(raw?.selectedVariant || "").trim();
@@ -7829,7 +7953,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         return res.status(409).json({ error: `Variante no disponible para ${product.name}` });
       }
 
-      const trackInventory = product.trackInventory !== false;
+      const trackInventory = !service && product.trackInventory !== false;
       const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
       const stockKey = `${id}::${selectedVariantName || "base"}`;
       const requested = Number(requestedByProduct.get(stockKey) || 0) + quantity;
@@ -7860,71 +7984,86 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
+        serviceBooking: service,
+        type: product.type,
+        collection: product.collection,
+        collections: product.collections,
         salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
         salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
       });
     }
 
+    const serviceOnly = authoritativeItems.length > 0 && authoritativeItems.every(isServiceProduct);
+    if (normalizedDeliveryMethod === "servicio" && !serviceOnly) {
+      return res.status(400).json({ error: "Los productos físicos requieren entrega a domicilio" });
+    }
     const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
-    let authoritativeDiscount = 0;
     const couponCode = String(metadata?.coupon || "").trim().toUpperCase();
+    let authoritativeDiscount = 0;
+    let verifiedPromotion = null;
     if (couponCode) {
-      const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
-      const rule = (Array.isArray(rules) ? rules : []).find(
-        (entry) =>
-          String(entry?.code || "").trim().toUpperCase() === couponCode &&
-          entry?.active !== false &&
-          (!entry?.expiresAt || new Date(entry.expiresAt) >= new Date())
-      );
-      if (!rule) return res.status(409).json({ error: "El cupón ya no es válido" });
-      authoritativeDiscount = rule.type === "fixed"
-        ? Number(rule.value || 0)
-        : authoritativeSubtotal * Number(rule.value || 0) / 100;
-      authoritativeDiscount = normalizeMoney(
-        Math.min(authoritativeSubtotal, Math.max(0, authoritativeDiscount))
-      );
+      verifiedPromotion = await quoteCoupon(couponCode, authoritativeItems);
+      if ((await availableCouponUses(verifiedPromotion.rule)) === 0) {
+        return res.status(409).json({ error: "Este código ha alcanzado su límite de usos" });
+      }
+      authoritativeDiscount = verifiedPromotion.discount;
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
     const shippingAddress = metadata?.shippingAddress || {};
-    const supplierOperations = await readSupplierOperations();
-    const directCj = await evaluateCjCheckout({
-      lines: authoritativeItems, catalog, shippingAddress,
-      discount: authoritativeDiscount, suppliers: supplierOperations.suppliers || [],
-    });
-    let shippingQuote;
-    let authoritativeShipping;
-    if (directCj.cjOnly) {
-      shippingQuote = directCj.shippingQuote;
-      authoritativeShipping = 0; // Never apply Herencia's local kilometre charge to CJ deliveries.
-    } else {
-      await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
-      shippingQuote = await calculateShippingQuote(shippingAddress);
-      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
-        return res.status(400).json({
-          error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
-          distanceKm: shippingQuote.distanceKm,
-        });
-      }
-      authoritativeShipping = Number(shippingQuote.price || 0);
-      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-      if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
+    let shippingQuote = null;
+    let authoritativeShipping = 0;
+    if (!serviceOnly) {
+      const supplierOperations = await readSupplierOperations();
+      const directCj = await evaluateCjCheckout({
+        lines: authoritativeItems, catalog, shippingAddress,
+        discount: authoritativeDiscount, suppliers: supplierOperations.suppliers || [],
+      });
+      if (directCj.cjOnly) {
+        shippingQuote = directCj.shippingQuote;
         authoritativeShipping = 0;
+      } else {
+        await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
+        shippingQuote = await calculateShippingQuote(shippingAddress);
+        const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+        if (maxDeliveryKm > 0 && Number(shippingQuote?.distanceKm || 0) > maxDeliveryKm) {
+          return res.status(400).json({
+            error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
+            distanceKm: shippingQuote?.distanceKm || 0,
+          });
+        }
+        authoritativeShipping = Number(shippingQuote?.price || 0);
+        const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+        if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) authoritativeShipping = 0;
       }
     }
 
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
     const totalCents = Math.round(authoritativeTotal * 100);
-    if (!Number.isFinite(totalCents) || totalCents < 50) {
+    if (!Number.isFinite(totalCents) || totalCents < 0 || (totalCents > 0 && totalCents < 50)) {
       return res.status(400).json({ error: "Importe inválido para Stripe" });
+    }
+    if (totalCents === 0 && (!verifiedPromotion || authoritativeDiscount <= 0)) {
+      return res.status(409).json({ error: "Un pedido gratuito necesita un cupón válido" });
+    }
+    if (totalCents > 0 && !stripe) {
+      return res.status(503).json({ error: "Stripe no está configurado en el backend" });
     }
 
     const orderId = crypto.randomUUID();
     const stockReservation = await reserveCommerceStock(orderId, authoritativeItems);
+    if (verifiedPromotion) {
+      try {
+        await changeCouponUsage("claim", verifiedPromotion, orderId);
+      } catch (promotionError) {
+        if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+        throw promotionError;
+      }
+    }
     const secureMetadata = {
       ...metadata,
       source: "frontend_checkout",
+      freeCouponOrder: totalCents === 0,
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
       pricingSource: "backend_catalog_coupons_and_maps",
@@ -7946,7 +8085,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         id: orderId,
         customer_email: customerEmail || null,
         customer_name: customerName || null,
-        payment_method: selectedPaymentMethod,
+        payment_method: totalCents === 0 ? "coupon" : selectedPaymentMethod,
         delivery_method: normalizedDeliveryMethod,
         status: "payment_pending",
         subtotal: authoritativeSubtotal,
@@ -7956,10 +8095,50 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         metadata: secureMetadata,
       });
     } catch (orderError) {
-      if (stockReservation.active) {
-        await releaseCommerceStockReservation(orderId).catch(() => null);
-      }
+      if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+      if (verifiedPromotion) await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
       return res.status(500).json({ error: orderError.message });
+    }
+
+    if (totalCents === 0) {
+      try {
+        const pendingOrder = await getOrderPrimary(orderId);
+        await commitOnlineOrderInventory(pendingOrder);
+        await consumeCommerceStockReservation(orderId);
+        await changeCouponUsage("redeem", verifiedPromotion, orderId);
+        const paidOrder = await patchOrderPrimary(orderId, { status: "paid" });
+        broadcastAdminOrderEvent(paidOrder, "order_paid");
+        void emitNeuralBusinessEvent("order.paid", normalizeOrder(paidOrder));
+        try { await sendOrderConfirmationEmails(paidOrder, "free_coupon_order"); }
+        catch (emailError) { console.error("Email pedido gratuito:", emailError?.message || emailError); }
+        return res.json({
+          freeOrder: true, orderId, paymentIntentId: null,
+          totals: { subtotal: authoritativeSubtotal, discount: authoritativeDiscount, shipping: authoritativeShipping, total: 0 },
+          shippingQuote,
+        });
+      } catch (error) {
+        console.error("Error al procesar un pedido gratuito:", error);
+        const current = await getOrderPrimary(orderId).catch(() => null);
+        if (current?.metadata?.inventoryCommittedAt) {
+          // A committed stock movement is a sale. Never free the coupon and allow a second sale.
+          await patchOrderPrimary(orderId, {
+            status: "paid",
+            metadata: { ...(current.metadata || {}), freeCouponRecovery: String(error?.message || error) },
+          }).catch(() => null);
+          await addAutomationNotification({
+            type: "free_coupon_order_recovery",
+            title: "Pedido gratuito requiere revisión",
+            message: "Pedido #" + orderId.slice(0, 8) + ": revisar confirmación de cupón y email",
+            entityType: "order", entityId: orderId, dedupeKey: "free-coupon:" + orderId,
+          }).catch(() => null);
+          return res.json({ freeOrder: true, orderId, paymentIntentId: null,
+            totals: { subtotal: authoritativeSubtotal, discount: authoritativeDiscount, shipping: authoritativeShipping, total: 0 }, shippingQuote });
+        }
+        await patchOrderPrimary(orderId, { status: "payment_error", metadata: { ...secureMetadata, freeOrderError: String(error?.message || error) } }).catch(() => null);
+        if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+        await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
+        return res.status(500).json({ error: "No se pudo confirmar el pedido gratuito. Contacta con atención al cliente." });
+      }
     }
 
     try {
@@ -7985,9 +8164,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         shippingQuote,
       });
     } catch (error) {
-      if (stockReservation.active) {
-        await releaseCommerceStockReservation(orderId).catch(() => null);
-      }
+      if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+      if (verifiedPromotion) await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
       await patchOrderPrimary(orderId, {
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
@@ -8265,6 +8443,8 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   }
 
   if (!isPaid && !isProcessing) {
+    if (!wasAlreadyPaidForIntent) await updateOrderCouponUsage(updatedOrder, "release").catch((error) =>
+      console.error("No se pudo liberar el cupón:", error?.message || error));
     await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
       error: `Stripe devolvió estado: ${paymentIntent.status}`,
@@ -8276,6 +8456,8 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   let emailResults = null;
 
   if (isPaid) {
+    await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) =>
+      console.error("No se pudo contabilizar el cupón pagado:", error?.message || error));
     let inventoryOrder = updatedOrder;
     try {
       if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
