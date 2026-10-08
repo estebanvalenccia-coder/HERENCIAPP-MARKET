@@ -1632,6 +1632,13 @@ export const backendApi = {
     });
   },
 
+  async generateGeneralProductDescription(payload: { productName: string; collection?: string; baseDescription?: string }) {
+    return request<{ result: { description: string }; source: string }>("/api/admin/ai/product-description", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
       method: "POST",
