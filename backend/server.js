@@ -3867,12 +3867,6 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  if (status === "cancelled") {
-    await updateOrderCouponUsage(data, "release").catch((error) => console.warn("Cupón no liberado al cancelar:", error.message));
-  } else if (["paid", "confirmed", "preparing", "processing", "ready", "delivered"].includes(status)) {
-    await updateOrderCouponUsage(data, "redeem").catch((error) => console.warn("Cupón no confirmado:", error.message));
-  }
-
   // Pedidos online no-Stripe (transferencia / confirmación manual) comprometen
   // inventario al ser confirmados por el administrador. Stripe lo hace al
   // confirmar el PaymentIntent, por lo que commitOnlineOrderInventory sigue
@@ -3896,6 +3890,12 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
         code: "inventory_conflict",
       });
     }
+  }
+
+  if (status === "cancelled") {
+    await updateOrderCouponUsage(data, "release").catch((error) => console.warn("Cupón no liberado al cancelar:", error.message));
+  } else if (["paid", "confirmed", "preparing", "processing", "ready", "delivered"].includes(status)) {
+    await updateOrderCouponUsage(data, "redeem").catch((error) => console.warn("Cupón no confirmado:", error.message));
   }
 
   const shouldNotifyCustomer = ["confirmed", "preparing", "processing", "ready", "delivered"].includes(status);
