@@ -3534,37 +3534,43 @@ async function validateCommerceOrderPayload(order = {}) {
     const variantName = String(item?.selectedVariant || "");
     const variant = variantName ? (product.variants || []).find(v => String(v?.name || v) === variantName) : null;
     if (variantName && !variant) throw new Error(`Variante no disponible: ${product.name}`);
-    const qty = Math.max(1, Math.floor(Number(item?.quantity || 1)));
-    const trackInventory = product.trackInventory !== false;
+    const service = isServiceProduct(product);
+    const minHours = Math.max(1, Number(product.serviceMinHours ?? product.metadata?.serviceMinHours ?? 1));
+    const maxHours = Math.max(minHours, Number(product.serviceMaxHours ?? product.metadata?.serviceMaxHours ?? 3));
+    const qty = Number(service ? (item?.serviceHours ?? item?.quantity) : item?.quantity);
+    if (!Number.isInteger(qty) || qty < (service ? minHours : 1) || qty > (service ? maxHours : 1000)) throw new Error("Cantidad u horas no válidas");
+    const trackInventory = !service && product.trackInventory !== false;
     const available = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
     if (trackInventory && available < qty) throw new Error(`Stock insuficiente para ${product.name}`);
     const unitPrice = normalizeMoney(variant?.price ?? (product.onSale && product.salePrice ? product.salePrice : product.price));
     subtotal += unitPrice * qty;
-    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty,trackInventory});
+    normalizedItems.push({...item,name:product.name,price:unitPrice,quantity:qty,serviceBooking:service,type:service?"service":"product",trackInventory});
   }
 
   subtotal = normalizeMoney(subtotal);
   let discount = 0;
   const couponCode = String(order?.metadata?.coupon || "").trim().toUpperCase();
   if (couponCode) {
-    const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
-    const rule = (Array.isArray(rules) ? rules : []).find(r => String(r.code||"").trim().toUpperCase()===couponCode && r.active!==false && (!r.expiresAt || new Date(r.expiresAt)>=new Date()));
-    if (!rule) throw new Error("El cupón ya no es válido");
-    discount = rule.type === "fixed" ? Number(rule.value||0) : subtotal * Number(rule.value||0) / 100;
-    discount = normalizeMoney(Math.min(subtotal, Math.max(0, discount)));
+    const quote = await quoteCoupon(couponCode, normalizedItems);
+    if (quote.rule && (await availableCouponUses(quote.rule)) === 0) throw new Error("El cupón ha alcanzado su límite de usos");
+    discount = quote.discount;
   }
   const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
   const source = String(order?.metadata?.source || "");
   const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
 
-  if (source === "frontend_checkout" && deliveryMethod !== "envio") {
-    throw new Error("Herencia Market solo ofrece entrega a domicilio");
+  const hasPhysicalItems = normalizedItems.some((item) => !isServiceProduct(item));
+  if (source === "frontend_checkout" && !["envio", "servicio"].includes(deliveryMethod)) {
+    throw new Error("Método de entrega no válido");
+  }
+  if (source === "frontend_checkout" && hasPhysicalItems && deliveryMethod !== "envio") {
+    throw new Error("Los productos físicos requieren entrega");
   }
 
   let shipping = normalizeMoney(order.shipping || 0);
   let shippingQuote = null;
 
-  if (source === "frontend_checkout") {
+  if (source === "frontend_checkout" && hasPhysicalItems) {
     const shippingAddress = order?.metadata?.shippingAddress || {};
     shippingQuote = await calculateShippingQuote(shippingAddress);
     const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
@@ -3576,7 +3582,7 @@ async function validateCommerceOrderPayload(order = {}) {
     if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
   }
 
-  await assertDeliveryAvailability({
+  if (hasPhysicalItems) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
     suite,
@@ -3588,7 +3594,7 @@ async function validateCommerceOrderPayload(order = {}) {
     shipping,
     discount,
     total: normalizeMoney(subtotal - discount + shipping),
-    deliveryMethod: source === "frontend_checkout" ? "envio" : deliveryMethod,
+    deliveryMethod: source === "frontend_checkout" ? (hasPhysicalItems ? "envio" : "servicio") : deliveryMethod,
     shippingQuote,
   };
 }
@@ -3719,7 +3725,9 @@ app.post("/api/orders", async (req, res) => {
       customer_name: order.customerName || order.name || null,
       payment_method: order.paymentMethod || "manual",
       delivery_method: order.deliveryMethod || "envio",
-      status: order.status || "pending",
+      status: isAdmin(req)
+        ? (order.status || "pending")
+        : (String(order.paymentMethod || "") === "transferencia" ? "pending_transfer_review" : "pending_store_confirmation"),
       subtotal: order.subtotal || 0,
       shipping: order.shipping || 0,
       total: order.total || 0,
