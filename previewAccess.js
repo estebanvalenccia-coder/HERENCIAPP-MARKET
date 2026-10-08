@@ -3,8 +3,8 @@
 // the production backend. It is a visual, read-only rehearsal.
 export function isNeuralPreviewService(env=process.env){
  const name=String(env.RAILWAY_SERVICE_NAME||"");
- const branch=String(env.RAILWAY_GIT_BRANCH||"");
- return /^neural-preview-[a-f0-9]{32}$/i.test(name)&&branch.startsWith("neural/");
+ // Fail closed for ALL dedicated preview services, even if Git branch metadata is unavailable.
+ return /^neural-preview-[a-f0-9]{32}$/i.test(name);
 }
 const PUBLIC_GET_PATHS=new Set([
  "/api/storage",
