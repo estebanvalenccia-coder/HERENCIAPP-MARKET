@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
+import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
@@ -2783,6 +2784,13 @@ app.put("/api/storage/:key", async (req, res) => {
   try {
     let { value } = req.body;
 
+    if (key === "shippingSettings") {
+      let incoming;
+      try { incoming = JSON.parse(String(value)); } catch { return res.status(400).json({ error: "Formato de reglas de envío inválido" }); }
+      try { if (incoming?.advancedEnabled) validateShippingSettings(incoming); }
+      catch (error) { return res.status(400).json({ error: error.message }); }
+    }
+
     if (key === "aiSettings") {
       const current = await readStorageValue(key);
       const currentJson = current ? JSON.parse(current) : {};
@@ -3571,6 +3579,7 @@ async function validateCommerceOrderPayload(order = {}) {
     discount = quote.discount;
   }
   const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+  const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
   const source = String(order?.metadata?.source || "");
   const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
 
@@ -3604,8 +3613,20 @@ async function validateCommerceOrderPayload(order = {}) {
         throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
       }
       shipping = normalizeMoney(shippingQuote.price || 0);
-      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-      if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
+      if (shippingSettings.advancedEnabled) {
+        const authoritativeLines = normalizedItems.map(item => {
+          const product = byId.get(String(item.id)) || {};
+          return { ...item, category: product.category || "", collection: product.collection || product.collections?.[0] || "" };
+        });
+        shipping = shippingQuoteForCart({
+          settings: shippingSettings, lines: authoritativeLines,
+          distanceKm: Number(shippingQuote.distanceKm), legacyPrice: shipping,
+        });
+        shippingQuote = { ...shippingQuote, price: shipping, pricing: { model: "admin_policy_v2" } };
+      } else {
+        const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+        if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
+      }
     }
   }
 

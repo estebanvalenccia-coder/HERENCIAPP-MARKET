@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
 
 const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
 const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", {
@@ -102,6 +103,7 @@ export function Checkout() {
   const [loading, setLoading] = useState(false);
   const [showStripe, setShowStripe] = useState(false);
   const [shippingCost, setShippingCost] = useState(5);
+  const [shippingPolicy, setShippingPolicy] = useState(() => parseShippingSettings(backendStorage.getItem("shippingSettings")));
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
   const [deliveryAvailability, setDeliveryAvailability] = useState<any>(null);
@@ -138,6 +140,7 @@ export function Checkout() {
       const savedShipping = backendStorage.getItem("shippingSettings");
       if (savedShipping) {
         const settings = JSON.parse(savedShipping);
+        setShippingPolicy(parseShippingSettings(settings));
         const cost = Number(settings.cost);
         if (Number.isFinite(cost) && cost >= 0) setShippingCost(cost);
       }
@@ -191,7 +194,17 @@ export function Checkout() {
           .filter((item: any) => !isServiceItem(item))
           .reduce((sum: number, item: any) => sum + lineTotal(item), 0);
         const freeShippingFrom = Math.max(0, Number(businessSuite.freeShippingFrom || 0));
-        setShippingCost(freeShippingFrom > 0 && physicalSubtotal >= freeShippingFrom ? 0 : Number(result.price || 0));
+        const oldShipping = freeShippingFrom > 0 && physicalSubtotal >= freeShippingFrom ? 0 : Number(result.price || 0);
+        const nextShipping = shippingPolicy.advancedEnabled
+          ? shippingQuoteForCart({
+              settings: shippingPolicy, lines: cartItems.map((item:any) => ({
+                ...item, type: isServiceItem(item) ? "service" : "product",
+                category: item.category || item.collection || item.collections?.[0] || ""
+              })),
+              distanceKm: calculatedDistance, legacyPrice: Number(result.price || 0)
+            })
+          : oldShipping;
+        setShippingCost(nextShipping);
         setShippingInfo({
           distanceText: result.distanceText,
           durationText: result.durationText,
@@ -217,6 +230,7 @@ export function Checkout() {
     form.province,
     businessSuite.freeShippingFrom,
     businessSuite.maxDeliveryKm,
+    shippingPolicy,
     cartItems,
   ]);
 
