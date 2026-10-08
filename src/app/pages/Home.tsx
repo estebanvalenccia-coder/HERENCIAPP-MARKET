@@ -378,6 +378,37 @@ export function Home() {
         </div>
       </section>
 
+      {/* Plantas fáciles de cuidar */}
+      <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">Plantas fáciles de cuidar</p>
+            <h2 className="mt-2 text-3xl font-medium sm:text-4xl">Descubre nuestras opciones</h2>
+          </div>
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {catalog.slice(0, 4).map((product) => (
+            <article key={product.id} className="overflow-hidden rounded-2xl border border-[#e5e1d8] bg-white shadow-sm">
+              <Link to={`/producto/${product.id}`} className="block h-40 overflow-hidden bg-[#f1eee7]">
+                <img src={product.image} alt={product.name} className="h-full w-full object-cover transition duration-500 hover:scale-105" />
+              </Link>
+              <div className="p-3">
+                <Link to={`/producto/${product.id}`} className="line-clamp-2 min-h-10 text-sm font-black">
+                  {product.name}
+                </Link>
+                <p className="mt-2 text-base font-black text-[#315b42]">{money(Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0))}</p>
+                <Link to={`/producto/${product.id}`} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white transition hover:bg-[#234832]">
+                  Ver producto
+                </Link>
+              </div>
+            </article>
+          ))}
+          {catalog.length === 0 && (
+            <p className="col-span-full text-center text-sm text-[#6d7d72]">No hay plantas disponibles en este momento.</p>
+          )}
+        </div>
+      </section>
+
       <section className="bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="flex items-end justify-between gap-4">
