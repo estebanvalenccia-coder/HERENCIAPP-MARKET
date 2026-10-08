@@ -368,7 +368,8 @@ export function AdminSuppliersPanel() {
     mode: SupplierMode,
     supplierCost: number,
     supplierVariantId = "",
-    supplierSku = ""
+    supplierSku = "",
+    cjPreferredLogisticName = ""
   ) => {
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
@@ -387,6 +388,9 @@ export function AdminSuppliersPanel() {
           supplierCost: Math.max(0, Number(supplierCost || 0)),
           supplierVariantId: String(supplierVariantId || "").trim(),
           supplierSku: String(supplierSku || "").trim(),
+          cjPreferredLogisticName: String(cjPreferredLogisticName || "").trim().slice(0, 120),
+          cjPreferredLogisticCountry: cjPreferredLogisticName ? "ES" : "",
+          cjPreferredLogisticUpdatedAt: cjPreferredLogisticName ? new Date().toISOString() : "",
           sourceHost: metadata.sourceHost || supplier.sourceHost || sourceHostFromProduct(product),
           supplierAssignedAt: new Date().toISOString(),
         },
@@ -849,7 +853,8 @@ function ImportedProductRow({
     mode: SupplierMode,
     supplierCost: number,
     supplierVariantId?: string,
-    supplierSku?: string
+    supplierSku?: string,
+    cjPreferredLogisticName?: string
   ) => Promise<void>;
 }) {
   const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
@@ -865,7 +870,7 @@ function ImportedProductRow({
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState("");
-  const [selectedFreightName, setSelectedFreightName] = useState("");
+  const [selectedFreightName, setSelectedFreightName] = useState(String(metadata.cjPreferredLogisticName || ""));
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
   const supplierCurrency = String(metadata.supplierCurrency || "EUR").toUpperCase();
@@ -884,7 +889,6 @@ function ImportedProductRow({
     setFreightLoading(true);
     setFreightError("");
     setFreightQuote(null);
-    setSelectedFreightName("");
     try {
       const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim());
       setFreightQuote(result);
@@ -949,7 +953,7 @@ function ImportedProductRow({
     </div>
     <div className="flex gap-2">
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
-      <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku)} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
+      <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
     {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -989,6 +993,7 @@ function ImportedProductRow({
         </select>
         <span className="text-xs text-muted-foreground">{cjVariants.length} variantes consultadas</span>
       </div>}
+      {metadata.cjPreferredLogisticName && <p className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-xs font-semibold text-emerald-900">Transportista preferido guardado para España: {String(metadata.cjPreferredLogisticName)}. No se aplicará automáticamente a pedidos reales hasta validar el flujo de cumplimiento.</p>}
       {selectedCjVariant && <div className="rounded-lg bg-background/80 px-3 py-2 text-xs">
         <p className="font-semibold">Variante seleccionada: {selectedCjVariant.option || selectedCjVariant.name}</p>
         <p className="mt-1 break-all">VID: {selectedCjVariant.vid} · SKU: {selectedCjVariant.sku || "No disponible"}</p>
@@ -1024,7 +1029,12 @@ function ImportedProductRow({
           {freightQuote.methods.length > 12 && <p className="text-xs text-muted-foreground">Mostrando las primeras 12 tarifas de {freightQuote.methods.length}.</p>}
           {selectedFreightName && <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm">
             <p className="font-bold text-emerald-900">Transportista elegido para comparar: {selectedFreightName}</p>
-            <p className="mt-1 text-xs text-emerald-900">Selección de simulación, no guardada como método de envío de pedidos reales. No se enviará ninguna orden a CJ.</p>
+            <p className="mt-1 text-xs text-emerald-900">Puedes guardar esta preferencia en el producto. No se aplicará automáticamente a pedidos reales ni se enviará ninguna orden a CJ.</p>
+            <button type="button" disabled={saving || !supplierId || !supplierVariantId}
+              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName)}
+              className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+              {saving ? "Guardando…" : "Guardar transportista preferido"}
+            </button>
             {(() => {
               const option = freightQuote.methods.find((entry: any) => entry.name === selectedFreightName);
               if (!option || freightQuote.variant?.priceUsd == null) return null;
