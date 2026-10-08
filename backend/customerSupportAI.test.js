@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsHumanSupport, answerGeneralSupport } from "./customerSupportAI.js";
+import { needsHumanSupport, answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
 
 test("payments, refunds, deliveries and human requests must transfer to an agent", () => {
   for (const query of [
@@ -31,4 +31,22 @@ test("email and long phone numbers are not forwarded to a model", async () => {
   assert.equal(result.needsHuman, true);
   const phoneResult = await answerGeneralSupport("Llámame al +34 612 345 678");
   assert.equal(phoneResult.needsHuman, true);
+});
+
+test("AI replies never overwrite a human reply or a newer customer message", () => {
+  const oldUserMessage = { id: "user-1", role: "customer", text: "Horario" };
+  const open = { status: "open", messages: [oldUserMessage] };
+  assert.equal(canAppendSupportAIReply(open, "user-1"), true);
+
+  const withAgent = { status: "answered", messages: [...open.messages, { id: "agent-1", role: "agent" }] };
+  assert.equal(canAppendSupportAIReply(withAgent, "user-1"), false);
+
+  const withNewMessage = {
+    status: "open",
+    messages: [...open.messages, { id: "user-2", role: "customer", text: "Nueva consulta" }],
+  };
+  assert.equal(canAppendSupportAIReply(withNewMessage, "user-1"), false);
+  assert.equal(canAppendSupportAIReply(withNewMessage, "user-2"), true);
+  assert.equal(canAppendSupportAIReply({ ...open, status: "resolved" }, "user-1"), false);
+  assert.equal(canAppendSupportAIReply(open, ""), false);
 });

@@ -1,5 +1,5 @@
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
-import { answerGeneralSupport } from "./customerSupportAI.js";
+import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
 import Stripe from "stripe";
@@ -9011,6 +9011,18 @@ async function appendSupportMessage(id, role, text, account = null, source = "",
   }
   return thread;
 }
+// Descarta las respuestas de IA atrasadas si el cliente o un agente ya continuaron.
+async function appendSupportAIReply(id, reply, sourceMessageId, needsHuman) {
+  const { thread } = await mutateSupportThread(id, current => {
+    if (!canAppendSupportAIReply(current, sourceMessageId)) return current;
+    const message = supportMessage("assistant", String(reply).slice(0, 1000));
+    current.messages = [...current.messages, message].slice(-300);
+    current.updatedAt = message.createdAt;
+    if (!needsHuman) current.status = "automated";
+    return current;
+  });
+  return thread;
+}
 app.get("/api/customer/support", requireCustomer, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
@@ -9042,13 +9054,15 @@ app.post("/api/customer/support", requireCustomer, supportLimiter, async (req, r
           : "";
         const publicContext = "Herencia Market. Horario publicado: " + hours.slice(0, 700)
           + ". Para dudas de pagos, pedidos, devoluciones o reclamaciones deriva a atención humana.";
-        const result = await answerGeneralSupport(text, publicContext);
         const sourceMessageId = thread.messages?.[thread.messages.length - 1]?.id || "";
-        thread = await appendSupportMessage(id, "assistant", result.reply, null, "", result.needsHuman ? "" : sourceMessageId);
+        const result = await answerGeneralSupport(text, publicContext);
+        thread = await appendSupportAIReply(id, result.reply, sourceMessageId, result.needsHuman);
       } catch (error) {
         console.warn("Support assistant unavailable:", error?.message || error);
-        thread = await appendSupportMessage(id, "assistant",
-          "He recibido tu consulta. Una persona de nuestro equipo la revisará en este chat.");
+        const sourceMessageId = thread.messages?.[thread.messages.length - 1]?.id || "";
+        thread = await appendSupportAIReply(id,
+          "He recibido tu consulta. Una persona de nuestro equipo la revisará en este chat.",
+          sourceMessageId, true);
       }
     }
     res.json({ thread });
