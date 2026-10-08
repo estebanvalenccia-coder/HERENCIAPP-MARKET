@@ -1,39 +1,42 @@
-// La IA solo responde preguntas generales. Los casos que afectan a una cuenta o un pedido
-// se trasladan a una persona sin enviar datos privados al proveedor del modelo.
-const HUMAN_TOPICS = /reembols|devoluci[oó]n|cancel|pedido|env[ií]o|seguim|reclam|queja|factur|cobro|cargo|pago|tarjeta|cuenta|contrase[nñ]a|datos personales|entrega|retras|incidencia|no lleg|roto|da[nñ]ad|hablar con|hablar a|persona|humano|agente|operador|whatsapp/i;
-
+// La atención humana es la última opción: no derivar automáticamente por
+// mencionar "pedido", "reembolso" o "devolución". Primero orientar sin
+// acceder ni transmitir información privada.
+const HUMAN_TOPICS = /(?:quiero|necesito|deseo|puedo|podr[ií]a|pas[aá]me|comun[ií]came).{0,45}(?:hablar|contactar|atenci[oó]n).{0,30}(?:persona|humano|agente|operador)|(?:hablar|contactar).{0,25}(?:persona|humano|agente|operador)/i;
+const SENSITIVE = /[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}|(?:\\+?\\d[\\d\\s-]{7,}\\d)/;
 export function needsHumanSupport(text = "") {
   return HUMAN_TOPICS.test(String(text));
 }
-
-export async function answerGeneralSupport(question, publicContext = "") {
-  if (needsHumanSupport(question) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s-]{7,}\d)/.test(String(question))) return { reply: "Esta consulta requiere atención personalizada. Pulsa «Hablar con mi Amigo Plantil» y una persona de Herencia te responderá desde el chat interno.", needsHuman: true };
+function guidedReply(question) {
+  const q = String(question).toLowerCase();
+  if (/reembols|devoluci[oó]n|cancel|roto|da[nñ]ad|reclam/.test(q)) return "Puedo ayudarte a revisar las opciones de devolución o reembolso. ¿El artículo llegó dañado, recibiste un producto distinto o quieres devolverlo por otro motivo? Si llegó dañado, puedes adjuntar una fotografía. No necesito datos bancarios. Para confirmar condiciones o tramitar un reembolso consultaré las políticas y, si hace falta una autorización, te ofreceré hablar con tu Amigo Plantil.";
+  if (/pedido|env[ií]o|entrega|seguim|retras|no lleg/.test(q)) return "Vamos a revisar qué ha ocurrido con tu pedido. ¿Quieres consultar el estado de entrega, comunicar un retraso o informar de un problema con lo recibido? Si necesitas datos específicos de tu pedido, tendrás que acceder a tu cuenta; no compartas información privada en este chat.";
+  if (/factur|cobro|cargo|pago|tarjeta/.test(q)) return "Puedo orientarte con la facturación o el pago. ¿Necesitas una factura, consultar los métodos de pago o informar de un cobro que no reconoces? No compartas números de tarjeta ni contraseñas. Si es una operación concreta, el equipo podrá revisarla por un canal seguro.";
+  return "";
+}
+export async function answerGeneralSupport(question, publicContext = "", history = []) {
+  if (needsHumanSupport(question)) return {reply:"Claro. Si prefieres atención personal, puedes pulsar «Hablar con mi Amigo Plantil» para continuar esta conversación con nuestro equipo.",needsHuman:true};
+  const privateInfo = SENSITIVE.test(String(question));
   const key = String(process.env.GROQ_API_KEY || "").trim();
-  if (!key) return { reply: "Por ahora no puedo responder automáticamente. Si quieres, pulsa «Hablar con mi Amigo Plantil» para enviar esta conversación al equipo.", needsHuman: true };
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    signal: AbortSignal.timeout(12000),
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
-    body: JSON.stringify({
-      model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
-      temperature: 0.15,
-      stream: false,
-      max_tokens: 270,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "Eres Herencia IA, asistente automático de ATENCIÓN AL CLIENTE de Herencia Market. Atiendes primero tú, y cuando necesitas atención humana debes ofrecer «Hablar con mi Amigo Plantil». Eres distinto al asistente de ventas. Contesta en español, breve y con amabilidad. Usa SOLO el contexto público facilitado. No inventes horarios, direcciones, precios, pedidos, disponibilidad, leyes, devoluciones ni plazos. No dices que has realizado una acción. Si falta información, marca needsHuman true. Nunca solicites datos bancarios ni contraseñas. Devuelve JSON exacto: {\\\"reply\\\":\\\"texto\\\",\\\"needsHuman\\\":boolean}." },
-        { role: "system", content: "Contexto público: " + String(publicContext || "").slice(0, 1500) },
-        { role: "user", content: String(question || "").slice(0, 800) }
-      ],
-    }),
+  const guide = guidedReply(question);
+  if (privateInfo) return {reply:guide || "Puedo orientarte sin que compartas datos privados. Cuéntame de forma general qué necesitas resolver y buscaré la mejor opción.",needsHuman:false};
+  if (!key) return {reply:guide || "Estoy aquí para ayudarte. Cuéntame un poco más sobre lo que necesitas y buscaré una solución. Si requiere una autorización especial, te conectaré con tu Amigo Plantil.",needsHuman:false};
+  const messages = [
+    {role:"system",content:"Eres Herencia IA, agente de atención al cliente de Herencia Market. Tu misión es RESOLVER antes de derivar. Conversa, haz una pregunta útil por turno, orienta en devoluciones, pedidos, plantas y servicios, y usa solo los datos verificados que recibas. No inventes políticas, pedidos, precios, stock, acciones realizadas ni plazos. Nunca solicites datos bancarios o contraseñas. No prometas un reembolso ni lo autorices. Si hace falta autorización humana o no puedes avanzar con la información disponible, marca needsHuman true y explica por qué; de otro modo false. Responde SOLO JSON con reply (texto español) y needsHuman (booleano)."},
+    {role:"system",content:"Contexto público verificado: "+String(publicContext).slice(0,2500)},
+    ...history.slice(-8).filter(x=>["customer","assistant"].includes(x.role)).map(x=>({role:x.role==="customer"?"user":"assistant",content:String(x.text||"").slice(0,650)})),
+    {role:"user",content:String(question).slice(0,800)}
+  ];
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions",{
+    method:"POST",signal:AbortSignal.timeout(12000),
+    headers:{"Content-Type":"application/json",Authorization:"Bearer "+key},
+    body:JSON.stringify({model:process.env.GROQ_MODEL||"openai/gpt-oss-120b",temperature:0.2,stream:false,max_tokens:360,response_format:{type:"json_object"},messages})
   });
-  if (!response.ok) throw new Error("Support model failed: " + response.status);
-  const payload = await response.json();
-  const raw = payload?.choices?.[0]?.message?.content || "";
-  const parsed = JSON.parse(raw);
-  const reply = String(parsed?.reply || "").trim().slice(0, 1000);
-  if (!reply) throw new Error("Support model returned empty reply");
-  return { reply, needsHuman: parsed.needsHuman !== false };
+  if(!response.ok) throw new Error("Support model failed: "+response.status);
+  const payload=await response.json();
+  const parsed=JSON.parse(payload?.choices?.[0]?.message?.content||"{}");
+  const reply=String(parsed.reply||"").trim().slice(0,1200);
+  if(!reply)throw new Error("Empty support reply");
+  return {reply,needsHuman:parsed.needsHuman===true};
 }
 
 // Evita respuestas automáticas que llegan después de la intervención humana,
