@@ -1,3 +1,4 @@
+import { CustomerSupport } from "../components/CustomerSupport";
 import { useEffect, useMemo, useState } from "react";
 import { User, Mail, Phone, MapPin, Package, LogOut, Bell, Gift, Sprout, Copy, Users, Download, Shield, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
@@ -195,6 +196,7 @@ export function Profile() {
       </div>
 
       <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8 space-y-8">
+        <CustomerSupport />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card icon={Package} label="Pedidos" value={String(orders.length)} detail={`${activeOrders.length} activos`} />
           <Card icon={Sprout} label="Puntos" value={String(loyalty?.points || 0)} detail={`${loyalty?.pointsPerEuro || 1} punto(s) por €`} />

@@ -1,3 +1,4 @@
+import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -233,7 +234,10 @@ const server=http.createServer(async(req,res)=>{try{
     const rows=await readNeonStorageValues(keys);const data={};for(const row of rows){let key=row.key;if(key.startsWith(`visitor:${id}:`))key=key.split(":").pop();data[key]=sanitize(key,row.value,isAdmin);}return json(res,200,{data,source:"neon"});
   }
   const storageMatch=path.match(/^\/api\/storage\/([^/]+)$/);
-  if(storageMatch){const key=decodeURIComponent(storageMatch[1]);const isAdmin=await adminSession(req);if(protectedKeys.has(key)&&!publicKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});const dbKey=storageKey(req,res,key);
+  if(storageMatch){const key=decodeURIComponent(storageMatch[1]);
+    // Datos privados de soporte: ni lectura ni escritura ni borrado a través del almacenamiento genérico.
+    if(isPrivateSupportStorageKey(key)) return json(res,403,{error:"Acceso no permitido"});
+    const isAdmin=await adminSession(req);if(protectedKeys.has(key)&&!publicKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});const dbKey=storageKey(req,res,key);
     if(req.method==="GET"){const value=await readNeonStorageValue(dbKey);return json(res,200,{value:sanitize(key,value,isAdmin),source:"neon"});}
     if(req.method==="PUT"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});if(!protectedKeys.has(key)&&key!=="cart"&&key!=="user")return json(res,403,{error:"Clave no permitida"});const body=await bodyJson(req);await upsertNeonStorageValue(dbKey,body.value);return json(res,200,{ok:true,source:"neon"});}
     if(req.method==="DELETE"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});await deleteNeonStorageValue(dbKey);return json(res,200,{ok:true,source:"neon"});}

@@ -61,6 +61,36 @@ export async function upsertNeonStorageValue(key, value) {
   );
 }
 
+
+/**
+ * Serializa las escrituras a una clave del almacenamiento. Es esencial para chats,
+ * donde dos mensajes concurrentes nunca deben pisarse.
+ */
+export async function mutateNeonStorageValue(key, transform) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const normalizedKey = String(key);
+  const client = await neonPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", ["storage:" + normalizedKey]);
+    const current = await client.query("select value from app_storage where key=$1", [normalizedKey]);
+    const before = current.rows?.[0]?.value ?? null;
+    const after = await transform(before);
+    if (typeof after !== "string") throw new Error("La actualización debe devolver texto");
+    await client.query(
+      "insert into app_storage (key, value, created_at, updated_at) values ($1, $2, now(), now()) on conflict (key) do update set value=excluded.value, updated_at=now()",
+      [normalizedKey, after]
+    );
+    await client.query("COMMIT");
+    return { before, value: after };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteNeonStorageValue(key) {
   if (!neonPool) throw new Error("Neon no está configurado");
   await neonPool.query("delete from app_storage where key = $1", [String(key)]);

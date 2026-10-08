@@ -1,3 +1,5 @@
+import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
+import { answerGeneralSupport } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
 import Stripe from "stripe";
@@ -14,6 +16,7 @@ import {
   upsertNeonStorageValue,
   deleteNeonStorageValue,
   listNeonStorageByPrefix,
+  mutateNeonStorageValue,
   listNeonOrders,
   getNeonOrder,
   insertNeonOrder,
@@ -2552,6 +2555,7 @@ app.get("/api/customer/privacy/export", requireCustomer, async (req, res) => {
       referrals,
       reviews,
       waitlist,
+      supportConversation: await readStorageValue("customerSupport:" + String(account.id)).then(value => parseStoredJson(value, null)),
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudieron exportar tus datos" });
@@ -2568,6 +2572,9 @@ app.delete("/api/customer/privacy/account", requireCustomer, async (req, res) =>
     const customerId = account.id;
     const deletedAt = new Date().toISOString();
 
+    await deleteStorageValue("customerSupport:" + String(customerId));
+    const supportIndex = parseStoredJson(await readStorageValue("customerSupportIndex"), []);
+    if (supportIndex.includes(customerId)) await upsertStorageValue("customerSupportIndex", JSON.stringify(supportIndex.filter(id => id !== customerId)));
     await saveCustomerAccounts(accounts.filter((item) => item.id !== customerId));
 
     const reminders = parseStoredJson(await readStorageValue(CUSTOMER_REMINDERS_KEY), [])
@@ -2721,6 +2728,11 @@ app.get("/api/storage/:key", async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
 
   const key = req.params.key;
+
+  // Las conversaciones son datos privados: jamás se exponen mediante el almacenamiento genérico.
+  if (isPrivateSupportStorageKey(key)) {
+    return res.status(403).json({ error: "Acceso no permitido" });
+  }
 
   if (protectedKeys.has(key) && !publicKeys.has(key) && !isAdmin(req)) {
     return res.status(401).json({ error: "Acceso de administrador requerido" });
@@ -8905,6 +8917,187 @@ app.use("/api/neural", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Neural proxy error:", error?.message || error);
     return res.status(502).json({ error: "No se pudo comunicar con HERENCIA Neural" });
+  }
+});
+
+
+
+app.use(["/api/customer/support", "/api/admin/support"], (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Vary", "Cookie");
+  next();
+});
+const SUPPORT_INDEX_KEY = "customerSupportIndex";
+const supportKey = (id) => "customerSupport:" + String(id);
+const supportLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 18,
+  message: "Demasiados mensajes. Vuelve a intentarlo en unos minutos.",
+});
+const supportMessage = (role, text) => ({
+  id: crypto.randomUUID(),
+  role,
+  text,
+  createdAt: new Date().toISOString(),
+});
+async function loadSupportThread(id) {
+  return parseStoredJson(await readStorageValue(supportKey(id)), null);
+}
+async function listSupportThreads() {
+  // Neon provides prefix listing, so simultaneous first messages do not race on an index.
+  if (hasNeon()) {
+    try {
+      const rows = await listNeonStorageByPrefix("customerSupport:");
+      return rows.map(row => parseStoredJson(row.value, null)).filter(Boolean)
+        .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    } catch (error) {
+      console.warn("Support Neon list unavailable, using index:", error?.message || error);
+    }
+  }
+  const index = parseStoredJson(await readStorageValue(SUPPORT_INDEX_KEY), []);
+  const rows = await Promise.all(index.map(id => loadSupportThread(id)));
+  return rows.filter(Boolean).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+function customerSupportInitial(account) {
+  return {
+    ticketId: "HER-" + crypto.randomBytes(4).toString("hex").toUpperCase(),
+    customerId: String(account.id),
+    customerName: String(account.name || "Cliente"),
+    customerEmail: String(account.email || ""),
+    status: "open",
+    messages: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function mutateSupportThread(id, mutator) {
+  if (hasNeon()) {
+    const result = await mutateNeonStorageValue(supportKey(id), value => {
+      const updated = mutator(parseStoredJson(value, null));
+      if (!updated) throw new Error("Support thread not found");
+      return JSON.stringify(updated);
+    });
+    return { thread: parseStoredJson(result.value, null), created: !result.before };
+  }
+  const before = await loadSupportThread(id);
+  const thread = mutator(before);
+  if (!thread) return { thread: null, created: false };
+  await upsertStorageValue(supportKey(id), JSON.stringify(thread));
+  return { thread, created: !before };
+}
+async function appendSupportMessage(id, role, text, account = null, source = "", automatedReplyToId = "") {
+  const message = supportMessage(role, text);
+  if (source === "account" || source === "website") message.source = source;
+  const { thread, created } = await mutateSupportThread(id, current => {
+    const next = current || (account ? customerSupportInitial(account) : null);
+    if (!next) return null;
+    if (account) {
+      next.customerName = String(account.name || "Cliente");
+      next.customerEmail = String(account.email || "");
+    }
+    const previousMessage = next.messages?.[next.messages.length - 1];
+    next.messages = [...(next.messages || []), message].slice(-300);
+    next.updatedAt = message.createdAt;
+    if (role === "customer") next.status = "open";
+    if (role === "agent") next.status = "answered";
+    if (role === "assistant" && automatedReplyToId && previousMessage?.id === automatedReplyToId) {
+      next.status = "automated";
+    }
+    return next;
+  });
+  if (created) {
+    const index = parseStoredJson(await readStorageValue(SUPPORT_INDEX_KEY), []);
+    if (!index.includes(id)) await upsertStorageValue(SUPPORT_INDEX_KEY, JSON.stringify([...index, id]));
+  }
+  return thread;
+}
+app.get("/api/customer/support", requireCustomer, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
+    if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
+    res.json({ thread: (await loadSupportThread(account.id)) || customerSupportInitial(account) });
+  } catch (error) {
+    console.error("Support read error", error);
+    res.status(500).json({ error: "No se pudo cargar el chat" });
+  }
+});
+app.post("/api/customer/support", requireCustomer, supportLimiter, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const text = String(req.body?.text || "").trim();
+  if (!text || text.length > 2000) return res.status(400).json({ error: "El mensaje debe tener entre 1 y 2000 caracteres" });
+  try {
+    const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
+    if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
+    const id = String(account.id);
+    let thread = await appendSupportMessage(id, "customer", text, account,
+      req.body?.source === "account" ? "account" : "website");
+    if (req.body?.allowAI === true) {
+      // No account, order or payment data is sent to the model. The question is sent
+      // only when the customer explicitly chose automatic assistance.
+      try {
+        const publicSite = parseStoredJson(await readStorageValue("siteContent"), {});
+        const hours = Array.isArray(publicSite?.contactPage?.hours)
+          ? publicSite.contactPage.hours.map(h => String(h.label || "") + ": " + String(h.value || "")).join("; ")
+          : "";
+        const publicContext = "Herencia Market. Horario publicado: " + hours.slice(0, 700)
+          + ". Para dudas de pagos, pedidos, devoluciones o reclamaciones deriva a atención humana.";
+        const result = await answerGeneralSupport(text, publicContext);
+        const sourceMessageId = thread.messages?.[thread.messages.length - 1]?.id || "";
+        thread = await appendSupportMessage(id, "assistant", result.reply, null, "", result.needsHuman ? "" : sourceMessageId);
+      } catch (error) {
+        console.warn("Support assistant unavailable:", error?.message || error);
+        thread = await appendSupportMessage(id, "assistant",
+          "He recibido tu consulta. Una persona de nuestro equipo la revisará en este chat.");
+      }
+    }
+    res.json({ thread });
+  } catch (error) {
+    console.error("Support write error", error);
+    res.status(500).json({ error: "No se pudo enviar el mensaje" });
+  }
+});
+app.get("/api/admin/support", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try { res.json({ threads: await listSupportThreads() }); }
+  catch (error) {
+    console.error("Admin support list error", error);
+    res.status(500).json({ error: "No se pudo cargar la bandeja" });
+  }
+});
+app.post("/api/admin/support/:customerId", requireAdmin, supportLimiter, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const text = String(req.body?.text || "").trim();
+  if (!text || text.length > 2000) return res.status(400).json({ error: "El mensaje debe tener entre 1 y 2000 caracteres" });
+  try {
+    const id = String(req.params.customerId);
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ error: "Identificador no válido" });
+    const thread = await appendSupportMessage(id, "agent", text);
+    if (!thread) return res.status(404).json({ error: "Conversación no encontrada" });
+    res.json({ thread });
+  } catch (error) {
+    console.error("Admin support reply error", error);
+    res.status(500).json({ error: "No se pudo enviar la respuesta" });
+  }
+});
+app.patch("/api/admin/support/:customerId/status", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const status = String(req.body?.status || "");
+  if (!["open", "resolved"].includes(status)) return res.status(400).json({ error: "Estado no válido" });
+  try {
+    const id = String(req.params.customerId);
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ error: "Identificador no válido" });
+    const { thread } = await mutateSupportThread(id, current => {
+      if (!current) return null;
+      current.status = status;
+      current.updatedAt = new Date().toISOString();
+      return current;
+    });
+    if (!thread) return res.status(404).json({ error: "Conversación no encontrada" });
+    res.json({ thread });
+  } catch (error) {
+    console.error("Support status error", error);
+    res.status(500).json({ error: "No se pudo actualizar el estado" });
   }
 });
 

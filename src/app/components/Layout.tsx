@@ -14,7 +14,7 @@ import {
 import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
-import { WhatsAppButton } from "./WhatsAppButton";
+import { FloatingCustomerSupport } from "./CustomerSupport";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 
@@ -431,7 +431,7 @@ export function Layout() {
       </div>
 
       <SalesChatWidget />
-      <WhatsAppButton />
+      <FloatingCustomerSupport />
       <AccessibilityPanel />
 
       {!cookieConsent ? (
