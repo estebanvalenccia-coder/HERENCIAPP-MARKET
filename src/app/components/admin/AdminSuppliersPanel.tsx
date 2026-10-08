@@ -517,6 +517,30 @@ export function AdminSuppliersPanel() {
     }
   };
 
+  const reconcileCjOrder = async (fulfillment: any) => {
+    if (processingId) return;
+    setProcessingId(String(fulfillment.id));
+    try {
+      const result = await backendApi.reconcileCjManualOrder(String(fulfillment.id));
+      if (result.found && result.fulfillment) {
+        setFulfillments((current) => current.map((item) =>
+          String(item.id) === String(result.fulfillment.id) ? result.fulfillment : item));
+        if (result.error) toast.warning(result.error);
+        else toast.success(result.paid
+          ? "CJ ha confirmado que el pedido está pagado."
+          : "Pedido localizado en CJ. Sigue pendiente de autorización de pago.");
+      } else {
+        toast.warning(result.error || "No hay coincidencia confirmada en CJ. No vuelvas a crear el pedido.");
+      }
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "CJ no ha permitido conciliar este pedido");
+      await load();
+    } finally {
+      setProcessingId("");
+    }
+  };
+
   const markOrdered = async (fulfillment: any) => {
     const externalOrderId = window.prompt("Número de pedido del proveedor (opcional)", fulfillment.externalOrderId || "") ?? "";
     try {
@@ -952,6 +976,11 @@ export function AdminSuppliersPanel() {
                         item.status === "payment_required" ? "Revisar y autorizar pago CJ" :
                         ["cj_creation_unknown", "cj_payment_unknown", "cj_creating", "cj_paying"].includes(String(item.status)) ? "Revisar bloqueo CJ" :
                         "Revisar aprobación CJ"}
+                    </button>}
+                  {isCjFulfillment && ["cj_creation_unknown","cj_payment_unknown","payment_required"].includes(String(item.status || "")) &&
+                    <button type="button" disabled={processingId === String(item.id)} onClick={() => void reconcileCjOrder(item)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                      <RefreshCw className="h-4 w-4"/>{processingId === String(item.id) ? "Consultando CJ…" : "Conciliar con CJ (sin comprar)"}
                     </button>}
                   {canRunAuto && !isCjFulfillment && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>{isCjFulfillment ? "Revisar CJ (sin comprar)" : "Ejecutar Autopilot"}</button>}
                   {!isCjFulfillment && ["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
