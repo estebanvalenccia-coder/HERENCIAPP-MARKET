@@ -1385,7 +1385,7 @@ app.use((req, res, next) => {
   ) {
     return passwordResetRateLimit(req, res, next);
   }
-  if (req.method === "POST" && path === "/api/stripe/create-payment-intent") {
+  if (req.method === "POST" && ["/api/stripe/create-payment-intent", "/api/coupons/preview"].includes(path)) {
     return checkoutRateLimit(req, res, next);
   }
   next();
@@ -8113,7 +8113,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
 
   const stripeOrderId = paymentIntent.metadata?.orderId;
 
-  if (stripeOrderId && stripeOrderId !== orderId) {
+  if (!stripeOrderId || stripeOrderId !== String(orderId)) {
     return res.status(409).json({
       error: "El pago de Stripe no corresponde con este pedido",
     });
@@ -8128,6 +8128,13 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
 
   if (!order) {
     return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+
+  const expectedMinor = Math.round(Number(order.total || 0) * 100);
+  const expectedCurrency = String(order.metadata?.checkoutMarket || "").toLowerCase() === "colombia" ? "cop" : "eur";
+  if (!Number.isFinite(expectedMinor) || Number(paymentIntent.amount) !== expectedMinor ||
+      String(paymentIntent.currency || "").toLowerCase() !== expectedCurrency) {
+    return res.status(409).json({ error: "El importe o la moneda del pago no corresponden al pedido" });
   }
 
   const wasAlreadyPaidForIntent =
