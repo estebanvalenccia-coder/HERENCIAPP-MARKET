@@ -4,6 +4,7 @@ export function isPrivateSupportStorageKey(key) {
   return value === "customerSupportIndex" ||
     value === "customerSupportTicketIndex" ||
     value === "customerSupportAutomationSettings" ||
+    value === "customerSupportKnowledgeBase" ||
     value.startsWith("customerSupport:") ||
     value.startsWith("customerSupportTicket:") ||
     value.startsWith("customerSupportAttachment:");

@@ -6,6 +6,7 @@ import {
   Ticket, UserRound, X,
 } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
+import { AdminSupportKnowledge } from "./AdminSupportKnowledge";
 
 type SupportStatus = "open" | "answered" | "automated" | "handoff" | "resolved";
 type SupportPriority = "low" | "normal" | "high" | "urgent";
@@ -366,6 +367,7 @@ export function AdminSupportPro() {
                   <p className="mt-1 text-xs leading-5 text-[#758a78]">Protección obligatoria: Herencia IA puede orientar, pero nunca autoriza ni ejecuta reembolsos. Amigo Plantil interviene cuando sea necesario.</p>
                 </div>
               </div>
+              <AdminSupportKnowledge />
             </div>
           )}
         </div>

@@ -151,6 +151,24 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     const defaultSettings=await call("/api/admin/support/v2/settings",{cookie:adminCookie});
     assert.equal(defaultSettings.payload.settings.assistantEnabled,true);
     assert.equal(defaultSettings.payload.settings.orderLookupEnabled,true);
+    const faqUnauth=await call("/api/admin/support/v2/knowledge",{cookie});
+    assert.equal(faqUnauth.res.status,401);
+    const faqInitial=await call("/api/admin/support/v2/knowledge",{cookie:adminCookie});
+    assert.deepEqual(faqInitial.payload.articles,[]);
+    const faqInvalid=await call("/api/admin/support/v2/knowledge",{
+      cookie:adminCookie,method:"PUT",
+      body:{articles:[{id:"a",question:"No",answer:"corta",enabled:true}]},
+    });
+    assert.equal(faqInvalid.res.status,400);
+    const faqAdded=await call("/api/admin/support/v2/knowledge",{
+      cookie:adminCookie,method:"PUT",
+      body:{articles:[{id:"returns",question:"Devoluciones y reembolsos",answer:"Solo se aplican las condiciones oficiales publicadas por Herencia.",enabled:true}]},
+    });
+    assert.equal(faqAdded.res.status,200);
+    assert.equal(faqAdded.payload.articles.length,1);
+    const faqRead=await call("/api/admin/support/v2/knowledge",{cookie:adminCookie});
+    assert.equal(faqRead.payload.articles[0].id,"returns");
+
     const badSettings=await call("/api/admin/support/v2/settings",{
       cookie:adminCookie,method:"PATCH",body:{assistantEnabled:"off"},
     });
