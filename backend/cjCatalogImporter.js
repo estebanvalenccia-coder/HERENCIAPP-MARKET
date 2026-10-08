@@ -9,6 +9,7 @@ const CJ_CALL_GAP_MS = 1250;
 const CJ_QUOTE_TTL_MS = 45_000;
 let nextCallAt = 0;
 let pauseUntil = 0;
+let pauseReason = "CJ_RATE_LIMITED";
 let callQueue = Promise.resolve();
 const recentResults = new Map();
 const inFlight = new Map();
@@ -32,7 +33,7 @@ function cjUnavailable(code, httpStatus, upstreamCode) {
 function scheduleCjRequest(fn) {
   const run = callQueue.then(async () => {
     if (pauseUntil > Date.now()) {
-      throw cjUnavailable("CJ_RATE_LIMITED", 429, 1600200);
+      throw cjUnavailable(pauseReason, 429, pauseReason === "CJ_QUOTA_EXHAUSTED" ? 1600201 : 1600200);
     }
     const wait = Math.max(0, nextCallAt - Date.now());
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
@@ -43,6 +44,7 @@ function scheduleCjRequest(fn) {
     } catch (error) {
       if (error?.code === "CJ_RATE_LIMITED" || error?.code === "CJ_QUOTA_EXHAUSTED") {
         // Do not loop over rate-limit failures; fail closed with a short circuit breaker.
+        pauseReason = error.code;
         pauseUntil = Date.now() + (error.code === "CJ_QUOTA_EXHAUSTED" ? 60_000 : 30_000);
       }
       throw error;
