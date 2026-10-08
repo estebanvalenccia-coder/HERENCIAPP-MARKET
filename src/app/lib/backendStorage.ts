@@ -410,6 +410,21 @@ export const backendApi = {
     }>(`/api/admin/catalog/cj-variants?productId=${encodeURIComponent(productId)}`);
   },
 
+  async preflightCjProduct(productId: string) {
+    return request<{
+      ok: boolean; simulationOnly: boolean; safe: boolean; readyForManualReview: boolean;
+      checks: string[]; product: { id: string; name: string; salePriceEur: number };
+      supplier: { name: string; sandbox: boolean };
+      variant: { vid: string; sku: string };
+      shipping: { method: string; destination: string };
+      estimate: { supplierTotalUsd?: number; estimatedCostEur?: number; estimatedProfitEur?: number; recommendedMinimumPriceEur?: number; fxDate?: string; quotedAt?: string } | null;
+      message: string;
+    }>("/api/admin/supplier-fulfillments/cj-preflight", {
+      method: "POST",
+      body: JSON.stringify({ productId }),
+    });
+  },
+
   async quoteCjProductFreight(productId: string, vid: string, zip = "") {
     return request<{
       ok: boolean; productId: string;
