@@ -332,6 +332,16 @@ export function Home() {
         </div>
       </section>
 
+      <div className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
+        <Link
+          to="/catalogo/plantas"
+          className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
+        >
+          Descubre nuestras plantas
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+
       <StorefrontFeed />
 
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
