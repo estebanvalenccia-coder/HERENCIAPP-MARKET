@@ -44,6 +44,7 @@ type Order = {
 };
 
 type Filter = "all" | "open" | "progress" | "resolved";
+type AutomationSettings = { assistantEnabled: boolean; orderLookupEnabled: boolean };
 
 const categories: Array<{ value: SupportCategory; label: string }> = [
   { value: "general", label: "Consulta general" },
@@ -149,6 +150,9 @@ export function AdminSupportPro() {
   const [error, setError] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [showCustomerDetails, setShowCustomerDetails] = useState(true);
+  const [automation, setAutomation] = useState<AutomationSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const seenMessageRef = useRef<Record<string, string>>({});
   const firstLoadRef = useRef(true);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -185,6 +189,9 @@ export function AdminSupportPro() {
 
   useEffect(() => {
     void refresh();
+    supportFetch<{settings:AutomationSettings}>("/api/admin/support/v2/settings")
+      .then(result => setAutomation(result.settings))
+      .catch(cause => setError(cause.message || "No se pudo cargar la configuración de IA"));
     backendApi.listOrders().then(result => {
       setOrders(Array.isArray(result.orders) ? result.orders : []);
     }).catch(() => {});
@@ -199,6 +206,21 @@ export function AdminSupportPro() {
     }, 20000);
     return () => { eventSource?.close(); window.clearInterval(timer); };
   }, [notificationsEnabled]);
+
+  async function updateAutomation(key: keyof AutomationSettings, value: boolean) {
+    if (!automation || savingSettings) return;
+    setSavingSettings(true);
+    try {
+      const response=await supportFetch<{settings:AutomationSettings}>("/api/admin/support/v2/settings", {
+        method:"PATCH",
+        body:JSON.stringify({[key]:value}),
+      });
+      setAutomation(response.settings);
+      setError("");
+    } catch (cause:any) {
+      setError(cause.message || "No se pudo guardar la configuración de Herencia IA");
+    } finally { setSavingSettings(false); }
+  }
 
   const counts = useMemo(() => ({
     all: threads.length,
@@ -303,6 +325,49 @@ export function AdminSupportPro() {
               {notificationsEnabled ? "Avisos activos" : "Activar avisos"}
             </button>
           </div>
+        </div>
+
+        <div className="rounded-[22px] border border-[#dce8dc] bg-[#f5faf4] px-4 py-4 shadow-sm sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Sparkles size={20} className="text-[#356749]"/>
+              <div>
+                <h2 className="text-sm font-bold text-[#254c33]">Inteligencia de Atención</h2>
+                <p className="text-xs text-[#76917a]">Controla cómo Herencia IA atiende a tus clientes.</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setSettingsOpen(open => !open)}
+              aria-expanded={settingsOpen} className="rounded-xl border border-[#c9dccb] bg-white px-3 py-2 text-xs font-bold text-[#31583c] hover:bg-[#eaf4e9]">
+              {settingsOpen ? "Ocultar configuración" : "Configurar IA"}
+            </button>
+          </div>
+          {settingsOpen && (
+            <div className="mt-4 grid gap-3 border-t border-[#dce8dc] pt-4 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#dce9dd] bg-white p-4">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#2b6041]"
+                  checked={automation?.assistantEnabled ?? true}
+                  disabled={!automation || savingSettings}
+                  onChange={event => void updateAutomation("assistantEnabled", event.target.checked)} />
+                <span><strong className="block text-sm text-[#2c533b]">Herencia IA atiende automáticamente</strong>
+                  <small className="mt-1 block text-xs leading-5 text-[#758a78]">La IA intenta resolver. Si la desactivas, las nuevas consultas pasan directamente al equipo humano.</small></span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#dce9dd] bg-white p-4">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#2b6041]"
+                  checked={automation?.orderLookupEnabled ?? true}
+                  disabled={!automation || savingSettings}
+                  onChange={event => void updateAutomation("orderLookupEnabled", event.target.checked)}/>
+                <span><strong className="block text-sm text-[#2c533b]">Consultar estados de pedidos reales</strong>
+                  <small className="mt-1 block text-xs leading-5 text-[#758a78]">Solo los pedidos de clientes identificados, desde el servidor. No se envían datos del pedido al proveedor de IA.</small></span>
+              </label>
+              <div className="flex items-start gap-3 rounded-xl border border-[#dce9dd] bg-white p-4 sm:col-span-2">
+                <input type="checkbox" checked disabled className="mt-0.5 h-4 w-4 accent-[#2b6041]"/>
+                <div>
+                  <strong className="block text-sm text-[#2c533b]">Aprobación humana para reembolsos</strong>
+                  <p className="mt-1 text-xs leading-5 text-[#758a78]">Protección obligatoria: Herencia IA puede orientar, pero nunca autoriza ni ejecuta reembolsos. Amigo Plantil interviene cuando sea necesario.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
