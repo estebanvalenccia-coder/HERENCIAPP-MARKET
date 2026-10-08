@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { toast } from "sonner";
+import { AdminShippingRules } from "./AdminShippingRules";
 
 type TpvLeftBlockId = "status" | "currentSale" | "payment" | "keypad";
 type TpvLayoutSettings = {
@@ -412,9 +413,7 @@ export function AdminSettings() {
         publishableKey: stripePublishableKey,
         enabled: stripeEnabled,
       }));
-      backendStorage.setItem("shippingSettings", JSON.stringify({
-        cost: shippingCost,
-      }));
+      // Shipping policies are saved independently in AdminShippingRules.
       backendStorage.setItem("aiSettings", JSON.stringify({
         enabled: aiEnabled,
         provider: "groq",
@@ -865,61 +864,8 @@ export function AdminSettings() {
         </div>
       </div>
 
-      {/* Shipping Configuration */}
-      <div className="bg-card border border-border rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Truck className="w-5 h-5 text-primary" />
-          <h3 className="text-xl font-bold text-foreground">Configuración de Envío</h3>
-        </div>
-
-        <div className="space-y-4">
-          <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
-            <p className="text-sm text-foreground mb-2">
-              🚚 <strong>Precio de Envío a Domicilio</strong>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Configura el coste base de la entrega a domicilio. Herencia Market no ofrece recogida en tienda.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Costo de Envío (€)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={shippingCost}
-              onChange={(e) => setShippingCost(parseFloat(e.target.value) || 0)}
-              placeholder="5.00"
-              className="w-full px-4 py-2 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              Este precio se mostrará en el carrito cuando el cliente seleccione envío a domicilio
-            </p>
-          </div>
-
-          <div className="p-3 bg-muted rounded-xl">
-            <p className="text-sm text-foreground font-medium mb-1">Vista previa</p>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Envío a domicilio:</span>
-              <span className="font-bold text-foreground">€{shippingCost.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-muted-foreground">Modalidad:</span>
-              <span className="font-bold text-primary">Solo entrega a domicilio</span>
-            </div>
-          </div>
-
-          <button
-            onClick={saveShippingSettings}
-            className="w-full py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm"
-          >
-            Guardar Configuración de Envío
-          </button>
-        </div>
-      </div>
+      {/* Advanced configurable shipping panel */}
+      <AdminShippingRules />
 
       {/* AI Configuration */}
       <div className="bg-card border border-border rounded-2xl p-6">
