@@ -5449,6 +5449,10 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       }
     }
 
+    if (supplierIntegrationType(supplier) === "cj" && Number(order?.metadata?.discount || 0) > 0) {
+      status = "approval_required";
+      blocker = "El pedido utiliza un descuento o cupón. El margen CJ se calculó sin ese descuento; revisa el cobro real antes de autorizar.";
+    }
     const record = {
       id: found?.id || crypto.randomUUID(),
       dedupeKey,
@@ -5533,6 +5537,14 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     const currentOrder = await getOrderPrimary(record.orderId);
     if (!currentOrder || !["paid","confirmed","preparing","processing","ready"].includes(String(currentOrder.status || ""))) {
       const updated = { ...record, status: "approval_required", blocker: "El pedido no tiene un estado pagado/confirmado válido.", updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
+    if (Number(currentOrder?.metadata?.discount || 0) > 0) {
+      const updated = { ...record, status: "approval_required",
+        blocker: "Pedido con descuento: la cotización de CJ no contempla el cupón. Revisión obligatoria antes de comprar.",
+        updatedAt: now };
       operations.supplierFulfillments[index] = updated;
       await writeSupplierOperations(operations);
       return { fulfillment: updated, executed: false, manual: false };
