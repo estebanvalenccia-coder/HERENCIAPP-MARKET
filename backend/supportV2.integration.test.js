@@ -97,5 +97,13 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(anonAdmin.res.status,401);
     const wrongUser=await call("/api/support/v2/tickets/"+ticket.id,{cookie:"customer_auth=user-b"});
     assert.equal(wrongUser.res.status,404);
+    const deleteFromOther=await call("/api/support/v2/tickets/"+ticket.id,{cookie:otherCookie,method:"DELETE"});
+    assert.equal(deleteFromOther.res.status,404);
+    const deleteMine=await call("/api/support/v2/tickets/"+ticket.id,{cookie,method:"DELETE"});
+    assert.equal(deleteMine.res.status,200);
+    const removed=await call("/api/support/v2/tickets/"+ticket.id,{cookie});
+    assert.equal(removed.res.status,404);
+    const removedMedia=await call("/api/support/v2/tickets/"+ticket.id+"/attachments/"+fileId,{cookie:adminCookie});
+    assert.equal(removedMedia.res.status,404);
   }finally{await app.close();}
 });
