@@ -2723,6 +2723,11 @@ app.get("/api/storage/:key", async (req, res) => {
 
   const key = req.params.key;
 
+  // Las conversaciones son datos privados: jamás se exponen mediante el almacenamiento genérico.
+  if (key === "customerSupportIndex" || key.startsWith("customerSupport:")) {
+    return res.status(403).json({ error: "Acceso no permitido" });
+  }
+
   if (protectedKeys.has(key) && !publicKeys.has(key) && !isAdmin(req)) {
     return res.status(401).json({ error: "Acceso de administrador requerido" });
   }
