@@ -4997,6 +4997,9 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     if (!force) {
       return { fulfillment: record, executed: false, manual: false };
     }
+    if (sandbox || !cjLiveAutopilotEnabled()) {
+      return { fulfillment: { ...record, status: "approval_required", blocker: "Pago CJ bloqueado: modo pruebas o pagos reales desactivados.", updatedAt: now }, executed: false, manual: false };
+    }
     await cjPayOrder({
       orderId: record.externalOrderId,
       shipmentOrderId: record.cjShipmentOrderId || "",
@@ -5100,6 +5103,13 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
+  if (sandbox || !cjLiveAutopilotEnabled()) {
+    return {
+      fulfillment: { ...prepared, status: "approval_required", blocker: "Pedido de prueba CJ creado sin pago. Los pagos reales siguen desactivados." },
+      executed: false,
+      manual: false,
+    };
+  }
   await cjPayOrder({ orderId: cjOrderId, shipmentOrderId });
   return {
     fulfillment: {
