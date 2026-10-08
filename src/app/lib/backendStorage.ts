@@ -397,6 +397,19 @@ export const backendApi = {
     });
   },
 
+  async listCjProductVariants(productId: string) {
+    return request<{
+      ok: boolean;
+      productId: string;
+      pid: string;
+      variants: Array<{ vid: string; sku: string; name: string; option: string; priceUsd: number | null; image: string }>;
+      total: number;
+      truncated: boolean;
+      currency: "USD";
+      source: string;
+    }>(`/api/admin/catalog/cj-variants?productId=${encodeURIComponent(productId)}`);
+  },
+
   async importCatalogUrlProduct(product: any) {
     const result = await request<{
       ok: boolean;
