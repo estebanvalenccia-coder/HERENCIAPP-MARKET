@@ -5696,6 +5696,41 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
       await writeSupplierOperations(operations);
       return { fulfillment: updated, executed: false, manual: false };
     }
+    // A database status and a Stripe intent ID are not proof that funds were captured.
+    // Before permitting ANY live CJ call, independently verify the charge with Stripe.
+    // Fail closed on missing credentials, incomplete/cancelled charges, test-mode
+    // payments and insufficient payment amount. Sandbox never reaches CJ order creation.
+    if (force && supplier?.cjSandbox === false && cjLiveAutopilotEnabled()) {
+      const paymentIntentId = String(
+        currentOrder.stripe_payment_intent_id || currentOrder.stripePaymentIntentId || ""
+      ).trim();
+      if (!stripe || !paymentIntentId) {
+        const updated = { ...record, status: "approval_required",
+          blocker: "Falta comprobar el cobro real en Stripe; no se enviará el pedido a CJ.", updatedAt: now };
+        operations.supplierFulfillments[index] = updated;
+        await writeSupplierOperations(operations);
+        return { fulfillment: updated, executed: false, manual: false };
+      }
+      try {
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        const expectedCents = Math.round(Number(currentOrder.total ?? currentOrder.totalAmount ?? 0) * 100);
+        if (intent.status !== "succeeded" || intent.livemode !== true || expectedCents <= 0 ||
+            String(intent.currency || "").toLowerCase() !== "eur" ||
+            Number(intent.amount_received || 0) < expectedCents) {
+          const updated = { ...record, status: "approval_required",
+            blocker: "Stripe no confirma un pago real en EUR por el total del pedido. Compra a CJ bloqueada.", updatedAt: now };
+          operations.supplierFulfillments[index] = updated;
+          await writeSupplierOperations(operations);
+          return { fulfillment: updated, executed: false, manual: false };
+        }
+      } catch (paymentError) {
+        const updated = { ...record, status: "approval_required",
+          blocker: "No se ha podido verificar el cobro con Stripe. Compra a CJ bloqueada.", updatedAt: now };
+        operations.supplierFulfillments[index] = updated;
+        await writeSupplierOperations(operations);
+        return { fulfillment: updated, executed: false, manual: false };
+      }
+    }
     if (force && !String(currentOrder.stripe_payment_intent_id || "").trim()) {
       const updated = { ...record, status: "approval_required",
         blocker: "Para enviar realmente a CJ falta verificar el identificador de pago Stripe del pedido.",
