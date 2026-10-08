@@ -1,3 +1,4 @@
+import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { answerGeneralSupport } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
@@ -2729,7 +2730,7 @@ app.get("/api/storage/:key", async (req, res) => {
   const key = req.params.key;
 
   // Las conversaciones son datos privados: jamás se exponen mediante el almacenamiento genérico.
-  if (key === "customerSupportIndex" || key.startsWith("customerSupport:")) {
+  if (isPrivateSupportStorageKey(key)) {
     return res.status(403).json({ error: "Acceso no permitido" });
   }
 
