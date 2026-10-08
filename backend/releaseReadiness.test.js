@@ -80,3 +80,23 @@ test("cabeceras de seguridad del frontend están configuradas", async () => {
   assert.match(serialized, /Strict-Transport-Security/);
   assert.match(serialized, /X-Content-Type-Options/);
 });
+
+
+test("CJ real no crea pedidos sin autorización explícita ni cobro Stripe validado", async () => {
+  const server = await read("backend/server.js");
+  assert.match(server, /if \(!force \|\| String\(process\.env\.CJ_LIVE_ORDER_CREATION_ENABLED/);
+  assert.match(server, /if \(sandbox\)/);
+  assert.match(server, /stripe\.paymentIntents\.retrieve\(paymentIntentId\)/);
+  assert.match(server, /intent\.status !== "succeeded"/);
+  assert.match(server, /intent\.livemode !== true/);
+  assert.match(server, /Number\(intent\.amount_received \|\| 0\) < expectedCents/);
+  assert.match(server, /shippingCountry !== "ES"/);
+  assert.match(server, /Number\(item\.quantity \|\| 0\) !== 1/);
+});
+
+test("Simulación CJ no persiste ni crea pedidos reales", async () => {
+  const server = await read("backend/server.js");
+  assert.match(server, /buildSupplierFulfillmentsForOrder\(simulatedOrder, \{ dryRun: true \}\)/);
+  assert.match(server, /if \(!dryRun\) await writeSupplierOperations\(operations\)/);
+  assert.match(server, /simulationOnly: true, safe: true/);
+});
