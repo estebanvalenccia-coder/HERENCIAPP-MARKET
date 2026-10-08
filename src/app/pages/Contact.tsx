@@ -1,3 +1,4 @@
+import { CustomerSupport } from "../components/CustomerSupport";
 import { FormEvent, useEffect, useState } from "react";
 import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
@@ -102,6 +103,7 @@ export function Contact() {
 {site.contactPage.helpIntro}
           </p>
 
+          <div className="mt-7"><CustomerSupport compact /></div>
           <form onSubmit={submit} className="mt-7 space-y-5">
             <label className="block">
               <span className="mb-2 block text-sm font-black">Nombre</span>
