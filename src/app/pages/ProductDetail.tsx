@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
+import { cleanProductDescription } from "../lib/productDescription";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -111,7 +112,7 @@ export function ProductDetail() {
       document.head.appendChild(meta);
     }
     const previousDescription = meta.content;
-    meta.content = String(product.seoDescription || product.description || "").slice(0, 170);
+    meta.content = cleanProductDescription(product.seoDescription || product.description, 170);
 
     let ogTitle = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null;
     if (!ogTitle) {
@@ -129,7 +130,7 @@ export function ProductDetail() {
       ogDescription.setAttribute("data-herencia-seo", "true");
       document.head.appendChild(ogDescription);
     }
-    ogDescription.content = String(product.seoDescription || product.description || "").slice(0, 170);
+    ogDescription.content = cleanProductDescription(product.seoDescription || product.description, 170);
 
     return () => {
       document.title = previousTitle;
@@ -161,6 +162,7 @@ export function ProductDetail() {
   const collectionId = product ? primaryCollectionOf(product) : "plantas";
   const collection = getCommerceCollection(collectionId);
   const plantLike = product ? isPlantCareProduct(product) : false;
+  const productDescription = cleanProductDescription(product?.description);
   const serviceProduct = collectionId === "servicios";
   const serviceMinHours = serviceProduct
     ? Math.max(1, Number(product?.serviceMinHours ?? product?.metadata?.serviceMinHours ?? 1))
@@ -438,14 +440,14 @@ export function ProductDetail() {
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
           <div>
             <h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1>
-            {detailConfig.showDescription !== false && <p className="text-muted-foreground text-lg">{product.description}</p>}
+            {detailConfig.showDescription !== false && productDescription && <p className="whitespace-pre-line text-muted-foreground text-lg">{productDescription}</p>}
           </div>
           <div className="text-5xl font-bold text-primary">
             €{effectivePrice.toFixed(2)}
             {serviceProduct && <span className="ml-2 text-lg font-semibold text-muted-foreground">/ hora</span>}
           </div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
-          {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
+          {detailConfig.showDetails !== false && plantLike && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
           {detailConfig.showVariants !== false && variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
           {serviceProduct ? (
@@ -508,12 +510,27 @@ export function ProductDetail() {
         ) : null
       ) : (
         detailConfig.showDetails !== false ? (
-        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-3xl border border-border bg-card p-7">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{collection.name}</p>
-          <h2 className="mt-2 text-3xl font-bold">Información del artículo</h2>
-          <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{product.description}</p>
-          {serviceProduct && product.bookingRequired && <div className="mt-5 rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">La reserva se confirma pagando las horas seleccionadas. La fecha y los detalles del servicio se coordinan en el checkout.</div>}
-          {collectionId === "dulce" && product.requiresRefrigeration && <div className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
+        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="space-y-6">
+          <div className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">Conoce tu producto</h2>
+            <p className="text-muted-foreground">Descripción y características del artículo.</p>
+          </div>
+          <div className={`grid grid-cols-1 gap-6 ${details.length ? "lg:grid-cols-2" : ""}`}>
+            <section className="rounded-2xl border border-border bg-card p-7">
+              <div className="mb-5 flex items-center gap-3"><PackageCheck className="h-6 w-6 text-primary" /><h3 className="text-2xl font-bold">Descripción</h3></div>
+              {productDescription
+                ? <p className="whitespace-pre-line leading-7 text-muted-foreground">{productDescription}</p>
+                : <p className="text-muted-foreground">Consulta las características del artículo antes de comprar.</p>}
+            </section>
+            {details.length > 0 && <section aria-label="Características del artículo" className="grid gap-3">
+              {details.map((detail) => <div key={detail.label} className="rounded-2xl border border-border bg-card p-5">
+                <div className="flex items-center gap-3"><detail.icon className="h-5 w-5 text-primary" /><h3 className="font-bold">{detail.label}</h3></div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail.value}</p>
+              </div>)}
+            </section>}
+          </div>
+          {serviceProduct && product.bookingRequired && <div className="rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary">La reserva se confirma pagando las horas seleccionadas. La fecha y los detalles del servicio se coordinan en el checkout.</div>}
+          {collectionId === "dulce" && product.requiresRefrigeration && <div className="rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">Conservar refrigerado.</div>}
         </motion.div>
         ) : null
       )}
