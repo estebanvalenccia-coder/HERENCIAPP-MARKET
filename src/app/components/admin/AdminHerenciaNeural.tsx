@@ -77,9 +77,15 @@ export function AdminHerenciaNeural(){
     setActiveCodeApproval((current:any)=>current?.id&&nextTasks.some((task:any)=>task.id===current.id&&(task.status==="WAITING_APPROVAL"||task.requiresApproval))?current:(waitingCode||null));
   }
   if(reviews.status==="fulfilled"){
-    const review=(reviews.value.reviews||[]).find(reviewableCodeTask)||null;
+    const activeReviews=(reviews.value.reviews||[]).filter(reviewableCodeTask);
+    const review=activeReviews[0]||null;
+    const activeIds=new Set(activeReviews.map((item:any)=>item.id));
     setPinnedCodeReview(review);
-    if(review?.id)setTasks(prev=>[review,...prev.filter((x:any)=>x.id!==review.id)]);
+    // neuralTasks() and neuralCodeReviews() are requested concurrently.
+    // When a PR is closed externally, the tasks snapshot may be older than
+    // the reconciled reviews feed. Never display that stale review again.
+    setTasks(prev=>[...activeReviews,...prev.filter((item:any)=>
+      !activeIds.has(item.id)&&!reviewableCodeTask(item))]);
   }
   if(g.status==="fulfilled")setGoals(g.value.goals||[]);
   if(act.status==="fulfilled")setActivity(act.value.events||[]);
