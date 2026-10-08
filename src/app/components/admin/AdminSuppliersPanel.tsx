@@ -69,6 +69,7 @@ export function AdminSuppliersPanel() {
   const [loading, setLoading] = useState(true);
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
+  const [syncingPaidOrders, setSyncingPaidOrders] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -415,24 +416,29 @@ export function AdminSuppliersPanel() {
   };
 
   const syncPaidOrders = async () => {
+    if (syncingPaidOrders) return;
     const candidates = orders.filter((order: any) =>
       ["paid", "confirmed", "preparing", "processing", "ready"].includes(String(order.status || ""))
     );
     if (!candidates.length) return toast.info("No hay pedidos pagados pendientes de preparar");
-
-    let prepared = 0;
-    let errors = 0;
-    for (const order of candidates.slice(0, 100)) {
-      try {
-        const result = await backendApi.prepareSupplierFulfillments(String(order.id), true);
-        prepared += Array.isArray(result.fulfillments) ? result.fulfillments.length : 0;
-      } catch {
-        errors += 1;
+    setSyncingPaidOrders(true);
+    try {
+      let prepared = 0;
+      let errors = 0;
+      for (const order of candidates.slice(0, 100)) {
+        try {
+          const result = await backendApi.prepareSupplierFulfillments(String(order.id), true);
+          prepared += Array.isArray(result.fulfillments) ? result.fulfillments.length : 0;
+        } catch {
+          errors += 1;
+        }
       }
+      await load();
+      if (errors) toast.warning(`Cola actualizada: ${prepared} preparaciones y ${errors} pedidos con incidencia`);
+      else toast.success(`Cola actualizada: ${prepared} preparaciones de proveedor`);
+    } finally {
+      setSyncingPaidOrders(false);
     }
-    await load();
-    if (errors) toast.warning(`Cola actualizada: ${prepared} preparaciones y ${errors} pedidos con incidencia`);
-    else toast.success(`Cola actualizada: ${prepared} preparaciones de proveedor`);
   };
 
   const executeFulfillment = async (fulfillment: any, force = false) => {
@@ -786,8 +792,8 @@ export function AdminSuppliersPanel() {
           <h2 className="text-xl font-bold">Cola de pedidos a proveedores</h2>
           <p className="text-sm text-muted-foreground">Los pedidos pagados y gratuitos se preparan para revisión. Sincronizar actualiza presupuestos pendientes sin volver a comprar pedidos enviados.</p>
         </div>
-        <button onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold">
-          <RefreshCw className="h-4 w-4"/>Sincronizar pedidos pagados
+        <button disabled={syncingPaidOrders} onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
+          <RefreshCw className={"h-4 w-4" + (syncingPaidOrders ? " animate-spin" : "")}/>{syncingPaidOrders ? "Actualizando cola…" : "Sincronizar pedidos pagados"}
         </button>
       </div>
       <div className="mt-4 space-y-3">
