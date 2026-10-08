@@ -150,6 +150,20 @@ export function registerSupportV2(app, db) {
   async function loadTicket(id) {
     return parseJSON(await readStorageValue(ticketKey(id)));
   }
+  // Remove one support conversation and its attachments, never customer accounts or orders.
+  // Used by both the ticket owner and an authenticated administrator.
+  async function deleteSupportConversation(ticket) {
+    for (const attachmentId of new Set((ticket.messages || []).map(m => m.attachmentId).filter(Boolean))) {
+      await deleteStorageValue(ATTACHMENT_PREFIX + attachmentId);
+    }
+    await deleteStorageValue(ticketKey(ticket.id));
+    if (!hasNeon()) {
+      const indexKey = ticket.id.startsWith("t_") ? "customerSupportTicketIndex" : "customerSupportIndex";
+      const index = parseJSON(await readStorageValue(indexKey), []);
+      await upsertStorageValue(indexKey, JSON.stringify(index.filter(id => id !== ticket.id)));
+    }
+    publishChange(ticket);
+  }
   async function mutateTicket(id, callback) {
     const key = ticketKey(id);
     if (hasNeon()) {
@@ -400,13 +414,7 @@ export function registerSupportV2(app, db) {
     const actor=await identity(req,res);
     const ticket=await loadTicket(id);
     if(!sameOwner(ticket,actor))return res.status(404).json({error:"Consulta no encontrada"});
-    for(const msg of ticket.messages||[])if(msg.attachmentId)await deleteStorageValue(ATTACHMENT_PREFIX+msg.attachmentId);
-    await deleteStorageValue(ticketKey(id));
-    if(!hasNeon()){
-      const index=parseJSON(await readStorageValue("customerSupportTicketIndex"),[]);
-      await upsertStorageValue("customerSupportTicketIndex",JSON.stringify(index.filter(x=>x!==id)));
-    }
-    publishChange(ticket);
+    await deleteSupportConversation(ticket);
     res.json({ok:true});
   }));
   app.get("/api/admin/support/v2/settings",route(async(req,res)=>{
@@ -446,6 +454,17 @@ export function registerSupportV2(app, db) {
   app.get("/api/admin/support/v2/tickets", route(async(req,res)=>{
     if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
     res.json({threads:await listTickets()});
+  }));
+  // Only a verified admin can permanently delete a complete support conversation.
+  // This is deliberately separate from deleting customer profiles or their orders.
+  app.delete("/api/admin/support/v2/tickets/:id",supportLimiter,route(async(req,res)=>{
+    if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
+    const id=safeId(req.params.id);
+    if(!id)return res.status(400).json({error:"Consulta no válida"});
+    const ticket=await loadTicket(id);
+    if(!ticket)return res.status(404).json({error:"Consulta no encontrada"});
+    await deleteSupportConversation(ticket);
+    res.json({ok:true,deletedId:id});
   }));
   app.post("/api/admin/support/v2/tickets/:id/messages",supportLimiter,route(async(req,res)=>{
     if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});

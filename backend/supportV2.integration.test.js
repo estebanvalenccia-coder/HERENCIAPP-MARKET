@@ -189,6 +189,56 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.equal(noAI.payload.thread.status,"open");
     assert.match(noAI.payload.thread.messages.at(-1).text,/atención automática está desactivada/i);
 
+    // The administrator can delete a resolved chat and its attachments.
+    // Customer records, other conversations and orders remain untouched.
+    const adminTest=await call("/api/support/v2/tickets",{
+      cookie:"customer_auth=user-a",method:"POST",
+      body:{subject:"Consulta para eliminar",text:"Quiero ayuda con una planta"},
+    });
+    assert.equal(adminTest.res.status,201);
+    const adminDeleteId=adminTest.payload.thread.id;
+    const adminMedia=await call("/api/support/v2/tickets/"+adminDeleteId+"/attachments",{
+      cookie:"customer_auth=user-a",method:"POST",body:{filename:"consulta.jpg",dataUrl:picture},
+    });
+    assert.equal(adminMedia.res.status,200);
+    const adminMediaId=adminMedia.payload.thread.messages.at(-1).attachmentId;
+    const resolvedBeforeDelete=await call("/api/admin/support/v2/tickets/"+adminDeleteId,{
+      cookie:adminCookie,method:"PATCH",body:{status:"resolved"},
+    });
+    assert.equal(resolvedBeforeDelete.res.status,200);
+    const unauthorizedDelete=await call("/api/admin/support/v2/tickets/"+adminDeleteId,{
+      cookie:"customer_auth=user-a",method:"DELETE",
+    });
+    assert.equal(unauthorizedDelete.res.status,401);
+    const beforeAdminDelete=await call("/api/support/v2/tickets/"+adminDeleteId,{
+      cookie:"customer_auth=user-a",
+    });
+    assert.equal(beforeAdminDelete.res.status,200);
+    const adminDelete=await call("/api/admin/support/v2/tickets/"+adminDeleteId,{
+      cookie:adminCookie,method:"DELETE",
+    });
+    assert.equal(adminDelete.res.status,200);
+    assert.equal(adminDelete.payload.deletedId,adminDeleteId);
+    const afterAdminDelete=await call("/api/support/v2/tickets/"+adminDeleteId,{
+      cookie:"customer_auth=user-a",
+    });
+    assert.equal(afterAdminDelete.res.status,404);
+    const deletedAdminMedia=await call("/api/support/v2/tickets/"+adminDeleteId+"/attachments/"+adminMediaId,{
+      cookie:adminCookie,
+    });
+    assert.equal(deletedAdminMedia.res.status,404);
+    const remainingChats=await call("/api/admin/support/v2/tickets",{cookie:adminCookie});
+    assert.equal(remainingChats.res.status,200);
+    assert.equal(remainingChats.payload.threads.some(t=>t.id===adminDeleteId),false);
+    assert.equal(remainingChats.payload.threads.some(t=>t.id===ticket.id),true);
+    const customerStillAvailable=await call("/api/support/v2/session",{cookie:"customer_auth=user-a"});
+    assert.equal(customerStillAvailable.res.status,200);
+    assert.equal(customerStillAvailable.payload.actor.type,"customer");
+    const repeatedAdminDelete=await call("/api/admin/support/v2/tickets/"+adminDeleteId,{
+      cookie:adminCookie,method:"DELETE",
+    });
+    assert.equal(repeatedAdminDelete.res.status,404);
+
     const deleteFromOther=await call("/api/support/v2/tickets/"+ticket.id,{cookie:otherCookie,method:"DELETE"});
     assert.equal(deleteFromOther.res.status,404);
     const deleteMine=await call("/api/support/v2/tickets/"+ticket.id,{cookie,method:"DELETE"});
