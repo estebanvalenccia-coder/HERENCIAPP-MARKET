@@ -1502,6 +1502,13 @@ export const backendApi = {
     });
   },
 
+  async neuralDiscardAllPendingCode() {
+    return request<{ count: number; failed: number; results: any[] }>("/api/neural/code/discard-pending", {
+      method: "POST",
+      body: JSON.stringify({ rejectedBy: "admin" }),
+    });
+  },
+
   async neuralDiscardCodePreview(id: string) {
     return request<any>(`/api/neural/code/${encodeURIComponent(id)}/discard`, {
       method: "POST",
