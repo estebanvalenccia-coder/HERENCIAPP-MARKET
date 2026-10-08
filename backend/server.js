@@ -3600,6 +3600,7 @@ async function validateCommerceOrderPayload(order = {}) {
     const supplierOperations = await readSupplierOperations();
     const cjCheckout = await evaluateCjCheckout({
       lines: normalizedItems, catalog: products, shippingAddress, discount,
+      promotionAuthorized: Boolean(couponCode && discount > 0),
       suppliers: supplierOperations.suppliers || [],
     });
     directCjShipping = cjCheckout.cjOnly;
@@ -8105,7 +8106,9 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       const supplierOperations = await readSupplierOperations();
       const directCj = await evaluateCjCheckout({
         lines: authoritativeItems, catalog, shippingAddress,
-        discount: authoritativeDiscount, suppliers: supplierOperations.suppliers || [],
+        discount: authoritativeDiscount,
+        promotionAuthorized: Boolean(verifiedPromotion?.rule && authoritativeDiscount > 0),
+        suppliers: supplierOperations.suppliers || [],
       });
       if (directCj.cjOnly) {
         shippingQuote = directCj.shippingQuote;
