@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Bot, ShieldCheck, Power, Search, Globe2, Palette, History, Target, Activity, Database, Send, Sparkles, Package, ShoppingBag, AlertTriangle, CircleDollarSign, CheckCircle2, FlaskConical, RefreshCw, Network, ListTodo, Code2, GitPullRequest } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
+import { NeuralPreviewWorkspace } from "./NeuralPreviewWorkspace";
 import { toast } from "sonner";
 import { StorefrontBlock } from "../site/StorefrontBlock";
 import { ensureBuilderBlocks, type SiteContent } from "../../lib/siteContent";
@@ -19,6 +20,7 @@ const neuralCodeStageLabels:Record<string,string>={
  PREVIEW_READY:"Vista previa verificada",
  PREVIEW_FAILED:"Falló la compilación de la vista previa",
  REPAIRING_BUILD:"Neural está reparando el error en la rama de pruebas",
+ REVISING_PREVIEW:"Neural está aplicando tus correcciones en la misma PR",
  PROGRAMMING:"Neural está programando",
  RUNNING:"Programación en curso",
  FAILED:"La tarea ha fallado",
@@ -28,7 +30,7 @@ const neuralCodeStageLabels:Record<string,string>={
 };
 
 function validCodeApproval(t:any){return t?.intent==="code_change"&&t?.status==="WAITING_APPROVAL"&&Array.isArray(t?.payload?.codePlan?.changes)&&t.payload.codePlan.changes.length>0}
-function reviewableCodeTask(t:any){return t?.intent==="code_change"&&t?.status==="REVIEW_REQUIRED"}
+function reviewableCodeTask(t:any){return t?.intent==="code_change"&&(t?.status==="REVIEW_REQUIRED"||(t?.status==="RUNNING"&&t?.stage==="REVISING_PREVIEW"))}
 function safePreviewHref(raw:any){
  try{const url=new URL(String(raw||""));return url.protocol==="https:"&&/(?:\.vercel\.app|\.up\.railway\.app)$/i.test(url.hostname)?url.origin:null}catch{return null}
 }
@@ -87,6 +89,8 @@ export function AdminHerenciaNeural(){
  const [bulkDiscardBusy,setBulkDiscardBusy]=useState(false);
  const [checkingPreviewId,setCheckingPreviewId]=useState<string|null>(null);
  const [repairingCodeId,setRepairingCodeId]=useState<string|null>(null);
+ const [revisionRequest,setRevisionRequest]=useState<{id:string;attempt:number}|null>(null);
+ const [confirmedPreview,setConfirmedPreview]=useState<string|null>(null);
  const [previewFeedback,setPreviewFeedback]=useState<{id:string;message:string}|null>(null);
  const [codePollWarning,setCodePollWarning]=useState<string|null>(null);
  const [codeLastSynced,setCodeLastSynced]=useState<string|null>(null);
@@ -159,6 +163,14 @@ export function AdminHerenciaNeural(){
  const approvals=tasks.filter(t=>t.status==="WAITING_APPROVAL"&&(t.intent!=="code_change"||validCodeApproval(t)));
  const activeCodeReview=(reviewableCodeTask(pinnedCodeReview)?pinnedCodeReview:null)||tasks.find(reviewableCodeTask)||null;
  const pendingCodeCount=tasks.filter((t:any)=>reviewableCodeTask(t)||validCodeApproval(t)).length;
+ useEffect(()=>{
+  if(!revisionRequest)return;
+  const review=tasks.find((item:any)=>item.id===revisionRequest.id);
+  const revisions=Number((review?.result?.result||review?.result)?.revisionAttempts||0);
+  if(review?.status==="REVIEW_REQUIRED"&&revisions>revisionRequest.attempt)setRevisionRequest(null);
+  if(review?.status==="FAILED"||review?.status==="CANCELLED")setRevisionRequest(null);
+ },[revisionRequest,tasks]);
+
  const runningCodeTasks=tasks.filter((t:any)=>t.intent==="code_change"&&t.status==="RUNNING");
  const runningCodeIds=runningCodeTasks.map((t:any)=>String(t.id)).sort().join("|");
  // Resolve visual URLs automatically on entering Neural Code, at most once per task per 90 seconds.
@@ -307,6 +319,23 @@ export function AdminHerenciaNeural(){
   }catch(e:any){toast.error(e?.message||"No se pudo iniciar la reparación")}
   finally{setRepairingCodeId(null)}
  };
+ const revisePreview=async(id:string,instructions:string)=>{
+  if(revisionRequest?.id===id)throw new Error("Ya hay una corrección en curso.");
+  const review=tasks.find((task:any)=>task.id===id);
+  const attempt=Number((review?.result?.result||review?.result)?.revisionAttempts||0);
+  setRevisionRequest({id,attempt});
+  try{
+   await backendApi.neuralReviseCodePreview(id,instructions);
+   setPreviewFeedback({id,message:"Corrección enviada a Neural. Railway actualizará esta preview al terminar; nada se publica automáticamente."});
+   setCodeMessages(messages=>[...messages,{role:"user",text:"Corrección de preview: "+instructions,kind:"code"}]);
+   toast.success("Corrección solicitada en la misma PR.");
+   const next=await backendApi.neuralCodeTask(id);
+   if(next?.task?.id){
+    setTasks(prev=>prev.map((item:any)=>item.id===id?next.task:item));
+    setPinnedCodeReview(next.task);
+   }
+  }catch(error){setRevisionRequest(null);throw error}
+ };
  const acceptPreview=async(id:string)=>{if(!window.confirm("¿Aceptar este cambio y publicarlo en main?"))return;try{await backendApi.neuralAcceptCodePreview(id);toast.success("Cambio aceptado. Se ha enviado a main para despliegue.");await refresh()}catch(e:any){toast.error(e.message||"No se pudo aceptar el cambio")}};
  const discardPreview=async(id:string)=>{
   if(discardingCodeId||bulkDiscardBusy)return;
@@ -430,8 +459,8 @@ export function AdminHerenciaNeural(){
       {codeLastSynced&&<p className="mt-2 text-[11px] text-amber-800">Última comprobación: {codeLastSynced}</p>}
       {codePollWarning&&<p className="mt-2 text-xs font-bold text-red-800">{codePollWarning}</p>}
      </div>}
-    {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const ready=Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";const providerDetails=safeVercelDetailsHref(preview.detailsUrl);return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":preview.state==="unavailable"?"SIN ENLACE PÚBLICO":"PREVIEW EN PREPARACIÓN"}</span></div>
+    {activeCodeReview&&(()=>{const result=activeCodeReview.result?.result||activeCodeReview.result||{};const preview=result.preview||{};const prUrl=safePullRequestHref(result.pullRequest?.html_url||result.pullRequest?.url||result.pullRequest?.result?.html_url||result.pullRequest?.result?.url);const previewHref=safePreviewHref(preview.url);const revising=activeCodeReview.status==="RUNNING"||revisionRequest?.id===activeCodeReview.id;const ready=!revising&&Boolean(previewHref)&&preview.state==="success";const failed=preview.state==="failure";const providerDetails=safeVercelDetailsHref(preview.detailsUrl);return <div data-neural-review-card="1" className="mt-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-700">Cambio programado · espera tu decisión</div><h3 className="mt-1 font-black text-indigo-950">{activeCodeReview.title}</h3></div><p className="mt-2 text-xs text-indigo-800">{pendingCodeCount>1?`Hay ${pendingCodeCount} cambios pendientes. Al descartar uno puede aparecer otro; usa VACIAR TODA LA COLA para cancelarlos todos.`:"Este es el último cambio pendiente de código."}</p><span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-800">{revising?"CORRIGIENDO PREVIEW":failed?"PREVIEW FALLÓ":ready?"PREVIEW LISTA":preview.state==="unavailable"?"SIN ENLACE PÚBLICO":"PREVIEW EN PREPARACIÓN"}</span></div>
       <p className="mt-2 text-xs font-semibold text-indigo-900">Abre la página de prueba para utilizar el cambio y luego decide si publicarlo o descartarlo.</p>
       {!ready&&(failed||preview.state==="unavailable")&&<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{preview.description||"No hay un enlace público de preview por el momento."} Producción sigue intacta.</p>}
        {failed&&preview.buildErrors&&<details className="mt-3 rounded-xl border border-red-200 bg-white p-3 text-xs text-red-900" open>
@@ -447,9 +476,14 @@ export function AdminHerenciaNeural(){
       <div className="mt-4">
        {ready?<a href={previewHref} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-4 text-center text-base font-black text-white hover:bg-indigo-700"><Globe2 className="h-5 w-5"/> VER PÁGINA DE PRUEBA ↗</a>:<button disabled={Boolean(checkingPreviewId)} onClick={()=>void refreshPreview(activeCodeReview.id)} className="w-full rounded-xl bg-indigo-600 px-4 py-4 text-base font-black text-white hover:bg-indigo-700 disabled:opacity-50">{checkingPreviewId===activeCodeReview.id?"BUSCANDO PÁGINA…":"GENERAR / COMPROBAR PÁGINA DE PRUEBA"}</button>}
       </div>
+      <NeuralPreviewWorkspace taskId={activeCodeReview.id} previewUrl={previewHref} previewSha={typeof preview.sha==="string"?preview.sha:null}
+        ready={ready} busy={Boolean(revising)} revisionCount={Number(result.revisionAttempts||0)}
+        reviewed={Boolean(ready&&confirmedPreview===activeCodeReview.id+":"+preview.sha)}
+        onReviewed={checked=>setConfirmedPreview(checked?activeCodeReview.id+":"+preview.sha:null)}
+        onRevise={async text=>revisePreview(activeCodeReview.id,text)} onRefresh={async()=>{await refreshPreview(activeCodeReview.id)}} />
       <div className="mt-3 grid gap-2 md:grid-cols-2">
-       <button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 disabled:opacity-50">{discardingCodeId===activeCodeReview.id?"DESCARTANDO…":"DESCARTAR CAMBIO"}</button>
-       <button disabled={!ready||Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void acceptPreview(activeCodeReview.id)} title={!ready?"Primero debes disponer de una página visual funcional":undefined} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-40">PUBLICAR CAMBIO</button>
+       <button disabled={Boolean(discardingCodeId)||bulkDiscardBusy||Boolean(revising)} onClick={()=>void discardPreview(activeCodeReview.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 disabled:opacity-50">{discardingCodeId===activeCodeReview.id?"DESCARTANDO…":"DESCARTAR CAMBIO"}</button>
+       <button disabled={!ready||confirmedPreview!==activeCodeReview.id+":"+preview.sha||Boolean(discardingCodeId)||bulkDiscardBusy||Boolean(revising)} onClick={()=>void acceptPreview(activeCodeReview.id)} title={!ready?"Primero debes disponer de una página visual funcional":undefined} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-40">PUBLICAR CAMBIO</button>
       </div>
       {!ready&&<p className="mt-2 text-xs text-amber-900">Publicación bloqueada: primero debe estar disponible la página de prueba.</p>}
       {(prUrl||providerDetails)&&<details className="mt-3 text-xs text-slate-600"><summary className="cursor-pointer font-semibold">Detalles técnicos (opcional)</summary><div className="mt-2 flex flex-wrap gap-3">{prUrl&&<a href={prUrl} target="_blank" rel="noreferrer" className="underline">GitHub</a>}{providerDetails&&<a href={providerDetails} target="_blank" rel="noreferrer" className="underline">Vercel</a>}</div>{result.branch&&<p className="mt-2 break-all">{result.branch}</p>}</details>} 
