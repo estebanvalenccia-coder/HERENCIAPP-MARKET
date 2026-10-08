@@ -5027,7 +5027,7 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
 
   const address = record.shippingAddress || {};
   const countryCode = countryCodeFromAddress(address.country || "ES");
-  if (!address.name || !address.address || !address.city || !countryCode) {
+  if (!address.name || !address.address || !address.city || !address.country || !address.postalCode || !address.phone || !countryCode) {
     return {
       fulfillment: {
         ...record,
@@ -5068,6 +5068,27 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
+  if ((record.items || []).some((item) => String(item.cjPricingEstimate?.destination || "") !== countryCode)) {
+    return {
+      fulfillment: { ...record, status: "approval_required",
+        blocker: "El país de entrega no coincide con la cotización del transporte CJ. Recalcula para el destino exacto.",
+        updatedAt: now }, executed: false, manual: false,
+    };
+  }
+  const mismatchedSelection=(record.items || []).filter((item)=>{
+    const chosen=String(item.selectedVariant || "").trim().toLowerCase();
+    if (!chosen) return false;
+    const sku=String(item.supplierSku || "").trim().toLowerCase();
+    const suffix=sku.includes("-") ? sku.split("-").slice(1).join("-") : "";
+    return !suffix || !(suffix.includes(chosen) || chosen.includes(suffix));
+  });
+  if (mismatchedSelection.length) {
+    return {
+      fulfillment: { ...record, status: "mapping_required",
+        blocker: "El cliente eligió una variante que no coincide con el SKU CJ asignado. Revisa el mapeo antes de enviar.",
+        updatedAt: now }, executed: false, manual: false,
+    };
+  }
   const shippingCountry = countryCodeFromAddress(address.country || "ES");
   const preferredMethods = [...new Set((record.items || []).map((item) =>
     item?.cjPreferredLogisticCountry === shippingCountry ? String(item?.cjPreferredLogisticName || "").trim() : ""
