@@ -185,7 +185,7 @@ export function registerSupportV2(app, db) {
       const site = parseJSON(await readStorageValue("siteContent"), {});
       const hours = (site?.contactPage?.hours || []).map(x => x.label + ": " + x.value).join("; ");
       const productList = parseJSON(await readStorageValue("adminProducts"), []);
-      const known = Array.isArray(productList) ? productList.filter(x => x && x.status !== "draft" && x.deletedAt == null)
+      const known = Array.isArray(productList) ? productList.filter(x => x && ["active","published","live"].includes(String(x.status || "").toLowerCase()) && x.deletedAt == null)
         .slice(0, 20).map(x => x.name || x.title).filter(Boolean).join(", ") : "";
       const context = "Herencia Market, Barcelona. Horario publicado: " + hours.slice(0, 800) +
         ". Productos publicados (referencias, no confirmar existencias sin comprobar): " + known.slice(0, 700) +
@@ -296,9 +296,10 @@ export function registerSupportV2(app, db) {
     const actor=await identity(req,res);
     const current=await loadTicket(id);
     if(!sameOwner(current,actor))return res.status(404).json({error:"Consulta no encontrada"});
-    const firstRequest = current.humanRequested !== true;
+    let firstRequest = false;
     const thread=await mutateTicket(id,t=>{
       if(!sameOwner(t,actor))return null;
+      firstRequest = t.humanRequested !== true;
       t.humanRequested=true;
       t.status="open";
       t.updatedAt=new Date().toISOString();
@@ -370,7 +371,7 @@ export function registerSupportV2(app, db) {
     const note=req.body?.internal===true;
     const thread=await mutateTicket(id,t=>{
       t.messages.push({id:crypto.randomUUID(),role:note?"internal":"agent",text,createdAt:new Date().toISOString()});
-      if(!note)t.status="answered";
+      if(!note){t.status="answered";t.humanRequested=true;}
       t.updatedAt=new Date().toISOString();return t;
     });
     if(!note && thread.ownerType==="customer" && thread.customerEmail) {
