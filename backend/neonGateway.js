@@ -578,7 +578,12 @@ const server=http.createServer(async(req,res)=>{try{
       const current=await getNeonCommerceProduct(id,{includeArchived:true});
       if(!current)return json(res,404,{error:"Producto no encontrado"});
       const body=await bodyJson(req);
-      const normalizedBody=await normalizeProductMedia({...current,...body,id});
+      // Partial edits must never erase imported URLs, supplier IDs or CJ variant mappings.
+      const mergedMetadata = {
+        ...(current.metadata && typeof current.metadata === "object" ? current.metadata : {}),
+        ...(body?.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+      };
+      const normalizedBody=await normalizeProductMedia({...current,...body,metadata:mergedMetadata,id});
       const product=await saveNeonCommerceProduct(normalizedBody,{id});
       return json(res,200,{product,source:"neon"});
     }
