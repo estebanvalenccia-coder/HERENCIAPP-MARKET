@@ -11,7 +11,7 @@
     "test:pos": "node --test backend/posEngine.test.js",
     "test:security": "node --test backend/security.test.js",
     "test:delivery": "node --test backend/deliveryCapacity.test.js",
-    "test:release": "node --test backend/releaseReadiness.test.js backend/catalogUrlImporter.test.js backend/cjProfitability.test.js backend/customerSupportAI.test.js backend/supportStorageSecurity.test.js backend/supportTicketMetadata.test.js",
+    "test:release": "node --test backend/releaseReadiness.test.js backend/catalogUrlImporter.test.js backend/cjProfitability.test.js backend/customerSupportAI.test.js backend/supportStorageSecurity.test.js backend/supportTicketMetadata.test.js backend/supportV2.test.js backend/supportV2.integration.test.js",
     "dev": "vite",
     "dev:backend": "node --import ./backend/commerceCore.js --import ./backend/customerAccessRoutes.js --import ./backend/fixCors.js --import ./backend/fixAdminEmail.js --import ./backend/fixAIBouquet.js --import ./backend/fixSalesAI.js --import ./backend/fixTTS.js --import ./backend/fixMapsShipping.js backend/server.js",
     "dev:full": "concurrently \"vite\" \"npm run dev:backend\"",
