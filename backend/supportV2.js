@@ -24,6 +24,28 @@ export function validateSupportAttachment(dataUrl) {
   return { mime, base64: buffer.toString("base64"), size: buffer.length };
 }
 
+async function sendSupportEmail(to, subject, body, ticketId, messageId) {
+  const apiKey = String(process.env.RESEND_API_KEY || "").trim();
+  const sender = String(process.env.EMAIL_FROM || "").trim();
+  if (!apiKey || !sender || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to || ""))) return false;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      signal: AbortSignal.timeout(7500),
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+        "Idempotency-Key": crypto.createHash("sha256").update("herencia-support:"+ticketId+":"+messageId+":"+to).digest("hex"),
+      },
+      body: JSON.stringify({ from: sender, to: [to], subject, text: body }),
+    });
+    if (!response.ok) throw new Error("Email API status " + response.status);
+    return true;
+  } catch (error) {
+    console.warn("[support notifications] Transactional email failed:", error.message);
+    return false;
+  }
+}
 function parseJSON(value, fallback = null) {
   if (!value) return fallback;
   try { return JSON.parse(value); } catch { return fallback; }
@@ -234,6 +256,13 @@ export function registerSupportV2(app, db) {
       await upsertStorageValue("customerSupportTicketIndex", JSON.stringify([...index,id]));
     }
     const updated = await withAI(ticket, text, req.body?.allowAI === true);
+    if (updated.status === "open" && process.env.STORE_EMAIL) {
+      void sendSupportEmail(process.env.STORE_EMAIL, "Nueva consulta de Herencia · " + updated.ticketId,
+        "Hay una nueva consulta pendiente en Herencia Market. Ábrela desde Administración > Servicio al cliente.
+
+https://www.herenciamarket.es/admin",
+        updated.ticketId, updated.messages[0].id);
+    }
     res.status(201).json({ thread: internalView(updated) });
   }));
   app.get("/api/support/v2/tickets/:id", route(async(req,res)=>{
@@ -254,6 +283,14 @@ export function registerSupportV2(app, db) {
       return t;
     });
     const reply=await withAI(updated,text,req.body?.allowAI === true);
+    if(reply.status==="open" && process.env.STORE_EMAIL) {
+      const lastHuman = [...reply.messages].reverse().find(m=>m.role==="customer");
+      void sendSupportEmail(process.env.STORE_EMAIL, "Consulta pendiente · " + reply.ticketId,
+        "Un cliente ha escrito en atención al cliente. Revisa la bandeja de Administración.
+
+https://www.herenciamarket.es/admin",
+        reply.ticketId,lastHuman?.id||crypto.randomUUID());
+    }
     res.json({thread:internalView(reply)});
   }));
   // Any authenticated guest/customer can remove a new ticket and its private media.
@@ -286,6 +323,14 @@ export function registerSupportV2(app, db) {
       if(!note)t.status="answered";
       t.updatedAt=new Date().toISOString();return t;
     });
+    if(!note && thread.ownerType==="customer" && thread.customerEmail) {
+      void sendSupportEmail(thread.customerEmail, "Herencia ha respondido · " + thread.ticketId,
+        "El equipo de Herencia Market ha respondido a tu consulta.
+
+Para consultar la respuesta, entra a tu cuenta:
+https://www.herenciamarket.es/perfil",
+        thread.ticketId,thread.messages.at(-1)?.id||crypto.randomUUID());
+    }
     res.json({thread});
   }));
   app.patch("/api/admin/support/v2/tickets/:id",route(async(req,res)=>{
