@@ -1,4 +1,5 @@
 import { answerOwnOrderStatus } from "./supportOrders.js";
+import { parseSupportAutomationSettings, validateSupportAutomationPatch } from "./supportAutomationSettings.js";
 import crypto from "node:crypto";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport } from "./customerSupportAI.js";
@@ -65,6 +66,11 @@ export function registerSupportV2(app, db) {
     mutateNeonStorageValue, requirePrimaryDatabase, sign, parseCookies, cookieOptions,
     supportLimiter, listOrdersByEmail,
   } = db;
+
+  const SUPPORT_SETTINGS_KEY = "customerSupportAutomationSettings";
+  async function loadAutomationSettings() {
+    return parseSupportAutomationSettings(await readStorageValue(SUPPORT_SETTINGS_KEY));
+  }
 
   // Server-Sent Events: no private transcript is transmitted in the event itself.
   const subscribers = new Set();
@@ -183,15 +189,31 @@ export function registerSupportV2(app, db) {
     }
     const lastMessageId = ticket.messages.at(-1)?.id;
     try {
+      const settings = await loadAutomationSettings();
+      if (!settings.assistantEnabled) {
+        return mutateTicket(ticket.id, current => {
+          const last = current?.messages?.at(-1);
+          if (!last || last.id !== lastMessageId || last.role !== "customer" || current.humanRequested) return current;
+          current.messages.push({
+            id:crypto.randomUUID(), role:"assistant",
+            text:"La atención automática está desactivada. Nuestro equipo de Servicio al cliente continuará esta consulta contigo.",
+            createdAt:new Date().toISOString(),
+          });
+          current.status="open";
+          current.humanRequested=true;
+          current.updatedAt=new Date().toISOString();
+          return current;
+        });
+      }
       // The server may read ONLY this authenticated customer's orders.
       // No order rows, email addresses or payment metadata go to Groq.
-      const orderReply = await answerOwnOrderStatus({
+      const orderReply = settings.orderLookupEnabled ? await answerOwnOrderStatus({
         question: input,
         ownerType: ticket.ownerType,
         ownerId: ticket.ownerId || ticket.customerId,
         loadCustomerAccounts,
         listOrdersByEmail,
-      });
+      }) : null;
       if (orderReply) {
         return mutateTicket(ticket.id, current => {
           const last = current?.messages?.at(-1);
@@ -381,6 +403,28 @@ export function registerSupportV2(app, db) {
     }
     publishChange(ticket);
     res.json({ok:true});
+  }));
+  app.get("/api/admin/support/v2/settings",route(async(req,res)=>{
+    if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
+    res.json({settings:await loadAutomationSettings()});
+  }));
+  app.patch("/api/admin/support/v2/settings",supportLimiter,route(async(req,res)=>{
+    if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
+    let changes;
+    try { changes=validateSupportAutomationPatch(req.body); }
+    catch(error){return res.status(400).json({error:error.message});}
+    let settings;
+    if(hasNeon()){
+      const result=await mutateNeonStorageValue(SUPPORT_SETTINGS_KEY,raw=>{
+        settings={...parseSupportAutomationSettings(raw),...changes};
+        return JSON.stringify(settings);
+      });
+      settings=parseSupportAutomationSettings(result.value);
+    }else{
+      settings={...await loadAutomationSettings(),...changes};
+      await upsertStorageValue(SUPPORT_SETTINGS_KEY,JSON.stringify(settings));
+    }
+    res.json({settings});
   }));
   app.get("/api/admin/support/v2/tickets", route(async(req,res)=>{
     if(!isAdmin(req))return res.status(401).json({error:"Acceso de administrador requerido"});
