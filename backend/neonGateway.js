@@ -105,6 +105,12 @@ child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
+  if(path==="/api/runtime-version"&&req.method==="GET"){
+    const candidate=String(process.env.RAILWAY_GIT_COMMIT_SHA||"").trim().toLowerCase();
+    const commit=/^[0-9a-f]{40}$/.test(candidate)?candidate:null;
+    return json(res,200,{commit,platform:"railway",component:"backend"});
+  }
+
   if(path==="/api/ready"&&req.method==="GET"){
     let neon=false;try{neon=await neonReady();}catch{}
     const ready={
