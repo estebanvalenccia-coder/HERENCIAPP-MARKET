@@ -1541,6 +1541,13 @@ export const backendApi = {
     return request<any>(`/api/neural/code/${encodeURIComponent(id)}/preview`);
   },
 
+  async neuralRepairCodePreview(id: string) {
+    return request<any>(`/api/neural/code/${encodeURIComponent(id)}/repair`, {
+      method: "POST",
+      body: JSON.stringify({ approvedBy: "admin" }),
+    });
+  },
+
   async neuralAcceptCodePreview(id: string) {
     return request<any>(`/api/neural/code/${encodeURIComponent(id)}/accept`, {
       method: "POST",
