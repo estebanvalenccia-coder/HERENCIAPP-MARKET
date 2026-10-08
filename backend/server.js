@@ -4801,6 +4801,7 @@ async function readSupplierOperations() {
     quotes: [],
     inventoryAdjustments: [],
     supplierFulfillments: [],
+    supplierReturns: [],
   };
   return {
     ...defaults,
@@ -4811,6 +4812,389 @@ async function readSupplierOperations() {
 async function writeSupplierOperations(operations) {
   await upsertStorageValue("posOperations", JSON.stringify(operations));
   return operations;
+}
+
+const CJ_API_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
+let cjTokenCache = { accessToken: "", refreshToken: "", expiresAt: 0 };
+
+function cjConfigured() {
+  return Boolean(String(process.env.CJ_API_KEY || "").trim());
+}
+
+function cjLiveAutopilotEnabled() {
+  return String(process.env.CJ_LIVE_AUTOPILOT_ENABLED || "").trim().toLowerCase() === "true";
+}
+
+function supplierIntegrationType(supplier = {}) {
+  const explicit = String(supplier?.integrationType || "").trim().toLowerCase();
+  if (explicit === "cj" || explicit === "webhook" || explicit === "manual") return explicit;
+  const host = normalizeSupplierSourceHost(supplier?.sourceHost || "");
+  if (host.includes("cjdropshipping.com")) return "cj";
+  return "webhook";
+}
+
+function countryCodeFromAddress(value = "") {
+  const raw = String(value || "").trim();
+  if (/^[a-z]{2}$/i.test(raw)) return raw.toUpperCase();
+  const normalized = raw.toLowerCase();
+  const aliases = new Map([
+    ["españa", "ES"], ["spain", "ES"],
+    ["francia", "FR"], ["france", "FR"],
+    ["alemania", "DE"], ["germany", "DE"],
+    ["italia", "IT"], ["italy", "IT"],
+    ["portugal", "PT"],
+    ["reino unido", "GB"], ["united kingdom", "GB"], ["uk", "GB"],
+    ["estados unidos", "US"], ["united states", "US"], ["usa", "US"],
+    ["colombia", "CO"],
+    ["méxico", "MX"], ["mexico", "MX"],
+  ]);
+  return aliases.get(normalized) || raw.toUpperCase().slice(0, 2);
+}
+
+async function cjGetAccessToken({ force = false } = {}) {
+  const apiKey = String(process.env.CJ_API_KEY || "").trim();
+  if (!apiKey) throw Object.assign(new Error("Falta CJ_API_KEY en Railway"), { statusCode: 503 });
+  if (!force && cjTokenCache.accessToken && cjTokenCache.expiresAt > Date.now() + 10 * 60 * 1000) {
+    return cjTokenCache.accessToken;
+  }
+
+  const response = await fetch(CJ_API_BASE + "/authentication/getAccessToken", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.result === false || !payload?.data?.accessToken) {
+    throw Object.assign(
+      new Error(String(payload?.message || "CJ no aceptó la API Key").slice(0, 500)),
+      { statusCode: 502, providerCode: payload?.code || response.status }
+    );
+  }
+
+  const expiry = Date.parse(payload.data.accessTokenExpiryDate || "") || (Date.now() + 170 * 24 * 60 * 60 * 1000);
+  cjTokenCache = {
+    accessToken: String(payload.data.accessToken),
+    refreshToken: String(payload.data.refreshToken || ""),
+    expiresAt: expiry,
+  };
+  return cjTokenCache.accessToken;
+}
+
+async function cjRequest(pathname, { method = "GET", query = null, body = null, retryAuth = true } = {}) {
+  const token = await cjGetAccessToken();
+  const url = new URL(CJ_API_BASE + pathname);
+  if (query && typeof query === "object") {
+    for (const [key, value] of Object.entries(query)) {
+      if (Array.isArray(value)) value.forEach((item) => url.searchParams.append(key, String(item)));
+      else if (value != null && value !== "") url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "CJ-Access-Token": token,
+    },
+    ...(body == null ? {} : { body: JSON.stringify(body) }),
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if ((response.status === 401 || payload?.code === 1600002) && retryAuth) {
+    cjTokenCache = { accessToken: "", refreshToken: "", expiresAt: 0 };
+    await cjGetAccessToken({ force: true });
+    return cjRequest(pathname, { method, query, body, retryAuth: false });
+  }
+
+  if (!response.ok || payload?.result === false || payload?.success === false) {
+    const error = new Error(String(payload?.message || ("CJ API HTTP " + response.status)).slice(0, 600));
+    error.statusCode = 502;
+    error.providerCode = payload?.code || response.status;
+    error.providerRequestId = payload?.requestId || "";
+    throw error;
+  }
+  return payload;
+}
+
+async function cjPayOrder({ orderId = "", shipmentOrderId = "" } = {}) {
+  if (shipmentOrderId) {
+    await cjRequest("/shopping/pay/payBalanceV2", {
+      method: "POST",
+      body: { shipmentOrderId },
+    });
+    return;
+  }
+  if (!orderId) throw Object.assign(new Error("CJ no devolvió orderId para pagar"), { statusCode: 502 });
+  await cjRequest("/shopping/pay/payBalance", {
+    method: "POST",
+    body: { orderId },
+  });
+}
+
+async function executeCjSupplierFulfillment(record, supplier, { force = false } = {}) {
+  const now = new Date().toISOString();
+  if (!cjConfigured()) {
+    return {
+      fulfillment: {
+        ...record,
+        status: "connector_required",
+        blocker: "CJ está preparado, pero falta CJ_API_KEY en Railway.",
+        provider: "cj",
+        updatedAt: now,
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  const sandbox = supplier?.cjSandbox !== false;
+  if (!sandbox && !cjLiveAutopilotEnabled()) {
+    return {
+      fulfillment: {
+        ...record,
+        status: "approval_required",
+        blocker: "CJ está en modo real, pero CJ_LIVE_AUTOPILOT_ENABLED todavía no está activado.",
+        provider: "cj",
+        updatedAt: now,
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  const missingMapping = (record.items || []).filter((item) => !String(item?.supplierVariantId || "").trim() && !String(item?.supplierSku || "").trim());
+  if (missingMapping.length) {
+    return {
+      fulfillment: {
+        ...record,
+        status: "mapping_required",
+        blocker: "Falta CJ VID/SKU en: " + missingMapping.map((item) => item.name).join(", "),
+        provider: "cj",
+        updatedAt: now,
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  const address = record.shippingAddress || {};
+  const countryCode = countryCodeFromAddress(address.country || "ES");
+  if (!address.name || !address.address || !address.city || !countryCode) {
+    return {
+      fulfillment: {
+        ...record,
+        status: "address_required",
+        blocker: "Faltan datos obligatorios de envío para CJ.",
+        provider: "cj",
+        updatedAt: now,
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  if (record.externalOrderId && record.provider === "cj" && ["approval_required", "payment_required"].includes(String(record.status || ""))) {
+    if (!force) {
+      return { fulfillment: record, executed: false, manual: false };
+    }
+    await cjPayOrder({
+      orderId: record.externalOrderId,
+      shipmentOrderId: record.cjShipmentOrderId || "",
+    });
+    return {
+      fulfillment: {
+        ...record,
+        status: "ordered",
+        blocker: "",
+        paidAt: now,
+        orderedAt: record.orderedAt || now,
+        providerSandbox: sandbox,
+        updatedAt: now,
+        lastError: "",
+      },
+      executed: true,
+      manual: false,
+    };
+  }
+
+  const logisticName = String(supplier?.cjLogisticName || process.env.CJ_DEFAULT_LOGISTIC_NAME || "CJPacket Ordinary").trim();
+  const fromCountryCode = String(supplier?.cjFromCountryCode || "CN").trim().toUpperCase().slice(0, 2);
+  const orderNumber = ("HM-" + String(record.orderId || "") + "-" + String(record.id || "").slice(0, 8)).slice(0, 50);
+
+  const payload = await cjRequest("/shopping/order/createOrderV2", {
+    method: "POST",
+    body: {
+      orderNumber,
+      shippingZip: String(address.postalCode || "").slice(0, 20),
+      shippingCountryCode: countryCode,
+      shippingCountry: String(address.country || countryCode).slice(0, 50),
+      shippingProvince: String(address.province || address.city || "").slice(0, 50),
+      shippingCity: String(address.city || "").slice(0, 50),
+      shippingPhone: String(address.phone || "").slice(0, 20),
+      shippingCustomerName: String(address.name || record.customerName || "").slice(0, 50),
+      shippingAddress: String(address.address || "").slice(0, 500),
+      shippingAddress2: String(address.address2 || "").slice(0, 500),
+      email: String(record.customerEmail || "").slice(0, 50),
+      remark: String(address.notes || "Pedido Herencia Market").slice(0, 500),
+      payType: 3,
+      isSandbox: sandbox ? 1 : 0,
+      logisticName,
+      fromCountryCode,
+      platform: "api",
+      orderFlow: 1,
+      products: (record.items || []).map((item) => ({
+        ...(String(item.supplierVariantId || "").trim() ? { vid: String(item.supplierVariantId).trim().slice(0, 50) } : {}),
+        ...(String(item.supplierSku || "").trim() ? { sku: String(item.supplierSku).trim().slice(0, 50) } : {}),
+        quantity: Math.max(1, Math.floor(Number(item.quantity || 1))),
+        storeLineItemId: String(item.productId || "").slice(0, 125),
+      })),
+    },
+  });
+
+  const data = payload?.data || {};
+  const cjOrderId = String(data.orderId || "").trim();
+  const shipmentOrderId = String(data.shipmentOrderId || "").trim();
+  if (!cjOrderId && !shipmentOrderId) {
+    throw Object.assign(new Error("CJ creó la solicitud pero no devolvió un identificador de pedido"), { statusCode: 502 });
+  }
+
+  const actualPaymentUsd = normalizeMoney(data.actualPayment ?? data.orderAmount ?? 0);
+  const maxPaymentUsd = normalizeMoney(supplier?.cjMaxPaymentUsd || 0);
+  const interceptReasons = Array.isArray(data.interceptOrderReasons) ? data.interceptOrderReasons.filter(Boolean) : [];
+
+  const prepared = {
+    ...record,
+    provider: "cj",
+    externalOrderId: cjOrderId || record.externalOrderId || "",
+    cjShipmentOrderId: shipmentOrderId,
+    providerSandbox: sandbox,
+    providerCurrency: "USD",
+    providerActualPayment: actualPaymentUsd,
+    providerOrderStatus: String(data.orderStatus || "CREATED"),
+    providerRequestId: String(payload?.requestId || ""),
+    orderedAt: now,
+    updatedAt: now,
+  };
+
+  if (interceptReasons.length) {
+    return {
+      fulfillment: {
+        ...prepared,
+        status: "action_required",
+        blocker: "CJ requiere revisión: " + interceptReasons.map((item) => item?.message || item?.code).filter(Boolean).join(" · "),
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  if (!force && !sandbox && maxPaymentUsd > 0 && actualPaymentUsd > maxPaymentUsd) {
+    return {
+      fulfillment: {
+        ...prepared,
+        status: "approval_required",
+        blocker: "CJ pide $" + actualPaymentUsd.toFixed(2) + " USD y supera tu límite de $" + maxPaymentUsd.toFixed(2) + " USD. El pedido quedó creado pero NO pagado.",
+      },
+      executed: false,
+      manual: false,
+    };
+  }
+
+  await cjPayOrder({ orderId: cjOrderId, shipmentOrderId });
+  return {
+    fulfillment: {
+      ...prepared,
+      status: "ordered",
+      blocker: "",
+      paidAt: new Date().toISOString(),
+      lastError: "",
+    },
+    executed: true,
+    manual: false,
+  };
+}
+
+async function syncCjSupplierFulfillment(record) {
+  if (!record?.externalOrderId) throw Object.assign(new Error("El pedido CJ todavía no tiene ID externo"), { statusCode: 409 });
+  const payload = await cjRequest("/shopping/order/getOrderDetail", {
+    query: { orderId: record.externalOrderId },
+  });
+  const data = payload?.data || {};
+  const rawStatus = String(data.orderStatus || "").toUpperCase();
+  const status =
+    rawStatus === "DELIVERED" ? "delivered" :
+    rawStatus === "SHIPPED" ? "shipped" :
+    rawStatus === "CANCELLED" ? "cancelled" :
+    ["UNPAID", "CREATED", "IN_CART"].includes(rawStatus) ? "payment_required" :
+    "ordered";
+  return {
+    ...record,
+    status,
+    providerOrderStatus: rawStatus || record.providerOrderStatus || "",
+    trackingNumber: String(data.trackNumber || record.trackingNumber || ""),
+    trackingUrl: String(data.trackingUrl || record.trackingUrl || ""),
+    providerActualPayment: normalizeMoney(data.orderAmount ?? record.providerActualPayment ?? 0),
+    providerCurrency: "USD",
+    providerSyncedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function prepareCjDispute(record, { expectType = 1, messageText = "", imageUrl = [], videoUrl = [] } = {}) {
+  if (!record?.externalOrderId) throw Object.assign(new Error("Este pedido no tiene un pedido CJ asociado"), { statusCode: 409 });
+  const productsPayload = await cjRequest("/disputes/disputeProducts", {
+    query: { orderId: record.externalOrderId },
+  });
+  const disputeProducts = Array.isArray(productsPayload?.data?.productInfoList)
+    ? productsPayload.data.productInfoList.filter((item) => item?.canChoose !== false)
+    : [];
+  if (!disputeProducts.length) {
+    throw Object.assign(new Error("CJ no permite abrir una disputa para este pedido/producto"), { statusCode: 409 });
+  }
+
+  const selected = disputeProducts.map((item) => ({
+    lineItemId: String(item.lineItemId || ""),
+    quantity: Math.max(1, Math.floor(Number(item.quantity || 1))),
+    price: normalizeMoney(item.price || 0),
+  }));
+  const confirmPayload = await cjRequest("/disputes/disputeConfirmInfo", {
+    method: "POST",
+    body: { orderId: record.externalOrderId, productInfoList: selected },
+  });
+  const reasons = Array.isArray(confirmPayload?.data?.disputeReasonList) ? confirmPayload.data.disputeReasonList : [];
+  if (!reasons.length) throw Object.assign(new Error("CJ no devolvió motivos válidos para esta devolución"), { statusCode: 409 });
+  const allowedExpect = Array.isArray(confirmPayload?.data?.expectResultOptionList)
+    ? confirmPayload.data.expectResultOptionList.map(String)
+    : ["1"];
+  const desiredExpect = allowedExpect.includes(String(expectType)) ? Number(expectType) : Number(allowedExpect[0] || 1);
+  const reason = reasons[0];
+
+  const createPayload = await cjRequest("/disputes/create", {
+    method: "POST",
+    body: {
+      businessDisputeId: ("HERENCIA-" + String(record.id || "")).slice(0, 100),
+      orderId: record.externalOrderId,
+      disputeReasonId: Number(reason.disputeReasonId),
+      expectType: desiredExpect,
+      refundType: 1,
+      messageText: String(messageText || "Solicitud gestionada por Herencia Market").slice(0, 500),
+      imageUrl: Array.isArray(imageUrl) ? imageUrl.filter(Boolean).slice(0, 10) : [],
+      videoUrl: Array.isArray(videoUrl) ? videoUrl.filter(Boolean).slice(0, 5) : [],
+      productInfoList: selected,
+    },
+  });
+
+  return {
+    provider: "cj",
+    orderId: record.orderId,
+    fulfillmentId: record.id,
+    externalOrderId: record.externalOrderId,
+    expectType: desiredExpect,
+    reasonId: Number(reason.disputeReasonId),
+    reasonName: String(reason.reasonName || ""),
+    providerRequestId: String(createPayload?.requestId || ""),
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function compactShippingAddress(order = {}) {
@@ -4883,6 +5267,8 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       sourceProductUrl,
       sourceHost,
       supplierCost,
+      supplierVariantId: String(metadata.supplierVariantId || metadata.cjVid || "").trim().slice(0, 100),
+      supplierSku: String(metadata.supplierSku || metadata.cjSku || "").trim().slice(0, 100),
       estimatedCost: normalizeMoney(supplierCost * quantity),
       salePrice,
       revenue,
@@ -5013,6 +5399,30 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
     return { fulfillment: updated, executed: false, manual: false };
+  }
+
+  const integrationType = supplierIntegrationType(supplier);
+  if (integrationType === "cj") {
+    try {
+      const result = await executeCjSupplierFulfillment(record, supplier, { force });
+      operations.supplierFulfillments[index] = result.fulfillment;
+      await writeSupplierOperations(operations);
+      return result;
+    } catch (error) {
+      const updated = {
+        ...record,
+        provider: "cj",
+        status: "action_required",
+        blocker: "CJ requiere revisión.",
+        lastError: String(error?.message || error).slice(0, 600),
+        providerCode: error?.providerCode || "",
+        providerRequestId: error?.providerRequestId || "",
+        updatedAt: now,
+      };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
   }
 
   const connectorUrl = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim();
@@ -5178,10 +5588,98 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
     res.json({
       fulfillments: Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [],
       suppliers: Array.isArray(operations.suppliers) ? operations.suppliers : [],
-      autopilotConnectorConfigured: Boolean(String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim()),
+      autopilotConnectorConfigured: Boolean(String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim() || cjConfigured()),
+      cjConfigured: cjConfigured(),
+      cjLiveEnabled: cjLiveAutopilotEnabled(),
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo cargar la cola de proveedores" });
+  }
+});
+
+app.post("/api/admin/suppliers/cj/test", requireAdmin, async (_req, res) => {
+  try {
+    if (!cjConfigured()) return res.status(409).json({ configured: false, error: "Falta CJ_API_KEY" });
+    const [settings, balance] = await Promise.all([
+      cjRequest("/setting/get"),
+      cjRequest("/shopping/pay/getBalance"),
+    ]);
+    res.json({
+      configured: true,
+      liveEnabled: cjLiveAutopilotEnabled(),
+      account: {
+        name: String(settings?.data?.openName || ""),
+        email: String(settings?.data?.openEmail || ""),
+      },
+      balance: balance?.data || null,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 502).json({ configured: cjConfigured(), error: error.message || "No se pudo conectar con CJ" });
+  }
+});
+
+app.post("/api/admin/supplier-fulfillments/:id/sync", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const operations = await readSupplierOperations();
+    const index = (operations.supplierFulfillments || []).findIndex((item) => String(item?.id || "") === String(req.params.id));
+    if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
+    const record = operations.supplierFulfillments[index];
+    const supplier = (operations.suppliers || []).find((item) => String(item?.id || "") === String(record.supplierId || ""));
+    if (supplierIntegrationType(supplier) !== "cj" && record.provider !== "cj") {
+      return res.status(409).json({ error: "Este fulfillment no usa CJ" });
+    }
+    const updated = await syncCjSupplierFulfillment(record);
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    if (updated.orderId && ["shipped", "delivered"].includes(updated.status)) {
+      const order = await getOrderPrimary(updated.orderId).catch(() => null);
+      if (order) {
+        await patchOrderPrimary(updated.orderId, {
+          metadata: {
+            ...(order.metadata || {}),
+            supplierTracking: {
+              ...(order.metadata?.supplierTracking || {}),
+              [updated.id]: {
+                supplier: updated.supplierName,
+                externalOrderId: updated.externalOrderId,
+                trackingNumber: updated.trackingNumber,
+                trackingUrl: updated.trackingUrl,
+                status: updated.status,
+                updatedAt: updated.updatedAt,
+              },
+            },
+          },
+        }).catch(() => null);
+      }
+    }
+    res.json({ fulfillment: updated });
+  } catch (error) {
+    res.status(error.statusCode || 502).json({ error: error.message || "No se pudo sincronizar CJ" });
+  }
+});
+
+app.post("/api/admin/supplier-fulfillments/:id/dispute", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const operations = await readSupplierOperations();
+    const record = (operations.supplierFulfillments || []).find((item) => String(item?.id || "") === String(req.params.id));
+    if (!record) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
+    const supplier = (operations.suppliers || []).find((item) => String(item?.id || "") === String(record.supplierId || ""));
+    if (supplierIntegrationType(supplier) !== "cj" && record.provider !== "cj") {
+      return res.status(409).json({ error: "Las devoluciones automáticas están disponibles para CJ" });
+    }
+    const supplierReturn = await prepareCjDispute(record, {
+      expectType: Number(req.body?.expectType) === 2 ? 2 : 1,
+      messageText: req.body?.messageText,
+      imageUrl: req.body?.imageUrl,
+      videoUrl: req.body?.videoUrl,
+    });
+    operations.supplierReturns = [supplierReturn, ...(operations.supplierReturns || [])].slice(0, 1000);
+    await writeSupplierOperations(operations);
+    res.json({ supplierReturn });
+  } catch (error) {
+    res.status(error.statusCode || 502).json({ error: error.message || "No se pudo abrir la devolución en CJ" });
   }
 });
 
@@ -5222,7 +5720,7 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
     const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(req.params.id));
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
     const previous = operations.supplierFulfillments[index];
-    const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","supplier_required","supplier_disabled","cost_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
+    const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","supplier_required","supplier_disabled","cost_required","mapping_required","address_required","payment_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
     const requestedStatus = String(req.body?.status || previous.status);
     const updated = {
       ...previous,
@@ -5260,6 +5758,13 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
       fulfillmentMode: normalizeSupplierFulfillmentMode(req.body?.fulfillmentMode ?? existingSupplier?.fulfillmentMode ?? "manual"),
       maxAutoOrderTotal: Math.max(0, normalizeMoney(req.body?.maxAutoOrderTotal ?? existingSupplier?.maxAutoOrderTotal ?? 0)),
       minMarginPercent: Math.max(0, Math.min(95, Number(req.body?.minMarginPercent ?? existingSupplier?.minMarginPercent ?? 0))),
+      integrationType: ["cj", "webhook", "manual"].includes(String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "").toLowerCase())
+        ? String(req.body?.integrationType ?? existingSupplier?.integrationType).toLowerCase()
+        : "manual",
+      cjSandbox: req.body?.cjSandbox == null ? existingSupplier?.cjSandbox !== false : req.body.cjSandbox !== false,
+      cjLogisticName: String(req.body?.cjLogisticName ?? existingSupplier?.cjLogisticName ?? "CJPacket Ordinary").trim().slice(0, 100),
+      cjFromCountryCode: String(req.body?.cjFromCountryCode ?? existingSupplier?.cjFromCountryCode ?? "CN").trim().toUpperCase().slice(0, 2),
+      cjMaxPaymentUsd: Math.max(0, normalizeMoney(req.body?.cjMaxPaymentUsd ?? existingSupplier?.cjMaxPaymentUsd ?? 0)),
       notes: String(req.body?.notes ?? existingSupplier?.notes ?? "").trim().slice(0, 1000),
       active: req.body?.active == null ? existingSupplier?.active !== false : req.body.active !== false,
       updatedAt: new Date().toISOString(),
