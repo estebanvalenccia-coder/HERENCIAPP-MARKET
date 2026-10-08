@@ -9627,6 +9627,8 @@ const supportV2 = registerSupportV2(app, {
   getCustomerSession, loadCustomerAccounts, isAdmin, readStorageValue, upsertStorageValue,
   deleteStorageValue, hasNeon, listNeonStorageByPrefix, mutateNeonStorageValue,
   requirePrimaryDatabase, sign, parseCookies, cookieOptions, supportLimiter,
+  // Verified email is obtained from the authenticated account inside supportV2.
+  listOrdersByEmail: email => listOrdersPrimary({ email, limit: 5 }),
 });
 supportV2Cleanup = supportV2.removeCustomerTickets;
 supportV2Export = supportV2.exportCustomerTickets;
