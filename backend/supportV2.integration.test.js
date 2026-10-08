@@ -37,6 +37,8 @@ function makeTestApp() {
   return {ready:()=>new Promise(resolve=>server.listening?resolve():server.once("listening",resolve)),port:()=>server.address().port,close:()=>new Promise(resolve=>server.close(resolve))};
 }
 test("guest tickets, ownership, internal notes, admin replies and private images",async()=>{
+  // Prevent test fixtures from sending real operational emails.
+  process.env.STORE_EMAIL = "";
   const app=makeTestApp();
   await app.ready();
   const base="http://127.0.0.1:"+app.port();
