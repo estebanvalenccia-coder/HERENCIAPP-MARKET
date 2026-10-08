@@ -54,6 +54,7 @@ import { AdminPublications } from "../components/admin/AdminPublications";
 import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
+import ClockMadrid from "../components/admin/ClockMadrid";
 import { AdminOrders } from "../components/admin/AdminOrders";
 import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
 import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
@@ -794,6 +795,7 @@ export function AdminDashboard() {
               </div>
 
               <div className="flex items-center gap-3">
+                <ClockMadrid />
                 <div className="hidden md:flex relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 
