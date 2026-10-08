@@ -48,16 +48,25 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   // Parallel read-only lookups. No personal name, phone or street address goes to CJ.
   const pid = (()=>{try{return new URL(meta.sourceProductUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)?.[1]||"";}catch{return "";}})();
   if (!pid) invalid("Falta el producto de origen CJ para verificar su variante.");
-  let variants, freight, fx;
-  try {
-    [variants, freight, fx] = await Promise.all([
-      queryCjProductVariants(pid),
-      quoteCjVariantShipping({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
-      getUsdToEurRate(),
-    ]);
-  } catch {
-    invalid("No se pudo verificar el coste actual de CJ, el transporte o el cambio de divisa. No se realizará ningún cobro.");
+  // Diagnostic messages are deliberately generic: never leak supplier API payloads or credentials.
+  const checks = await Promise.allSettled([
+    queryCjProductVariants(pid),
+    quoteCjVariantShipping({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
+    getUsdToEurRate(),
+  ]);
+  const failure = checks.findIndex((check) => check.status === "rejected");
+  if (failure !== -1) {
+    const reasons = [
+      "CJ no pudo verificar la variante y su precio actual.",
+      "CJ no pudo cotizar el transporte para el código postal indicado.",
+      "No se pudo verificar el cambio de dólares a euros.",
+    ];
+    invalid(reasons[failure] + " No se realizará ningún cobro.");
   }
+  const [variants, freight, fx] = checks.map((check) => check.value);
+  if (!Array.isArray(variants?.variants)) invalid("CJ no devolvió variantes válidas. No se realizará ningún cobro.");
+  if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
+  if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
   const selectedVariant = variants.variants.find((entry) => String(entry.vid)===vid);
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
   const selectedFreight = freight.methods.find((entry)=>entry.name===logisticName);
