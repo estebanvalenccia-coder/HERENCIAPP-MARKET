@@ -1,5 +1,4 @@
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
-import { promotionIsService, evaluatePromotion, promotionRedemptions, reservePromotion, finalizePromotion, releasePromotion } from "./promotionCodes.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
@@ -3575,7 +3574,7 @@ async function validateCommerceOrderPayload(order = {}) {
     const shippingAddress = order?.metadata?.shippingAddress || {};
     shippingQuote = await calculateShippingQuote(shippingAddress);
     const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+    if (maxDeliveryKm > 0 && Number(shippingQuote?.distanceKm || 0) > maxDeliveryKm) {
       throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
     }
     shipping = normalizeMoney(shippingQuote.price || 0);
@@ -7727,7 +7726,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
-        serviceBooking: promotionIsService(product),
+        serviceBooking: isServiceProduct(product),
         type: product.type,
         collection: product.collection,
         collections: product.collections,
@@ -7746,7 +7745,10 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     let verifiedPromotion = null;
     if (couponCode) {
       const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
-      verifiedPromotion = evaluatePromotion(rules, couponCode, authoritativeItems, { redemptions: await promotionRedemptions() });
+      verifiedPromotion = await quoteCoupon(couponCode, authoritativeItems);
+      if ((await availableCouponUses(verifiedPromotion.rule)) === 0) {
+        return res.status(409).json({ error: "Este código ha alcanzado su límite de usos" });
+      }
       authoritativeDiscount = verifiedPromotion.discount;
     }
 
@@ -7784,7 +7786,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const stockReservation = await reserveCommerceStock(orderId, authoritativeItems);
     if (verifiedPromotion) {
       try {
-        await reservePromotion({ code: couponCode, orderId, maxUses: verifiedPromotion.maxUses });
+        await changeCouponUsage("claim", verifiedPromotion, orderId);
       } catch (promotionError) {
         if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
         throw promotionError;
@@ -7826,7 +7828,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       });
     } catch (orderError) {
       if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
-      if (verifiedPromotion) await releasePromotion(orderId).catch(() => null);
+      if (verifiedPromotion) await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
       return res.status(500).json({ error: orderError.message });
     }
 
@@ -7835,7 +7837,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         const pendingOrder = await getOrderPrimary(orderId);
         await commitOnlineOrderInventory(pendingOrder);
         await consumeCommerceStockReservation(orderId);
-        await finalizePromotion(orderId);
+        await changeCouponUsage("redeem", verifiedPromotion, orderId);
         const paidOrder = await patchOrderPrimary(orderId, { status: "paid" });
         broadcastAdminOrderEvent(paidOrder, "order_paid");
         void emitNeuralBusinessEvent("order.paid", normalizeOrder(paidOrder));
@@ -7849,7 +7851,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       } catch (error) {
         await patchOrderPrimary(orderId, { status: "payment_error", metadata: { ...secureMetadata, freeOrderError: String(error?.message || error) } }).catch(() => null);
         if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
-        await releasePromotion(orderId).catch(() => null);
+        await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
         return res.status(500).json({ error: "No se pudo confirmar el pedido gratuito. Contacta con atención al cliente." });
       }
     }
@@ -7878,7 +7880,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       });
     } catch (error) {
       if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
-      if (verifiedPromotion) await releasePromotion(orderId).catch(() => null);
+      if (verifiedPromotion) await changeCouponUsage("release", verifiedPromotion, orderId).catch(() => null);
       await patchOrderPrimary(orderId, {
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
