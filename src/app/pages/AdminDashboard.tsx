@@ -1,4 +1,5 @@
 import { AdminSupport } from "../components/CustomerSupport";
+import { AdminNeuralTestButton } from "../components/admin/AdminNeuralTestButton";
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -892,6 +893,7 @@ export function AdminDashboard() {
                 >
                   Ver Sitio
                 </button>
+                <AdminNeuralTestButton />
               </div>
             </div>
           </div>
