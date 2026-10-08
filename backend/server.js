@@ -9034,7 +9034,10 @@ app.get("/api/customer/support", requireCustomer, async (req, res) => {
   try {
     const account = (await loadCustomerAccounts()).find(a => a.id === req.customerSession.customerId);
     if (!account) return res.status(401).json({ error: "Cuenta no encontrada" });
-    res.json({ thread: (await loadSupportThread(account.id)) || customerSupportInitial(account) });
+    {
+      const legacyThread = (await loadSupportThread(account.id)) || customerSupportInitial(account);
+      res.json({ thread: { ...legacyThread, messages: (legacyThread.messages || []).filter(message => message.role !== "internal") } });
+    }
   } catch (error) {
     console.error("Support read error", error);
     res.status(500).json({ error: "No se pudo cargar el chat" });
@@ -9071,7 +9074,7 @@ app.post("/api/customer/support", requireCustomer, supportLimiter, async (req, r
           sourceMessageId, true);
       }
     }
-    res.json({ thread });
+    res.json({ thread: { ...thread, messages: (thread.messages || []).filter(message => message.role !== "internal") } });
   } catch (error) {
     console.error("Support write error", error);
     res.status(500).json({ error: "No se pudo enviar el mensaje" });
