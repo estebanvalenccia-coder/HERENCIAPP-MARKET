@@ -880,6 +880,8 @@ function ImportedProductRow({
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState("");
+  const [preflight, setPreflight] = useState<any>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
   const [selectedFreightName, setSelectedFreightName] = useState(String(metadata.cjPreferredLogisticName || ""));
   const sourceUrl = String(metadata.sourceProductUrl || "");
   const sourceHost = sourceHostFromProduct(product);
@@ -902,6 +904,18 @@ function ImportedProductRow({
         checkedAt: new Date().toISOString(), destination: "ES", origin: "CN", quantity: 1,
       }
     : null;
+
+  const runCjPreflight = async () => {
+    setPreflightLoading(true);
+    setPreflight(null);
+    try {
+      setPreflight(await backendApi.preflightCjProduct(String(product.id)));
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo completar la simulación segura CJ");
+    } finally {
+      setPreflightLoading(false);
+    }
+  };
 
   const quoteShippingToSpain = async () => {
     if (!String(supplierVariantId || "").trim()) return toast.error("Selecciona primero una variante CJ con VID válido");
@@ -992,8 +1006,22 @@ function ImportedProductRow({
             <Truck className="h-4 w-4"/>
             {freightLoading ? "Calculando envío…" : "Consultar envío a España"}
           </button>
+          <button type="button" disabled={preflightLoading} onClick={() => void runCjPreflight()}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
+            <ShieldCheck className="h-4 w-4"/>
+            {preflightLoading ? "Comprobando…" : "Simular preparación sin comprar"}
+          </button>
         </div>
       </div>
+      {preflight && <div className={"rounded-xl border p-3 text-sm " + (preflight.readyForManualReview ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50")}>
+        <p className="font-bold">{preflight.readyForManualReview ? "Previsión apta para revisión manual" : "Simulación bloqueada: hay requisitos pendientes"}</p>
+        <p className="mt-1 text-xs">{preflight.message}</p>
+        {Array.isArray(preflight.checks) && preflight.checks.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+          {preflight.checks.map((issue: string, i: number) => <li key={i}>{issue}</li>)}
+        </ul>}
+        {preflight.estimate?.estimatedCostEur != null && <p className="mt-2 text-xs font-semibold">Coste estimado: {money(preflight.estimate.estimatedCostEur)} € · Resultado estimado: {money(preflight.estimate.estimatedProfitEur)} €</p>}
+        <p className="mt-1 text-xs font-semibold">La simulación no envía órdenes, datos personales ni pagos a CJ.</p>
+      </div>}
       {cjLookupError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">{cjLookupError}</p>}
       {cjVariants.length > 0 && <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <select aria-label="Seleccionar variante real de CJ" value={cjVariants.some((entry) => entry.vid === supplierVariantId) ? supplierVariantId : ""}
