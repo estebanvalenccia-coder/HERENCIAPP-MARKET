@@ -1,4 +1,5 @@
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
+import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
@@ -9112,6 +9113,33 @@ app.patch("/api/admin/support/:customerId/status", requireAdmin, async (req, res
   } catch (error) {
     console.error("Support status error", error);
     res.status(500).json({ error: "No se pudo actualizar el estado" });
+  }
+});
+
+// Administración: prioridad y categoría persistentes del ticket.
+app.patch("/api/admin/support/:customerId/meta", requireAdmin, supportLimiter, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const id = String(req.params.customerId || "");
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ error: "Identificador no válido" });
+  let changes;
+  try {
+    changes = parseSupportTicketMetadata(req.body);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Datos no válidos" });
+  }
+  try {
+    const { thread } = await mutateSupportThread(id, current => {
+      if (!current) return null;
+      current.priority = changes.priority || current.priority || "normal";
+      current.category = changes.category || current.category || "general";
+      return current;
+    });
+    if (!thread) return res.status(404).json({ error: "Conversación no encontrada" });
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.json({ thread });
+  } catch (error) {
+    console.error("Support metadata error", error);
+    return res.status(500).json({ error: "No se pudo actualizar la consulta" });
   }
 });
 
