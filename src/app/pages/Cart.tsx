@@ -59,6 +59,8 @@ export function Cart() {
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [couponBasis, setCouponBasis] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
 
   const loadCart = () => {
     try {
@@ -96,18 +98,11 @@ export function Cart() {
   const onlyServices = hasServices && !hasPhysicalItems;
   const subtotal = cartItems.reduce((sum, item) => sum + lineTotal(item), 0);
   const shipping = hasPhysicalItems ? shippingCost : 0;
-  const currentCodes: any[] = (() => {
-    try { const value = JSON.parse(backendStorage.getItem("discountCodes") || "[]"); return Array.isArray(value) ? value : []; }
-    catch { return []; }
-  })();
-  const currentRule = currentCodes.find((x) => String(x.code || "").toUpperCase() === appliedCoupon && x.active !== false && (!x.expiresAt || new Date(String(x.expiresAt).slice(0,10) + "T23:59:59") >= new Date()));
-  const eligibleSubtotal = currentRule ? cartItems.reduce((sum, item) => {
-    const service = isServiceItem(item);
-    if (currentRule.scope === "services" && !service) return sum;
-    if (currentRule.scope === "products" && service) return sum;
-    return sum + lineTotal(item);
-  }, 0) : 0;
-  const calculatedDiscount = currentRule ? Math.min(eligibleSubtotal, Math.max(0, currentRule.type === "fixed" ? Number(currentRule.value || 0) : eligibleSubtotal * Number(currentRule.value || 0) / 100)) : 0;
+  const cartSignature = JSON.stringify(cartItems.map((item) => ({
+    id: item.id, selectedVariant: item.selectedVariant, quantity: item.quantity,
+    serviceHours: item.serviceHours, serviceBooking: item.serviceBooking,
+  })));
+  const calculatedDiscount = couponBasis === cartSignature ? discount : 0;
   const total = Math.max(0, subtotal - calculatedDiscount + shipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
@@ -158,27 +153,30 @@ export function Cart() {
     toast.success(isServiceItem(removed as CartItem) ? "Servicio eliminado de la reserva" : "Producto eliminado");
   };
 
-  const applyCoupon = () => {
-    const codes: any[] = (() => {
-      try { return JSON.parse(backendStorage.getItem("discountCodes") || "[]"); } catch { return []; }
-    })();
-    const rule = codes.find((x: any) =>
-      String(x.code || "").toUpperCase() === coupon.trim().toUpperCase() &&
-      x.active !== false &&
-      (!x.expiresAt || new Date(String(x.expiresAt).slice(0,10) + "T23:59:59") >= new Date())
-    );
-    if (!rule) return toast.error("Cupón no válido o caducado");
-    const eligibleSubtotal = cartItems.reduce((sum, item) => {
-      const service = isServiceItem(item);
-      if (rule.scope === "services" && !service) return sum;
-      if (rule.scope === "products" && service) return sum;
-      return sum + lineTotal(item);
-    }, 0);
-    if (!eligibleSubtotal) return toast.error("Este cupón no se aplica a los artículos del carrito");
-    const amount = rule.type === "fixed" ? Number(rule.value || 0) : eligibleSubtotal * Number(rule.value || 0) / 100;
-    setDiscount(Math.min(eligibleSubtotal, Math.max(0, amount)));
-    setAppliedCoupon(String(rule.code).toUpperCase());
-    toast.success("Cupón aplicado");
+  const applyCoupon = async () => {
+    const entered = coupon.trim().toUpperCase();
+    if (!entered) return toast.error("Introduce un código promocional");
+    const applyingTo = cartSignature;
+    setCouponBusy(true);
+    try {
+      const response = await fetch("/api/coupons/preview", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: entered, items: cartItems }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo validar el código");
+      if (!Number.isFinite(Number(data.discount)) || Number(data.discount) <= 0) throw new Error("Este cupón no ofrece descuento");
+      setDiscount(Number(data.discount));
+      setCouponBasis(applyingTo);
+      setAppliedCoupon(data.code || entered);
+      toast.success("Cupón validado y aplicado");
+    } catch (error) {
+      setDiscount(0);
+      setCouponBasis("");
+      setAppliedCoupon("");
+      toast.error(error instanceof Error ? error.message : "No se pudo validar el cupón");
+    } finally { setCouponBusy(false); }
   };
 
   const goCheckout = () => {
@@ -359,7 +357,7 @@ export function Cart() {
             <label className="text-sm font-black">Cupón</label>
             <div className="mt-2 flex gap-2">
               <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Código promocional" className="min-w-0 flex-1 rounded-xl border border-[#ded9cd] px-3 py-2" />
-              <button onClick={applyCoupon} className="rounded-xl bg-[#eef2eb] px-3 py-2 text-sm font-black text-[#315b42]">Aplicar</button>
+              <button onClick={applyCoupon} disabled={couponBusy} className="rounded-xl bg-[#eef2eb] px-3 py-2 text-sm font-black text-[#315b42] disabled:opacity-50">{couponBusy ? "Validando..." : "Aplicar"}</button>
             </div>
           </div>
 
