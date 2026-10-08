@@ -795,6 +795,9 @@ export function AdminSuppliersPanel() {
           fulfillments.slice(0, 200).map((item: any) => {
             const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","mapping_required","address_required","payment_required","action_required"].includes(String(item.status || ""));
             const sourceUrl = item.items?.[0]?.sourceProductUrl || "";
+            const isCjFulfillment = item.provider === "cj" ||
+              suppliers.some((supplier: any) => String(supplier.id) === String(item.supplierId) && supplier.integrationType === "cj");
+            const estimate = item.items?.[0]?.cjPricingEstimate;
             return <div key={item.id} className="rounded-2xl border border-border p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -805,15 +808,19 @@ export function AdminSuppliersPanel() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{item.supplierName} · coste estimado <strong>{money(item.estimatedCost)}</strong></p>
                   <p className="mt-1 text-xs text-muted-foreground">{(item.items || []).map((line:any)=>`${line.name} ×${line.quantity}`).join(" · ")}</p>
-                  {Number(item.estimatedCost || 0) > 0 && Number(item.revenue || 0) > 0 && <p className="mt-1 text-xs font-semibold text-muted-foreground">Venta: {money(item.revenue)} · coste: {money(item.estimatedCost)} · margen: {Number(item.grossMarginPercent || 0).toFixed(1)}%{Number(item.minMarginPercent || 0) > 0 ? ` · mínimo ${Number(item.minMarginPercent).toFixed(1)}%` : ""}</p>}
+                  {isCjFulfillment ? <div className="mt-1 space-y-1 text-xs">
+                    <p className="font-semibold">CJ: {item.items?.[0]?.cjPreferredLogisticName || "Transportista pendiente"} · {item.items?.[0]?.supplierVariantId ? "VID vinculado" : "VID pendiente"}</p>
+                    {estimate?.available ? <p className={"font-semibold " + (estimate.feasible ? "text-emerald-700" : "text-red-700")}>Rentabilidad estimada (IVA y comisiones): {money(estimate.estimatedProfitEur)} € · margen {Number(estimate.estimatedMarginPercent).toFixed(1)}% · cotización {String(estimate.checkedAt || "").slice(0,10)}</p>
+                    : <p className="font-semibold text-amber-800">Falta cotización CJ reciente con gastos de envío e IVA.</p>}
+                  </div> : Number(item.estimatedCost || 0) > 0 && Number(item.revenue || 0) > 0 && <p className="mt-1 text-xs font-semibold text-muted-foreground">Venta: {money(item.revenue)} · coste: {money(item.estimatedCost)} · margen: {Number(item.grossMarginPercent || 0).toFixed(1)}%</p>}
                   {item.blocker && <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">{item.blocker}</p>}
                   {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {sourceUrl && <button onClick={() => window.open(sourceUrl, "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><ExternalLink className="h-4 w-4"/>Proveedor</button>}
                   {item.mode === "manual" && !["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><MousePointerClick className="h-4 w-4"/>Preparar compra</button>}
-                  {canRunAuto && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>Ejecutar Autopilot</button>}
-                  {["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
+                  {canRunAuto && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Play className="h-4 w-4"/>{isCjFulfillment ? "Revisar CJ (sin comprar)" : "Ejecutar Autopilot"}</button>}
+                  {(!isCjFulfillment || Boolean(item.externalOrderId)) && ["manual_purchase_required","autopilot_ready","connector_required","approval_required","action_required","cost_required"].includes(String(item.status || "")) && <button onClick={() => void markOrdered(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4"/>Marcar comprado</button>}
                   {["ordered","shipped"].includes(String(item.status || "")) && <button onClick={() => void addTracking(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><Truck className="h-4 w-4"/>Tracking</button>}
                   {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && item.externalOrderId && <button disabled={processingId===String(item.id)} onClick={() => void syncCjFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><RefreshCw className="h-4 w-4"/>Sincronizar CJ</button>}
                   {(item.provider === "cj" || suppliers.find((supplier:any)=>String(supplier.id)===String(item.supplierId))?.integrationType === "cj") && ["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void openCjDispute(item)} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold">↩️ Devolución / reenvío</button>}
