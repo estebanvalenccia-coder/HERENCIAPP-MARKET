@@ -3616,7 +3616,7 @@ async function validateCommerceOrderPayload(order = {}) {
       if (shippingSettings.advancedEnabled) {
         const authoritativeLines = normalizedItems.map(item => {
           const product = byId.get(String(item.id)) || {};
-          return { ...item, category: product.category || product.collection || product.collections?.[0] || "" };
+          return { ...item, category: product.category || "", collection: product.collection || product.collections?.[0] || "" };
         });
         shipping = shippingQuoteForCart({
           settings: shippingSettings, lines: authoritativeLines,
