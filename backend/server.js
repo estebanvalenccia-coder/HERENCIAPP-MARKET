@@ -5810,6 +5810,60 @@ app.post("/api/admin/supplier-fulfillments/:id/dispute", requireAdmin, async (re
   }
 });
 
+// Pure preflight: inspect real catalog + saved quotation WITHOUT creating an order,
+// payment intent, shipment or customer record and without sending data to CJ.
+app.post("/api/admin/supplier-fulfillments/cj-preflight", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const productId = String(req.body?.productId || "").trim();
+    if (!productId) return res.status(400).json({ error: "Selecciona primero un producto" });
+    const product = (await loadAuthoritativeProducts({ includeArchived: true }))
+      .find((item) => String(item?.id || "") === productId);
+    if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+    const meta = product.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    const operations = await readSupplierOperations();
+    const supplier = (operations.suppliers || []).find((entry) => String(entry.id) === String(meta.supplierId || ""));
+    const quote = meta.cjPricingEstimate && typeof meta.cjPricingEstimate === "object" ? meta.cjPricingEstimate : null;
+    const timestamp = Date.parse(String(quote?.checkedAt || ""));
+    const price = normalizeMoney(product.onSale && product.salePrice != null ? product.salePrice : product.price || 0);
+    const variant = String(meta.supplierVariantId || meta.cjVid || "");
+    const method = String(meta.cjPreferredLogisticName || "");
+    const checks = [];
+    if (!supplier || supplierIntegrationType(supplier) !== "cj") checks.push("Proveedor CJdropshipping no vinculado");
+    if (supplier?.active === false) checks.push("Proveedor desactivado");
+    if (!variant && !meta.supplierSku) checks.push("Falta VID/SKU CJ");
+    if (!method) checks.push("Falta transportista CJ");
+    if (!quote?.available || !Number(quote.costEur)) checks.push("No hay cotización de coste en EUR con transporte");
+    if (!Number.isFinite(timestamp) || timestamp > Date.now() ||
+        Date.now() - timestamp >= 24 * 3600000) checks.push("Cotización caducada: vuelve a calcular");
+    if (quote?.vid !== variant || quote?.methodName !== method || quote?.destination !== "ES")
+      checks.push("La cotización no corresponde a la variante y transportista configurados");
+    if (!Number.isFinite(Number(quote?.salePriceEur)) || Math.abs(Number(quote.salePriceEur) - price) >= 0.02)
+      checks.push("El precio de venta ha cambiado desde la cotización");
+    if (quote?.feasible !== true) checks.push("El margen estimado es insuficiente; revisa el precio");
+    // Even passing every check is NOT authorization to place or pay a CJ order.
+    return res.json({
+      ok: true, simulationOnly: true, safe: true, readyForManualReview: checks.length === 0,
+      checks,
+      product: { id: String(product.id), name: String(product.name || ""), salePriceEur: price },
+      supplier: { name: supplier?.name || "Sin proveedor", sandbox: supplier?.cjSandbox !== false },
+      variant: { vid: variant, sku: String(meta.supplierSku || "") },
+      shipping: { method, destination: "ES" },
+      estimate: quote && {
+        supplierTotalUsd: quote.supplierTotalUsd ?? null,
+        estimatedCostEur: quote.costEur ?? null,
+        estimatedProfitEur: quote.estimatedProfitEur ?? null,
+        recommendedMinimumPriceEur: quote.recommendedMinimumPriceEur ?? null,
+        fxDate: quote.fx?.date || "",
+        quotedAt: quote.checkedAt || "",
+      },
+      message: "Comprobación local completada. No se enviaron datos ni solicitudes de pedido a CJ.",
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 500).json({ error: error?.message || "Error al comprobar CJ" });
+  }
+});
+
 app.post("/api/admin/supplier-fulfillments/prepare/:orderId", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
