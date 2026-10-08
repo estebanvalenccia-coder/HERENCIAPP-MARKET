@@ -412,6 +412,7 @@ export function AdminDashboard() {
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "business-suite" as AdminSection, label: "Centro de Negocio", icon: Rocket, badge: "NUEVO" },
     { id: "crm" as AdminSection, label: "Clientes / CRM", icon: Users, badge: "REAL" },
+    { id: "support" as AdminSection, label: "Servicio al cliente", icon: MessageCircleHeart, badge: "NUEVO" },
     { id: "suppliers" as AdminSection, label: "Proveedores", icon: Building2 },
     { id: "stock" as AdminSection, label: "Stock", icon: Boxes },
     { id: "waste" as AdminSection, label: "Mermas", icon: Trash2 },
@@ -960,6 +961,7 @@ export function AdminDashboard() {
           {currentSection === "business-suite" && <AdminBusinessSuite />}
 
           {currentSection === "crm" && <AdminCRMClients />}
+          {currentSection === "support" && <AdminSupport />}
 
           {currentSection === "suppliers" && <AdminSuppliersPanel />}
 
