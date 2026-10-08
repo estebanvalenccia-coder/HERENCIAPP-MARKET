@@ -16,9 +16,14 @@ type SupportMessage = {
   text: string;
   createdAt: string;
   source?: string;
+  attachmentId?: string;
+  filename?: string;
+  mime?: string;
 };
 type SupportThread = {
-  customerId: string;
+  id: string;
+  ownerType?: "guest" | "customer";
+  customerId: string | null;
   customerName: string;
   customerEmail: string;
   ticketId?: string;
@@ -137,6 +142,7 @@ export function AdminSupportPro() {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [draft, setDraft] = useState("");
+  const [internalNote, setInternalNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -148,23 +154,23 @@ export function AdminSupportPro() {
 
   const refresh = async (quiet = false) => {
     try {
-      const response = await supportFetch<{ threads: SupportThread[] }>("/api/admin/support");
+      const response = await supportFetch<{ threads: SupportThread[] }>("/api/admin/support/v2/tickets");
       const rows = Array.isArray(response.threads) ? response.threads : [];
       if (!firstLoadRef.current && notificationsEnabled) {
         for (const row of rows) {
           const last = row.messages?.[row.messages.length - 1];
-          const previous = seenMessageRef.current[row.customerId];
+          const previous = seenMessageRef.current[row.id];
           if (previous && last && previous !== last.id && last.role === "customer" &&
               typeof Notification !== "undefined" && Notification.permission === "granted") {
             new Notification("Nuevo mensaje · Herencia", {
               body: (row.customerName || "Cliente") + ": " + last.text.slice(0, 110),
-              tag: "herencia-support-" + row.customerId,
+              tag: "herencia-support-" + row.id,
             });
           }
         }
       }
       seenMessageRef.current = Object.fromEntries(rows.map(row => [
-        row.customerId, row.messages?.[row.messages.length - 1]?.id || "",
+        row.id, row.messages?.[row.messages.length - 1]?.id || "",
       ]));
       firstLoadRef.current = false;
       setThreads(rows);
@@ -209,24 +215,25 @@ export function AdminSupportPro() {
     });
   }, [threads, filter, priorityFilter, query]);
 
-  const active = filtered.find(t => t.customerId === selectedId) || filtered[0] || null;
+  const active = filtered.find(t => t.id === selectedId) || filtered[0] || null;
   const activeOrders = useMemo(() => active ? orders.filter(order =>
-    String(order.customerEmail || "").toLowerCase().trim() ===
+    active.ownerType !== "guest" && String(order.customerEmail || "").toLowerCase().trim() ===
     String(active.customerEmail || "").toLowerCase().trim()
   ).slice(0, 5) : [], [active?.customerEmail, orders]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [active?.customerId, active?.messages?.length]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [active?.id, active?.messages?.length]);
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
     if (!active || !draft.trim() || busy) return;
     setBusy(true);
     try {
-      const response = await supportFetch<{ thread: SupportThread }>("/api/admin/support/" + encodeURIComponent(active.customerId), {
-        method: "POST", body: JSON.stringify({ text: draft.trim() }),
+      const response = await supportFetch<{ thread: SupportThread }>("/api/admin/support/v2/tickets/" + encodeURIComponent(active.id), {
+        method: "POST", body: JSON.stringify({ text: draft.trim(), internal: internalNote }),
       });
       setDraft("");
-      setThreads(current => current.map(t => t.customerId === active.customerId ? response.thread : t));
+      setInternalNote(false);
+      setThreads(current => current.map(t => t.id === active.id ? response.thread : t));
       await refresh(true);
     } catch (cause: any) {
       setError(cause.message || "No se pudo enviar la respuesta");
@@ -238,10 +245,10 @@ export function AdminSupportPro() {
     setBusy(true);
     try {
       const response = await supportFetch<{ thread: SupportThread }>(
-        "/api/admin/support/" + encodeURIComponent(active.customerId) + "/status",
+        "/api/admin/support/v2/tickets/" + encodeURIComponent(active.id),
         { method: "PATCH", body: JSON.stringify({ status }) },
       );
-      setThreads(current => current.map(t => t.customerId === active.customerId ? response.thread : t));
+      setThreads(current => current.map(t => t.id === active.id ? response.thread : t));
       await refresh(true);
     } catch (cause: any) { setError(cause.message || "No se pudo cambiar el estado"); }
     finally { setBusy(false); }
@@ -252,10 +259,10 @@ export function AdminSupportPro() {
     setBusy(true);
     try {
       const response = await supportFetch<{ thread: SupportThread }>(
-        "/api/admin/support/" + encodeURIComponent(active.customerId) + "/meta",
+        "/api/admin/support/v2/tickets/" + encodeURIComponent(active.id),
         { method: "PATCH", body: JSON.stringify(change) },
       );
-      setThreads(current => current.map(t => t.customerId === active.customerId ? response.thread : t));
+      setThreads(current => current.map(t => t.id === active.id ? response.thread : t));
     } catch (cause: any) { setError(cause.message || "No se pudo actualizar la consulta"); }
     finally { setBusy(false); }
   };
@@ -364,9 +371,9 @@ export function AdminSupportPro() {
                 {filtered.map(thread => {
                   const last = thread.messages?.[thread.messages.length - 1];
                   const priority = thread.priority || "normal";
-                  const selected = active?.customerId === thread.customerId;
+                  const selected = active?.id === thread.id;
                   return (
-                    <button key={thread.customerId} type="button" onClick={() => { setSelectedId(thread.customerId); setDraft(""); }}
+                    <button key={thread.id} type="button" onClick={() => { setSelectedId(thread.id); setDraft(""); }}
                       className={"flex w-full gap-3 border-b border-[#edf0eb] px-3 py-4 text-left transition sm:px-4 " +
                         (selected ? "bg-[#f0f6f0] shadow-[inset_3px_0_0_#4c8060]" : "hover:bg-[#fafbf8]")}>
                       <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#e7eee8] text-sm font-bold text-[#3f6a4b]">{firstLetters(thread.customerName)}</div>
@@ -438,16 +445,22 @@ export function AdminSupportPro() {
                   <div className="h-[360px] flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,#f9fbf8,#ffffff)] px-4 py-5 sm:px-6">
                     {active.messages.length === 0 && <p className="text-center text-sm text-[#8b968b]">Todavía no hay mensajes.</p>}
                     {active.messages.map(message=> (
-                      <div key={message.id} className={"flex " + (message.role === "agent" ? "justify-end" : "justify-start")}>
+                      <div key={message.id} className={"flex " + (message.role === "agent" || message.role === "internal" ? "justify-end" : "justify-start")}>
                         <div className={"max-w-[85%] rounded-2xl px-4 py-3 shadow-sm " +
-                          (message.role === "agent" ? "bg-[#2e5a40] text-white" :
+                          (message.role === "internal" ? "border border-amber-200 bg-amber-50 text-amber-900" : message.role === "agent" ? "bg-[#2e5a40] text-white" :
                             message.role === "assistant" ? "border border-[#d6e6e2] bg-[#eef7f4] text-[#264536]" :
                             "border border-[#e9ede6] bg-white text-[#324a37]")}>
                           <span className={"mb-1 flex items-center gap-1.5 text-[11px] font-semibold " + (message.role === "agent" ? "text-[#deeadf]" : "text-[#71917b]")}>
                             {message.role === "assistant" ? <Sparkles size={13}/> : message.role === "agent" ? <Headphones size={13}/> : <UserRound size={13}/>}
-                            {message.role === "agent" ? "Equipo Herencia" : message.role === "assistant" ? "Herencia IA" : active.customerName || "Cliente"}
+                            {message.role === "internal" ? "Nota interna · solo Administración" : message.role === "agent" ? "Equipo Herencia" : message.role === "assistant" ? "Herencia IA" : active.customerName || "Cliente"}
                           </span>
                           <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.text}</p>
+                          {message.attachmentId && (
+                            <a href={"/api/support/v2/tickets/" + encodeURIComponent(active.id) + "/attachments/" + encodeURIComponent(message.attachmentId)}
+                               target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-xs font-semibold underline">
+                              <Package size={14}/> {message.filename || "Abrir archivo adjunto"}
+                            </a>
+                          )}
                           <time className={"mt-2 block text-right text-[10px] " + (message.role === "agent" ? "text-[#d3e4d7]" : "text-[#98a69b]")}>{fullDate(message.createdAt)}</time>
                         </div>
                       </div>
@@ -465,12 +478,16 @@ export function AdminSupportPro() {
                         </button>
                       ))}
                     </div>
+                    <label className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#6f8a75]">
+                      <input type="checkbox" checked={internalNote} onChange={event => setInternalNote(event.target.checked)}/>
+                      Nota interna (el cliente no la verá)
+                    </label>
                     <form onSubmit={send} className="space-y-2">
                       <textarea aria-label="Responder al cliente" rows={3} maxLength={2000} value={draft} onChange={e=>setDraft(e.target.value)}
                         className="w-full resize-y rounded-2xl border border-[#e2e9e0] bg-[#fcfdfb] px-4 py-3 text-sm text-[#284334] outline-none transition focus:border-[#7ba787]"
-                        placeholder="Escribe una respuesta a tu cliente..."/>
+                        placeholder={internalNote ? "Escribe una nota privada para el equipo..." : "Escribe una respuesta a tu cliente..."}/>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs text-[#98a39a]">La respuesta llegará a su cuenta de Herencia.</span>
+                        <span className="text-xs text-[#98a39a]">{internalNote ? "Nota visible únicamente para Administración." : "La respuesta llegará al chat del cliente."}</span>
                         <button type="submit" disabled={busy || !draft.trim()}
                           className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#214d34] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#143c28] disabled:cursor-not-allowed disabled:opacity-50">
                           {busy ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>} Enviar respuesta
