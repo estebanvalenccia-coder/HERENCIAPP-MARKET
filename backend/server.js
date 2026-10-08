@@ -5398,7 +5398,8 @@ async function syncCjSupplierFulfillment(record) {
     rawStatus === "SHIPPED" ? "shipped" :
     rawStatus === "CANCELLED" ? "cancelled" :
     ["UNPAID", "CREATED", "IN_CART"].includes(rawStatus) ? "payment_required" :
-    "ordered";
+    ["UNSHIPPED", "PAID", "PROCESSING", "COMPLETED"].includes(rawStatus) ? "ordered" :
+    "action_required";
   return {
     ...record,
     status,
@@ -6811,6 +6812,19 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
     const index = (operations.supplierFulfillments || []).findIndex((entry) => String(entry?.id || "") === String(req.params.id));
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
     const previous = operations.supplierFulfillments[index];
+    const cjSupplier = (operations.suppliers || []).find((item) =>
+      String(item?.id || "") === String(previous.supplierId || ""));
+    if (previous.provider === "cj" || (cjSupplier && supplierIntegrationType(cjSupplier) === "cj")) {
+      const isStatusChange = req.body?.status != null &&
+        String(req.body.status) !== String(previous.status);
+      const isExternalChange = req.body?.externalOrderId != null ||
+        req.body?.trackingNumber != null || req.body?.trackingUrl != null;
+      if (isStatusChange || isExternalChange) {
+        return res.status(409).json({
+          error: "Los estados, pagos, referencias y tracking CJ solo se actualizan mediante la verificación del proveedor.",
+        });
+      }
+    }
     const allowedStatus = new Set(["manual_ready","manual_purchase_required","autopilot_ready","connector_required","supplier_required","supplier_disabled","cost_required","mapping_required","address_required","payment_required","approval_required","action_required","ordered","shipped","delivered","cancelled"]);
     const requestedStatus = String(req.body?.status || previous.status);
     const updated = {
