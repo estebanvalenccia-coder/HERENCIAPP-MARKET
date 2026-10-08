@@ -5305,10 +5305,22 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       suppliers.find((entry) => sourceHost && normalizeSupplierSourceHost(entry?.sourceHost) === sourceHost) ||
       null;
     const mode = normalizeSupplierFulfillmentMode(metadata.fulfillmentMode || supplier?.fulfillmentMode);
-    const supplierCost = normalizeMoney(metadata.supplierCost ?? metadata.supplierUnitCost ?? 0);
     const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? item?.qty ?? 1)));
     const salePrice = normalizeMoney(item?.price ?? 0);
     const revenue = normalizeMoney(salePrice * quantity);
+    const isCj = Boolean(supplier && supplierIntegrationType(supplier) === "cj");
+    const quote = metadata.cjPricingEstimate && typeof metadata.cjPricingEstimate === "object" ? metadata.cjPricingEstimate : null;
+    const quoteTimestamp = Date.parse(String(quote?.checkedAt || ""));
+    const quoteVerified = isCj && quantity === 1 && quote?.available === true &&
+      Number(quote.costEur) > 0 && Number.isFinite(quoteTimestamp) &&
+      Date.now() >= quoteTimestamp && Date.now() - quoteTimestamp < 24 * 60 * 60 * 1000 &&
+      String(quote.vid || "") === String(metadata.supplierVariantId || metadata.cjVid || "") &&
+      String(quote.methodName || "") === String(metadata.cjPreferredLogisticName || "") &&
+      quote.destination === "ES" &&
+      Math.abs(Number(quote.salePriceEur || 0) - salePrice) < 0.02;
+    // Never use a USD figure as an EUR cost or ignore CJ shipping charges.
+    const supplierCost = quoteVerified ? normalizeMoney(quote.costEur) :
+      isCj ? 0 : normalizeMoney(metadata.supplierCost ?? metadata.supplierUnitCost ?? 0);
     const key = supplier?.id ? "supplier:" + supplier.id : "host:" + (sourceHost || "unassigned");
     const group = groups.get(key) || {
       supplier,
@@ -5334,11 +5346,15 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       supplierSku: String(metadata.supplierSku || metadata.cjSku || "").trim().slice(0, 100),
       cjPreferredLogisticName: String(metadata.cjPreferredLogisticName || "").trim().slice(0, 120),
       cjPreferredLogisticCountry: String(metadata.cjPreferredLogisticCountry || "").trim().slice(0, 2),
+      cjPricingEstimate: quoteVerified ? {
+        ...quote, checkedAt: new Date(quoteTimestamp).toISOString()
+      } : null,
+      pricingReviewNeeded: isCj && !quoteVerified,
       estimatedCost: normalizeMoney(supplierCost * quantity),
       salePrice,
       revenue,
     });
-    if (!(supplierCost > 0)) group.allCostsKnown = false;
+    if (!(supplierCost > 0) || (isCj && !quoteVerified)) group.allCostsKnown = false;
     group.estimatedCost = normalizeMoney(group.estimatedCost + supplierCost * quantity);
     group.revenue = normalizeMoney(group.revenue + revenue);
     groups.set(key, group);
@@ -5375,17 +5391,26 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
       status = "autopilot_ready";
       if (!group.allCostsKnown) {
         status = "cost_required";
-        blocker = "Configura el coste proveedor de todos los productos antes de usar Autopilot.";
+        blocker = supplierIntegrationType(supplier) === "cj"
+          ? "Falta cotización CJ reciente en EUR para la variante y transporte seleccionados, o el precio del pedido ha cambiado. Consulta y guarda costes antes de autorizar."
+          : "Configura el coste proveedor de todos los productos antes de usar Autopilot.";
       }
-      if (!blocker && String(supplier?.integration || "").toLowerCase().includes("cj") &&
+      if (!blocker && supplierIntegrationType(supplier) === "cj" &&
           group.items.some((entry) => !entry.supplierVariantId && !entry.supplierSku)) {
         status = "mapping_required";
         blocker = "Falta asignar el VID o SKU de CJ para todos los productos.";
       }
-      if (!blocker && group.items.some((entry) => entry.cjPreferredLogisticCountry === "ES" &&
-          !entry.cjPreferredLogisticName)) {
-        status = "approval_required";
-        blocker = "Falta confirmar el transportista CJ para España.";
+      if (!blocker && supplierIntegrationType(supplier) === "cj") {
+        if (group.items.some((entry) => !entry.cjPreferredLogisticName)) {
+          status = "approval_required";
+          blocker = "Falta seleccionar el método de envío de CJ para cada producto.";
+        } else if (group.items.some((entry) => !entry.cjPricingEstimate?.feasible)) {
+          status = "approval_required";
+          blocker = "Coste CJ con transporte e IVA insuficientemente rentable; revisa el precio antes de autorizar.";
+        } else {
+          status = "approval_required";
+          blocker = "Pedido CJ preparado para aprobación manual. Sin compras automáticas.";
+        }
       }
       const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
       if (!blocker && maxAutoOrderTotal > 0 && group.estimatedCost > maxAutoOrderTotal) {
