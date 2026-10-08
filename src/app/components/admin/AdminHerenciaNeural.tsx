@@ -9,6 +9,23 @@ type Mode="AUTO"|"ASK"|"BLOCK";
 type Message={role:"user"|"neural";text:string;activity?:string[];kind?:string};
 const labels:Record<string,string>={read_business_state:"Leer estado del negocio",internet_research:"Investigar en Internet",learn_from_orders:"Aprender de pedidos",analyze_sales:"Analizar ventas",answer_basic_questions:"Responder preguntas básicas",prepare_web_changes:"Preparar borradores web",modify_stock:"Modificar stock",change_prices:"Cambiar precios",publish_web_changes:"Publicar cambios web",rollback_web_changes:"Restaurar versiones web",create_products:"Crear productos",edit_products:"Editar productos",delete_products:"Eliminar productos",record_expenses:"Registrar gastos",send_whatsapp:"Enviar WhatsApp",send_email:"Enviar emails",contact_suppliers:"Contactar proveedores",manage_crm:"Gestionar CRM",manage_suppliers:"Gestionar proveedores",create_promotions:"Crear promociones",issue_invoices:"Emitir facturas",purchases:"Realizar compras",refunds:"Hacer devoluciones",payments:"Realizar pagos"};
 
+const neuralCodeStageLabels:Record<string,string>={
+ CREATING_BRANCH:"Creando una rama segura en GitHub",
+ WRITING_FILES:"Escribiendo los archivos del cambio",
+ FILES_WRITTEN:"Archivos comprobados en GitHub",
+ OPENING_PR:"Creando el Pull Request",
+ DEPLOYING_PREVIEW:"Compilando y desplegando la página de prueba",
+ PREVIEW_PENDING:"Esperando la compilación de Railway",
+ PREVIEW_READY:"Vista previa verificada",
+ PREVIEW_FAILED:"Falló la compilación de la vista previa",
+ PROGRAMMING:"Neural está programando",
+ RUNNING:"Programación en curso",
+ FAILED:"La tarea ha fallado",
+ REVIEW_REQUIRED:"Esperando tu decisión",
+ WAITING_APPROVAL:"Esperando tu autorización",
+ COMPLETED:"Cambio completado"
+};
+
 function validCodeApproval(t:any){return t?.intent==="code_change"&&t?.status==="WAITING_APPROVAL"&&Array.isArray(t?.payload?.codePlan?.changes)&&t.payload.codePlan.changes.length>0}
 function reviewableCodeTask(t:any){return t?.intent==="code_change"&&t?.status==="REVIEW_REQUIRED"}
 function safePreviewHref(raw:any){
@@ -391,7 +408,7 @@ export function AdminHerenciaNeural(){
       <p className="mt-1 text-xs text-amber-900">La aprobación fue recibida. El servidor está trabajando: no es necesario pulsar otra vez. Esta pantalla consulta cada 8 segundos el estado real de la tarea.</p>
       {runningCodeTasks.map((task:any)=><div key={task.id} className="mt-3 rounded-lg bg-white/80 p-3 text-xs">
        <div className="font-bold text-amber-950">{task.title||"Cambio de código"}</div>
-       <div className="mt-1 text-amber-900">Estado: {task.stage||task.status} · Tarea: {task.id}</div>
+       <div className="mt-1 text-amber-900">Estado: {neuralCodeStageLabels[task.stage||task.status]||task.stage||task.status} · Tarea: {task.id}</div>
       </div>)}
       {codeLastSynced&&<p className="mt-2 text-[11px] text-amber-800">Última comprobación: {codeLastSynced}</p>}
       {codePollWarning&&<p className="mt-2 text-xs font-bold text-red-800">{codePollWarning}</p>}
@@ -439,7 +456,7 @@ export function AdminHerenciaNeural(){
    </Panel></div>
    <Panel title="Trabajos recientes de código" icon={GitPullRequest}>
     {tasks.filter((t:any)=>t.intent==="code_change").length?<div className="space-y-3">{tasks.filter((t:any)=>t.intent==="code_change").slice(0,8).map((t:any)=>{const result=t.result?.result||t.result||{};const preview=result.preview||{};const review=reviewableCodeTask(t);const href=safePreviewHref(preview.url);const details=safeVercelDetailsHref(preview.detailsUrl);return <div key={t.id} className={`rounded-xl border p-4 text-sm ${review?"border-indigo-200 bg-indigo-50/40":""}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{t.stage||t.status}</p></div>{review&&<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">ESPERA TU DECISIÓN</span>}</div>
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><b>{t.title}</b><p className="mt-1 text-xs text-muted-foreground">{neuralCodeStageLabels[t.stage||t.status]||t.stage||t.status}</p></div>{review&&<span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-800">ESPERA TU DECISIÓN</span>}</div>
       {result.branch&&<p className="mt-2 break-all text-xs"><b>Rama:</b> {result.branch}</p>}
       {result.verification?.passed&&<p className="mt-1 text-xs font-bold text-emerald-700">✓ Archivos escritos y comprobados en GitHub (no equivale a pruebas funcionales)</p>}
        {t.status==="RUNNING"&&<p className="mt-2 text-xs font-bold text-amber-800">Programando en segundo plano; seguimiento automático activo.</p>}
