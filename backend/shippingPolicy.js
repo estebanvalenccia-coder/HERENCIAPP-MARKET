@@ -54,7 +54,7 @@ export function shippingQuoteForCart({ settings, lines = [], distanceKm, legacyP
   if (!physical.length || !s.enabled) return 0; // Disabled = no shipping fees, not no delivery.
   const eligible = physical.filter(item => {
     const productId = key(item.id);
-    const category = key(item.category || item.collection);
+    const category = key(item.collection || item.category);
     const rule = s.products[productId] || s.categories[category] || {};
     if (rule.shippingEnabled === false) return false;
     if (rule.freeShipping === true) return false;
@@ -67,7 +67,7 @@ export function shippingQuoteForCart({ settings, lines = [], distanceKm, legacyP
     if (!selected) return true;
     const scopedSubtotal = physical.filter(line => {
       if (free.scope === "all") return true;
-      if (free.scope === "categories") return free.categories.map(key).includes(key(line.category || line.collection));
+      if (free.scope === "categories") return free.categories.map(key).includes(key(line.collection || line.category));
       return free.products.map(key).includes(key(line.id));
     }).reduce((sum,line)=>sum+subtotalOf(line),0);
     return scopedSubtotal < numeric(free.threshold,"compra mínima");
