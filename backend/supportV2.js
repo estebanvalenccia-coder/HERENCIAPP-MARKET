@@ -1,3 +1,4 @@
+import { answerOwnOrderStatus } from "./supportOrders.js";
 import crypto from "node:crypto";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport } from "./customerSupportAI.js";
@@ -62,7 +63,7 @@ export function registerSupportV2(app, db) {
     getCustomerSession, loadCustomerAccounts, isAdmin, readStorageValue,
     upsertStorageValue, deleteStorageValue, hasNeon, listNeonStorageByPrefix,
     mutateNeonStorageValue, requirePrimaryDatabase, sign, parseCookies, cookieOptions,
-    supportLimiter,
+    supportLimiter, listOrdersByEmail,
   } = db;
 
   // Server-Sent Events: no private transcript is transmitted in the event itself.
@@ -182,6 +183,26 @@ export function registerSupportV2(app, db) {
     }
     const lastMessageId = ticket.messages.at(-1)?.id;
     try {
+      // The server may read ONLY this authenticated customer's orders.
+      // No order rows, email addresses or payment metadata go to Groq.
+      const orderReply = await answerOwnOrderStatus({
+        question: input,
+        ownerType: ticket.ownerType,
+        ownerId: ticket.ownerId || ticket.customerId,
+        loadCustomerAccounts,
+        listOrdersByEmail,
+      });
+      if (orderReply) {
+        return mutateTicket(ticket.id, current => {
+          const last = current?.messages?.at(-1);
+          if (!last || last.id !== lastMessageId || last.role !== "customer" || current.status !== "open" || current.humanRequested) return current;
+          current.messages.push({ id: crypto.randomUUID(), role: "assistant", text: orderReply, createdAt: new Date().toISOString() });
+          current.status = "automated";
+          current.updatedAt = new Date().toISOString();
+          return current;
+        });
+      }
+
       const site = parseJSON(await readStorageValue("siteContent"), {});
       const hours = (site?.contactPage?.hours || []).map(x => x.label + ": " + x.value).join("; ");
       const productList = parseJSON(await readStorageValue("adminProducts"), []);
