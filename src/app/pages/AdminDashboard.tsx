@@ -1,3 +1,4 @@
+import { AdminSupport } from "../components/CustomerSupport";
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -117,6 +118,7 @@ type AdminSection =
   | "activity-log"
   | "inventory-locations"
   | "inventory-lots"
+  | "support"
   | "settings";
 
 type AdminOrderAlert = {
