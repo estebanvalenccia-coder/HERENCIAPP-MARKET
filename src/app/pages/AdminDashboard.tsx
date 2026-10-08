@@ -61,6 +61,7 @@ import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesign
 import { AdminFinance } from "../components/admin/AdminFinance";
 import { AdminPOS } from "../components/admin/AdminPOS";
 import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
+import Clock from "../components/admin/Clock";
 import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
 import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
 import { AdminBusinessSuite } from "../components/admin/AdminBusinessSuite";
@@ -775,7 +776,8 @@ export function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="hidden lg:flex shrink-0" data-testid="madrid-clock"><Clock /></div>
                 <div className="hidden md:flex relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 
