@@ -70,6 +70,7 @@ export function AdminHerenciaNeural(){
  const [checkingPreviewId,setCheckingPreviewId]=useState<string|null>(null);
  const [previewFeedback,setPreviewFeedback]=useState<{id:string;message:string}|null>(null);
  const previewLastChecked=useRef(new Map<string,number>());
+ const approvingTaskIds=useRef(new Set<string>());
 
  const refresh=useCallback(async()=>{
   setLoading(true);
@@ -155,6 +156,33 @@ export function AdminHerenciaNeural(){
   }).catch(e=>{if(live)setPreviewFeedback({id:task.id,message:"No se pudo comprobar la página: "+String(e?.message||e)})});
   return ()=>{live=false};
  },[tab,activeCodeReview?.id]);
+ // Neural resolves Railway previews asynchronously. Poll the inexpensive
+ // task endpoint while pending; don't wait 2 minutes for the full dashboard.
+ useEffect(()=>{
+  const task=activeCodeReview;
+  if(tab!=="code"||!task?.id)return;
+  const preview=task?.result?.result?.preview||task?.result?.preview||{};
+  if(preview.state==="success"&&safePreviewHref(preview.url))return;
+  let live=true;let inFlight=false;
+  const poll=async()=>{
+   if(!live||inFlight||document.visibilityState!=="visible")return;
+   inFlight=true;
+   try{
+    const response=await backendApi.neuralCodeTask(task.id);
+    if(!live||!response?.task||response.task.id!==task.id)return;
+    const updated=response.task;
+    setPinnedCodeReview((current:any)=>current?.id===task.id?updated:current);
+    setTasks(prev=>prev.map((item:any)=>item.id===task.id?updated:item));
+    const newest=updated?.result?.result?.preview||updated?.result?.preview||{};
+    if(newest.state==="success"&&safePreviewHref(newest.url))
+     setPreviewFeedback({id:task.id,message:"Vista previa verificada en Railway. Puedes abrirla y decidir si publicar o descartar."});
+   }catch{/* Temporary connection failures must not clear an existing review. */}
+   finally{inFlight=false}
+  };
+  void poll();
+  const timer=window.setInterval(()=>void poll(),15_000);
+  return ()=>{live=false;window.clearInterval(timer)};
+ },[tab,activeCodeReview?.id,activeCodeReview?.result?.preview?.state,activeCodeReview?.result?.result?.preview?.state]);
  const stats=useMemo(()=>({agents:agents.length,tasks:tasks.filter(t=>["PENDING","RUNNING","WAITING_APPROVAL"].includes(t.status)).length,approvals:approvals.length}),[agents,tasks,approvals.length]);
 
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
@@ -163,9 +191,10 @@ export function AdminHerenciaNeural(){
  const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;const existing=approvals.find(validCodeApproval);if(existing){setActiveCodeApproval(existing);setTab("code");toast.info("Ya tienes un cambio esperando aprobación. Apruébalo o descártalo antes de crear otro.");window.setTimeout(()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"}),80);return;}setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{const r=await backendApi.neuralCode(q,"admin:neural-code");setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id){const normalized={...r.task,status:r.status||r.task.status||"WAITING_APPROVAL",requiresApproval:true};if(!validCodeApproval(normalized)){toast.error("Neural devolvió una propuesta sin plan válido. No se puede aprobar.");await refresh();return;}setActiveCodeApproval(normalized);setTasks(prev=>[normalized,...prev.filter((t:any)=>t.id!==normalized.id)]);}else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
  const approveCode=async()=>{
   const task=activeCodeApproval;
-  if(!task?.id||approvingCode)return;
+  if(!task?.id||approvingCode||approvingTaskIds.current.has(task.id))return;
   if(!validCodeApproval(task)){setActiveCodeApproval(null);toast.error("Esta propuesta no tiene un plan válido. No puede aprobarse; crea una nueva solicitud.");await refresh();return;}
   setApprovingCode(true);
+  approvingTaskIds.current.add(task.id);
   try{
    const r=await backendApi.neuralApproveCodeTask(task.id);
    const outcome=r?.outcome;
@@ -174,7 +203,7 @@ export function AdminHerenciaNeural(){
    const reviewTask=r?.task||r?.outcome?.task||null;
    if(reviewTask?.id){setPinnedCodeReview(reviewTask);setTasks(prev=>[reviewTask,...prev.filter((t:any)=>t.id!==reviewTask.id)]);}
    await refresh();
-  }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{setApprovingCode(false)}
+  }catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`No pude programar el cambio: ${e.message||"error desconocido"}`,kind:"error"}]);toast.error(e.message||"No se pudo aprobar el cambio");await refresh()}finally{approvingTaskIds.current.delete(task.id);setApprovingCode(false)}
  };
  const refreshPreview=async(id:string)=>{
   if(checkingPreviewId)return;
@@ -233,7 +262,7 @@ export function AdminHerenciaNeural(){
  const deleteGoal=async(id:string)=>{if(!window.confirm("¿Eliminar este objetivo de Neural?"))return;try{await backendApi.neuralDeleteGoal(id);toast.success("Objetivo eliminado");await refresh()}catch(e:any){toast.error(e.message)}};
  const observe=async()=>{try{const r=await backendApi.neuralObserveNow();toast.success(r.ok?"Digital Twin actualizado":`Observación: ${r.skipped||"sin cambios"}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const searchMemory=async()=>{try{const r=await backendApi.neuralMemory(memoryQuery);setMemory(r.items||[])}catch(e:any){toast.error(e.message)}};
- const approve=async(id:string)=>{try{
+ const approve=async(id:string)=>{if(approvingTaskIds.current.has(id))return;approvingTaskIds.current.add(id);try{
   const task=tasks.find((x:any)=>x.id===id);
   const r=task?.intent==="code_change"?await backendApi.neuralApproveCodeTask(id):await backendApi.neuralApproveTask(id);
   const outcome=r?.outcome;
@@ -244,7 +273,7 @@ export function AdminHerenciaNeural(){
   setActiveCodeApproval(null);
   if(r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);
   await refresh();
- }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea");await refresh()}};
+ }catch(e:any){toast.error(e.message||"No se pudo aprobar la tarea");await refresh()}finally{approvingTaskIds.current.delete(id)}};
  const explain=async(actionId:string)=>{try{setTrace(await backendApi.neuralTraceByAction(actionId))}catch(e:any){toast.error(e.message||"No se encontró la traza de decisión")}};
  const reflectNow=async()=>{try{const report=await backendApi.neuralReflect();toast.success(`Reflexión completada: ${report.reviewed||0} recuerdos revisados`);await refresh()}catch(e:any){toast.error(e.message||"No se pudo ejecutar la reflexión")}};
  const consolidatePatterns=async()=>{try{await backendApi.neuralConsolidatePatterns();toast.success("Patrones consolidados en memoria de negocio");await refresh()}catch(e:any){toast.error(e.message||"No se pudieron consolidar patrones")}};
@@ -366,7 +395,7 @@ export function AdminHerenciaNeural(){
        {previewFeedback?.id===t.id&&<p role="status" className="mt-2 rounded-lg bg-muted p-3 text-xs font-semibold">{previewFeedback.message}</p>}
        <div className="mt-3 grid gap-2 md:grid-cols-2">
         <button disabled={Boolean(discardingCodeId)||bulkDiscardBusy} onClick={()=>void discardPreview(t.id)} className="rounded-xl border border-red-200 bg-white px-4 py-3 font-black text-red-700 hover:bg-red-50 disabled:opacity-50">{discardingCodeId===t.id?"DESCARTANDO…":"DESCARTAR ESTE CAMBIO"}</button>
-        <button onClick={()=>void acceptPreview(t.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white hover:bg-emerald-700">ACEPTAR CAMBIO</button>
+        <button disabled={!(href&&preview.state==="success")} onClick={()=>void acceptPreview(t.id)} className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">ACEPTAR CAMBIO</button>
        </div>
        <p className="mt-2 text-xs text-muted-foreground">Aceptar fusiona el PR a main y permite el despliegue. Descartar deja producción intacta.</p>
       </div>}
