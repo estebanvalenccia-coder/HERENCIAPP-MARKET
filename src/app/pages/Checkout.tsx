@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
+import { enrichCartWithCatalog, isCjSupplierItem } from "../lib/cjFulfillmentIdentity.js";
 
 const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
 const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", {
@@ -19,15 +20,6 @@ const isServiceItem = (item: any) =>
   item?.collection === "servicios" ||
   (Array.isArray(item?.collections) && item.collections.includes("servicios")) ||
   String(item?.category || "").toLowerCase() === "servicios";
-
-const isCjSupplierItem = (item: any) => {
-  const meta = item?.metadata && typeof item.metadata === "object" ? item.metadata : item || {};
-  const sourceHost = String(meta.sourceHost || "").replace(/^www\./, "").toLowerCase();
-  let fromUrl = "";
-  try { fromUrl = new URL(String(meta.sourceProductUrl || "")).hostname.toLowerCase().replace(/^www\./, ""); } catch {}
-  return String(meta.fulfillmentType || "").toLowerCase() === "dropship" &&
-    (sourceHost === "cjdropshipping.com" || fromUrl === "cjdropshipping.com");
-};
 
 const serviceHoursOf = (item: any) => {
   const min = Math.max(1, Number(item?.serviceMinHours ?? item?.metadata?.serviceMinHours ?? 1));
@@ -86,9 +78,31 @@ export function Checkout() {
   const hasServices = useMemo(() => cartItems.some(isServiceItem), [cartItems]);
   const hasPhysicalItems = useMemo(() => cartItems.some((item: any) => !isServiceItem(item)), [cartItems]);
   const onlyServices = hasServices && !hasPhysicalItems;
-  const hasCjItems = useMemo(() => cartItems.some(isCjSupplierItem), [cartItems]);
-  const cjOnly = useMemo(() => cartItems.length > 0 && cartItems.every(isCjSupplierItem), [cartItems]);
+  // Refresh fulfillment metadata: persisted cart lines can omit CJ supplier fields.
+  const [shippingCatalog, setShippingCatalog] = useState<any[] | null>(null);
+  const [shippingCatalogError, setShippingCatalogError] = useState("");
+  useEffect(() => {
+    let active = true;
+    backendApi.listCommerceProducts()
+      .then(({ products }) => {
+        if (!active) return;
+        if (!Array.isArray(products)) throw new Error("Catálogo no disponible");
+        setShippingCatalog(products);
+        setShippingCatalogError("");
+      })
+      .catch(() => {
+        if (active) setShippingCatalogError("No podemos verificar el tipo de envío de los artículos. Recarga el checkout antes de pagar.");
+      });
+    return () => { active = false; };
+  }, []);
+  const shippingCartItems = useMemo(
+    () => enrichCartWithCatalog(cartItems, shippingCatalog),
+    [cartItems, shippingCatalog],
+  );
+  const hasCjItems = useMemo(() => shippingCartItems.some(isCjSupplierItem), [shippingCartItems]);
+  const cjOnly = useMemo(() => shippingCartItems.length > 0 && shippingCartItems.every(isCjSupplierItem), [shippingCartItems]);
   const mixedCjCart = hasCjItems && !cjOnly;
+  const shippingCatalogPending = hasPhysicalItems && shippingCatalog === null;
   const deliveryMethod = onlyServices ? "servicio" : "envio";
 
   const salesAttribution = useMemo(() => {
@@ -150,6 +164,14 @@ export function Checkout() {
   }, []);
 
   useEffect(() => {
+    if (shippingCatalogPending) {
+      // Do not quote local Barcelona delivery until we know whether CJ fulfills the cart.
+      setShippingCost(0);
+      setShippingInfo(null);
+      setShippingLoading(false);
+      setShippingError("");
+      return;
+    }
     if (cjOnly) {
       setShippingCost(0);
       setShippingInfo({ distanceText: "Envío directo CJ a España", destination: "España" });
@@ -224,6 +246,7 @@ export function Checkout() {
   }, [
     hasPhysicalItems,
     cjOnly,
+    shippingCatalogPending,
     form.address,
     form.city,
     form.postalCode,
@@ -280,6 +303,10 @@ export function Checkout() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const validateForm = () => {
+    if (shippingCatalogPending || shippingCatalogError) {
+      toast.error(shippingCatalogError || "Espera a que verifiquemos el envío antes de continuar.");
+      return false;
+    }
     if (mixedCjCart) {
       toast.error("El envío directo de CJ y los productos de reparto local deben comprarse en pedidos separados.");
       return false;
@@ -451,7 +478,9 @@ export function Checkout() {
 
             {hasPhysicalItems && (
               <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
-                {cjOnly ? (
+                {shippingCatalogPending ? (
+                  <p className="text-muted-foreground">{shippingCatalogError || "Verificando el envío real de los productos..."}</p>
+                ) : cjOnly ? (
                   <div className="space-y-1">
                     <p className="font-semibold text-emerald-800">Envío directo de CJdropshipping a España</p>
                     <p className="text-muted-foreground">El transporte está previsto dentro del precio del artículo. Antes de aceptar el pago, verificaremos el coste de CJ para tu código postal y que el producto siga disponible.</p>
@@ -562,7 +591,7 @@ export function Checkout() {
                 <>
                   <div className="flex justify-between">
                     <span>Envío</span>
-                    <span>{shippingLoading ? "Calculando..." : shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
+                    <span>{shippingCatalogPending ? "Verificando..." : shippingLoading ? "Calculando..." : shipping === 0 ? "Incluido / gratis" : `€${shipping.toFixed(2)}`}</span>
                   </div>
                   {shippingInfo && !shippingLoading && (
                     <div className="text-right text-xs text-muted-foreground">
@@ -586,12 +615,14 @@ export function Checkout() {
             {!showStripe && (
               <button
                 onClick={handleSubmit}
-                disabled={loading || (hasPhysicalItems && shippingLoading) || !cartItems.length}
+                disabled={loading || shippingCatalogPending || (hasPhysicalItems && shippingLoading) || !cartItems.length}
                 className="mt-6 w-full rounded-full bg-[#315b42] py-3.5 font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading
                   ? "Procesando..."
-                  : hasPhysicalItems && shippingLoading
+                  : shippingCatalogPending
+                    ? shippingCatalogError || "Verificando envío..."
+                    : hasPhysicalItems && shippingLoading
                     ? "Calculando envío..."
                     : coupon && total === 0
                       ? "Confirmar pedido gratuito"

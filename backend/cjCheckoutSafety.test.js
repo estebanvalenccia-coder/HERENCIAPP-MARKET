@@ -36,3 +36,18 @@ test("CJ checkout does not use one-unit freight quotes for quantities larger tha
     suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"28001"},
   }),/una unidad/);
 });
+
+// Frontend uses public catalog metadata because older cart snapshots can omit CJ fields.
+import { enrichCartWithCatalog, isCjSupplierItem } from "../src/app/lib/cjFulfillmentIdentity.js";
+test("checkout identifies CJ using authoritative public catalog metadata, not a stale cart snapshot", () => {
+  const cart = [{ id: "cj-product", name: "Garden irrigation controller", price: 20, quantity: 1 }];
+  assert.equal(isCjSupplierItem(cart[0]), false);
+  const enriched = enrichCartWithCatalog(cart, [cj]);
+  assert.equal(isCjSupplierItem(enriched[0]), true);
+  assert.equal(enriched[0].price, 20);
+});
+test("checkout does not confuse Herencia delivery with CJ fulfillment", () => {
+  const cart = [{ id: "flower", name: "Plant", quantity: 1, metadata: { fulfillmentType: "dropship", sourceHost: "cjdropshipping.com" } }];
+  const enriched = enrichCartWithCatalog(cart, [{ id: "flower", name: "Plant", metadata: {} }]);
+  assert.equal(isCjSupplierItem(enriched[0]), false);
+});
