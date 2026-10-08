@@ -1266,6 +1266,7 @@ app.post(
         if (orderUpdateError || !updatedOrder) {
           console.error("Error actualizando pedido pagado:", orderUpdateError?.message || "Pedido no encontrado");
         } else {
+          await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) => console.error("No se pudo confirmar consumo de cupón:", error?.message || error));
           let inventoryOrder = updatedOrder;
           try {
             if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
@@ -1332,6 +1333,8 @@ app.post(
       const paymentIntent = event.data.object;
       const orderId = paymentIntent.metadata?.orderId;
       if (orderId) {
+        const failedOrder = await getOrderPrimary(orderId).catch(() => null);
+        if (failedOrder) await updateOrderCouponUsage(failedOrder, "release").catch((error) => console.warn("No se pudo liberar el cupón:", error.message));
         await releaseCommerceStockReservation(orderId).catch((error) =>
           console.warn("No se pudo liberar la reserva del pedido:", error?.message || error)
         );
@@ -3641,8 +3644,9 @@ async function updateOrderCouponUsage(order, action) {
   if (!code) return;
   const rules = await getCouponRules();
   const rule = rules.find((row) => normalizeCouponCode(row.code) === code);
-  if (!rule?.maxUses) return;
-  await changeCouponUsage(action, { code, rule }, order.id);
+  const maxUses = Number(order?.metadata?.couponMaxUses ?? rule?.maxUses ?? 0);
+  if (!Number.isInteger(maxUses) || maxUses < 1) return;
+  await changeCouponUsage(action, { code, rule: { code, maxUses } }, order.id);
 }
 
 async function authoritativeCouponPreviewItems(rawItems) {
@@ -3690,7 +3694,7 @@ app.post("/api/coupons/preview", async (req, res) => {
 
 app.post("/api/orders", async (req, res) => {
   let order = req.body;
-  const id = order.id || crypto.randomUUID();
+  const id = isAdmin(req) && order?.id ? order.id : crypto.randomUUID();
   try {
     const verified = await validateCommerceOrderPayload(order);
     order = {
@@ -7809,6 +7813,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       pricingSource: "backend_catalog_coupons_and_maps",
       discount: authoritativeDiscount,
       coupon: couponCode || null,
+      couponMaxUses: verifiedPromotion?.rule?.maxUses || 0,
       inventoryReservation: stockReservation,
       shippingDistance: shippingQuote
         ? {
@@ -8166,6 +8171,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   }
 
   if (!isPaid && !isProcessing) {
+    await updateOrderCouponUsage(updatedOrder, "release").catch((error) => console.warn("No se pudo liberar cupón:", error.message));
     await releaseCommerceStockReservation(orderId).catch(() => null);
     return res.status(409).json({
       error: `Stripe devolvió estado: ${paymentIntent.status}`,
@@ -8177,6 +8183,7 @@ app.post("/api/stripe/confirm-order", async (req, res) => {
   let emailResults = null;
 
   if (isPaid) {
+    await updateOrderCouponUsage(updatedOrder, "redeem").catch((error) => console.error("No se pudo registrar uso de cupón:", error.message));
     let inventoryOrder = updatedOrder;
     try {
       if (String(updatedOrder?.metadata?.source || "") === "colombia_checkout") {
