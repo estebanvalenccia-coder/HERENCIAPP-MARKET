@@ -20,6 +20,14 @@ import { backendApi } from "../../lib/backendStorage";
 
 type SupplierMode = "manual" | "autopilot";
 
+function normalizedSupplierDomain(value: string) {
+  const host = String(value || "").toLowerCase().trim().replace(/^www\./, "");
+  if (host === "aliexpress.com" || host.endsWith(".aliexpress.com")) return "aliexpress.com";
+  if (host === "alibaba.com" || host.endsWith(".alibaba.com")) return "alibaba.com";
+  if (host === "1688.com" || host.endsWith(".1688.com")) return "1688.com";
+  return host;
+}
+
 const money = (value: number) =>
   new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 
@@ -83,6 +91,11 @@ export function AdminSuppliersPanel() {
   const [cjApprovalLoadingId, setCjApprovalLoadingId] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
+  const [manualImport, setManualImport] = useState<{ url: string; sourceHost: string; reason: string } | null>(null);
+  const [manualName, setManualName] = useState("");
+  const [manualCost, setManualCost] = useState("");
+  const [manualCurrency, setManualCurrency] = useState("EUR");
+  const [manualImageUrl, setManualImageUrl] = useState("");
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [importSearch, setImportSearch] = useState("");
   const [onlyCjImports, setOnlyCjImports] = useState(false);
@@ -299,27 +312,7 @@ export function AdminSuppliersPanel() {
     }
   };
 
-  const importProductByUrl = async () => {
-    const url = String(importUrl || "").trim();
-    if (!url) return toast.error("Pega la URL del producto");
-    try {
-      new URL(url);
-    } catch {
-      return toast.error("La URL no es válida");
-    }
-
-    setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
-    setImportingUrl(true);
-    try {
-      const preview = await backendApi.previewCatalogUrl(url, 1);
-      const candidate = Array.isArray(preview.products) ? preview.products[0] : null;
-      if (!candidate) {
-        setImportFeedback({ ok: false, message: "El proveedor no devolvió un producto válido." });
-        toast.error("No se pudo detectar el producto en esa URL");
-        return;
-      }
-
-      setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
+  const saveImportedCandidate = async (candidate: any, wasManual = false) => {
       const result = await backendApi.importCatalogUrlProduct(candidate);
       const imported = result.product;
       if (!imported) {
@@ -345,9 +338,10 @@ export function AdminSuppliersPanel() {
           metadata: {
             ...metadata,
             importedFromUrl: true,
+            manuallyReviewedImport: wasManual,
             fulfillmentType: "dropship",
             supplierId: matchedSupplier.id,
-            fulfillmentMode: matchedSupplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+            fulfillmentMode: wasManual ? "manual" : (matchedSupplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual"),
             supplierCost: detectedCost,
             supplierOriginalPrice: Number(candidate.supplierPrice || metadata.supplierOriginalPrice || 0),
             supplierCurrency: sourceCurrency,
@@ -359,16 +353,87 @@ export function AdminSuppliersPanel() {
       }
 
       setImportUrl("");
-      setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio y variantes antes de publicar." });
+      setManualImport(null);
+      setManualName("");
+      setManualCost("");
+      setManualImageUrl("");
+      if (result.imageImportWarning) toast.warning(result.imageImportWarning);
+      setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio, imágenes y variantes antes de publicar." });
       toast.success(
         matchedSupplier
           ? "Producto importado y conectado automáticamente con " + matchedSupplier.name
           : "Producto importado como borrador. Ahora asígnale proveedor y coste."
       );
       await load();
+  };
+
+  const importProductByUrl = async () => {
+    const url = String(importUrl || "").trim();
+    if (!url) return toast.error("Pega la URL del producto");
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Unsupported protocol");
+    } catch {
+      return toast.error("La URL debe empezar por https:// o http://");
+    }
+
+    setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
+    setImportingUrl(true);
+    setManualImport(null);
+    try {
+      const preview = await backendApi.previewCatalogUrl(url, 1);
+      if (preview.requiresManual) {
+        setManualImport({
+          url: preview.sourceUrl || url,
+          sourceHost: normalizedSupplierDomain(preview.sourceHost || new URL(url).hostname),
+          reason: preview.message || "El proveedor no permite importar automáticamente la ficha.",
+        });
+        setImportFeedback({ ok: true, message: "Puedes guardarlo como borrador manual. No se publicará ni se comprará automáticamente." });
+        return;
+      }
+      const candidate = Array.isArray(preview.products) ? preview.products[0] : null;
+      if (!candidate) {
+        setImportFeedback({ ok: false, message: "El proveedor no devolvió un producto válido." });
+        toast.error("No se pudo detectar el producto en esa URL");
+        return;
+      }
+      setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
+      await saveImportedCandidate(candidate, false);
     } catch (error: any) {
-      setImportFeedback({ ok: false, message: String(error?.message || "No se pudo importar el producto desde esa URL") });
-      toast.error(error?.message || "No se pudo importar el producto desde esa URL");
+      const message = String(error?.message || "No se pudo importar el producto desde esa URL");
+      setImportFeedback({ ok: false, message });
+      toast.error(message);
+    } finally {
+      setImportingUrl(false);
+    }
+  };
+
+  const saveManualImport = async () => {
+    if (!manualImport || !manualName.trim()) return toast.error("Escribe el nombre del producto");
+    const amount = Number(manualCost);
+    if (manualCost.trim() && (!Number.isFinite(amount) || amount < 0)) return toast.error("Revisa el coste del proveedor");
+    if (manualImageUrl.trim()) {
+      try {
+        const media = new URL(manualImageUrl.trim());
+        if (!["http:", "https:"].includes(media.protocol)) throw new Error("protocol");
+      } catch { return toast.error("La URL de la imagen no es válida"); }
+    }
+    setImportingUrl(true);
+    try {
+      await saveImportedCandidate({
+        name: manualName.trim(),
+        productUrl: manualImport.url,
+        sourceCatalogUrl: manualImport.url,
+        sourceHost: manualImport.sourceHost,
+        supplierPrice: Number.isFinite(amount) && amount > 0 ? amount : 0,
+        supplierCurrency: manualCurrency,
+        description: "",
+        images: manualImageUrl.trim() ? [manualImageUrl.trim()] : [],
+        manualImport: true,
+      }, true);
+    } catch (error: any) {
+      setImportFeedback({ ok: false, message: String(error?.message || "No se pudo guardar el borrador manual") });
+      toast.error(error?.message || "No se pudo guardar el borrador manual");
     } finally {
       setImportingUrl(false);
     }
@@ -691,7 +756,7 @@ export function AdminSuppliersPanel() {
         <input
           type="url"
           value={importUrl}
-          onChange={(e) => setImportUrl(e.target.value)}
+          onChange={(e) => { setImportUrl(e.target.value); setManualImport(null); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !importingUrl) void importProductByUrl();
           }}
@@ -707,6 +772,23 @@ export function AdminSuppliersPanel() {
           {importingUrl ? "Analizando…" : "Importar producto"}
         </button>
       </div>
+      {manualImport && (
+        <div className="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-semibold">Este proveedor no permite leer su ficha automáticamente</p>
+          <p>{manualImport.reason}</p>
+          <p>Guardaremos un borrador privado: no se publica, no se compra ni se sincroniza con el proveedor hasta que lo revises.</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Nombre del producto (obligatorio)" aria-label="Nombre del producto" className="rounded-lg border border-amber-200 bg-white p-3" />
+            <input value={manualCost} onChange={(e) => setManualCost(e.target.value)} type="number" min="0" step="0.01" placeholder="Coste del proveedor (opcional)" aria-label="Coste del proveedor" className="rounded-lg border border-amber-200 bg-white p-3" />
+            <select value={manualCurrency} onChange={(e) => setManualCurrency(e.target.value)} aria-label="Moneda del proveedor" className="rounded-lg border border-amber-200 bg-white p-3">
+              <option value="EUR">EUR — Euro</option><option value="USD">USD — Dólar</option><option value="CNY">CNY — Yuan</option><option value="GBP">GBP — Libra</option>
+            </select>
+            <input value={manualImageUrl} onChange={(e) => setManualImageUrl(e.target.value)} type="url" placeholder="URL de imagen (opcional)" aria-label="URL de imagen" className="rounded-lg border border-amber-200 bg-white p-3" />
+          </div>
+          <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
+          <p className="text-xs">Si el proveedor bloquea las imágenes, podrás subirlas después desde la biblioteca de Herencia Market. Una URL no habilita la compra automática.</p>
+        </div>
+      )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
       <p className="mt-3 text-xs text-muted-foreground">
         La importación queda en borrador para que revises precio, descripción, variantes e imágenes antes de publicar.
