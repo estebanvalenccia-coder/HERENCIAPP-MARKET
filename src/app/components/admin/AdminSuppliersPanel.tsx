@@ -33,6 +33,14 @@ function sourceHostFromProduct(product: any) {
   }
 }
 
+function suspiciousImportedProduct(product: any) {
+  const name = String(product?.name || "").trim().toLowerCase();
+  const description = String(product?.description || "").slice(0, 500).toLowerCase();
+  const host = sourceHostFromProduct(product).toLowerCase();
+  return /^(human verification|human machine check|just a moment|access denied|captcha)$/.test(name) ||
+    (/human machine check|verify you are human/.test(description) && /cjdropshipping\.com$/.test(host));
+}
+
 function fulfillmentBadge(status = "") {
   const normalized = String(status || "");
   if (["ordered", "shipped", "delivered"].includes(normalized)) return "✅ " + normalized;
@@ -64,6 +72,9 @@ export function AdminSuppliersPanel() {
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [importSearch, setImportSearch] = useState("");
+  const [onlyCjImports, setOnlyCjImports] = useState(false);
+  const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
   const [existingProductId, setExistingProductId] = useState("");
   const [existingProductUrl, setExistingProductUrl] = useState("");
@@ -116,14 +127,34 @@ export function AdminSuppliersPanel() {
   }, []);
 
   const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
-  const importedProducts = useMemo(
-    () =>
-      products.filter((product: any) => {
-        const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
-        return Boolean(metadata.importedFromUrl || metadata.sourceProductUrl);
-      }),
-    [products]
+  const importedProducts = useMemo(() =>
+    products.filter((product: any) => {
+      const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : product;
+      return String(product?.status || "") !== "archived" &&
+        Boolean(metadata.importedFromUrl || metadata.sourceProductUrl);
+    }), [products]
   );
+  const suspectImports = importedProducts.filter(suspiciousImportedProduct);
+  const visibleImports = useMemo(() => {
+    const searchText = importSearch.trim().toLocaleLowerCase("es");
+    return importedProducts.filter((product: any) => {
+      if (suspiciousImportedProduct(product)) return false;
+      if (onlyCjImports && !sourceHostFromProduct(product).toLowerCase().endsWith("cjdropshipping.com")) return false;
+      if (!searchText) return true;
+      const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : product;
+      return [product.name, product.sku, metadata.sourceProductUrl, metadata.supplierProductId, metadata.supplierSku]
+        .some((part) => String(part || "").toLocaleLowerCase("es").includes(searchText));
+    }).sort((first: any, second: any) => {
+      const score = (product: any) => {
+        const host = sourceHostFromProduct(product).toLowerCase();
+        const name = String(product.name || "").toLowerCase();
+        return (host.endsWith("cjdropshipping.com") ? 100 : 0) +
+          (name.includes("garden irrigation controller") ? 200 : 0) +
+          (product.metadata?.supplierId ? 30 : 0);
+      };
+      return score(second) - score(first);
+    });
+  }, [importedProducts, importSearch, onlyCjImports]);
 
   const existingMatches = products.filter((product: any) => {
     if (String(product.status || "") === "archived") return false;
@@ -700,15 +731,39 @@ export function AdminSuppliersPanel() {
           <p className="text-sm text-muted-foreground">Asigna proveedor, coste y modo. Al marcarlo dropshipping se desactiva el stock local.</p>
         </div>
       </div>
+      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:flex-row sm:items-center">
+        <input value={importSearch} onChange={(event) => setImportSearch(event.target.value)}
+          placeholder="Buscar por nombre, SKU o URL (ej. Garden irrigation controller)"
+          aria-label="Buscar productos importados"
+          className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+        <label className="flex shrink-0 items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" checked={onlyCjImports} onChange={(event) => setOnlyCjImports(event.target.checked)}/>
+          Solo CJdropshipping
+        </label>
+        <span className="text-xs font-medium text-muted-foreground">{visibleImports.length} productos encontrados</span>
+      </div>
+      {suspectImports.length > 0 && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+        <p className="font-semibold">Se han detectado {suspectImports.length} importaciones de verificación («Human verification»).</p>
+        <p className="mt-1 text-xs">Son páginas de bloqueo del proveedor, no artículos verificables. Se ocultan de las conexiones y no se eliminan automáticamente del catálogo.</p>
+        <button type="button" onClick={() => setShowSuspectImports((previous) => !previous)} className="mt-2 text-xs font-semibold underline">
+          {showSuspectImports ? "Ocultar fichas sospechosas" : "Ver nombres de fichas sospechosas"}
+        </button>
+        {showSuspectImports && <div className="mt-2 space-y-1 text-xs">
+          {suspectImports.slice(0, 20).map((item: any) => <p key={item.id}>{item.name} · {sourceHostFromProduct(item) || "Sin dominio"}</p>)}
+          {suspectImports.length > 20 && <p>Y {suspectImports.length - 20} más.</p>}
+        </div>}
+      </div>}
       <div className="mt-4 space-y-3">
         {!importedProducts.length ? <p className="text-sm text-muted-foreground">Aún no hay productos importados por URL.</p> :
-          importedProducts.slice(0, 150).map((product: any) => <ImportedProductRow
+          !visibleImports.length ? <p className="text-sm text-muted-foreground">No hay artículos que coincidan con la búsqueda. Prueba sin el filtro de CJ o usa «Vincular un producto que ya existe» arriba.</p> :
+          visibleImports.slice(0, 150).map((product: any) => <ImportedProductRow
             key={product.id}
             product={product}
             suppliers={suppliers}
             saving={savingProductId === String(product.id)}
             onSave={assignDropship}
           />)}
+        {visibleImports.length > 150 && <p className="text-xs text-muted-foreground">Mostrando los primeros 150. Usa el buscador para encontrar otros productos.</p>}
       </div>
     </section>
 
