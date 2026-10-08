@@ -13,7 +13,7 @@ const numeric = (value, label) => {
   if (!Number.isFinite(n) || n < 0) throw new Error("Valor de envío inválido: " + label);
   return n;
 };
-const key = value => String(value ?? "").trim().toLowerCase();
+const key = value => String(value ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\s]+/g, "-");
 export function parseShippingSettings(value) {
   let raw = {};
   try { raw = typeof value === "string" ? JSON.parse(value || "{}") : value || {}; } catch {}
