@@ -63,6 +63,7 @@ export function AdminSuppliersPanel() {
   const [processingId, setProcessingId] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
 
   const [form, setForm] = useState<any>({
     id: "",
@@ -197,18 +198,22 @@ export function AdminSuppliersPanel() {
       return toast.error("La URL no es válida");
     }
 
+    setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
     setImportingUrl(true);
     try {
       const preview = await backendApi.previewCatalogUrl(url, 1);
       const candidate = Array.isArray(preview.products) ? preview.products[0] : null;
       if (!candidate) {
+        setImportFeedback({ ok: false, message: "El proveedor no devolvió un producto válido." });
         toast.error("No se pudo detectar el producto en esa URL");
         return;
       }
 
+      setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
       const result = await backendApi.importCatalogUrlProduct(candidate);
       const imported = result.product;
       if (!imported) {
+        setImportFeedback({ ok: false, message: result.skipped ? "Este producto ya estaba importado." : "No se pudo guardar el borrador." });
         if (result.skipped) toast.info("Ese producto ya estaba importado");
         else toast.warning("La ficha fue analizada pero no se pudo crear el borrador");
         await load();
@@ -244,6 +249,7 @@ export function AdminSuppliersPanel() {
       }
 
       setImportUrl("");
+      setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio y variantes antes de publicar." });
       toast.success(
         matchedSupplier
           ? "Producto importado y conectado automáticamente con " + matchedSupplier.name
@@ -251,6 +257,7 @@ export function AdminSuppliersPanel() {
       );
       await load();
     } catch (error: any) {
+      setImportFeedback({ ok: false, message: String(error?.message || "No se pudo importar el producto desde esa URL") });
       toast.error(error?.message || "No se pudo importar el producto desde esa URL");
     } finally {
       setImportingUrl(false);
@@ -481,6 +488,7 @@ export function AdminSuppliersPanel() {
           {importingUrl ? "Analizando…" : "Importar producto"}
         </button>
       </div>
+      {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
       <p className="mt-3 text-xs text-muted-foreground">
         La importación queda en borrador para que revises precio, descripción, variantes e imágenes antes de publicar.
       </p>
