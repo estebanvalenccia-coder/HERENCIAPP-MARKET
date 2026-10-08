@@ -5685,6 +5685,24 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
       await writeSupplierOperations(operations);
       return { fulfillment: updated, executed: false, manual: false };
     }
+    // Quotes in this integration are for one item delivered to Spain. Do not reuse
+    // a Spanish freight estimate for a foreign destination, multiple quantities,
+    // or a different customer-selected variant.
+    const shippingCountry = countryCodeFromAddress(
+      record.shippingAddress?.country || currentOrder.shipping_country || "ES"
+    );
+    if (shippingCountry !== "ES" ||
+        (record.items || []).some((item) =>
+          Number(item.quantity || 0) !== 1 ||
+          (String(item.selectedVariant || "").trim() &&
+           ![String(item.supplierVariantId || ""), String(item.supplierSku || "")].includes(String(item.selectedVariant).trim())))) {
+      const updated = { ...record, status: "approval_required",
+        blocker: "Cotización CJ válida solo para una unidad de la variante configurada con envío a España. Revisa la dirección y las opciones del pedido.",
+        updatedAt: now };
+      operations.supplierFulfillments[index] = updated;
+      await writeSupplierOperations(operations);
+      return { fulfillment: updated, executed: false, manual: false };
+    }
     const unsafe = (record.items || []).some((item) => !item.cjPricingEstimate?.feasible ||
       !item.cjPricingEstimate?.available || !item.cjPricingEstimate?.checkedAt ||
       Date.now() - Date.parse(item.cjPricingEstimate.checkedAt) > 24 * 60 * 60 * 1000);
