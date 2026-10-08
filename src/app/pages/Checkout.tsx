@@ -331,7 +331,7 @@ export function Checkout() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
-    if (isStripePayment) {
+    if (isStripePayment || (coupon && total === 0)) {
       setShowStripe(true);
       return;
     }
@@ -544,7 +544,9 @@ export function Checkout() {
                   ? "Procesando..."
                   : hasPhysicalItems && shippingLoading
                     ? "Calculando envío..."
-                    : isStripePayment
+                    : coupon && total === 0
+                      ? "Confirmar pedido gratuito"
+                      : isStripePayment
                       ? onlyServices
                         ? "Pagar y reservar"
                         : "Continuar al pago seguro"
