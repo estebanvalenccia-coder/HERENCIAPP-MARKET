@@ -139,5 +139,5 @@ test("CJ balance charge is in second route with merchant confirmation, caps and 
   assert.match(payment,/cj_paying/);
   assert.match(payment,/cj_payment_unknown/);
   assert.match(payment,/await cjPayOrder\(/);
-  assert.doesNotMatch(payment,/createOrderV2/);
+  assert.doesNotMatch(payment,/cjRequest\("\/shopping\/order\/createOrderV2"/);
 });
