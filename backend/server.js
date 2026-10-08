@@ -8,6 +8,7 @@ import Stripe from "stripe";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
@@ -3567,19 +3568,31 @@ async function validateCommerceOrderPayload(order = {}) {
   let shipping = normalizeMoney(order.shipping || 0);
   let shippingQuote = null;
 
+  let directCjShipping = false;
   if (source === "frontend_checkout") {
     const shippingAddress = order?.metadata?.shippingAddress || {};
-    shippingQuote = await calculateShippingQuote(shippingAddress);
-    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
-      throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
+    const supplierOperations = await readSupplierOperations();
+    const cjCheckout = await evaluateCjCheckout({
+      lines: normalizedItems, catalog: products, shippingAddress, discount,
+      suppliers: supplierOperations.suppliers || [],
+    });
+    directCjShipping = cjCheckout.cjOnly;
+    if (directCjShipping) {
+      shippingQuote = cjCheckout.shippingQuote;
+      shipping = 0; // Supplier freight is already budgeted in the product sale price.
+    } else {
+      shippingQuote = await calculateShippingQuote(shippingAddress);
+      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+        throw new Error(`La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`);
+      }
+      shipping = normalizeMoney(shippingQuote.price || 0);
+      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+      if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
     }
-    shipping = normalizeMoney(shippingQuote.price || 0);
-    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-    if (freeShippingFrom > 0 && subtotal >= freeShippingFrom) shipping = 0;
   }
 
-  await assertDeliveryAvailability({
+  if (!directCjShipping) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
     suite,
@@ -7873,21 +7886,32 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
-    await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
-
     const shippingAddress = metadata?.shippingAddress || {};
-    const shippingQuote = await calculateShippingQuote(shippingAddress);
-    const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
-    if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
-      return res.status(400).json({
-        error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
-        distanceKm: shippingQuote.distanceKm,
-      });
-    }
-    let authoritativeShipping = Number(shippingQuote.price || 0);
-    const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
-    if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
-      authoritativeShipping = 0;
+    const supplierOperations = await readSupplierOperations();
+    const directCj = await evaluateCjCheckout({
+      lines: authoritativeItems, catalog, shippingAddress,
+      discount: authoritativeDiscount, suppliers: supplierOperations.suppliers || [],
+    });
+    let shippingQuote;
+    let authoritativeShipping;
+    if (directCj.cjOnly) {
+      shippingQuote = directCj.shippingQuote;
+      authoritativeShipping = 0; // Never apply Herencia's local kilometre charge to CJ deliveries.
+    } else {
+      await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
+      shippingQuote = await calculateShippingQuote(shippingAddress);
+      const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
+      if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
+        return res.status(400).json({
+          error: `La dirección está fuera del radio de reparto de ${maxDeliveryKm} km`,
+          distanceKm: shippingQuote.distanceKm,
+        });
+      }
+      authoritativeShipping = Number(shippingQuote.price || 0);
+      const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
+      if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
+        authoritativeShipping = 0;
+      }
     }
 
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
