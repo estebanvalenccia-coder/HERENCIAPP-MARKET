@@ -4,6 +4,7 @@ const protectedStatuses = new Set([
   "ordered", "shipped", "delivered", "cancelled", "canceled", "closed",
   "refunded", "returned", "disputed", "manual_purchase_required",
   "payment_required",
+  "cj_creating", "cj_creation_unknown", "cj_paying", "cj_payment_unknown",
 ]);
 
 export function hasVerifiedCjQuote(record) {
