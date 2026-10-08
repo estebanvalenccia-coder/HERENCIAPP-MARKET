@@ -1,13 +1,13 @@
 // La IA solo responde preguntas generales. Los casos que afectan a una cuenta o un pedido
 // se trasladan a una persona sin enviar datos privados al proveedor del modelo.
-const HUMAN_TOPICS = /reembols|devoluci[oó]n|cancel|pedido|env[ií]o|seguim|reclam|queja|factur|cobro|cargo|pago|tarjeta|cuenta|contrase[nñ]a|datos personales|hablar con (alguien|persona|humano)|agente|operador|persona real|whatsapp/i;
+const HUMAN_TOPICS = /reembols|devoluci[oó]n|cancel|pedido|env[ií]o|seguim|reclam|queja|factur|cobro|cargo|pago|tarjeta|cuenta|contrase[nñ]a|datos personales|entrega|retras|incidencia|no lleg|roto|da[nñ]ad|hablar con|hablar a|persona|humano|agente|operador|whatsapp/i;
 
 export function needsHumanSupport(text = "") {
   return HUMAN_TOPICS.test(String(text));
 }
 
 export async function answerGeneralSupport(question, publicContext = "") {
-  if (needsHumanSupport(question)) return { reply: "Voy a dejar tu consulta pendiente para que una persona de Herencia pueda ayudarte directamente desde este chat.", needsHuman: true };
+  if (needsHumanSupport(question) || /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s-]{7,}\d)/.test(String(question))) return { reply: "Voy a dejar tu consulta pendiente para que una persona de Herencia pueda ayudarte directamente desde este chat.", needsHuman: true };
   const key = String(process.env.GROQ_API_KEY || "").trim();
   if (!key) return { reply: "He recibido tu mensaje. Nuestro equipo te responderá en este mismo chat.", needsHuman: true };
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
