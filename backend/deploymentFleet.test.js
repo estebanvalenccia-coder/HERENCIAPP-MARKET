@@ -1,0 +1,12 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {compareDeploymentFleet} from "../shared/deploymentFleet.js";
+const a="13924cebb2be5bc47a53c60d5f4cf721afac5eb0";
+const b="62ee28fc27880d0d000c9e47df95fd14430a980d";
+const same=sha=>Object.fromEntries(["public","vercel","railway","backend"].map(name=>[name,{ok:true,commit:sha,platform:name}]));
+test("all four exact immutable revisions agree",()=>assert.equal(compareDeploymentFleet(same(a),a).state,"synced"));
+test("stale Vercel is drift",()=>{const r=same(a);r.vercel.commit=b;assert.equal(compareDeploymentFleet(r,a).state,"drift");});
+test("stale Railway is drift",()=>{const r=same(a);r.railway.commit=b;assert.deepEqual(compareDeploymentFleet(r,a).differing,["railway"]);});
+test("missing protected Vercel cannot be marked green",()=>{const r=same(a);r.vercel={ok:false,error:"HTTP 401"};assert.equal(compareDeploymentFleet(r,a).state,"unverified");});
+test("main advanced beyond all deployments is drift",()=>assert.equal(compareDeploymentFleet(same(b),a).state,"drift"));
+test("READY without immutable SHA is unverified",()=>{const r=same(a);r.backend.commit="READY";assert.equal(compareDeploymentFleet(r,a).state,"unverified");});
