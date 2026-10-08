@@ -58,6 +58,7 @@ export function Cart() {
   const [shippingCost, setShippingCost] = useState(5);
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState("");
 
   const loadCart = () => {
     try {
@@ -95,7 +96,19 @@ export function Cart() {
   const onlyServices = hasServices && !hasPhysicalItems;
   const subtotal = cartItems.reduce((sum, item) => sum + lineTotal(item), 0);
   const shipping = hasPhysicalItems ? shippingCost : 0;
-  const total = Math.max(0, subtotal - discount + shipping);
+  const currentCodes: any[] = (() => {
+    try { const value = JSON.parse(backendStorage.getItem("discountCodes") || "[]"); return Array.isArray(value) ? value : []; }
+    catch { return []; }
+  })();
+  const currentRule = currentCodes.find((x) => String(x.code || "").toUpperCase() === appliedCoupon && x.active !== false && (!x.expiresAt || new Date(String(x.expiresAt).slice(0,10) + "T23:59:59") >= new Date()));
+  const eligibleSubtotal = currentRule ? cartItems.reduce((sum, item) => {
+    const service = isServiceItem(item);
+    if (currentRule.scope === "services" && !service) return sum;
+    if (currentRule.scope === "products" && service) return sum;
+    return sum + lineTotal(item);
+  }, 0) : 0;
+  const calculatedDiscount = currentRule ? Math.min(eligibleSubtotal, Math.max(0, currentRule.type === "fixed" ? Number(currentRule.value || 0) : eligibleSubtotal * Number(currentRule.value || 0) / 100)) : 0;
+  const total = Math.max(0, subtotal - calculatedDiscount + shipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
@@ -164,6 +177,7 @@ export function Cart() {
     if (!eligibleSubtotal) return toast.error("Este cupón no se aplica a los artículos del carrito");
     const amount = rule.type === "fixed" ? Number(rule.value || 0) : eligibleSubtotal * Number(rule.value || 0) / 100;
     setDiscount(Math.min(eligibleSubtotal, Math.max(0, amount)));
+    setAppliedCoupon(String(rule.code).toUpperCase());
     toast.success("Cupón aplicado");
   };
 
@@ -173,8 +187,8 @@ export function Cart() {
       state: {
         paymentMethod,
         shippingCost: shipping,
-        discount,
-        coupon: discount > 0 ? coupon : "",
+        discount: calculatedDiscount,
+        coupon: calculatedDiscount > 0 ? appliedCoupon : "",
       },
     });
   };
@@ -354,9 +368,9 @@ export function Cart() {
               <span className="text-[#6c786f]">{onlyServices ? "Horas reservadas" : "Subtotal"}</span>
               <span className="font-black">€{subtotal.toFixed(2)}</span>
             </div>
-            {discount > 0 ? (
+            {calculatedDiscount > 0 ? (
               <div className="flex justify-between gap-4 text-emerald-700">
-                <span>Descuento</span><span className="font-black">−€{discount.toFixed(2)}</span>
+                <span>Descuento</span><span className="font-black">−€{calculatedDiscount.toFixed(2)}</span>
               </div>
             ) : null}
             {hasPhysicalItems && (
