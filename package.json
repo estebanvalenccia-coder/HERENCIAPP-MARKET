@@ -7,7 +7,8 @@
     "node": "24.x"
   },
   "scripts": {
-    "build": "npm run test:pos && npm run test:security && npm run test:delivery && npm run test:release && vite build",
+    "build": "npm run test:pos && npm run test:security && npm run test:delivery && npm run test:release && npm run test:promos && vite build",
+    "test:promos": "node --test backend/promoCodes.test.js",
     "test:pos": "node --test backend/posEngine.test.js",
     "test:security": "node --test backend/security.test.js",
     "test:delivery": "node --test backend/deliveryCapacity.test.js",
