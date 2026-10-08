@@ -6524,6 +6524,7 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
     const realUsd = Number(data.actualPayment ?? data.orderAmount);
     const safeRealUsd = Number.isFinite(realUsd) && realUsd > 0 ? Math.round(realUsd * 100) / 100 : 0;
     const recorded = await mutateCjManualRecord(record.id, ["cj_creating"], {
+      provider: "cj",
       status: safeRealUsd > 0 && safeRealUsd <= approvedMaxUsd && safeRealUsd <= preview.maxAllowedUsd
         ? "payment_required" : "cj_creation_unknown",
       blocker: safeRealUsd > 0 && safeRealUsd <= approvedMaxUsd && safeRealUsd <= preview.maxAllowedUsd
