@@ -831,6 +831,30 @@ export const backendApi = {
     }>("/api/admin/supplier-fulfillments");
   },
 
+  // Read-only CJ account order audit; this endpoint never creates or pays orders.
+  async auditCjAccountOrders(orderId = "") {
+    const suffix = orderId ? "?orderId=" + encodeURIComponent(orderId) : "";
+    return request<{
+      checkedAt: string;
+      readOnly: true;
+      purchaseEnabledByAudit: false;
+      checkedStatuses: number;
+      statusSummary: Array<{ status: string; total: number | null; scanned: number }>;
+      failedStatuses: Array<{ status: string; message: string }>;
+      cjOrders: Array<{
+        cjOrderId: string; orderNumber: string; status: string; amountUsd: number | null;
+        localOrderId: string | null; localFulfillmentId: string | null;
+      }>;
+      localQueue: Array<{
+        orderId: string; fulfillmentId: string; status: string;
+        estimatedCostEur: number; externalOrderId: string;
+        cjDetectedInPages: boolean; cjOrderStatus: string | null;
+      }>;
+      incomplete: boolean;
+      warning: string;
+    }>("/api/admin/suppliers/cj/order-audit" + suffix);
+  },
+
   async prepareSupplierFulfillments(orderId: string, force = false) {
     return request<{ fulfillments: any[] }>(
       `/api/admin/supplier-fulfillments/prepare/${encodeURIComponent(orderId)}`,
