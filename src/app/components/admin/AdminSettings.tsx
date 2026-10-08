@@ -7,6 +7,7 @@ import {
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { toast } from "sonner";
 import { AdminShippingRules } from "./AdminShippingRules";
+import { DeploymentParityStatus } from "./DeploymentParityStatus";
 
 type TpvLeftBlockId = "status" | "currentSale" | "payment" | "keypad";
 type TpvLayoutSettings = {
@@ -863,6 +864,9 @@ export function AdminSettings() {
           </p>
         </div>
       </div>
+
+      {/* Source-of-truth deployment comparison */}
+      <DeploymentParityStatus />
 
       {/* Advanced configurable shipping panel */}
       <AdminShippingRules />
