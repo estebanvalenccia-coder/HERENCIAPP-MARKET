@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
@@ -5205,6 +5206,16 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     if (sandbox || !cjLiveAutopilotEnabled()) {
       return { fulfillment: { ...record, status: "approval_required", blocker: "Pago CJ bloqueado: modo pruebas o pagos reales desactivados.", updatedAt: now }, executed: false, manual: false };
     }
+    // A force-approved payment still must obey the supplier's hard budget.
+    const maxPaymentUsd = normalizeMoney(supplier?.cjMaxPaymentUsd || 0);
+    const verifiedPaymentUsd = normalizeMoney(record?.providerActualPayment || 0);
+    if (!(maxPaymentUsd > 0 && verifiedPaymentUsd > 0) || verifiedPaymentUsd > maxPaymentUsd) {
+      return { fulfillment: {
+        ...record, status: "approval_required", updatedAt: now,
+        blocker: "Importe CJ desconocido o superior al límite autorizado de $" +
+          maxPaymentUsd.toFixed(2) + " USD. No se ha realizado ningún pago.",
+      }, executed: false, manual: false };
+    }
     await cjPayOrder({
       orderId: record.externalOrderId,
       shipmentOrderId: record.cjShipmentOrderId || "",
@@ -5260,6 +5271,17 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
   const fromCountryCode = String(supplier?.cjFromCountryCode || "CN").trim().toUpperCase().slice(0, 2);
   const orderNumber = ("HM-" + String(record.orderId || "") + "-" + String(record.id || "").slice(0, 8)).slice(0, 50);
 
+  const maxConfiguredPaymentUsd = normalizeMoney(supplier?.cjMaxPaymentUsd || 0);
+  const projectedPaymentUsd = normalizeMoney((record.items || []).reduce((sum, item) =>
+    sum + Number(item?.cjPricingEstimate?.supplierTotalUsd || 0) * Number(item.quantity || 1), 0));
+  if (!(maxConfiguredPaymentUsd > 0 && projectedPaymentUsd > 0) ||
+      projectedPaymentUsd > maxConfiguredPaymentUsd) {
+    return { fulfillment: {
+      ...record, status: "approval_required", updatedAt: now,
+      blocker: "Coste CJ en USD no verificado o superior al límite de $" +
+        maxConfiguredPaymentUsd.toFixed(2) + " USD. Pedido no creado.",
+    }, executed: false, manual: false };
+  }
   const payload = await cjRequest("/shopping/order/createOrderV2", {
     method: "POST",
     body: {
@@ -5327,7 +5349,7 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
-  if (!force && !sandbox && maxPaymentUsd > 0 && actualPaymentUsd > maxPaymentUsd) {
+  if (!(actualPaymentUsd > 0 && maxPaymentUsd > 0) || actualPaymentUsd > maxPaymentUsd) {
     return {
       fulfillment: {
         ...prepared,
@@ -5681,6 +5703,14 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   if (supplier.active === false) throw Object.assign(new Error("El proveedor está desactivado"), { statusCode: 409 });
 
   const now = new Date().toISOString();
+  // Never replay an already purchased, delivered or closed supplier order.
+  // A pending CJ order awaiting payment has a separate, explicit gated branch.
+  if (["ordered", "shipped", "delivered", "cancelled", "canceled", "closed", "refunded", "returned"]
+    .includes(String(record.status || "").toLowerCase()) ||
+    (String(record.externalOrderId || "").trim() &&
+      !["approval_required", "payment_required"].includes(String(record.status || "")))) {
+    return { fulfillment: record, executed: false, manual: false };
+  }
   if (record.mode !== "autopilot") {
     const updated = {
       ...record,
@@ -6022,6 +6052,57 @@ app.post("/api/admin/suppliers/cj/test", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     res.status(error.statusCode || 502).json({ configured: cjConfigured(), error: error.message || "No se pudo conectar con CJ" });
+  }
+});
+
+// CJ orders are checked through the existing Herencia API key. This is a
+// strictly read-only, administrator-authenticated diagnostic: no create/pay/confirm.
+app.get("/api/admin/suppliers/cj/order-audit", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    if (!cjConfigured()) return res.status(409).json({ error: "Falta CJ_API_KEY en Railway" });
+    const operations = await readSupplierOperations();
+    const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
+    const localQueue = (Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [])
+      .filter((record) => record.provider === "cj" ||
+        suppliers.some((supplier) => String(supplier?.id || "") === String(record.supplierId || "") &&
+          supplierIntegrationType(supplier) === "cj"));
+    const orderId = String(req.query?.orderId || "").trim();
+    const matchingQueue = orderId ? localQueue.filter((record) => String(record.orderId || "") === orderId) : localQueue;
+    const pages = [];
+    const failedStatuses = [];
+    // CJ limits free accounts to 1 request/second. Always specify status:
+    // its API otherwise defaults to CANCELLED (which hides active orders).
+    for (let index = 0; index < CJ_AUDIT_ORDER_STATUSES.length; index++) {
+      const status = CJ_AUDIT_ORDER_STATUSES[index];
+      try {
+        const payload = await cjRequest("/shopping/order/list", {
+          query: { pageNum: 1, pageSize: 50, status },
+        });
+        const data = payload?.data || {};
+        if (!Array.isArray(data.list)) throw new Error("CJ no devolvió una lista de pedidos verificable");
+        pages.push({ status, total: data.total, list: data.list });
+      } catch (error) {
+        failedStatuses.push({ status, message: String(error?.message || "No disponible").slice(0, 180) });
+      }
+      if (index + 1 < CJ_AUDIT_ORDER_STATUSES.length) {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+      }
+    }
+    if (!pages.length) {
+      return res.status(502).json({ error: "CJ no ha permitido consultar ningún estado de pedidos", failedStatuses });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      checkedAt: new Date().toISOString(),
+      readOnly: true,
+      purchaseEnabledByAudit: false,
+      checkedStatuses: pages.length,
+      failedStatuses,
+      ...summarizeCjAccountOrders(pages, matchingQueue),
+    });
+  } catch (error) {
+    res.status(error?.statusCode || 502).json({ error: String(error?.message || "No se pudo consultar pedidos CJ").slice(0, 250) });
   }
 });
 

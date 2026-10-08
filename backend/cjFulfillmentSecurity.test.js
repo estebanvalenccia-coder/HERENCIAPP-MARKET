@@ -68,3 +68,37 @@ test("CJ manual approval is a successful preflight when price and shipping are v
   assert.match(preflight, /simulated\?\.status !== "autopilot_ready" && !approvalExpected/);
   assert.match(preflight, /simulationOnly: true/);
 });
+
+test("CJ account inspection calls the read-only order listing API and never purchases", () => {
+  const start = server.indexOf('app.get("/api/admin/suppliers/cj/order-audit", requireAdmin');
+  const end = server.indexOf('app.post("/api/admin/supplier-fulfillments/:id/sync", requireAdmin', start);
+  assert.ok(start > 0 && end > start);
+  const audit = server.slice(start, end);
+  assert.match(audit, /CJ_AUDIT_ORDER_STATUSES/);
+  assert.match(audit, /cjRequest\("\/shopping\/order\/list"/);
+  assert.match(audit, /status \}/);
+  assert.match(audit, /summarizeCjAccountOrders/);
+  assert.doesNotMatch(audit, /cjPayOrder\(|createOrderV2|executeCjSupplierFulfillment\(/);
+});
+
+test("CJ forced payments honor the supplier cap and previously ordered records are idempotent", () => {
+  const cjStart = server.indexOf("async function executeCjSupplierFulfillment(");
+  const cjEnd = server.indexOf("async function syncCjSupplierFulfillment(", cjStart);
+  assert.ok(cjStart > 0 && cjEnd > cjStart);
+  const cj = server.slice(cjStart, cjEnd);
+  assert.match(cj, /maxConfiguredPaymentUsd/);
+  assert.match(cj, /projectedPaymentUsd > maxConfiguredPaymentUsd/);
+  assert.match(cj, /actualPaymentUsd > maxPaymentUsd/);
+  assert.doesNotMatch(cj, /!force && !sandbox && maxPaymentUsd > 0/);
+  const repay = cj.indexOf("verifiedPaymentUsd > maxPaymentUsd");
+  const repayCall = cj.indexOf("await cjPayOrder(", repay);
+  assert.ok(repay > 0 && repayCall > repay, "repayment must check cap before CJ balance charge");
+  const actualCheck = cj.indexOf("actualPaymentUsd > maxPaymentUsd");
+  const actualPay = cj.lastIndexOf("await cjPayOrder(");
+  assert.ok(actualCheck > 0 && actualPay > actualCheck, "first CJ balance payment must check cap");
+  const supplierStart = server.indexOf("async function executeSupplierFulfillment(");
+  const supplierEnd = server.indexOf("async function syncCjSupplierFulfillment(", supplierStart);
+  const supplier = server.slice(supplierStart, supplierEnd);
+  assert.match(supplier, /"ordered", "shipped", "delivered"/);
+  assert.match(supplier, /return \{ fulfillment: record, executed: false, manual: false \}/);
+});

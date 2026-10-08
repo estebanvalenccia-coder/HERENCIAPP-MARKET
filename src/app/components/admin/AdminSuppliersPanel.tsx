@@ -66,6 +66,8 @@ export function AdminSuppliersPanel() {
   const [cjLiveEnabled, setCjLiveEnabled] = useState(false);
   const [cjTesting, setCjTesting] = useState(false);
   const [cjBalance, setCjBalance] = useState<any>(null);
+  const [cjOrderAudit, setCjOrderAudit] = useState<any>(null);
+  const [cjOrderAuditLoading, setCjOrderAuditLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
@@ -505,6 +507,24 @@ export function AdminSuppliersPanel() {
     }
   };
 
+  const checkCjAccountOrders = async () => {
+    if (cjOrderAuditLoading) return;
+    setCjOrderAuditLoading(true);
+    try {
+      const audit = await backendApi.auditCjAccountOrders();
+      setCjOrderAudit(audit);
+      if (audit.failedStatuses?.length) {
+        toast.warning("Consulta CJ parcial: algunos estados no se pudieron comprobar");
+      } else {
+        toast.success("Pedidos CJ consultados sin realizar ninguna compra");
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "CJ no ha respondido a la consulta de pedidos");
+    } finally {
+      setCjOrderAuditLoading(false);
+    }
+  };
+
   const syncCjFulfillment = async (fulfillment: any) => {
     setProcessingId(String(fulfillment.id));
     try {
@@ -784,6 +804,46 @@ export function AdminSuppliersPanel() {
           />)}
         {visibleImports.length > 150 && <p className="text-xs text-muted-foreground">Mostrando los primeros 150. Usa el buscador para encontrar otros productos.</p>}
       </div>
+    </section>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Pedidos CJ: comprobar cuenta real</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Consulta los estados de CJ mediante su API. Solo lectura: no se crean, confirman ni pagan pedidos. La búsqueda puede tardar unos segundos por los límites de CJ.</p>
+        </div>
+        <button type="button" disabled={cjOrderAuditLoading || !cjConfigured} onClick={() => void checkCjAccountOrders()}
+          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
+          <RefreshCw className={"h-4 w-4" + (cjOrderAuditLoading ? " animate-spin" : "")}/>
+          {cjOrderAuditLoading ? "Consultando CJ…" : "Comprobar pedidos en CJ"}
+        </button>
+      </div>
+      {cjOrderAudit && <div className="mt-4 space-y-3 text-sm">
+        <p className="font-semibold">Última consulta: {new Date(cjOrderAudit.checkedAt).toLocaleString("es-ES")} · {cjOrderAudit.checkedStatuses}/7 estados consultados</p>
+        <div className="flex flex-wrap gap-2">
+          {(cjOrderAudit.statusSummary || []).map((entry: any) =>
+            <span key={entry.status} className="rounded-lg bg-muted px-3 py-2 text-xs font-semibold">{entry.status}: {entry.total == null ? "sin recuento" : entry.total}</span>)}
+        </div>
+        {(cjOrderAudit.failedStatuses || []).length > 0 &&
+          <p className="rounded-lg bg-amber-50 p-3 font-semibold text-amber-800">Consulta incompleta: {(cjOrderAudit.failedStatuses || []).map((x: any) => x.status).join(", ")}. No interpretes los resultados como ausencia de pedidos.</p>}
+        {cjOrderAudit.incomplete && <p className="rounded-lg bg-amber-50 p-3 text-amber-900">{cjOrderAudit.warning}</p>}
+        {(cjOrderAudit.cjOrders || []).length > 0
+          ? <div className="space-y-2">{cjOrderAudit.cjOrders.map((entry: any) =>
+              <div key={entry.cjOrderId || entry.orderNumber} className="rounded-lg border border-border p-3">
+                <p className="font-semibold">CJ {entry.cjOrderId || "sin ID"} · {entry.status}</p>
+                <p className="text-xs">Referencia: {entry.orderNumber || "No disponible"} · {entry.amountUsd == null ? "Importe sin confirmar" : "$" + Number(entry.amountUsd).toFixed(2) + " USD"}</p>
+                <p className="text-xs">{entry.localOrderId ? "Pedido Herencia #" + String(entry.localOrderId).slice(0, 8) : "Sin vínculo confirmado en la cola de Herencia"}</p>
+              </div>)}</div>
+          : <p className="text-sm text-muted-foreground">No se observaron pedidos Herencia en las páginas consultadas de CJ. Esto no demuestra que no existan pedidos antiguos.</p>}
+        <div className="space-y-1">
+          <p className="font-semibold">Comparación con la cola de Herencia</p>
+          {(cjOrderAudit.localQueue || []).slice(0, 30).map((entry: any) =>
+            <p key={entry.fulfillmentId} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
+              Pedido #{String(entry.orderId).slice(0, 8)} · {entry.status} · {money(entry.estimatedCostEur)} estimados ·
+              {entry.cjDetectedInPages ? " encontrado en CJ (" + entry.cjOrderStatus + ")" : " sin coincidencia en las páginas consultadas"}
+            </p>)}
+        </div>
+      </div>}
     </section>
 
     <section className="rounded-2xl border border-border bg-card p-6">
