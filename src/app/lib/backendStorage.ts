@@ -389,6 +389,8 @@ export const backendApi = {
       sourceHost: string;
       count: number;
       truncated?: boolean;
+      requiresManual?: boolean;
+      message?: string;
       products: any[];
       source?: string;
     }>("/api/admin/catalog/import-url/preview", {
