@@ -1,4 +1,5 @@
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
+import { promotionIsService, evaluatePromotion, promotionRedemptions, reservePromotion, finalizePromotion, releasePromotion } from "./promotionCodes.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
 import express from "express";
 import cors from "cors";
@@ -7507,8 +7508,6 @@ async function restockColombiaOrderInventory(order) {
 }
 
 app.post("/api/stripe/create-payment-intent", async (req, res) => {
-  if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el backend" });
-
   try {
     const {
       currency = "eur",
@@ -7661,7 +7660,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
-    if (normalizedDeliveryMethod !== "envio") {
+    if (!["envio", "servicio"].includes(normalizedDeliveryMethod)) {
       return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
     }
 
@@ -7728,36 +7727,34 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
           : undefined,
         image: product.image || undefined,
         trackInventory,
+        serviceBooking: promotionIsService(product),
+        type: product.type,
+        collection: product.collection,
+        collections: product.collections,
         salesSource: raw?.salesSource ? String(raw.salesSource).slice(0, 80) : undefined,
         salesConversationId: raw?.salesConversationId ? String(raw.salesConversationId).slice(0, 160) : undefined,
       });
     }
 
+    const serviceOnly = authoritativeItems.length > 0 && authoritativeItems.every(promotionIsService);
+    if (normalizedDeliveryMethod === "servicio" && !serviceOnly) {
+      return res.status(400).json({ error: "Los productos físicos requieren entrega a domicilio" });
+    }
     const authoritativeSubtotal = Number(authoritativeItems.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2));
     let authoritativeDiscount = 0;
     const couponCode = String(metadata?.coupon || "").trim().toUpperCase();
+    let verifiedPromotion = null;
     if (couponCode) {
       const rules = parseStoredJson(await readStorageValue("discountCodes"), []);
-      const rule = (Array.isArray(rules) ? rules : []).find(
-        (entry) =>
-          String(entry?.code || "").trim().toUpperCase() === couponCode &&
-          entry?.active !== false &&
-          (!entry?.expiresAt || new Date(entry.expiresAt) >= new Date())
-      );
-      if (!rule) return res.status(409).json({ error: "El cupón ya no es válido" });
-      authoritativeDiscount = rule.type === "fixed"
-        ? Number(rule.value || 0)
-        : authoritativeSubtotal * Number(rule.value || 0) / 100;
-      authoritativeDiscount = normalizeMoney(
-        Math.min(authoritativeSubtotal, Math.max(0, authoritativeDiscount))
-      );
+      verifiedPromotion = evaluatePromotion(rules, couponCode, authoritativeItems, { redemptions: await promotionRedemptions() });
+      authoritativeDiscount = verifiedPromotion.discount;
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
     await assertDeliveryAvailability({ deliveryMethod: normalizedDeliveryMethod, metadata, suite });
 
     const shippingAddress = metadata?.shippingAddress || {};
-    const shippingQuote = await calculateShippingQuote(shippingAddress);
+    const shippingQuote = serviceOnly ? null : await calculateShippingQuote(shippingAddress);
     const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
     if (maxDeliveryKm > 0 && Number(shippingQuote.distanceKm || 0) > maxDeliveryKm) {
       return res.status(400).json({
@@ -7765,7 +7762,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         distanceKm: shippingQuote.distanceKm,
       });
     }
-    let authoritativeShipping = Number(shippingQuote.price || 0);
+    let authoritativeShipping = Number(shippingQuote?.price || 0);
     const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
     if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) {
       authoritativeShipping = 0;
@@ -7773,15 +7770,30 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
     const totalCents = Math.round(authoritativeTotal * 100);
-    if (!Number.isFinite(totalCents) || totalCents < 50) {
+    if (!Number.isFinite(totalCents) || totalCents < 0 || (totalCents > 0 && totalCents < 50)) {
       return res.status(400).json({ error: "Importe inválido para Stripe" });
+    }
+    if (totalCents === 0 && (!verifiedPromotion || authoritativeDiscount <= 0)) {
+      return res.status(409).json({ error: "Un pedido gratuito necesita un cupón válido" });
+    }
+    if (totalCents > 0 && !stripe) {
+      return res.status(503).json({ error: "Stripe no está configurado en el backend" });
     }
 
     const orderId = crypto.randomUUID();
     const stockReservation = await reserveCommerceStock(orderId, authoritativeItems);
+    if (verifiedPromotion) {
+      try {
+        await reservePromotion({ code: couponCode, orderId, maxUses: verifiedPromotion.maxUses });
+      } catch (promotionError) {
+        if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+        throw promotionError;
+      }
+    }
     const secureMetadata = {
       ...metadata,
       source: "frontend_checkout",
+      freeCouponOrder: totalCents === 0,
       requestedPaymentMethod: selectedPaymentMethod,
       pricingValidatedAt: new Date().toISOString(),
       pricingSource: "backend_catalog_coupons_and_maps",
@@ -7803,7 +7815,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         id: orderId,
         customer_email: customerEmail || null,
         customer_name: customerName || null,
-        payment_method: selectedPaymentMethod,
+        payment_method: totalCents === 0 ? "coupon" : selectedPaymentMethod,
         delivery_method: normalizedDeliveryMethod,
         status: "payment_pending",
         subtotal: authoritativeSubtotal,
@@ -7813,10 +7825,33 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         metadata: secureMetadata,
       });
     } catch (orderError) {
-      if (stockReservation.active) {
-        await releaseCommerceStockReservation(orderId).catch(() => null);
-      }
+      if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+      if (verifiedPromotion) await releasePromotion(orderId).catch(() => null);
       return res.status(500).json({ error: orderError.message });
+    }
+
+    if (totalCents === 0) {
+      try {
+        const pendingOrder = await getOrderPrimary(orderId);
+        await commitOnlineOrderInventory(pendingOrder);
+        await consumeCommerceStockReservation(orderId);
+        await finalizePromotion(orderId);
+        const paidOrder = await patchOrderPrimary(orderId, { status: "paid" });
+        broadcastAdminOrderEvent(paidOrder, "order_paid");
+        void emitNeuralBusinessEvent("order.paid", normalizeOrder(paidOrder));
+        try { await sendOrderConfirmationEmails(paidOrder, "free_coupon_order"); }
+        catch (emailError) { console.error("Email pedido gratuito:", emailError?.message || emailError); }
+        return res.json({
+          freeOrder: true, orderId, paymentIntentId: null,
+          totals: { subtotal: authoritativeSubtotal, discount: authoritativeDiscount, shipping: authoritativeShipping, total: 0 },
+          shippingQuote,
+        });
+      } catch (error) {
+        await patchOrderPrimary(orderId, { status: "payment_error", metadata: { ...secureMetadata, freeOrderError: String(error?.message || error) } }).catch(() => null);
+        if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+        await releasePromotion(orderId).catch(() => null);
+        return res.status(500).json({ error: "No se pudo confirmar el pedido gratuito. Contacta con atención al cliente." });
+      }
     }
 
     try {
@@ -7842,9 +7877,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         shippingQuote,
       });
     } catch (error) {
-      if (stockReservation.active) {
-        await releaseCommerceStockReservation(orderId).catch(() => null);
-      }
+      if (stockReservation.active) await releaseCommerceStockReservation(orderId).catch(() => null);
+      if (verifiedPromotion) await releasePromotion(orderId).catch(() => null);
       await patchOrderPrimary(orderId, {
         status: "payment_error",
         metadata: { ...secureMetadata, stripeError: error.message },
