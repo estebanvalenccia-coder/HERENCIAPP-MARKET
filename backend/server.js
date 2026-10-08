@@ -5304,7 +5304,7 @@ function compactShippingAddress(order = {}) {
   };
 }
 
-async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) {
+async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun = false } = {}) {
   if (!order?.id) return [];
   const operations = await readSupplierOperations();
   const products = await loadAuthoritativeProducts({ includeArchived: true });
@@ -5487,7 +5487,9 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false } = {}) 
     created.push(record);
   }
 
-  await writeSupplierOperations(operations);
+  // Dry runs exercise the same fulfillment grouping and margin safeguards without
+  // creating any order in the database or modifying the real supplier queue.
+  if (!dryRun) await writeSupplierOperations(operations);
   return created;
 }
 
@@ -5879,10 +5881,27 @@ app.post("/api/admin/supplier-fulfillments/cj-preflight", requireAdmin, async (r
     if (!Number.isFinite(Number(quote?.salePriceEur)) || Math.abs(Number(quote.salePriceEur) - price) >= 0.02)
       checks.push("El precio de venta ha cambiado desde la cotización");
     if (quote?.feasible !== true) checks.push("El margen estimado es insuficiente; revisa el precio");
+    const simulatedOrder = {
+      id: "CJ-DRY-RUN-" + crypto.randomUUID(),
+      status: "paid",
+      total: price,
+      subtotal: price,
+      shipping: 0,
+      items: [{ id: String(product.id), quantity: 1, name: String(product.name || ""), price }],
+      metadata: { source: "cj_preflight_no_payment" },
+    };
+    const simulatedRecords = await buildSupplierFulfillmentsForOrder(simulatedOrder, { dryRun: true });
+    const simulated = simulatedRecords.find((entry) => String(entry.supplierId || "") === String(supplier?.id || ""));
+    if (!simulated) checks.push("La cola real no reconoce este producto como artículo CJdropshipping");
     // Even passing every check is NOT authorization to place or pay a CJ order.
     return res.json({
       ok: true, simulationOnly: true, safe: true, readyForManualReview: checks.length === 0,
       checks,
+      queueSimulation: simulated ? {
+        status: simulated.status, blocker: simulated.blocker, estimatedCostEur: simulated.estimatedCost,
+        marginPercentBeforeVat: simulated.grossMarginPercent, itemCount: simulated.items?.length || 0,
+        persistido: false,
+      } : null,
       product: { id: String(product.id), name: String(product.name || ""), salePriceEur: price },
       supplier: { name: supplier?.name || "Sin proveedor", sandbox: supplier?.cjSandbox !== false },
       variant: { vid: variant, sku: String(meta.supplierSku || "") },
@@ -5907,6 +5926,9 @@ app.post("/api/admin/supplier-fulfillments/prepare/:orderId", requireAdmin, asyn
   try {
     const order = await getOrderPrimary(req.params.orderId);
     if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    if (!["paid","confirmed","preparing","processing","ready"].includes(String(order.status || ""))) {
+      return res.status(409).json({ error: "No se puede preparar proveedor para un pedido que aún no está pagado o confirmado" });
+    }
     const fulfillments = await buildSupplierFulfillmentsForOrder(order, { force: Boolean(req.body?.force) });
     const results = [];
     if (req.body?.executeAutopilot) {
