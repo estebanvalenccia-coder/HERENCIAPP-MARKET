@@ -21,6 +21,8 @@ export function AdminShippingRules() {
   const [previewAmount,setPreviewAmount] = useState(35);
   const [previewCategory,setPreviewCategory] = useState("plantas");
   const [previewResult,setPreviewResult] = useState<string | null>(null);
+  const [cjPreflight,setCjPreflight] = useState<any>(null);
+  const [cjPreflightBusy,setCjPreflightBusy] = useState(false);
   useEffect(() => {
     void backendApi.listCommerceProducts().then(result => setCatalogProducts(result.products || [])).catch(() => {});
     const refresh = () => setPolicy(parseShippingSettings(backendStorage.getItem("shippingSettings")));
@@ -52,6 +54,16 @@ export function AdminShippingRules() {
       });
       setPreviewResult("Transporte simulado: " + currency(charge) + ". No se generó ningún pedido ni cargo.");
     } catch(error) { setPreviewResult(error instanceof Error ? error.message : "No se pudo simular"); }
+  }
+  async function simulateCj() {
+    if (!productId.trim()) return toast.error("Selecciona primero un artículo CJ del catálogo");
+    try {
+      setCjPreflightBusy(true);
+      const result = await backendApi.preflightCjProduct(productId.trim());
+      setCjPreflight(result);
+    } catch(error) {
+      setCjPreflight({ safe:false, message:error instanceof Error ? error.message : "No se pudo comprobar CJ" });
+    } finally { setCjPreflightBusy(false); }
   }
   const toggle = (label:string,on:boolean,change:(v:boolean)=>void) => (
     <label className="flex items-center justify-between gap-4 rounded-xl border border-border p-3 text-sm">
@@ -166,6 +178,19 @@ export function AdminShippingRules() {
         </div>
         <button type="button" className="rounded-xl border border-border px-3 py-2 text-sm" onClick={preview}>Simular envío</button>
         {previewResult && <p role="status" className="text-sm">{previewResult}</p>}
+        <div className="border-t border-border pt-3 space-y-2">
+          <p className="text-sm font-semibold">Prueba real de datos CJ (solo lectura)</p>
+          <p className="text-xs text-muted-foreground">Selecciona arriba un producto CJ. Se valida su preparación y coste estimado sin contratar el envío, crear pedidos ni ejecutar pagos.</p>
+          <button type="button" disabled={cjPreflightBusy} className="rounded-xl border border-border px-3 py-2 text-sm disabled:opacity-50" onClick={simulateCj}>
+            {cjPreflightBusy?"Comprobando CJ…":"Comprobar dropshipping CJ"}
+          </button>
+          {cjPreflight && <div role="status" className="rounded-lg border border-border p-3 text-sm space-y-1">
+            <p className="font-semibold">{cjPreflight.safe?"Comprobación favorable":"Necesita revisión"}</p>
+            <p>{cjPreflight.message || "Resultado de la comprobación"}</p>
+            {cjPreflight.estimate?.estimatedCostEur != null && <p>Coste estimado del proveedor: {currency(cjPreflight.estimate.estimatedCostEur)}</p>}
+            {Array.isArray(cjPreflight.checks) && <p>{cjPreflight.checks.join(" · ")}</p>}
+          </div>}
+        </div>
       </div>
       <button type="button" disabled={saving} onClick={save} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"><Save className="h-4 w-4"/>{saving?"Guardando…":"Guardar reglas de envío"}</button>
       <p className="text-xs text-muted-foreground">CJdropshipping: su transporte se valida con el proveedor y está incluido en el precio del producto. No se añade una segunda tarifa al cliente. El simulador no envía pedidos reales.</p>
