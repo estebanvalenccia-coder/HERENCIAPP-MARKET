@@ -415,7 +415,12 @@ export const backendApi = {
       ok: boolean; productId: string;
       variant: { vid: string; sku: string; name: string; option: string; priceUsd: number | null };
       origin: string; destination: string; currency: "USD"; rateType: string;
-      methods: Array<{ name: string; time: string; shippingUsd: number; taxesUsd: number | null; clearanceUsd: number | null; totalPostageUsd: number | null }>;
+      methods: Array<{ name: string; time: string; shippingUsd: number; taxesUsd: number | null; clearanceUsd: number | null; totalPostageUsd: number | null;
+        profitability: { available: boolean; feasible?: boolean; costEur?: number; estimatedProfitEur?: number; estimatedMarginPercent?: number; recommendedMinimumPriceEur?: number; supplierTotalUsd?: number; reason?: string; caution?: string }
+      }>;
+      fx: { rate: number; date: string; checkedAt: string; provider: string } | null;
+      pricingAssumptions: { vatRate: number; minMarginPercent: number; processingFeePercent: number; processingFixedEur: number; currencyBufferPercent: number };
+      pricingWarning: string;
       warning: string;
     }>("/api/admin/catalog/cj-freight", {
       method: "POST",
