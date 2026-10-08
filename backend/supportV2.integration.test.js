@@ -145,6 +145,32 @@ test("guest tickets, ownership, internal notes, admin replies and private images
     assert.deepEqual(app.lookups,["ana@example.com","beto@example.com"]);
     const crossAccess=await call("/api/support/v2/tickets/"+customerOrderA.payload.thread.id,{cookie:"customer_auth=user-b"});
     assert.equal(crossAccess.res.status,404);
+    // Admin settings require authentication and strict types.
+    const anonymousSettings=await call("/api/admin/support/v2/settings",{cookie});
+    assert.equal(anonymousSettings.res.status,401);
+    const defaultSettings=await call("/api/admin/support/v2/settings",{cookie:adminCookie});
+    assert.equal(defaultSettings.payload.settings.assistantEnabled,true);
+    assert.equal(defaultSettings.payload.settings.orderLookupEnabled,true);
+    const badSettings=await call("/api/admin/support/v2/settings",{
+      cookie:adminCookie,method:"PATCH",body:{assistantEnabled:"off"},
+    });
+    assert.equal(badSettings.res.status,400);
+    const forgedSettings=await call("/api/admin/support/v2/settings",{
+      cookie,method:"PATCH",body:{assistantEnabled:false},
+    });
+    assert.equal(forgedSettings.res.status,401);
+    const disabledSettings=await call("/api/admin/support/v2/settings",{
+      cookie:adminCookie,method:"PATCH",body:{assistantEnabled:false},
+    });
+    assert.equal(disabledSettings.payload.settings.assistantEnabled,false);
+    const noAI=await call("/api/support/v2/tickets",{
+      cookie,method:"POST",body:{subject:"Consulta directa",text:"Necesito ayuda con una planta"},
+    });
+    assert.equal(noAI.res.status,201);
+    assert.equal(noAI.payload.thread.humanRequested,true);
+    assert.equal(noAI.payload.thread.status,"open");
+    assert.match(noAI.payload.thread.messages.at(-1).text,/atención automática está desactivada/i);
+
     const deleteFromOther=await call("/api/support/v2/tickets/"+ticket.id,{cookie:otherCookie,method:"DELETE"});
     assert.equal(deleteFromOther.res.status,404);
     const deleteMine=await call("/api/support/v2/tickets/"+ticket.id,{cookie,method:"DELETE"});
