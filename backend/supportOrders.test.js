@@ -44,3 +44,18 @@ test("customer lookup always uses server-verified own account email, not user-pr
   assert.match(b,/preparación/);
   assert.doesNotMatch(a,/preparación/);
 });
+
+test("Barcelona own delivery never invents a courier or tracking number",()=>{
+  const reply=summarizeOwnOrders([{status:"out_for_delivery",metadata:{deliveryMethod:"local_delivery",isLocalDelivery:true}}]);
+  assert.match(reply,/directamente por Herencia en Barcelona/i);
+  assert.match(reply,/no necesita transportista externo/i);
+  assert.doesNotMatch(reply,/Transportista registrado|Código de seguimiento registrado/);
+});
+test("dropshipping courier remains unknown until provider assigns one",()=>{
+  const unknown=summarizeOwnOrders([{status:"preparing",metadata:{fulfillmentMethod:"dropshipping"}}]);
+  assert.match(unknown,/proveedor todavía no ha facilitado/i);
+  assert.doesNotMatch(unknown,/DHL|Correos|SEUR/);
+  const assigned=summarizeOwnOrders([{status:"shipped",metadata:{fulfillmentMethod:"dropshipping",shipment:{carrier:"DHL",trackingNumber:"TRACK-123"}}}]);
+  assert.match(assigned,/Transportista registrado: DHL/);
+  assert.match(assigned,/Código de seguimiento registrado: TRACK-123/);
+});
