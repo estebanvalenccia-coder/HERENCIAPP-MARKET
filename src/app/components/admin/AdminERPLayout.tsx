@@ -1,4 +1,5 @@
 import { BarChart3, Boxes, BrainCircuit, CreditCard, LayoutDashboard, Package2, Receipt, Settings, ShoppingBag, Truck, Users, Wallet } from 'lucide-react'
+import ClockMadrid from './ClockMadrid'
 
 const sections = [
   { icon: LayoutDashboard, label: 'Dashboard' },
@@ -63,6 +64,7 @@ export function AdminERPLayout(){
 
         <main className='p-8'>
           <section className='rounded-[2.5rem] border border-emerald-100 bg-white/90 p-8 shadow-2xl backdrop-blur-xl'>
+          <ClockMadrid />
             <div className='flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between'>
               <div>
                 <div className='mb-3 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700'>HERENCIAPP-MARKET ERP</div>
