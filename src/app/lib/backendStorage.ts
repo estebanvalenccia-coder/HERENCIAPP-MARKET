@@ -900,6 +900,14 @@ export const backendApi = {
     );
   },
 
+  async reconcileCjManualOrder(id: string) {
+    return request<{ fulfillment: any; found: boolean; paid: boolean;
+      safeToRetryCreate: false; cjStatus?: string; error?: string }>(
+      `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/cj-reconcile`,
+      { method: "POST", body: "{}" }
+    );
+  },
+
   async executeSupplierFulfillment(id: string, force = false) {
     return request<{ fulfillment: any; executed: boolean; manual: boolean }>(
       `/api/admin/supplier-fulfillments/${encodeURIComponent(id)}/execute`,
