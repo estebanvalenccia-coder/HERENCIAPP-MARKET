@@ -1006,7 +1006,14 @@ function ImportedProductRow({
             <p className="text-sm font-bold">Calcular transporte CJ a España</p>
             <p className="text-xs text-muted-foreground">Una unidad · salida de China (CN) · destino España (ES). No crea pedidos ni realiza pagos.</p>
           </div>
-          <span className="text-xs font-semibold text-emerald-800">Cotización de solo lectura</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedFreightName && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
+              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName)}
+              className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+              {saving ? "Guardando…" : "Guardar transportista preferido"}
+            </button>}
+            <span className="text-xs font-semibold text-emerald-800">Cotización de solo lectura</span>
+          </div>
         </div>
         {freightError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-900">{freightError}</p>}
         {freightQuote && freightQuote.methods?.length > 0 && <div className="space-y-2">
