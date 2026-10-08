@@ -22,6 +22,7 @@ import {
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
+import { cleanSupplierDescription } from "./productDescription.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -311,6 +312,40 @@ const server=http.createServer(async(req,res)=>{try{
     return json(res,200,{ok:true,productId, ...result});
   }
 
+  if(path==="/api/admin/ai/product-description"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const name=cleanSupplierDescription(body?.productName||"",220);
+    const collection=cleanSupplierDescription(body?.collection||"producto",80);
+    const sourceDescription=cleanSupplierDescription(body?.baseDescription||"",3000);
+    if(!name)return json(res,400,{error:"Introduce el nombre del producto"});
+    const apiKey=String(process.env.GROQ_API_KEY||"").trim();
+    if(!apiKey)return json(res,503,{error:"Groq no está configurado en el backend"});
+    const response=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",
+      signal:AbortSignal.timeout(25000),
+      headers:{"Content-Type":"application/json",Authorization:"Bearer "+apiKey},
+      body:JSON.stringify({
+        model:process.env.GROQ_MODEL||"openai/gpt-oss-120b",
+        temperature:0.2,
+        stream:false,
+        max_tokens:650,
+        response_format:{type:"json_object"},
+        messages:[
+          {role:"system",content:"Eres editor de fichas de Herencia Market. Devuelve únicamente JSON con la clave description. Redacta en español una descripción comercial profesional, natural, clara y breve (2-4 frases). Usa exclusivamente información comprobable en el nombre y en la ficha original adjunta. Si faltan datos, limita el texto a una presentación genérica sin inventar materiales, medidas, prestaciones, compatibilidades, certificaciones, toxicidad, garantías, stock, precios ni información de seguridad. No prometas beneficios médicos. No incluyas HTML, URLs, opiniones simuladas ni marcas no suministradas. Nunca omitas una advertencia explícita de seguridad suministrada."},
+          {role:"user",content:JSON.stringify({nombre:name,categoria:collection,informacionOriginal:sourceDescription})}
+        ]
+      })
+    });
+    const answer=await response.json().catch(()=>null);
+    if(!response.ok)return json(res,502,{error:"Groq no pudo generar la descripción"});
+    let result;
+    try{result=JSON.parse(String(answer?.choices?.[0]?.message?.content||""));}catch{return json(res,502,{error:"Groq devolvió una respuesta no válida"});}
+    const description=cleanSupplierDescription(result?.description||"",1400);
+    if(!description)return json(res,502,{error:"Groq devolvió una descripción vacía"});
+    return json(res,200,{result:{description},source:"groq"});
+  }
+
   if(path==="/api/admin/catalog/import-url/preview"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const body=await bodyJson(req);
@@ -385,7 +420,7 @@ const server=http.createServer(async(req,res)=>{try{
       const refreshed=await saveNeonCommerceProduct({
         ...duplicate,
         name,
-        description:String(input?.description||duplicate?.description||"").trim().slice(0,5000),
+        description:cleanSupplierDescription(input?.description||duplicate?.description||""),
         category:String(input?.category||taxonomy.category||duplicate?.category||"jardineria"),
         collection:String(input?.collection||taxonomy.collection||"jardineria"),
         collections:[String(input?.collection||taxonomy.collection||"jardineria")],
@@ -428,7 +463,7 @@ const server=http.createServer(async(req,res)=>{try{
 
     const product=await saveNeonCommerceProduct({
       name,
-      description:String(input?.description||"").trim().slice(0,5000),
+      description:cleanSupplierDescription(input?.description||""),
       category:String(input?.category||taxonomy.category||"jardineria"),
       collection:String(input?.collection||taxonomy.collection||"jardineria"),
       collections:[String(input?.collection||taxonomy.collection||"jardineria")],
