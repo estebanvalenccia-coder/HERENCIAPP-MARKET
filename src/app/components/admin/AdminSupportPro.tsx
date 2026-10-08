@@ -187,10 +187,16 @@ export function AdminSupportPro() {
     backendApi.listOrders().then(result => {
       setOrders(Array.isArray(result.orders) ? result.orders : []);
     }).catch(() => {});
+    // EventSource updates are immediate when the server supports streaming.
+    // Periodic refresh remains as a fallback after a disconnect.
+    const eventSource = typeof EventSource !== "undefined" ? new EventSource("/api/admin/support/v2/events", { withCredentials: true }) : null;
+    eventSource?.addEventListener("update", () => {
+      if (document.visibilityState === "visible") void refresh(true);
+    });
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh(true);
-    }, 9000);
-    return () => window.clearInterval(timer);
+    }, 20000);
+    return () => { eventSource?.close(); window.clearInterval(timer); };
   }, [notificationsEnabled]);
 
   const counts = useMemo(() => ({
