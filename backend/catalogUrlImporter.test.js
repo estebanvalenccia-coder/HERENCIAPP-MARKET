@@ -9,6 +9,10 @@ import {
   normalizeSupplierHost,
   supportsManualCatalogFallback,
   analyzeCatalogUrl,
+  analyzeProductUrl,
+  supplierChallengeHtml,
+  isSupplierVerificationName,
+  extractMarketplaceGalleryImages,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -147,4 +151,51 @@ test("un producto con JSON-LD en una web pública se importa automáticamente", 
 
 test("un enlace a una red privada sigue bloqueado", async () => {
   await assert.rejects(() => analyzeCatalogUrl("http://127.0.0.1/item/1234"), /redes privadas/i);
+});
+
+test("rechaza páginas de verificación aunque anuncien producto e imagen en JSON-LD", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><head><title>Human verification</title><script type="application/ld+json">' +
+    JSON.stringify({ "@type": "Product", name: "Base de plantas", image: ["https://ae01.alicdn.com/kf/product.jpg"] }) +
+    '</script></head><body><h1>Human Machine Check</h1></body></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  assert.equal(supplierChallengeHtml(html), true);
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, true);
+  assert.deepEqual(result.products, []);
+  await assert.rejects(() => analyzeProductUrl("https://es.aliexpress.com/item/1005000000000.html"), /verificación/i);
+});
+
+test("no reconoce mensajes de seguridad como nombres de producto", () => {
+  for (const title of ["Human verification", "Human Machine Check", "Security Verification - AliExpress", "Robot Check", "Just a moment...", "Verificación humana"]) {
+    assert.equal(isSupplierVerificationName(title), true, title);
+  }
+  assert.equal(isSupplierVerificationName("Base de plantas"), false);
+  assert.equal(isSupplierVerificationName("Garden irrigation controller"), false);
+});
+
+test("extrae galería embebida de AliExpress cuando la web pública sí la ofrece", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><h1>Base de plantas</h1><script>window.runParams={"imagePathList":' +
+    JSON.stringify(["//ae01.alicdn.com/kf/base-1.jpg", "https://ae01.alicdn.com/kf/base-2.webp"]) + '}</script></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  assert.equal(extractMarketplaceGalleryImages(html, "https://es.aliexpress.com/item/1005000000000.html").length, 2);
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, undefined);
+  assert.equal(result.products[0].name, "Base de plantas");
+  assert.equal(result.products[0].images.length, 2);
+});
+
+test("si no hay fotografías fiables abre modo manual en vez de aparentar importación completa", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("<html><h1>Base de plantas</h1></html>", { status: 200, headers: { "content-type": "text/html" } }));
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, true);
+  assert.equal(result.products.length, 0);
 });
