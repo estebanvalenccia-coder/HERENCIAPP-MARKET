@@ -88,3 +88,14 @@ test("admin and backend have a verification handshake and independently scoped t
   assert.match(admin, /API personalizada/);
   assert.match(admin, /CSV \/ archivos/);
 });
+
+test("new webhook purchase dispatch verifies Stripe, reserves idempotency and fails closed on uncertain result", () => {
+  const backend = readFileSync(new URL("./server.js", import.meta.url), "utf8");
+  const queue = readFileSync(new URL("./cjSupplierQueue.js", import.meta.url), "utf8");
+  assert.match(backend, /supplierWebhookDispatch:/);
+  assert.match(backend, /await verifyCjCustomerFunding\(order, funding\)/);
+  assert.match(backend, /await mutateNeonStorageValue\(dispatchKey/);
+  assert.match(backend, /supplier_dispatch_unknown/);
+  assert.match(backend, /verifiedExternalId/);
+  assert.match(queue, /supplier_dispatch_unknown/);
+});
