@@ -16,6 +16,11 @@ import {
   validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
+import {
+  normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
+  normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
+  connectorVerificationFingerprint, supplierConnectorReadiness,
+} from "./supplierConnectors.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
@@ -5007,11 +5012,7 @@ function cjLiveAutopilotEnabled() {
 }
 
 function supplierIntegrationType(supplier = {}) {
-  const explicit = String(supplier?.integrationType || "").trim().toLowerCase();
-  if (explicit === "cj" || explicit === "webhook" || explicit === "manual") return explicit;
-  const host = normalizeSupplierSourceHost(supplier?.sourceHost || "");
-  if (host.includes("cjdropshipping.com")) return "cj";
-  return "webhook";
+  return registeredSupplierIntegrationType(supplier);
 }
 
 function countryCodeFromAddress(value = "") {
@@ -5607,6 +5608,11 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       blocker = "El proveedor está desactivado.";
     } else if (mode === "autopilot") {
       status = "autopilot_ready";
+      const connector = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+      if (connector.type !== "cj" && !connector.automaticOrders) {
+        status = "connector_required";
+        blocker = connector.reason;
+      }
       if (!group.allCostsKnown) {
         status = "cost_required";
         blocker = supplierIntegrationType(supplier) === "cj"
@@ -5743,6 +5749,13 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   }
 
   const integrationType = supplierIntegrationType(supplier);
+  const readiness = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+  if (integrationType !== "cj" && !readiness.automaticOrders) {
+    const updated = { ...record, status: "connector_required", blocker: readiness.reason, updatedAt: now };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
   const allCostsKnown = (record.items || []).every((item) => Number(item?.supplierCost || 0) > 0);
   // force never overrides missing CJ costs, mismatched mapping or a negative margin.
   if (!allCostsKnown && (integrationType === "cj" || !force)) {
@@ -5880,8 +5893,10 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     }
   }
 
-  const connectorUrl = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim();
-  const connectorToken = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "").trim();
+  // Route by the supplier's connector key, never a URL supplied by a customer.
+  const connection = resolveSupplierWebhookConnector(supplier);
+  const connectorUrl = connection.configured ? connection.url : "";
+  const connectorToken = connection.configured ? connection.token : "";
   if (!connectorUrl) {
     const updated = {
       ...record,
@@ -5901,10 +5916,12 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "idempotency-key": "HERENCIA-" + record.id,
         ...(connectorToken ? { authorization: "Bearer " + connectorToken } : {}),
       },
       body: JSON.stringify({
         event: "supplier.order.create",
+        idempotencyKey: "HERENCIA-" + record.id,
         supplier: {
           id: supplier.id,
           name: supplier.name,
