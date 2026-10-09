@@ -1472,20 +1472,44 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       <h2 className="text-xl font-bold">Proveedores registrados</h2>
       <div className="mt-4 space-y-2">
         {!suppliers.length ? <p className="text-sm text-muted-foreground">Aún no hay proveedores.</p> :
-          suppliers.map((supplier: any) => <button key={supplier.id} onClick={() => editSupplier(supplier)} className="w-full rounded-xl border border-border p-4 text-left hover:bg-muted/40">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="font-semibold">{supplier.name}</p>
-                <p className="text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio"} · {supplier.category || "Sin categoría"}</p>
+          suppliers.map((supplier: any) => {
+            const status = supplierConnectorStatuses.find(item => item.supplierId === String(supplier.id));
+            const modeLabel = {
+              cj: "CJ API",
+              webhook: "Webhook",
+              api: "API pendiente",
+              csv: "CSV",
+              manual: "Manual",
+            }[String(supplier.integrationType || "manual")] || "Manual";
+            return <div key={supplier.id} className="rounded-xl border border-border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <button type="button" onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline">
+                  <p className="font-bold">{supplier.name} <span className="text-xs font-normal text-muted-foreground">· Editar</span></p>
+                  <p className="mt-1 text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio registrado"} · {supplier.category || "Sin categoría"}</p>
+                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{modeLabel}</span>
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">
+                    {supplier.fulfillmentMode === "autopilot" ? "Modo automatizado" : "Gestión manual"}
+                  </span>
+                  {supplier.integrationType === "cj" && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800">
+                    {supplier.cjSandbox !== false ? "CJ SANDBOX" : "CJ REAL"}
+                  </span>}
+                  {supplier.integrationType === "webhook" && Boolean(supplier.connectorKey) && (
+                    <button type="button" disabled={testingSupplierId === String(supplier.id)}
+                      onClick={() => void testSupplierWebhook(String(supplier.id))}
+                      className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold disabled:opacity-60">
+                      {testingSupplierId === String(supplier.id) ? "Probando…" : "Probar conector"}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{supplier.fulfillmentMode === "autopilot" ? "🤖 Autopilot" : "🖱️ Manual"}</span>
-                {supplier.fulfillmentMode === "autopilot" && <span className="rounded-full bg-muted px-2.5 py-1 text-xs"><ShieldCheck className="mr-1 inline h-3.5 w-3.5"/>máx. {money(supplier.maxAutoOrderTotal)}</span>}
-                {supplier.fulfillmentMode === "autopilot" && Number(supplier.minMarginPercent || 0) > 0 && <span className="rounded-full bg-muted px-2.5 py-1 text-xs">margen mín. {Number(supplier.minMarginPercent).toFixed(0)}%</span>}
-                {supplier.integrationType === "cj" && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800">CJ API {supplier.cjSandbox !== false ? "SANDBOX" : "REAL"}</span>}
-              </div>
-            </div>
-          </button>)}
+              <p className="mt-2 text-xs text-muted-foreground">
+                {status ? status.reason : "Estado de conexión no disponible; no equivale a una conexión activa."}
+                {status?.automaticOrders ? " · Conector listo para los controles de pedido." : " · No se envían compras automáticas."}
+              </p>
+            </div>;
+          })}
       </div>
 
     </section>
