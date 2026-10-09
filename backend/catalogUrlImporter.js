@@ -280,6 +280,34 @@ function productOfferData(product = {}, fallback = {}) {
   return { supplierPrice, supplierCurrency };
 }
 
+// Some public marketplace pages include the product's imagePathList inside
+// their HTML. Read only that gallery field; never scrape arbitrary page images,
+// logos or a supplier's anti-bot challenge as a product photo.
+export function extractMarketplaceGalleryImages(html, productUrl) {
+  let domain = "";
+  try { domain = normalizeSupplierHost(new URL(productUrl).hostname); } catch { return []; }
+  if (!["aliexpress.com", "alibaba.com", "1688.com"].includes(domain)) return [];
+
+  const images = [];
+  const listPattern = /["']imagePathList["']\\s*:\\s*(\\[[^\\]]{1,30000}\\])/gi;
+  let match;
+  while ((match = listPattern.exec(String(html))) && images.length < 8) {
+    let candidates = [];
+    try { candidates = JSON.parse(match[1]); } catch { continue; }
+    if (!Array.isArray(candidates)) continue;
+    for (const raw of candidates) {
+      if (typeof raw !== "string") continue;
+      const absolute = safeAbsoluteUrl(raw.startsWith("//") ? "https:" + raw : raw, productUrl);
+      if (!absolute || !/\\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(absolute)) continue;
+      const host = new URL(absolute).hostname.toLowerCase();
+      if (!/(?:^|\\.)(?:alicdn\\.com|aliexpress-media\\.com|alibaba\\.com)$/.test(host)) continue;
+      if (!images.includes(absolute)) images.push(absolute);
+      if (images.length >= 8) break;
+    }
+  }
+  return images;
+}
+
 export function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const ldProduct = jsonLdProducts(html)[0] || {};
   const name =
@@ -299,6 +327,7 @@ export function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const images = [
     ...normalizeImageList(ldProduct.image, productUrl),
     ...normalizeImageList(metaContent(html, "og:image"), productUrl),
+    ...extractMarketplaceGalleryImages(html, productUrl),
     ...(Array.isArray(fallback.images) ? fallback.images : []),
   ];
 
