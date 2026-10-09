@@ -1467,9 +1467,33 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <RefreshCw className={"h-4 w-4" + (syncingPaidOrders ? " animate-spin" : "")}/>{syncingPaidOrders ? "Actualizando cola…" : "Sincronizar pedidos pagados"}
         </button>
       </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
+          Proveedor
+          <select aria-label="Filtrar pedidos por proveedor" value={queueSupplierFilter}
+            onChange={(event) => setQueueSupplierFilter(event.target.value)}
+            className="min-w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+            <option value="all">Todos los proveedores</option>
+            {queueSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
+          Estado del pedido
+          <select aria-label="Filtrar pedidos por estado" value={queueStatusFilter}
+            onChange={(event) => setQueueStatusFilter(event.target.value)}
+            className="min-w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+            <option value="active">En gestión</option>
+            <option value="attention">Necesitan revisión</option>
+            <option value="all">Todos, incluidos finalizados</option>
+          </select>
+        </label>
+        <p className="self-end pb-2 text-xs text-muted-foreground">
+          {displayedFulfillments.length} resultados · {attentionFulfillments.length} requieren revisión
+        </p>
+      </div>
       <div className="mt-4 space-y-3">
-        {!fulfillments.length ? <p className="text-sm text-muted-foreground">No hay compras de proveedor preparadas todavía.</p> :
-          fulfillments.slice(0, 200).map((item: any) => {
+        {!displayedFulfillments.length ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No hay pedidos en este filtro. Puedes elegir otro proveedor o mostrar todos los estados.</p> :
+          displayedFulfillments.slice(0, 200).map((item: any) => {
             const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","mapping_required","address_required","payment_required","action_required"].includes(String(item.status || ""));
             const sourceUrl = item.items?.[0]?.sourceProductUrl || "";
             const isCjFulfillment = item.provider === "cj" ||
@@ -1524,7 +1548,15 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     </section>
 
     <section id="supplier-registered" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
-      <h2 className="text-xl font-bold">Proveedores registrados</h2>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Integraciones independientes</p>
+          <h2 className="mt-1 text-xl font-bold">Proveedores y conexiones</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Cada proveedor tiene sus propios permisos y método de gestión. «Registrado» no significa que pueda recibir pedidos automáticos.</p>
+        </div>
+        <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">+ Nuevo proveedor</button>
+      </div>
       <div className="mt-4 space-y-2">
         {!suppliers.length ? <p className="text-sm text-muted-foreground">Aún no hay proveedores.</p> :
           suppliers.map((supplier: any) => {
