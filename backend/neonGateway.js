@@ -19,7 +19,7 @@ import {
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
-import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
+import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
@@ -358,7 +358,8 @@ const server=http.createServer(async(req,res)=>{try{
     const body=await bodyJson(req);
     const input=body?.product&&typeof body.product==="object"?body.product:{};
     const requestedImages=Array.isArray(input?.images)?input.images.filter(Boolean):(input?.image?[input.image]:[]);
-    // Plain drafts may be created without photos; copying remote media still needs R2.
+    // Only an explicitly supervised manual draft may be image-less.
+    if(!input?.manualImport&&!requestedImages.length)return json(res,422,{error:"El proveedor no ha proporcionado imágenes válidas. Revisa la ficha y usa el borrador manual; no se importará automáticamente."});
     if(!hasR2&&requestedImages.length)return json(res,503,{error:"Cloudflare R2 debe estar configurado para copiar las imágenes del proveedor. Puedes guardar el borrador sin imagen."});
     const name=String(input?.name||"").trim().slice(0,220);
     const sourceProductUrl=String(input?.productUrl||"").trim();
@@ -367,7 +368,7 @@ const server=http.createServer(async(req,res)=>{try{
     const sourcePrice=Math.max(0,Number(input?.supplierPrice||input?.supplierCost||0));
     const sourceCurrency=String(input?.supplierCurrency||input?.currency||"").trim().toUpperCase().slice(0,8);
     const safeSupplierCost=(!sourceCurrency||sourceCurrency==="EUR")?sourcePrice:0;
-    if(/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(name)||/human machine check|verify you are human/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
+    if(isSupplierChallengeName(name)||/human machine check|verify you are human|checking your browser|security verification/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
     if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
     if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
     try{const parsed=new URL(sourceProductUrl);if(!["https:","http:"].includes(parsed.protocol)||parsed.username||parsed.password||!parsed.hostname.includes("."))throw new Error("bad link");}
@@ -391,8 +392,8 @@ const server=http.createServer(async(req,res)=>{try{
     if(requestedImages.length){
       try{mirrored=await mirrorRemoteProductImages(input,{maxImages:8});}
       catch(error){
-        // Do not discard a merchant's work just because a marketplace also blocks image downloads.
-        // Keep the draft unpublished and report that the images must be uploaded by the merchant.
+        // A supervised manual draft can be saved without remote media.
+        // Automatic imports must not report success with a missing image.
         if(!input?.manualImport||![502,504].includes(Number(error?.statusCode)))throw error;
         imageImportWarning="No se pudieron copiar las imágenes remotas; sube imágenes propias desde la biblioteca antes de publicar.";
       }
