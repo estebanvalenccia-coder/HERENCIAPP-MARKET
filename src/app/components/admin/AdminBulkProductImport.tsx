@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { backendApi } from "../../lib/backendStorage";
 import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
 
 type TaxonomyOption = {
@@ -830,7 +830,7 @@ export function AdminBulkProductImport({
           name: draft.name.trim() || draft.family,
           description: draft.description.trim() || "Artículo importado para revisar antes de publicar.",
           price: Number(draft.price || 0),
-          collection: draft.category.startsWith("plantas") ? "plantas" : draft.category === "flores" ? "plantas" : "jardineria",
+          collection: draft.category.startsWith("plantas") ? "plantas" : "jardineria",
           category: draft.category,
           department: draft.department,
           area: draft.area,
@@ -913,11 +913,11 @@ export function AdminBulkProductImport({
             <button
               type="button"
               onClick={importProducts}
-              disabled={!drafts.length || isClassifying}
+              disabled={!drafts.length || isClassifying || sourceImporting}
               className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Importar productos
+              {sourceImporting ? "Guardando en Productos..." : "Importar productos"}
             </button>
           </div>
         </div>
