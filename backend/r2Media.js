@@ -132,14 +132,14 @@ export async function uploadR2MediaBuffer({ buffer, mimeType, filename = "imagen
  */
 export function ownR2MediaPathFromUrl(value, publicBase = publicBaseUrl()) {
   try {
-    const base = new URL(String(publicBase).replace(/\\/+$/, "") + "/");
+    const base = new URL(String(publicBase).replace(/\/+$/, "") + "/");
     const candidate = new URL(String(value || ""));
     if (base.protocol !== "https:" || candidate.protocol !== "https:" ||
         base.origin !== candidate.origin || candidate.username || candidate.password ||
         candidate.search || candidate.hash) return "";
     if (!candidate.pathname.startsWith(base.pathname)) return "";
     const key = decodeURIComponent(candidate.pathname.slice(base.pathname.length));
-    return /^builder\\/[a-zA-Z0-9._-]+$/.test(key) && !key.endsWith("..") ? key : "";
+    return /^builder\/[a-zA-Z0-9._-]+$/.test(key) && !key.endsWith("..") ? key : "";
   } catch { return ""; }
 }
 
