@@ -631,7 +631,10 @@ export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {})
 
   for (let index = 0; index < unique.length; index += 1) {
     try {
-      const existing = await verifiedExistingR2Media(unique[index]);
+      // Uploaded photos already in R2 do not need another download, but a
+      // temporary HEAD error must not prevent the normal secure fetch path.
+      let existing = null;
+      try { existing = await verifiedExistingR2Media(unique[index]); } catch {}
       if (existing) {
         media.push(existing);
         continue;
