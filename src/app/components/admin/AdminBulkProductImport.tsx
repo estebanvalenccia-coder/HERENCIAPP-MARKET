@@ -16,6 +16,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
+import { SupplierImportImages } from "./SupplierImportImages";
 
 type TaxonomyOption = {
   department: string;
@@ -354,6 +355,8 @@ export function AdminBulkProductImport({
   const [sourceManualName, setSourceManualName] = useState("");
   const [sourceManualCost, setSourceManualCost] = useState("");
   const [sourceManualImage, setSourceManualImage] = useState("");
+  const [sourceManualUploadedImages, setSourceManualUploadedImages] = useState<string[]>([]);
+  const [sourceManualUploading, setSourceManualUploading] = useState(false);
   const [sourceManualSaving, setSourceManualSaving] = useState(false);
   const [savedSourceProduct, setSavedSourceProduct] = useState<{ id: string; name: string; status: string; outcome: string } | null>(null);
   const [sourceProducts, setSourceProducts] = useState<SourceCatalogProduct[]>([]);
@@ -415,6 +418,7 @@ export function AdminBulkProductImport({
     setSourceLoading(true);
     setSourceProducts([]);
     setSourceManual(null);
+    setSourceManualUploadedImages([]);
     setSavedSourceProduct(null);
     setSelectedSourceIds({});
     setSelectedSourceImages({});
@@ -460,6 +464,7 @@ export function AdminBulkProductImport({
         if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
       } catch { return toast.error("Pega una URL pública válida de imagen"); }
     }
+    if (sourceManualUploading) return toast.warning("Espera a que terminen de subir las fotografías.");
     setSourceManualSaving(true);
     setSavedSourceProduct(null);
     try {
@@ -471,8 +476,8 @@ export function AdminBulkProductImport({
         supplierPrice: Number(sourceManualCost || 0),
         supplierCurrency: "EUR",
         description: "",
-        image: rawImage,
-        images: rawImage ? [rawImage] : [],
+        image: sourceManualUploadedImages[0] || rawImage,
+        images: [...new Set([...sourceManualUploadedImages, ...(rawImage ? [rawImage] : [])])],
         manualImport: true,
       });
       if (!result.ok || !result.product?.id) throw new Error("El servidor no confirmó el producto guardado");
@@ -938,7 +943,7 @@ export function AdminBulkProductImport({
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input
               value={sourceUrl}
-              onChange={(event) => { setSourceUrl(event.target.value); setSourceManual(null); setSavedSourceProduct(null); }}
+              onChange={(event) => { setSourceUrl(event.target.value); setSourceManual(null); setSourceManualUploadedImages([]); setSavedSourceProduct(null); }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !sourceLoading && !sourceImporting && !sourceSavingMedia && !repairingImported) {
                   event.preventDefault();
@@ -999,10 +1004,13 @@ export function AdminBulkProductImport({
                   placeholder="URL directa de la foto (opcional)" aria-label="URL de fotografía"
                   className="md:col-span-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5" />
               </div>
+              <SupplierImportImages images={sourceManualUploadedImages} onChange={setSourceManualUploadedImages}
+                onBusyChange={setSourceManualUploading} disabled={sourceManualSaving}/>
               <button type="button" onClick={() => void saveSourceManualDraft()}
-                disabled={sourceManualSaving || !sourceManualName.trim()}
+                disabled={sourceManualSaving || sourceManualUploading || !sourceManualName.trim()}
                 className="rounded-lg bg-amber-900 px-4 py-2.5 font-bold text-white disabled:opacity-50">
-                {sourceManualSaving ? "Guardando…" : "Guardar borrador en Productos"}
+                {sourceManualSaving ? "Guardando…" : sourceManualUploading ? "Copiando fotos…" :
+                  sourceManualUploadedImages.length || sourceManualImage.trim() ? "Guardar borrador con fotos" : "Guardar borrador SIN fotos"}
               </button>
               <p className="text-xs">Si no añades una imagen, quedará pendiente de fotografía. No se publicará ni realizará compras automáticas.</p>
             </div>
