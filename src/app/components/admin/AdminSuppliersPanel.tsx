@@ -79,6 +79,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [orders, setOrders] = useState<any[]>([]);
   const [fulfillments, setFulfillments] = useState<any[]>([]);
   const [connectorReady, setConnectorReady] = useState(false);
+  const [supplierConnectorStatuses, setSupplierConnectorStatuses] = useState<Array<{
+    supplierId: string; type: string; state: string; automaticOrders: boolean; reason: string;
+  }>>([]);
+  const [testingSupplierId, setTestingSupplierId] = useState("");
   const [cjConfigured, setCjConfigured] = useState(false);
   const [cjLiveEnabled, setCjLiveEnabled] = useState(false);
   const [cjTesting, setCjTesting] = useState(false);
@@ -132,6 +136,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     maxAutoOrderTotal: 80,
     minMarginPercent: 30,
     integrationType: "manual",
+    connectorKey: "",
     cjSandbox: true,
     cjLogisticName: "CJPacket Ordinary",
     cjFromCountryCode: "CN",
@@ -143,12 +148,14 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const load = async () => {
     setLoading(true);
     try {
-      const [ops, catalog, onlineOrders, queue] = await Promise.all([
+      const [ops, catalog, onlineOrders, queue, connections] = await Promise.all([
         backendApi.getPosOperations(),
         backendApi.listCommerceProducts({ includeArchived: true }),
         backendApi.listOrders(),
         backendApi.listSupplierFulfillments(),
+        backendApi.listSupplierConnectorStatuses().catch(() => ({ connectors: [] })),
       ]);
+      setSupplierConnectorStatuses(Array.isArray(connections.connectors) ? connections.connectors : []);
       setOperations(ops.operations || {});
       setProducts(Array.isArray(catalog.products) ? catalog.products : []);
       setOrders(Array.isArray(onlineOrders.orders) ? onlineOrders.orders : []);
@@ -274,10 +281,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
   const saveSupplier = async () => {
     if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
-    const aliExpressHost = normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com";
-    const cannotAutopilot = form.integrationType === "manual" || aliExpressHost;
-    if (form.fulfillmentMode === "autopilot" && cannotAutopilot) {
-      return toast.error("AliExpress y los proveedores manuales no tienen un conector de pedidos autorizado. Usa el modo Manual.");
+    const selectedConnection = supplierConnectorStatuses.find(item => item.supplierId === String(form.id || ""));
+    if (form.fulfillmentMode === "autopilot" &&
+      form.integrationType !== "cj" &&
+      (form.integrationType !== "webhook" || !selectedConnection?.automaticOrders)) {
+      return toast.error("Primero conecta y verifica el webhook de este proveedor. CSV, API pendiente y manual no permiten compras automáticas.");
     }
     try {
       const result = await backendApi.savePosSupplier(form);
@@ -293,6 +301,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         maxAutoOrderTotal: 80,
         minMarginPercent: 30,
         integrationType: "manual",
+        connectorKey: "",
         cjSandbox: true,
         cjLogisticName: "CJPacket Ordinary",
         cjFromCountryCode: "CN",
@@ -316,7 +325,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
       maxAutoOrderTotal: Number(supplier.maxAutoOrderTotal || 0),
       minMarginPercent: Number(supplier.minMarginPercent || 0),
-      integrationType: ["cj","webhook","manual"].includes(String(supplier.integrationType || "")) ? supplier.integrationType : "manual",
+      integrationType: ["cj", "webhook", "manual", "csv", "api"].includes(String(supplier.integrationType || "")) ? supplier.integrationType : "manual",
+      connectorKey: String(supplier.connectorKey || ""),
       cjSandbox: supplier.cjSandbox !== false,
       cjLogisticName: supplier.cjLogisticName || "CJPacket Ordinary",
       cjFromCountryCode: supplier.cjFromCountryCode || "CN",
@@ -324,6 +334,20 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       active: supplier.active !== false,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const testSupplierWebhook = async (supplierId: string) => {
+    if (testingSupplierId) return;
+    setTestingSupplierId(supplierId);
+    try {
+      await backendApi.testSupplierConnector(supplierId);
+      toast.success("El conector ha confirmado una prueba sin pedidos ni pagos.");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo verificar este conector.");
+    } finally {
+      setTestingSupplierId("");
+    }
   };
 
   const createPurchase = async () => {
@@ -1079,13 +1103,52 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Categoría" className="rounded-xl border border-border bg-background p-3"/>
           <select value={form.fulfillmentMode} onChange={(e) => setForm({ ...form, fulfillmentMode: e.target.value as SupplierMode })} className="rounded-xl border border-border bg-background p-3">
             <option value="manual">🖱️ Manual / 1 clic</option>
-            <option value="autopilot">🤖 Autopilot</option>
+            <option value="autopilot" disabled={form.integrationType !== "cj" &&
+              !(form.integrationType === "webhook" &&
+                supplierConnectorStatuses.some(item => item.supplierId === String(form.id || "") && item.automaticOrders))}>
+              🤖 Autopilot (conector verificado)
+            </option>
           </select>
-          <select value={form.integrationType} onChange={(e) => setForm({ ...form, integrationType: e.target.value })} className="rounded-xl border border-border bg-background p-3">
-            <option value="manual">Proveedor manual</option>
-            <option value="cj">CJdropshipping API · gratis</option>
-            <option value="webhook">Conector/API externo</option>
+          <select value={form.integrationType}
+            onChange={(e) => setForm({ ...form, integrationType: e.target.value, fulfillmentMode: "manual", connectorKey: e.target.value === "webhook" ? form.connectorKey : "" })}
+            aria-label="Tipo de integración de proveedor"
+            className="rounded-xl border border-border bg-background p-3">
+            <option value="manual">Manual (cualquier proveedor)</option>
+            <option value="csv">CSV / archivos (cualquier proveedor)</option>
+            <option value="api">API personalizada (adaptador pendiente)</option>
+            <option value="webhook">Webhook personalizado</option>
+            <option value="cj">CJdropshipping API existente</option>
           </select>
+          {form.integrationType === "webhook" && (
+            <div className="md:col-span-2 rounded-xl border border-border bg-muted/20 p-4">
+              <label className="block text-sm font-semibold">
+                Clave de conector privado (por ejemplo VIVERO_NORTE)
+                <input value={form.connectorKey || ""} maxLength={40}
+                  onChange={(e) => setForm({ ...form, connectorKey: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })}
+                  placeholder="VIVERO_NORTE"
+                  className="mt-2 w-full rounded-lg border border-border bg-background p-3 font-mono text-sm"/>
+              </label>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Configura en Railway las variables del backend
+                <strong className="mx-1 font-mono">SUPPLIER_CONNECTOR_{String(form.connectorKey || "CLAVE").toUpperCase()}_URL</strong>
+                y <strong className="font-mono">SUPPLIER_CONNECTOR_{String(form.connectorKey || "CLAVE").toUpperCase()}_TOKEN</strong>.
+                La URL debe ser HTTPS. Nunca pegues tokens aquí.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-amber-800">
+                Guarda primero en modo Manual. Luego pulsa «Probar conector» en Proveedores registrados.
+                El conector debe contestar a supplier.connector.test con {JSON.stringify({ ok: true, capabilities: { orders: true } })}.
+                No se envían pedidos ni datos personales durante la prueba.
+              </p>
+            </div>
+          )}
+          {form.integrationType === "csv" && <p className="md:col-span-2 text-xs text-muted-foreground">
+            Puedes registrar y vincular productos de este proveedor. El formato CSV de intercambio
+            debe adaptarse a su plantilla; registrarlo no importa productos ni envía pedidos automáticamente.
+          </p>}
+          {form.integrationType === "api" && <p className="md:col-span-2 text-xs text-muted-foreground">
+            Queda registrado como proveedor con integración API pendiente. Hay que implementar y
+            verificar su adaptador oficial antes de enviar pedidos o sincronizar inventario.
+          </p>}
           <label className="rounded-xl border border-border p-3 text-sm">
             <span className="block text-xs font-semibold text-muted-foreground">Máximo por pedido automático</span>
             <input type="number" min="0" step="0.01" value={form.maxAutoOrderTotal} onChange={(e) => setForm({ ...form, maxAutoOrderTotal: Math.max(0, Number(e.target.value || 0)) })} className="mt-1 w-full bg-transparent font-semibold outline-none"/>
@@ -1124,7 +1187,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <button onClick={() => void saveSupplier()} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground">
             <Save className="h-4 w-4"/>Guardar proveedor
           </button>
-          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,minMarginPercent:30,integrationType:"manual",cjSandbox:true,cjLogisticName:"CJPacket Ordinary",cjFromCountryCode:"CN",cjMaxPaymentUsd:50,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
+          {form.id && <button onClick={() => setForm({ id:"",name:"",email:"",phone:"",category:"",sourceHost:"",fulfillmentMode:"manual",maxAutoOrderTotal:80,minMarginPercent:30,integrationType:"manual",connectorKey:"",cjSandbox:true,cjLogisticName:"CJPacket Ordinary",cjFromCountryCode:"CN",cjMaxPaymentUsd:50,active:true })} className="rounded-xl border border-border px-4 py-3 font-semibold">Cancelar edición</button>}
         </div>
         {form.integrationType === "cj" && <div className="mt-4 rounded-2xl border border-border bg-muted/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
