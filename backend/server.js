@@ -6908,12 +6908,94 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
 });
 
 
+// Never expose connector credentials in API responses. These endpoints only
+// report capability and test a no-order handshake.
+app.get("/api/admin/suppliers/connector-status", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const current = await readSupplierOperations();
+    const suppliers = Array.isArray(current.suppliers) ? current.suppliers : [];
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ connectors: suppliers.map((supplier) => ({
+      supplierId: String(supplier.id || ""),
+      ...supplierConnectorReadiness(supplier, process.env, crypto.createHash),
+    })) });
+  } catch (error) {
+    res.status(500).json({ error: "No se pudo consultar el estado de conexiones." });
+  }
+});
+
+app.post("/api/admin/suppliers/:id/test-connector", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const current = await readSupplierOperations();
+    const supplier = (current.suppliers || []).find((row) => String(row.id) === String(req.params.id));
+    if (!supplier) return res.status(404).json({ error: "Proveedor no encontrado." });
+    if (supplierIntegrationType(supplier) !== "webhook" || !normalizeSupplierConnectorKey(supplier.connectorKey)) {
+      return res.status(409).json({ error: "Se necesita un conector webhook propio para este proveedor." });
+    }
+    const connector = resolveSupplierWebhookConnector(supplier);
+    if (!connector.configured) return res.status(409).json({ error: connector.reason });
+    // Dry-run handshake: no customer name, address, order, inventory, or payment.
+    const response = await fetch(connector.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + connector.token },
+      body: JSON.stringify({
+        event: "supplier.connector.test",
+        dryRun: true,
+        supplier: { id: String(supplier.id), name: String(supplier.name || "") },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok !== true || payload?.capabilities?.orders !== true) {
+      return res.status(409).json({
+        error: "El conector no confirmó {ok:true, capabilities:{orders:true}}. Comprueba su endpoint y contrato de prueba.",
+      });
+    }
+    const fingerprint = connectorVerificationFingerprint(connector, crypto.createHash);
+    const testedAt = new Date().toISOString();
+    await mutateNeonStorageValue("posOperations", (raw) => {
+      const operations = parseStoredJson(raw, {});
+      const index = (operations.suppliers || []).findIndex((row) => String(row.id) === String(supplier.id));
+      if (index < 0) throw Object.assign(new Error("Proveedor desapareció durante la prueba"), { statusCode: 409 });
+      if (normalizeSupplierConnectorKey(operations.suppliers[index].connectorKey) !== connector.key) {
+        throw Object.assign(new Error("La configuración de proveedor cambió. Repite la prueba."), { statusCode: 409 });
+      }
+      operations.suppliers[index] = {
+        ...operations.suppliers[index],
+        connectorVerifiedAt: testedAt,
+        connectorVerifiedFingerprint: fingerprint,
+      };
+      return JSON.stringify(operations);
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, status: "ready", testedAt, capabilities: { orders: true } });
+  } catch (error) {
+    res.status(Number(error.statusCode || 502)).json({
+      error: error.name === "TimeoutError" ? "El conector no respondió en 10 segundos." :
+        "La prueba del proveedor no se ha completado: " + String(error.message || "Error de conexión").slice(0, 150),
+    });
+  }
+});
+
 app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const existingSupplier = (current.suppliers || []).find((item) => String(item?.id || "") === String(req.body?.id || ""));
+    const requestedType = String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "manual").toLowerCase();
+    const integrationType = normalizeSupplierIntegrationType(requestedType);
+    if (integrationType !== requestedType) return res.status(400).json({ error: "Tipo de integración de proveedor no reconocido." });
+    const rawConnectorKey = String(req.body?.connectorKey ?? existingSupplier?.connectorKey ?? "").trim();
+    const connectorKey = rawConnectorKey ? normalizeSupplierConnectorKey(rawConnectorKey) : "";
+    if (rawConnectorKey && !connectorKey) return res.status(400).json({
+      error: "La clave de conector debe contener letras, números o guiones bajos (hasta 40 caracteres), empezando por una letra.",
+    });
+    const unchangedConnector = integrationType === "webhook" &&
+      existingSupplier?.integrationType === "webhook" &&
+      String(existingSupplier.connectorKey || "") === connectorKey;
     const supplier = {
       ...(existingSupplier || {}),
       id: String(req.body?.id || existingSupplier?.id || crypto.randomUUID()),
@@ -6926,9 +7008,10 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
       fulfillmentMode: normalizeSupplierFulfillmentMode(req.body?.fulfillmentMode ?? existingSupplier?.fulfillmentMode ?? "manual"),
       maxAutoOrderTotal: Math.max(0, normalizeMoney(req.body?.maxAutoOrderTotal ?? existingSupplier?.maxAutoOrderTotal ?? 0)),
       minMarginPercent: Math.max(0, Math.min(95, Number(req.body?.minMarginPercent ?? existingSupplier?.minMarginPercent ?? 0))),
-      integrationType: ["cj", "webhook", "manual"].includes(String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "").toLowerCase())
-        ? String(req.body?.integrationType ?? existingSupplier?.integrationType).toLowerCase()
-        : "manual",
+      integrationType,
+      connectorKey: integrationType === "webhook" ? connectorKey : "",
+      connectorVerifiedAt: unchangedConnector ? String(existingSupplier?.connectorVerifiedAt || "") : "",
+      connectorVerifiedFingerprint: unchangedConnector ? String(existingSupplier?.connectorVerifiedFingerprint || "") : "",
       cjSandbox: req.body?.cjSandbox == null ? existingSupplier?.cjSandbox !== false : req.body.cjSandbox !== false,
       cjLogisticName: String(req.body?.cjLogisticName ?? existingSupplier?.cjLogisticName ?? "CJPacket Ordinary").trim().slice(0, 100),
       cjFromCountryCode: String(req.body?.cjFromCountryCode ?? existingSupplier?.cjFromCountryCode ?? "CN").trim().toUpperCase().slice(0, 2),
@@ -6939,6 +7022,12 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     };
     if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
     if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
+    if (supplier.fulfillmentMode === "autopilot" && integrationType !== "cj") {
+      const status = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+      if (!status.automaticOrders || integrationType !== "webhook") {
+        return res.status(409).json({ error: "No se puede activar compra automática: " + status.reason });
+      }
+    }
     current.suppliers = [supplier, ...(current.suppliers || []).filter((item) => String(item?.id) !== supplier.id)];
     await upsertStorageValue("posOperations", JSON.stringify(current));
     res.json({ supplier, operations: sanitizePosOperations(current) });
