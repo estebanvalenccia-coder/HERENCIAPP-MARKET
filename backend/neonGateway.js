@@ -375,16 +375,18 @@ const server=http.createServer(async(req,res)=>{try{
     catch{return json(res,400,{error:"La URL original debe ser una dirección pública http(s) válida"});}
 
     const existing=await listNeonCommerceProducts({includeArchived:true});
+    // One supplier can sell many products with the same name. Deduplicate by
+    // the actual source product URL, never by a generic supplier name.
     const duplicate=existing.find((product)=>{
       const metadata=product?.metadata&&typeof product.metadata==="object"?product.metadata:{};
-      if(String(metadata?.sourceProductUrl||"")===sourceProductUrl)return true;
-      return sourceHost&&String(metadata?.sourceHost||"")===sourceHost&&String(product?.name||"").trim().toLowerCase()===name.toLowerCase();
+      return String(metadata?.sourceProductUrl||"").trim()===sourceProductUrl;
     });
 
     const duplicateMetadata=duplicate?.metadata&&typeof duplicate.metadata==="object"?duplicate.metadata:{};
     const canRefreshDuplicate=Boolean(duplicate)&&Boolean(duplicateMetadata?.importedFromUrl)&&String(duplicate?.status||"draft")==="draft";
     if(duplicate&&!canRefreshDuplicate){
-      return json(res,200,{ok:true,skipped:true,reason:"duplicate",product:duplicate,source:"neon"});
+      const archived=String(duplicate?.status||"").toLowerCase()==="archived"||Boolean(duplicate?.deletedAt);
+      return json(res,200,{ok:true,skipped:true,reason:archived?"archived_duplicate":"duplicate",product:duplicate,source:"neon"});
     }
 
     let mirrored=[];
