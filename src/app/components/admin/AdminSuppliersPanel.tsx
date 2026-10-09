@@ -672,10 +672,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
     if (!supplier) return toast.error("Proveedor no encontrado");
-    const isAliExpress = normalizedSupplierDomain(sourceHostFromProduct(product)) === "aliexpress.com" ||
-      normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com";
-    if (mode === "autopilot" && (isAliExpress || !["cj", "webhook"].includes(String(supplier.integrationType || "")))) {
-      return toast.error("No hay integración de pedidos automática para este proveedor. Conecta el producto en modo Manual.");
+    const readiness = supplierConnectorStatuses.find(item => item.supplierId === String(supplier.id));
+    if (mode === "autopilot" && supplier.integrationType !== "cj" && !readiness?.automaticOrders) {
+      return toast.error("Ese proveedor no tiene un conector de pedidos probado. Utiliza Manual hasta completar la integración.");
     }
 
     setSavingProductId(String(product.id));
@@ -1344,6 +1343,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
                     onChange={event => setSelectedImportIds(current => event.target.checked ? [...new Set([...current, String(product.id)])] : current.filter(id => id !== String(product.id)))}/>
                   <div className="min-w-0 flex-1">
                     <ImportedProductRow product={product} suppliers={suppliers}
+                      connectorStatuses={supplierConnectorStatuses}
                       saving={bulkImportBusy || savingProductId === String(product.id)}
                       onSave={assignDropship}/>
                     <div className="mt-1 flex flex-wrap gap-2 px-2">
@@ -1578,11 +1578,13 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 function ImportedProductRow({
   product,
   suppliers,
+  connectorStatuses,
   saving,
   onSave,
 }: {
   product: any;
   suppliers: any[];
+  connectorStatuses: Array<{ supplierId: string; automaticOrders: boolean }>;
   saving: boolean;
   onSave: (
     product: any,
@@ -1620,6 +1622,7 @@ function ImportedProductRow({
   const grossPercent = salePrice > 0 && cost > 0 ? (grossMargin / salePrice) * 100 : 0;
 
   const selectedSupplier = suppliers.find((supplier:any)=>String(supplier.id)===String(supplierId));
+  const selectedConnector = connectorStatuses.find(item => item.supplierId === String(supplierId));
   const isCjSupplier = selectedSupplier?.integrationType === "cj";
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
@@ -1701,7 +1704,7 @@ function ImportedProductRow({
     </select>
     <select value={mode} onChange={(e)=>setMode(e.target.value as SupplierMode)} className="rounded-xl border border-border bg-background p-3 text-sm">
       <option value="manual">🖱️ Manual</option>
-      <option value="autopilot" disabled={normalizedSupplierDomain(sourceHost) === "aliexpress.com" || !["cj", "webhook"].includes(String(selectedSupplier?.integrationType || ""))}>🤖 Autopilot (conector real)</option>
+      <option value="autopilot" disabled={!isCjSupplier && !selectedConnector?.automaticOrders}>🤖 Autopilot (conector comprobado)</option>
     </select>
     <label className="rounded-xl border border-border px-3 py-2">
       <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor (€)</span>
@@ -1716,7 +1719,7 @@ function ImportedProductRow({
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
-    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación MANUAL. Aún no hay conexión DSers/API para crear, pagar o rastrear pedidos automáticamente.</p>}
+    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && !selectedConnector?.automaticOrders && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación manual. DSers por CSV no crea ni paga pedidos automáticamente desde Herencia; requiere un conector autorizado.</p>}
     {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
