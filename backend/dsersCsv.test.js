@@ -10,13 +10,13 @@ import {
 const aliexpress = (id, sku, extra = {}) => ({
   id, sku, name: "Maceta",
   status: "draft",
+  ...extra,
   metadata: {
     importedFromUrl: true,
     sourceHost: "es.aliexpress.com",
     sourceProductUrl: "https://es.aliexpress.com/item/1005000000000.html",
-    ...extra.metadata,
+    ...(extra.metadata || {}),
   },
-  ...extra,
 });
 
 test("DSers headers match the merchant's actual import_products.xlsx template", () => {
