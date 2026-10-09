@@ -624,13 +624,21 @@ export async function analyzeProductUrl(urlValue) {
 }
 
 export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {}) {
-  const { uploadR2MediaBuffer } = await import("./r2Media.js");
+  const { uploadR2MediaBuffer, verifiedExistingR2Media } = await import("./r2Media.js");
   const source = Array.isArray(product?.images) && product.images.length ? product.images : product?.image ? [product.image] : [];
   const unique = [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, Math.max(1, Math.min(8, maxImages)));
   const media = [];
 
   for (let index = 0; index < unique.length; index += 1) {
     try {
+      // Uploaded photos already in R2 do not need another download, but a
+      // temporary HEAD error must not prevent the normal secure fetch path.
+      let existing = null;
+      try { existing = await verifiedExistingR2Media(unique[index]); } catch {}
+      if (existing) {
+        media.push(existing);
+        continue;
+      }
       const fetched = await safeFetch(unique[index], {
         maxBytes: MAX_IMAGE_BYTES,
         accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.8,*/*;q=0.2",

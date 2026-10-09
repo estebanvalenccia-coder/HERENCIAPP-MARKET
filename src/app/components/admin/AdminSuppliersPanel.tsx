@@ -5,6 +5,10 @@ import {
   Building2,
   CheckCircle2,
   ExternalLink,
+  EyeOff,
+  Eye,
+  Trash2,
+  Unlink2,
   Link2,
   MousePointerClick,
   PackagePlus,
@@ -17,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
+import { SupplierImportImages } from "./SupplierImportImages";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -96,9 +101,16 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [manualCost, setManualCost] = useState("");
   const [manualCurrency, setManualCurrency] = useState("EUR");
   const [manualImageUrl, setManualImageUrl] = useState("");
+  const [manualUploadedImages, setManualUploadedImages] = useState<string[]>([]);
+  const [manualUploading, setManualUploading] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [savedImport, setSavedImport] = useState<{ id: string; name: string; status: string; outcome: string } | null>(null);
   const [importSearch, setImportSearch] = useState("");
+  const [showImportedProducts, setShowImportedProducts] = useState(false);
+  const [importTab, setImportTab] = useState<"pending" | "connected" | "hidden">("pending");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
@@ -161,26 +173,32 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     }), [products]
   );
   const suspectImports = importedProducts.filter(suspiciousImportedProduct);
+  const importState = (product: any): "pending" | "connected" | "hidden" => {
+    const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    if (metadata.supplierHubHidden) return "hidden";
+    return metadata.supplierId ? "connected" : "pending";
+  };
+  const importCounts = {
+    pending: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "pending").length,
+    connected: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "connected").length,
+    hidden: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "hidden").length,
+  };
+  const availableSourceHosts = [...new Set(importedProducts.map(sourceHostFromProduct).filter(Boolean))].sort();
   const visibleImports = useMemo(() => {
     const searchText = importSearch.trim().toLocaleLowerCase("es");
     return importedProducts.filter((product: any) => {
       if (suspiciousImportedProduct(product)) return false;
-      if (onlyCjImports && !sourceHostFromProduct(product).toLowerCase().endsWith("cjdropshipping.com")) return false;
+      if (importState(product) !== importTab) return false;
+      const host = sourceHostFromProduct(product).toLowerCase();
+      if (sourceFilter !== "all" && host !== sourceFilter) return false;
+      if (onlyCjImports && !host.endsWith("cjdropshipping.com")) return false;
       if (!searchText) return true;
       const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : product;
       return [product.name, product.sku, metadata.sourceProductUrl, metadata.supplierProductId, metadata.supplierSku]
         .some((part) => String(part || "").toLocaleLowerCase("es").includes(searchText));
-    }).sort((first: any, second: any) => {
-      const score = (product: any) => {
-        const host = sourceHostFromProduct(product).toLowerCase();
-        const name = String(product.name || "").toLowerCase();
-        return (host.endsWith("cjdropshipping.com") ? 100 : 0) +
-          (name.includes("garden irrigation controller") ? 200 : 0) +
-          (product.metadata?.supplierId ? 30 : 0);
-      };
-      return score(second) - score(first);
-    });
-  }, [importedProducts, importSearch, onlyCjImports]);
+    }).sort((first: any, second: any) =>
+      String(first.name || "").localeCompare(String(second.name || ""), "es"));
+  }, [importedProducts, importSearch, onlyCjImports, importTab, sourceFilter]);
 
   const existingMatches = products.filter((product: any) => {
     if (String(product.status || "") === "archived") return false;
@@ -378,6 +396,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     });
     setImportSearch(String(confirmedProduct.name || candidate.name || ""));
     setOnlyCjImports(false);
+    setShowImportedProducts(false);
+    setSelectedImportIds([]);
     const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
     const labels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
     const prefix = inTrash ? "El producto ya existe en la Papelera."
@@ -396,6 +416,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       setManualName("");
       setManualCost("");
       setManualImageUrl("");
+      setManualUploadedImages([]);
     }
     try {
       const refreshed = await backendApi.listCommerceProducts({ includeArchived: true });
@@ -422,6 +443,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     setManualImport(null);
     setManualName("");
     setManualImageUrl("");
+    setManualUploadedImages([]);
     setManualCost("");
     try {
       const preview = await backendApi.previewCatalogUrl(url, 1);
@@ -488,6 +510,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         if (!["http:", "https:"].includes(media.protocol)) throw new Error("protocol");
       } catch { return toast.error("La URL de la imagen no es válida"); }
     }
+    if (manualUploading) return toast.warning("Espera a que las fotografías terminen de guardarse.");
     setImportingUrl(true);
     try {
       await saveImportedCandidate({
@@ -498,7 +521,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         supplierPrice: Number.isFinite(amount) && amount > 0 ? amount : 0,
         supplierCurrency: manualCurrency,
         description: "",
-        images: manualImageUrl.trim() ? [manualImageUrl.trim()] : [],
+        images: [...new Set([...manualUploadedImages, ...(manualImageUrl.trim() ? [manualImageUrl.trim()] : [])])],
         manualImport: true,
       }, true);
     } catch (error: any) {
@@ -506,6 +529,48 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       toast.error(error?.message || "No se pudo guardar el borrador manual");
     } finally {
       setImportingUrl(false);
+    }
+  };
+
+  const updateSupplierHubItems = async (ids: string[], action: "hide" | "show" | "unlink" | "archive") => {
+    if (bulkImportBusy || !ids.length) return;
+    // Only act on currently visible rows: changing tabs or filters must not
+    // accidentally modify products from another supplier.
+    const visibleIds = new Set(visibleImports.map(product => String(product.id)));
+    const items = importedProducts.filter((product: any) =>
+      ids.includes(String(product.id)) && visibleIds.has(String(product.id)) && !suspiciousImportedProduct(product));
+    if (!items.length) return toast.error("No hay productos seleccionados.");
+    const warnings: Record<typeof action, string> = {
+      hide: "Ocultar en Proveedores NO elimina ni despublica los productos.",
+      show: "Volverán a mostrarse en Proveedores.",
+      unlink: "Se quitará la asociación de proveedor para futuras operaciones. Los pedidos existentes requieren revisión por separado.",
+      archive: "ENVIAR A PAPELERA también retira estos productos del catálogo de venta. Los pedidos históricos se conservarán.",
+    };
+    if (!window.confirm(`${action === "archive" ? "ATENCIÓN: " : ""}${items.length} productos. ${warnings[action]} ¿Continuar?`)) return;
+    setBulkImportBusy(true);
+    let completed = 0;
+    let errors = 0;
+    try {
+      for (const product of items) {
+        try {
+          if (action === "archive") {
+            await backendApi.deleteCommerceProduct(product.id, false);
+          } else {
+            const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : {};
+            const patch = action === "unlink"
+              ? { ...metadata, supplierId: null, fulfillmentMode: "manual", supplierVariantId: "", supplierSku: "", supplierAssignedAt: null }
+              : { ...metadata, supplierHubHidden: action === "hide" };
+            await backendApi.updateCommerceProduct(product.id, { metadata: patch });
+          }
+          completed += 1;
+        } catch { errors += 1; }
+      }
+      setSelectedImportIds([]);
+      await load();
+      if (errors) toast.warning(`${completed} actualizados; ${errors} errores. Revisa la selección antes de reintentar.`);
+      else toast.success(`${completed} productos actualizados. ${action === "hide" ? "Siguen disponibles en Productos." : ""}`);
+    } finally {
+      setBulkImportBusy(false);
     }
   };
 
@@ -867,7 +932,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               <span className="text-xs">Verifica que aparece la foto real del producto y no un CAPTCHA ni un logotipo.</span>
             </div>
           )}
-          <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
+          <SupplierImportImages images={manualUploadedImages} onChange={setManualUploadedImages} onBusyChange={setManualUploading} disabled={importingUrl}/>
+          <button type="button" disabled={importingUrl || manualUploading || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : manualUploading ? "Copiando fotos…" : (manualUploadedImages.length || manualImageUrl.trim()) ? "Guardar borrador con fotos" : "Guardar borrador SIN fotos"}</button>
           <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Abre la ficha original, haz clic derecho sobre la fotografía → «Copiar dirección de imagen» y pega esa URL arriba. Herencia intentará copiarla a la biblioteca. Si la foto está protegida, súbela manualmente después. No habilita la compra automática.</p>
         </div>
       )}
@@ -1024,46 +1090,102 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     </section>
 
     <section className="rounded-2xl border border-border bg-card p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Productos importados por URL</h2>
-          <p className="text-sm text-muted-foreground">Asigna proveedor, coste y modo. Al marcarlo dropshipping se desactiva el stock local.</p>
+          <h2 className="text-xl font-bold">Productos vinculados a proveedores</h2>
+          <p className="text-sm text-muted-foreground">Oculta, vincula, desvincula o envía a papelera sin mezclar los proveedores. La lista empieza cerrada para no saturar el panel.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Pendientes: {importCounts.pending} · Conectados: {importCounts.connected} · Ocultos: {importCounts.hidden} · Sospechosos: {suspectImports.length}</p>
         </div>
-      </div>
-      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:flex-row sm:items-center">
-        <input value={importSearch} onChange={(event) => setImportSearch(event.target.value)}
-          placeholder="Buscar por nombre, SKU o URL (ej. Garden irrigation controller)"
-          aria-label="Buscar productos importados"
-          className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
-        <label className="flex shrink-0 items-center gap-2 text-sm font-semibold">
-          <input type="checkbox" checked={onlyCjImports} onChange={(event) => setOnlyCjImports(event.target.checked)}/>
-          Solo CJdropshipping
-        </label>
-        <span className="text-xs font-medium text-muted-foreground">{visibleImports.length} productos encontrados</span>
-      </div>
-      {suspectImports.length > 0 && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-        <p className="font-semibold">Se han detectado {suspectImports.length} importaciones de verificación («Human verification»).</p>
-        <p className="mt-1 text-xs">Son páginas de bloqueo del proveedor, no artículos verificables. Se ocultan de las conexiones y no se eliminan automáticamente del catálogo.</p>
-        <button type="button" onClick={() => setShowSuspectImports((previous) => !previous)} className="mt-2 text-xs font-semibold underline">
-          {showSuspectImports ? "Ocultar fichas sospechosas" : "Ver nombres de fichas sospechosas"}
+        <button type="button" onClick={() => { setShowImportedProducts(v => !v); setSelectedImportIds([]); }}
+          className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold">
+          {showImportedProducts ? "Ocultar lista de productos" : "Mostrar y gestionar productos"}
         </button>
-        {showSuspectImports && <div className="mt-2 space-y-1 text-xs">
-          {suspectImports.slice(0, 20).map((item: any) => <p key={item.id}>{item.name} · {sourceHostFromProduct(item) || "Sin dominio"}</p>)}
-          {suspectImports.length > 20 && <p>Y {suspectImports.length - 20} más.</p>}
-        </div>}
-      </div>}
-      <div className="mt-4 space-y-3">
-        {!importedProducts.length ? <p className="text-sm text-muted-foreground">Aún no hay productos importados por URL.</p> :
-          !visibleImports.length ? <p className="text-sm text-muted-foreground">No hay artículos que coincidan con la búsqueda. Prueba sin el filtro de CJ o usa «Vincular un producto que ya existe» arriba.</p> :
-          visibleImports.slice(0, 150).map((product: any) => <ImportedProductRow
-            key={product.id}
-            product={product}
-            suppliers={suppliers}
-            saving={savingProductId === String(product.id)}
-            onSave={assignDropship}
-          />)}
-        {visibleImports.length > 150 && <p className="text-xs text-muted-foreground">Mostrando los primeros 150. Usa el buscador para encontrar otros productos.</p>}
       </div>
+      {showImportedProducts && (
+        <div className="mt-5 space-y-4">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar productos por estado de proveedor">
+            {([
+              ["pending", "Pendientes", importCounts.pending],
+              ["connected", "Conectados", importCounts.connected],
+              ["hidden", "Ocultos", importCounts.hidden],
+            ] as const).map(([tab, label, count]) => (
+              <button type="button" key={tab}
+                onClick={() => { setImportTab(tab); setSelectedImportIds([]); }}
+                aria-pressed={importTab === tab}
+                className={`rounded-xl px-3 py-2 text-sm font-bold ${importTab === tab ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
+                {label} ({count})
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-muted/20 p-3">
+            <input value={importSearch} onChange={event => { setImportSearch(event.target.value); setSelectedImportIds([]); }}
+              placeholder="Buscar producto, SKU o URL" aria-label="Buscar productos importados"
+              className="min-w-[160px] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+            <select value={sourceFilter} onChange={event => { setSourceFilter(event.target.value); setSelectedImportIds([]); }}
+              aria-label="Filtrar proveedor por dominio" className="rounded-xl border border-border bg-background px-3 py-2 text-sm">
+              <option value="all">Todos los proveedores</option>
+              {availableSourceHosts.map(host => <option key={host} value={host.toLowerCase()}>{host}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={onlyCjImports} onChange={event => { setOnlyCjImports(event.target.checked); setSelectedImportIds([]); }}/>
+              Solo CJdropshipping
+            </label>
+            <span className="self-center text-xs text-muted-foreground">{visibleImports.length} resultados</span>
+          </div>
+          {suspectImports.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {suspectImports.length} importaciones sospechosas (páginas de verificación) excluidas. No se borran sin tu permiso.
+              <button type="button" className="ml-2 font-bold underline" onClick={() => setShowSuspectImports(v => !v)}>
+                {showSuspectImports ? "Ocultar" : "Ver nombres"}
+              </button>
+              {showSuspectImports && <p className="mt-2 text-xs">{suspectImports.map(item => item.name).slice(0, 20).join(" · ")}</p>}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" disabled={bulkImportBusy || !visibleImports.length}
+                checked={visibleImports.length > 0 && visibleImports.slice(0, 50).every(product => selectedImportIds.includes(String(product.id)))}
+                onChange={event => setSelectedImportIds(event.target.checked ? visibleImports.slice(0, 50).map(product => String(product.id)) : [])}/>
+              Seleccionar hasta 50 visibles ({selectedImportIds.length})
+            </label>
+            {selectedImportIds.length > 0 && (
+              <>
+                <button type="button" disabled={bulkImportBusy} onClick={() => void updateSupplierHubItems(selectedImportIds, "hide")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"><EyeOff className="h-4 w-4"/>Ocultar</button>
+                <button type="button" disabled={bulkImportBusy} onClick={() => void updateSupplierHubItems(selectedImportIds, "show")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"><Eye className="h-4 w-4"/>Mostrar</button>
+                <button type="button" disabled={bulkImportBusy} onClick={() => void updateSupplierHubItems(selectedImportIds, "unlink")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-bold"><Unlink2 className="h-4 w-4"/>Desvincular</button>
+                <button type="button" disabled={bulkImportBusy} onClick={() => void updateSupplierHubItems(selectedImportIds, "archive")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-destructive/50 px-3 py-2 text-xs font-bold text-destructive"><Trash2 className="h-4 w-4"/>Papelera</button>
+              </>
+            )}
+          </div>
+          <div className="space-y-3">
+            {visibleImports.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No hay productos en este filtro. Puedes cambiar de pestaña o proveedor.</p> :
+              visibleImports.slice(0, 50).map((product: any) => (
+                <div key={product.id} className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-5 h-4 w-4 shrink-0"
+                    checked={selectedImportIds.includes(String(product.id))}
+                    onChange={event => setSelectedImportIds(current => event.target.checked ? [...new Set([...current, String(product.id)])] : current.filter(id => id !== String(product.id)))}/>
+                  <div className="min-w-0 flex-1">
+                    <ImportedProductRow product={product} suppliers={suppliers}
+                      saving={bulkImportBusy || savingProductId === String(product.id)}
+                      onSave={assignDropship}/>
+                    <div className="mt-1 flex flex-wrap gap-2 px-2">
+                      <button type="button" disabled={bulkImportBusy} className="text-xs underline"
+                        onClick={() => void updateSupplierHubItems([String(product.id)], importTab === "hidden" ? "show" : "hide")}>
+                        {importTab === "hidden" ? "Mostrar en Proveedores" : "Ocultar de esta lista"}
+                      </button>
+                      <button type="button" className="text-xs underline" onClick={() => onOpenProduct(String(product.id))}>Editar en catálogo</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            {visibleImports.length > 50 && <p className="text-xs text-muted-foreground">Mostrando 50 de {visibleImports.length}. Usa el buscador o filtra por proveedor.</p>}
+          </div>
+        </div>
+      )}
     </section>
 
     <section className="rounded-2xl border border-border bg-card p-6">
