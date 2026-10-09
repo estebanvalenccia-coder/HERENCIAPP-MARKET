@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
+  Layers3,
+  LayoutDashboard,
+  FileSpreadsheet,
+  Settings2,
+  Search,
   Bot,
   Building2,
   CheckCircle2,
@@ -119,6 +125,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [dsersBusy, setDsersBusy] = useState(false);
   const [onlyCjImports, setOnlyCjImports] = useState(false);
+  const [queueSupplierFilter, setQueueSupplierFilter] = useState("all");
+  const [queueStatusFilter, setQueueStatusFilter] = useState("active");
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
   const [existingProductId, setExistingProductId] = useState("");
@@ -938,6 +946,23 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   );
 
   const activeFulfillments = fulfillments.filter((item: any) => !["delivered", "cancelled"].includes(String(item.status || "")));
+  const attentionStatuses = new Set(["supplier_required", "supplier_disabled", "cost_required", "mapping_required",
+    "address_required", "connector_required", "approval_required", "action_required", "payment_required",
+    "cj_creation_unknown", "cj_payment_unknown", "supplier_dispatch_unknown"]);
+  const attentionFulfillments = activeFulfillments.filter((item: any) => attentionStatuses.has(String(item.status || "")));
+  const queueSuppliers = [...new Map(fulfillments.map((item: any) => [
+    String(item.supplierId || item.supplierName || "unassigned"),
+    { id: String(item.supplierId || item.supplierName || "unassigned"), name: String(item.supplierName || "Sin proveedor") },
+  ])).values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const displayedFulfillments = fulfillments.filter((item: any) => {
+    const supplierId = String(item.supplierId || item.supplierName || "unassigned");
+    if (queueSupplierFilter !== "all" && queueSupplierFilter !== supplierId) return false;
+    const status = String(item.status || "");
+    if (queueStatusFilter === "attention") return attentionStatuses.has(status);
+    if (queueStatusFilter === "active") return !["delivered", "cancelled", "canceled", "closed"].includes(status);
+    return true;
+  });
+  const connectedSuppliers = supplierConnectorStatuses.filter((entry: any) => entry.state === "ready" || entry.state === "configured").length;
   const selectedProduct = products.find((product: any) => String(product.id) === String(purchase.productId));
 
   if (loading) {
@@ -945,32 +970,62 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   }
 
   return <div className="space-y-6">
-    <section className="rounded-3xl border border-border bg-card p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-wider text-primary">Supplier Hub</p>
-          <h1 className="mt-2 text-3xl font-black">Proveedores · Manual + Autopilot</h1>
-          <p className="mt-2 max-w-3xl text-muted-foreground">
-            Conecta productos importados por URL con su proveedor. Manual prepara todo para comprar tú;
-            Autopilot ejecuta solo cuando existe un conector/API autorizado y respeta tus límites.
+    <section id="supplier-dashboard" className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 lg:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-emerald-100/60 blur-3xl"/>
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.18em] text-primary"><Layers3 className="h-4 w-4"/>HERENCIA · COMERCIO MULTIPROVEEDOR</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Central de Dropshipping</h1>
+          <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">
+            Una sola central para CJdropshipping, AliExpress y cualquier proveedor que incorpores.
+            Gestiona productos, conexiones, presupuestos y pedidos sin cambiar las integraciones existentes.
           </p>
         </div>
-        <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${connectorReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-          {connectorReady ? <><CheckCircle2 className="mr-2 inline h-4 w-4"/>Conector Autopilot listo</> : <><AlertTriangle className="mr-2 inline h-4 w-4"/>Autopilot preparado · falta conector</>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => document.getElementById("supplier-orders")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">
+            Ver pedidos <ArrowRight className="h-4 w-4"/>
+          </button>
+          <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-bold">
+            + Añadir proveedor
+          </button>
         </div>
       </div>
+      <div className="relative mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card icon={Building2} label="Proveedores registrados" value={String(suppliers.length)}/>
+        <Card icon={Link2} label="Productos importados" value={String(importedProducts.length)}/>
+        <Card icon={Bot} label="Pedidos en gestión" value={String(activeFulfillments.length)}/>
+        <Card icon={AlertTriangle} label="Necesitan revisión" value={String(attentionFulfillments.length)}/>
+      </div>
+      <p className="relative mt-3 text-xs text-muted-foreground">
+        {connectedSuppliers} conexiones API configuradas o verificadas · Compras propias registradas: {money(spent)}.
+        Los proveedores CSV y manuales no realizan compras automáticas.
+      </p>
     </section>
 
-    <div className="grid gap-4 md:grid-cols-4">
-      <Card icon={Building2} label="Proveedores" value={String(suppliers.length)} />
-      <Card icon={Link2} label="Productos URL" value={String(importedProducts.length)} />
-      <Card icon={Bot} label="Cola proveedor" value={String(activeFulfillments.length)} />
-      <Card icon={PackagePlus} label="Compras acumuladas" value={money(spent)} />
-    </div>
+    <nav aria-label="Navegar por la central de dropshipping" className="rounded-2xl border border-border bg-card p-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {[
+          { id: "supplier-import", name: "Importar por URL", icon: Search, detail: "Tu importador actual" },
+          { id: "supplier-catalog", name: "Productos", icon: Layers3, detail: "Vincular y organizar" },
+          { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
+          { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
+          { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
+          { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
+        ].map(entry => <button key={entry.id} type="button"
+          onClick={() => document.getElementById(entry.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="flex min-w-0 items-start gap-2 rounded-xl border border-transparent bg-muted/35 px-3 py-3 text-left transition-colors hover:border-primary/25 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+          <entry.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary"/>
+          <span className="min-w-0"><span className="block text-xs font-bold">{entry.name}</span>
+            <span className="mt-1 block text-[11px] leading-tight text-muted-foreground">{entry.detail}</span></span>
+        </button>)}
+      </div>
+    </nav>
 
-    <section className="rounded-2xl border border-border bg-card p-6">
+    <section id="supplier-import" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-bold uppercase tracking-wider text-primary">Importación rápida</p>
+        <p className="text-sm font-bold uppercase tracking-wider text-primary">Importación rápida · se conserva el flujo actual</p>
         <h2 className="text-xl font-bold">Pega la URL del producto</h2>
         <p className="text-sm text-muted-foreground">
           Herencia analiza la ficha, copia las imágenes disponibles a su biblioteca y crea un borrador. Si el dominio coincide con un proveedor registrado, lo enlaza automáticamente.
@@ -1041,10 +1096,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </p>
     </section>
 
-    <section className="rounded-2xl border border-border bg-card p-6">
+    <section id="supplier-dsers-csv" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-bold uppercase tracking-wider text-primary">DSers · AliExpress</p>
+          <p className="text-sm font-bold uppercase tracking-wider text-primary">Conectores de archivos · DSers/AliExpress</p>
           <h2 className="mt-1 text-xl font-bold">Exportar productos a DSers por CSV</h2>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
             Exporta únicamente productos vinculados a AliExpress con ID y SKU propio válido.
@@ -1092,7 +1147,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     </section>
 
     <div className="grid gap-6 xl:grid-cols-2">
-      <section className="rounded-2xl border border-border bg-card p-6">
+      <section id="supplier-new" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
         <h2 className="text-xl font-bold">{form.id ? "Editar proveedor" : "Nuevo proveedor"}</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre · ej. AliExpress" className="rounded-xl border border-border bg-background p-3"/>
@@ -1262,7 +1317,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </button>
     </section>
 
-    <section className="rounded-2xl border border-border bg-card p-6">
+    <section id="supplier-catalog" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">Productos vinculados a proveedores</h2>
@@ -1402,7 +1457,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </div>}
     </section>
 
-    <section className="rounded-2xl border border-border bg-card p-6">
+    <section id="supplier-orders" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-bold">Cola de pedidos a proveedores</h2>
@@ -1412,9 +1467,33 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <RefreshCw className={"h-4 w-4" + (syncingPaidOrders ? " animate-spin" : "")}/>{syncingPaidOrders ? "Actualizando cola…" : "Sincronizar pedidos pagados"}
         </button>
       </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
+          Proveedor
+          <select aria-label="Filtrar pedidos por proveedor" value={queueSupplierFilter}
+            onChange={(event) => setQueueSupplierFilter(event.target.value)}
+            className="min-w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+            <option value="all">Todos los proveedores</option>
+            {queueSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
+          Estado del pedido
+          <select aria-label="Filtrar pedidos por estado" value={queueStatusFilter}
+            onChange={(event) => setQueueStatusFilter(event.target.value)}
+            className="min-w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+            <option value="active">En gestión</option>
+            <option value="attention">Necesitan revisión</option>
+            <option value="all">Todos, incluidos finalizados</option>
+          </select>
+        </label>
+        <p className="self-end pb-2 text-xs text-muted-foreground">
+          {displayedFulfillments.length} resultados · {attentionFulfillments.length} requieren revisión
+        </p>
+      </div>
       <div className="mt-4 space-y-3">
-        {!fulfillments.length ? <p className="text-sm text-muted-foreground">No hay compras de proveedor preparadas todavía.</p> :
-          fulfillments.slice(0, 200).map((item: any) => {
+        {!displayedFulfillments.length ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No hay pedidos en este filtro. Puedes elegir otro proveedor o mostrar todos los estados.</p> :
+          displayedFulfillments.slice(0, 200).map((item: any) => {
             const canRunAuto = item.mode === "autopilot" && ["autopilot_ready","approval_required","connector_required","cost_required","mapping_required","address_required","payment_required","action_required"].includes(String(item.status || ""));
             const sourceUrl = item.items?.[0]?.sourceProductUrl || "";
             const isCjFulfillment = item.provider === "cj" ||
@@ -1468,8 +1547,16 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </div>
     </section>
 
-    <section className="rounded-2xl border border-border bg-card p-6">
-      <h2 className="text-xl font-bold">Proveedores registrados</h2>
+    <section id="supplier-registered" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Integraciones independientes</p>
+          <h2 className="mt-1 text-xl font-bold">Proveedores y conexiones</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Cada proveedor tiene sus propios permisos y método de gestión. «Registrado» no significa que pueda recibir pedidos automáticos.</p>
+        </div>
+        <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">+ Nuevo proveedor</button>
+      </div>
       <div className="mt-4 space-y-2">
         {!suppliers.length ? <p className="text-sm text-muted-foreground">Aún no hay proveedores.</p> :
           suppliers.map((supplier: any) => {
