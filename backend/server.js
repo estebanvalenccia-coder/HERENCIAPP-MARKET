@@ -16,6 +16,11 @@ import {
   validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
+import {
+  normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
+  normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
+  connectorVerificationFingerprint, supplierConnectorReadiness,
+} from "./supplierConnectors.js";
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
@@ -5007,11 +5012,7 @@ function cjLiveAutopilotEnabled() {
 }
 
 function supplierIntegrationType(supplier = {}) {
-  const explicit = String(supplier?.integrationType || "").trim().toLowerCase();
-  if (explicit === "cj" || explicit === "webhook" || explicit === "manual") return explicit;
-  const host = normalizeSupplierSourceHost(supplier?.sourceHost || "");
-  if (host.includes("cjdropshipping.com")) return "cj";
-  return "webhook";
+  return registeredSupplierIntegrationType(supplier);
 }
 
 function countryCodeFromAddress(value = "") {
@@ -5607,6 +5608,11 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       blocker = "El proveedor está desactivado.";
     } else if (mode === "autopilot") {
       status = "autopilot_ready";
+      const connector = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+      if (connector.type !== "cj" && !connector.automaticOrders) {
+        status = "connector_required";
+        blocker = connector.reason;
+      }
       if (!group.allCostsKnown) {
         status = "cost_required";
         blocker = supplierIntegrationType(supplier) === "cj"
@@ -5743,9 +5749,17 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   }
 
   const integrationType = supplierIntegrationType(supplier);
+  const readiness = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+  if (integrationType !== "cj" && !readiness.automaticOrders) {
+    const updated = { ...record, status: "connector_required", blocker: readiness.reason, updatedAt: now };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
+  }
   const allCostsKnown = (record.items || []).every((item) => Number(item?.supplierCost || 0) > 0);
-  // force never overrides missing CJ costs, mismatched mapping or a negative margin.
-  if (!allCostsKnown && (integrationType === "cj" || !force)) {
+  // Strict newly registered connectors must never bypass costs via the force flag.
+  const strictWebhook = integrationType === "webhook" && Boolean(supplier.connectorKey);
+  if (!allCostsKnown && (integrationType === "cj" || strictWebhook || !force)) {
     const updated = { ...record, status: "cost_required", blocker: "Falta el coste proveedor de uno o más productos.", updatedAt: now };
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
@@ -5753,7 +5767,7 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   }
 
   const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
-  if (!force && maxAutoOrderTotal > 0 && Number(record.estimatedCost || 0) > maxAutoOrderTotal) {
+  if ((!force || strictWebhook) && maxAutoOrderTotal > 0 && Number(record.estimatedCost || 0) > maxAutoOrderTotal) {
     const updated = { ...record, status: "approval_required", blocker: "Supera el límite automático configurado.", updatedAt: now };
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
@@ -5880,8 +5894,10 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     }
   }
 
-  const connectorUrl = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim();
-  const connectorToken = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "").trim();
+  // Route by the supplier's connector key, never a URL supplied by a customer.
+  const connection = resolveSupplierWebhookConnector(supplier);
+  const connectorUrl = connection.configured ? connection.url : "";
+  const connectorToken = connection.configured ? connection.token : "";
   if (!connectorUrl) {
     const updated = {
       ...record,
@@ -5894,17 +5910,62 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
 
+  // New provider integrations require real captured customer funds, a
+  // strict cost ceiling and a durable claim BEFORE customer PII leaves Herencia.
+  // This never replaces CJ's separate approval and payment process.
+  const dispatchKey = "supplierWebhookDispatch:" + String(record.id);
+  if (strictWebhook) {
+    try {
+      if (record.status !== "autopilot_ready" || !record.orderId ||
+          !(maxAutoOrderTotal > 0) || !(record.estimatedCost > 0) ||
+          record.estimatedCost > maxAutoOrderTotal ||
+          !Array.isArray(record.items) || !record.items.length ||
+          !(Number(record.grossMarginPercent) >= Number(supplier.minMarginPercent || 0)) ||
+          !record.shippingAddress?.address || !record.shippingAddress?.city ||
+          !record.shippingAddress?.country) {
+        throw Object.assign(new Error("Revisa margen, dirección, coste, límite y estado antes de enviar al proveedor."), { statusCode: 409 });
+      }
+      const order = await getOrderPrimary(record.orderId);
+      if (!order) throw Object.assign(new Error("El pedido de Herencia no existe."), { statusCode: 409 });
+      const funding = classifyCjOrderFunding(order);
+      if (funding.freeCoupon || !(funding.total > 0)) {
+        throw Object.assign(new Error("Los pedidos financiados por cupones requieren autorización manual; no se envían automáticamente."), { statusCode: 409 });
+      }
+      await verifyCjCustomerFunding(order, funding);
+      if (!hasNeon()) throw Object.assign(new Error("Sin base de datos transaccional para asegurar envíos únicos."), { statusCode: 503 });
+      await mutateNeonStorageValue(dispatchKey, (raw) => {
+        if (String(raw || "").trim()) {
+          throw Object.assign(new Error("Este pedido ya tiene un envío de proveedor registrado. Concílialo, no lo repitas."), { statusCode: 409 });
+        }
+        return JSON.stringify({
+          fulfillmentId: record.id, supplierId: supplier.id,
+          idempotencyKey: "HERENCIA-" + record.id, state: "claimed", claimedAt: now,
+        });
+      });
+      // No automatic retry if a network response is ambiguous.
+    } catch (error) {
+      return {
+        fulfillment: { ...record, status: "approval_required", blocker: String(error.message || "Revisión necesaria").slice(0, 300) },
+        executed: false, manual: false,
+      };
+    }
+  }
+
   let response;
   let payload = {};
   try {
     response = await fetch(connectorUrl, {
       method: "POST",
+      redirect: "error",
       headers: {
         "content-type": "application/json",
+        "idempotency-key": "HERENCIA-" + record.id,
         ...(connectorToken ? { authorization: "Bearer " + connectorToken } : {}),
       },
+      signal: strictWebhook ? AbortSignal.timeout(15000) : undefined,
       body: JSON.stringify({
         event: "supplier.order.create",
+        idempotencyKey: "HERENCIA-" + record.id,
         supplier: {
           id: supplier.id,
           name: supplier.name,
@@ -5933,8 +5994,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   } catch (error) {
     const updated = {
       ...record,
-      status: "action_required",
-      blocker: "El conector Autopilot no respondió.",
+      status: strictWebhook ? "supplier_dispatch_unknown" : "action_required",
+      blocker: strictWebhook ? "Respuesta ambigua del proveedor. No se repetirá la compra: concilia con el proveedor." : "El conector Autopilot no respondió.",
       lastError: String(error?.message || error).slice(0, 600),
       updatedAt: now,
     };
@@ -5946,8 +6007,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   if (!response.ok) {
     const updated = {
       ...record,
-      status: "action_required",
-      blocker: "El proveedor rechazó la compra automática.",
+      status: strictWebhook ? "supplier_dispatch_unknown" : "action_required",
+      blocker: strictWebhook ? "El proveedor respondió con error. No se repetirá: consulta primero si registró el pedido." : "El proveedor rechazó la compra automática.",
       lastError: String(payload?.error || payload?.message || ("HTTP " + response.status)).slice(0, 600),
       updatedAt: now,
     };
@@ -5956,6 +6017,17 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
 
+  const verifiedExternalId = String(payload?.externalOrderId || payload?.orderId || "").trim();
+  if (strictWebhook && (!verifiedExternalId || !["ordered", "shipped", "delivered"].includes(String(payload?.status || "")))) {
+    const uncertain = {
+      ...record, status: "supplier_dispatch_unknown",
+      blocker: "Falta confirmación inequívoca del pedido y su ID externo. No se repetirá la operación.",
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = uncertain;
+    await writeSupplierOperations(operations);
+    return { fulfillment: uncertain, executed: false, manual: false };
+  }
   const updated = {
     ...record,
     status: String(payload?.status || "ordered"),
@@ -5972,8 +6044,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   return { fulfillment: updated, executed: true, manual: false };
 }
 
-function supplierConnectorAuthorized(req) {
-  const expected = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "");
+function supplierConnectorAuthorized(req, expectedToken = "") {
+  const expected = String(expectedToken || "");
   if (!expected) return false;
   const auth = String(req.headers?.authorization || "");
   const provided = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
@@ -5983,7 +6055,6 @@ function supplierConnectorAuthorized(req) {
 }
 
 app.post("/api/supplier-autopilot/webhook", async (req, res) => {
-  if (!supplierConnectorAuthorized(req)) return res.status(401).json({ error: "Firma de conector no válida" });
   if (!requirePrimaryDatabase(res)) return;
   try {
     const id = String(req.body?.fulfillmentId || req.body?.id || "").trim();
@@ -5993,6 +6064,14 @@ app.post("/api/supplier-autopilot/webhook", async (req, res) => {
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
 
     const previous = operations.supplierFulfillments[index];
+    const supplier = (operations.suppliers || []).find((row) => String(row?.id || "") === String(previous.supplierId || ""));
+    const connector = resolveSupplierWebhookConnector(supplier);
+    // For keyed connectors the callback MUST use that exact supplier's token.
+    // A global legacy token cannot update another supplier's orders.
+    const authorized = supplier && connector.configured &&
+      supplierConnectorAuthorized(req, connector.token) &&
+      (connector.legacy || supplierConnectorReadiness(supplier, process.env, crypto.createHash).automaticOrders);
+    if (!authorized) return res.status(401).json({ error: "Firma de conector no válida" });
     const allowed = new Set(["ordered", "shipped", "delivered", "cancelled", "action_required"]);
     const incomingStatus = String(req.body?.status || previous.status);
     const status = allowed.has(incomingStatus) ? incomingStatus : previous.status;
@@ -6891,12 +6970,95 @@ app.patch("/api/admin/supplier-fulfillments/:id", requireAdmin, async (req, res)
 });
 
 
+// Never expose connector credentials in API responses. These endpoints only
+// report capability and test a no-order handshake.
+app.get("/api/admin/suppliers/connector-status", requireAdmin, async (_req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const current = await readSupplierOperations();
+    const suppliers = Array.isArray(current.suppliers) ? current.suppliers : [];
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ connectors: suppliers.map((supplier) => ({
+      supplierId: String(supplier.id || ""),
+      ...supplierConnectorReadiness(supplier, process.env, crypto.createHash),
+    })) });
+  } catch (error) {
+    res.status(500).json({ error: "No se pudo consultar el estado de conexiones." });
+  }
+});
+
+app.post("/api/admin/suppliers/:id/test-connector", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  try {
+    const current = await readSupplierOperations();
+    const supplier = (current.suppliers || []).find((row) => String(row.id) === String(req.params.id));
+    if (!supplier) return res.status(404).json({ error: "Proveedor no encontrado." });
+    if (supplierIntegrationType(supplier) !== "webhook" || !normalizeSupplierConnectorKey(supplier.connectorKey)) {
+      return res.status(409).json({ error: "Se necesita un conector webhook propio para este proveedor." });
+    }
+    const connector = resolveSupplierWebhookConnector(supplier);
+    if (!connector.configured) return res.status(409).json({ error: connector.reason });
+    // Dry-run handshake: no customer name, address, order, inventory, or payment.
+    const response = await fetch(connector.url, {
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json", authorization: "Bearer " + connector.token },
+      body: JSON.stringify({
+        event: "supplier.connector.test",
+        dryRun: true,
+        supplier: { id: String(supplier.id), name: String(supplier.name || "") },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok !== true || payload?.capabilities?.orders !== true) {
+      return res.status(409).json({
+        error: "El conector no confirmó {ok:true, capabilities:{orders:true}}. Comprueba su endpoint y contrato de prueba.",
+      });
+    }
+    const fingerprint = connectorVerificationFingerprint(connector, crypto.createHash);
+    const testedAt = new Date().toISOString();
+    await mutateNeonStorageValue("posOperations", (raw) => {
+      const operations = parseStoredJson(raw, {});
+      const index = (operations.suppliers || []).findIndex((row) => String(row.id) === String(supplier.id));
+      if (index < 0) throw Object.assign(new Error("Proveedor desapareció durante la prueba"), { statusCode: 409 });
+      if (normalizeSupplierConnectorKey(operations.suppliers[index].connectorKey) !== connector.key) {
+        throw Object.assign(new Error("La configuración de proveedor cambió. Repite la prueba."), { statusCode: 409 });
+      }
+      operations.suppliers[index] = {
+        ...operations.suppliers[index],
+        connectorVerifiedAt: testedAt,
+        connectorVerifiedFingerprint: fingerprint,
+      };
+      return JSON.stringify(operations);
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, status: "ready", testedAt, capabilities: { orders: true } });
+  } catch (error) {
+    res.status(Number(error.statusCode || 502)).json({
+      error: error.name === "TimeoutError" ? "El conector no respondió en 10 segundos." :
+        "La prueba del proveedor no se ha completado: " + String(error.message || "Error de conexión").slice(0, 150),
+    });
+  }
+});
+
 app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
   try {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const existingSupplier = (current.suppliers || []).find((item) => String(item?.id || "") === String(req.body?.id || ""));
+    const requestedType = String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "manual").toLowerCase();
+    const integrationType = normalizeSupplierIntegrationType(requestedType);
+    if (integrationType !== requestedType) return res.status(400).json({ error: "Tipo de integración de proveedor no reconocido." });
+    const rawConnectorKey = String(req.body?.connectorKey ?? existingSupplier?.connectorKey ?? "").trim();
+    const connectorKey = rawConnectorKey ? normalizeSupplierConnectorKey(rawConnectorKey) : "";
+    if (rawConnectorKey && !connectorKey) return res.status(400).json({
+      error: "La clave de conector debe contener letras, números o guiones bajos (hasta 40 caracteres), empezando por una letra.",
+    });
+    const unchangedConnector = integrationType === "webhook" &&
+      existingSupplier?.integrationType === "webhook" &&
+      String(existingSupplier.connectorKey || "") === connectorKey;
     const supplier = {
       ...(existingSupplier || {}),
       id: String(req.body?.id || existingSupplier?.id || crypto.randomUUID()),
@@ -6909,9 +7071,10 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
       fulfillmentMode: normalizeSupplierFulfillmentMode(req.body?.fulfillmentMode ?? existingSupplier?.fulfillmentMode ?? "manual"),
       maxAutoOrderTotal: Math.max(0, normalizeMoney(req.body?.maxAutoOrderTotal ?? existingSupplier?.maxAutoOrderTotal ?? 0)),
       minMarginPercent: Math.max(0, Math.min(95, Number(req.body?.minMarginPercent ?? existingSupplier?.minMarginPercent ?? 0))),
-      integrationType: ["cj", "webhook", "manual"].includes(String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "").toLowerCase())
-        ? String(req.body?.integrationType ?? existingSupplier?.integrationType).toLowerCase()
-        : "manual",
+      integrationType,
+      connectorKey: integrationType === "webhook" ? connectorKey : "",
+      connectorVerifiedAt: unchangedConnector ? String(existingSupplier?.connectorVerifiedAt || "") : "",
+      connectorVerifiedFingerprint: unchangedConnector ? String(existingSupplier?.connectorVerifiedFingerprint || "") : "",
       cjSandbox: req.body?.cjSandbox == null ? existingSupplier?.cjSandbox !== false : req.body.cjSandbox !== false,
       cjLogisticName: String(req.body?.cjLogisticName ?? existingSupplier?.cjLogisticName ?? "CJPacket Ordinary").trim().slice(0, 100),
       cjFromCountryCode: String(req.body?.cjFromCountryCode ?? existingSupplier?.cjFromCountryCode ?? "CN").trim().toUpperCase().slice(0, 2),
@@ -6922,6 +7085,12 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     };
     if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
     if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
+    if (supplier.fulfillmentMode === "autopilot" && integrationType !== "cj") {
+      const status = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
+      if (!status.automaticOrders || integrationType !== "webhook") {
+        return res.status(409).json({ error: "No se puede activar compra automática: " + status.reason });
+      }
+    }
     current.suppliers = [supplier, ...(current.suppliers || []).filter((item) => String(item?.id) !== supplier.id)];
     await upsertStorageValue("posOperations", JSON.stringify(current));
     res.json({ supplier, operations: sanitizePosOperations(current) });
