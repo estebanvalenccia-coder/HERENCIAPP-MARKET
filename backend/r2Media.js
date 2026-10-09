@@ -5,6 +5,7 @@ import {
   ListObjectsV2Command,
   DeleteObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 
 export const hasR2 = Boolean(
@@ -122,6 +123,37 @@ export async function uploadR2MediaBuffer({ buffer, mimeType, filename = "imagen
     size: body.length,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Accept previously uploaded gallery pictures without downloading and
+ * uploading the exact same bytes again. Checks exact configured public origin,
+ * a safe object key, and actual object existence via R2 HeadObject.
+ */
+export function ownR2MediaPathFromUrl(value, publicBase = publicBaseUrl()) {
+  try {
+    const base = new URL(String(publicBase).replace(/\\/+$/, "") + "/");
+    const candidate = new URL(String(value || ""));
+    if (base.protocol !== "https:" || candidate.protocol !== "https:" ||
+        base.origin !== candidate.origin || candidate.username || candidate.password ||
+        candidate.search || candidate.hash) return "";
+    if (!candidate.pathname.startsWith(base.pathname)) return "";
+    const key = decodeURIComponent(candidate.pathname.slice(base.pathname.length));
+    return /^builder\\/[a-zA-Z0-9._-]+$/.test(key) && !key.endsWith("..") ? key : "";
+  } catch { return ""; }
+}
+
+export async function verifiedExistingR2Media(value) {
+  if (!hasR2) return null;
+  const path = ownR2MediaPathFromUrl(value);
+  if (!path) return null;
+  const object = await r2Client().send(new HeadObjectCommand({ Bucket: bucketName(), Key: path }));
+  const size = Number(object.ContentLength || 0);
+  const mimeType = String(object.ContentType || "").toLowerCase();
+  if (size <= 0 || size > 8 * 1024 * 1024 || !ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    throw new Error("La fotografía existente en R2 no es válida");
+  }
+  return { path, name: path.split("/").pop(), url: publicUrlForKey(path), size, sourceUrl: String(value) };
 }
 
 export async function uploadR2Media({ dataUrl, filename = "imagen" } = {}) {
