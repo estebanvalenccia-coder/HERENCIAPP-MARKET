@@ -33,10 +33,23 @@ function manualCatalogPreview(url, reason) {
   };
 }
 
+// Treat verification pages as blockers even when they embed irrelevant JSON-LD or images.
+export function isSupplierChallengeName(value = "") {
+  const label = stripTags(value).trim().toLowerCase().replace(/\s+/g, " ");
+  return /^(?:human verification|human machine check|verify you are human|verify you're human|just a moment|access denied|security verification|checking your browser|captcha|robot verification|are you a robot|please verify)(?:\b|[\s.:|—-])/.test(label);
+}
+
 function supplierChallengeHtml(html = "") {
-  const sample = String(html).slice(0, 50000).toLowerCase();
-  return /(?:captcha|verify you are human|human machine check|just a moment|checking your browser|security verification|access denied)/.test(sample)
-    && !sample.includes("application/ld+json");
+  const source = String(html);
+  const title = source.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+  if ([title, h1Text(source), metaContent(source, "og:title")].some(isSupplierChallengeName)) return true;
+  // Do not mistake a genuine product site that includes CAPTCHA widgets in its
+  // scripts for an actual blocked page.
+  const actualProducts = jsonLdProducts(source).filter((item) =>
+    usefulProductName(item?.name || "") && !isSupplierChallengeName(item?.name || "")
+  );
+  return !actualProducts.length &&
+    /(?:captcha|verify you are human|human machine check|just a moment|checking your browser|security verification|access denied)/i.test(source.slice(0, 50000));
 }
 
 function decodeEntities(value = "") {
@@ -136,7 +149,7 @@ function usefulProductName(value = "") {
   const clean = stripTags(value);
   if (clean.length < 2 || clean.length > 180) return "";
   const normalized = clean.toLowerCase();
-  if (["leer más", "ver más", "ver producto", "comprar", "más información"].includes(normalized)) return "";
+  if (["leer más", "ver más", "ver producto", "comprar", "más información"].includes(normalized) || isSupplierChallengeName(clean)) return "";
   return clean;
 }
 
@@ -514,15 +527,27 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
     }
   });
 
+  // An image-less or challenge result is not a verified automatic import.
+  // Offer a private, explicit manual draft instead of silently creating a broken item.
+  const verified = enriched.filter((item) =>
+    usefulProductName(item?.name || "") &&
+    !isSupplierChallengeName(item?.name || "") &&
+    (Array.isArray(item?.images) ? item.images.length > 0 : Boolean(item?.image))
+  );
+  if (!verified.length) {
+    return manualCatalogPreview(urlValue,
+      "No pudimos verificar el producto y sus fotografías en la web del proveedor. Comprueba los datos e introduce una imagen para preparar un borrador privado."
+    );
+  }
   const source = new URL(baseUrl);
   const limit = Math.max(1, Math.min(100, Number(maxProducts) || 60));
   return {
     ok: true,
     sourceUrl: baseUrl,
     sourceHost: normalizeSupplierHost(source.hostname),
-    count: enriched.length,
+    count: verified.length,
     truncated: enriched.length >= limit,
-    products: enriched.map((item) => {
+    products: verified.map((item) => {
       const taxonomy = guessCatalogTaxonomy(item.productUrl || baseUrl, item.category || item.name);
       return {
         id: item.id || item.productUrl,
@@ -544,9 +569,12 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
 
 export async function analyzeProductUrl(urlValue) {
   const page = await fetchHtml(urlValue);
+  if (supplierChallengeHtml(page.html)) {
+    throw Object.assign(new Error("El proveedor requiere verificación humana; no es una ficha de producto"), { statusCode: 422 });
+  }
   const details = productDetailsFromHtml(page.html, page.url, {});
-  if (!details?.name) {
-    throw Object.assign(new Error("No se pudo reconocer la ficha del producto"), { statusCode: 422 });
+  if (!details?.name || isSupplierChallengeName(details.name) || !details.images?.length) {
+    throw Object.assign(new Error("No se pudo verificar una ficha de producto con imágenes"), { statusCode: 422 });
   }
   const source = new URL(page.url);
   const taxonomy = guessCatalogTaxonomy(page.url, details.category || details.name);
