@@ -357,8 +357,16 @@ export function AdminSuppliersPanel() {
       setManualName("");
       setManualCost("");
       setManualImageUrl("");
+      const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
+      const labels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
       if (result.imageImportWarning) toast.warning(result.imageImportWarning);
-      setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio, imágenes y variantes antes de publicar." });
+      setImportFeedback({
+        ok: true,
+        message: "Borrador guardado: " + candidate.name + ". " +
+          (missing.length
+            ? "Falta completar: " + missing.map((field) => labels[field] || field).join(", ") + ". No publiques todavía."
+            : "Imágenes copiadas. Revisa precio de venta, variantes y envío antes de publicar."),
+      });
       toast.success(
         matchedSupplier
           ? "Producto importado y vinculado con " + matchedSupplier.name + " (compra automática no verificada)"
@@ -786,7 +794,7 @@ export function AdminSuppliersPanel() {
         <input
           type="url"
           value={importUrl}
-          onChange={(e) => { setImportUrl(e.target.value); setManualImport(null); }}
+          onChange={(e) => { setImportUrl(e.target.value); setManualImport(null); setManualName(""); setManualCost(""); setManualImageUrl(""); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !importingUrl) void importProductByUrl();
           }}
@@ -816,8 +824,14 @@ export function AdminSuppliersPanel() {
             </select>
             <input value={manualImageUrl} onChange={(e) => setManualImageUrl(e.target.value)} type="url" placeholder="URL de imagen (opcional)" aria-label="URL de imagen" className="rounded-lg border border-amber-200 bg-white p-3" />
           </div>
+          {manualImageUrl.trim() && (
+            <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white p-2">
+              <img src={manualImageUrl.trim()} alt="Vista previa de la imagen indicada" referrerPolicy="no-referrer" className="h-20 w-20 rounded-md object-contain" />
+              <span className="text-xs">Verifica que aparece la foto real del producto y no un CAPTCHA ni un logotipo.</span>
+            </div>
+          )}
           <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
-          <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Ninguna fotografía se puede extraer de una página de verificación: añade una URL pública de imagen válida o súbela más tarde desde la biblioteca. Una URL no habilita la compra automática.</p>
+          <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Abre la ficha original, haz clic derecho sobre la fotografía → «Copiar dirección de imagen» y pega esa URL arriba. Herencia intentará copiarla a la biblioteca. Si la foto está protegida, súbela manualmente después. No habilita la compra automática.</p>
         </div>
       )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}

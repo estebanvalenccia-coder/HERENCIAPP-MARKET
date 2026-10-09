@@ -400,6 +400,17 @@ const server=http.createServer(async(req,res)=>{try{
     }
     const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
     const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
+    const effectiveImages=imageUrls.length?imageUrls:(Array.isArray(duplicate?.images)?duplicate.images.filter(Boolean):[]);
+    const effectiveDescription=String(input?.description||duplicate?.description||"").trim();
+    const effectiveSupplierCost=sourcePrice>0?sourcePrice:Number(duplicateMetadata?.supplierOriginalPrice||0);
+    const missingFields=[
+      ...(!effectiveImages.length?["images"]:[]),
+      ...(!effectiveDescription?["description"]:[]),
+      ...(!(effectiveSupplierCost>0)?["supplierPrice"]:[]),
+    ];
+    if(!effectiveImages.length&&!imageImportWarning){
+      imageImportWarning="Borrador sin fotografía: añade una URL directa de imagen o súbela desde la biblioteca antes de publicar.";
+    }
     const now=new Date().toISOString();
 
     if(duplicate){
@@ -432,6 +443,7 @@ const server=http.createServer(async(req,res)=>{try{
           supplierPriceCapturedAt:sourcePrice>0?now:(duplicateMetadata?.supplierPriceCapturedAt||null),
           originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
           mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+          missingImportFields:missingFields,
           refreshedFromSourceAt:now,
         },
       },{id:String(duplicate.id)});
@@ -444,6 +456,7 @@ const server=http.createServer(async(req,res)=>{try{
         product:refreshed,
         copiedImages:imageUrls.length,
         imageImportWarning,
+        missingFields,
         source:"neon"
       });
     }
@@ -479,10 +492,11 @@ const server=http.createServer(async(req,res)=>{try{
         supplierPriceCapturedAt:sourcePrice>0?now:null,
         originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
         mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+        missingImportFields:missingFields,
         importedAt:now,
       },
     });
-    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,imageImportWarning,source:"neon"});
+    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,imageImportWarning,missingFields,source:"neon"});
   }
 
   if(path==="/api/admin/catalog/import-url/repair-drafts"&&req.method==="POST"){

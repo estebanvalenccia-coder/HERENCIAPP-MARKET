@@ -6,6 +6,7 @@ import {
   assertSafeExternalUrl,
   extractProductGalleryImages,
   productDetailsFromHtml,
+  extractMarketplaceGalleryImages,
   normalizeSupplierHost,
   isSupplierChallengeName,
   supportsManualCatalogFallback,
@@ -196,4 +197,27 @@ test("un sitio con script de captcha pero producto JSON-LD válido conserva impo
   const result = await analyzeCatalogUrl("https://spanish.alibaba.com/product-detail/with-image.html", { maxProducts: 1 });
   assert.equal(result.requiresManual, undefined);
   assert.equal(result.products[0].name, "Maceta con foto");
+});
+
+test("extrae las fotografías reales de imagePathList en un AliExpress público", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const gallery = ["//ae01.alicdn.com/kf/base-1.jpg", "https://ae01.alicdn.com/kf/base-2.webp"];
+  const html = '<html><h1>Base de plantas</h1><script>window.runParams={"imagePathList":' +
+    JSON.stringify(gallery) + '}</script></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  assert.equal(extractMarketplaceGalleryImages(html, "https://es.aliexpress.com/item/1005000000000.html").length, 2);
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, undefined);
+  assert.equal(result.products[0].name, "Base de plantas");
+  assert.equal(result.products[0].images.length, 2);
+});
+
+test("la galería embebida no acepta logos externos ni imágenes en otros dominios", () => {
+  const html = '<script>window.runParams={"imagePathList":' +
+    JSON.stringify(["https://not-marketplace.example/logo.jpg", "//ae01.alicdn.com/kf/garden.jpg"]) + '}</script>';
+  const valid = extractMarketplaceGalleryImages(html, "https://www.aliexpress.com/item/1005000000000.html");
+  assert.deepEqual(valid, ["https://ae01.alicdn.com/kf/garden.jpg"]);
+  assert.deepEqual(extractMarketplaceGalleryImages(html, "https://semillasbatlle.com/producto/base"), []);
 });
