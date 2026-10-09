@@ -33,10 +33,24 @@ function manualCatalogPreview(url, reason) {
   };
 }
 
-function supplierChallengeHtml(html = "") {
-  const sample = String(html).slice(0, 50000).toLowerCase();
-  return /(?:captcha|verify you are human|human machine check|just a moment|checking your browser|security verification|access denied)/.test(sample)
-    && !sample.includes("application/ld+json");
+// A verification page is not a product, even if it includes JSON-LD, og:image
+// or an image of the provider's logo. Do not trust metadata alone.
+export function isSupplierVerificationName(value = "") {
+  const title = stripTags(value).replace(/\s+/g, " ").trim().toLowerCase();
+  return /^(?:human verification|human machine check|verify (?:you are|that you are) human|are you human\??|robot check|just a moment|access denied|captcha|security verification|security check|checking your browser|attention required|please verify|verificaci[oó]n humana|verifica que eres humano)(?:\b|\s*[-|:—])/i.test(title);
+}
+
+export function supplierChallengeHtml(html = "") {
+  const source = String(html).slice(0, 150000);
+  const head = source.slice(0, 50000);
+  const title = source.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+  const headings = [...source.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].slice(0, 4);
+  if (isSupplierVerificationName(title) || headings.some((item) => isSupplierVerificationName(item[1]))) return true;
+  // Explicit interstitial/challenge text outweighs any embedded product schema.
+  if (/human verification|human machine check|verify you are human|checking your browser|security verification|just a moment\.\.\.|cf-chl-|challenge-platform|captcha-container/i.test(head)) return true;
+  return /(?:access denied|captcha|robot check)/i.test(head)
+    && /(?:verify|security|challenge|blocked|suspicious|automated requests|robot)/i.test(head)
+    && !/<(?:main|article)\b[^>]*class=["'][^"']*(?:product|catalog)/i.test(source);
 }
 
 function decodeEntities(value = "") {
@@ -136,7 +150,7 @@ function usefulProductName(value = "") {
   const clean = stripTags(value);
   if (clean.length < 2 || clean.length > 180) return "";
   const normalized = clean.toLowerCase();
-  if (["leer más", "ver más", "ver producto", "comprar", "más información"].includes(normalized)) return "";
+  if (["leer más", "ver más", "ver producto", "comprar", "más información"].includes(normalized) || isSupplierVerificationName(clean)) return "";
   return clean;
 }
 
@@ -267,6 +281,33 @@ function productOfferData(product = {}, fallback = {}) {
   return { supplierPrice, supplierCurrency };
 }
 
+export function extractMarketplaceGalleryImages(html, productUrl) {
+  let domain = "";
+  try { domain = normalizeSupplierHost(new URL(productUrl).hostname); } catch { return []; }
+  if (!["aliexpress.com", "alibaba.com", "1688.com"].includes(domain)) return [];
+
+  const images = [];
+  // AliExpress publishes imagePathList in some publicly accessible product HTML.
+  // This is best-effort parsing of delivered markup, not a captcha bypass.
+  const listPattern = /["']imagePathList["']\s*:\s*(\[[^\]]{1,30000}\])/gi;
+  let match;
+  while ((match = listPattern.exec(String(html))) && images.length < 8) {
+    let candidates = [];
+    try { candidates = JSON.parse(match[1]); } catch { continue; }
+    if (!Array.isArray(candidates)) continue;
+    for (const raw of candidates) {
+      if (typeof raw !== "string") continue;
+      const url = safeAbsoluteUrl(raw.startsWith("//") ? "https:" + raw : raw, productUrl);
+      if (!url || !/\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(url)) continue;
+      const host = new URL(url).hostname.toLowerCase();
+      if (!/(?:^|\.)(?:alicdn\.com|aliexpress-media\.com|alibaba\.com)$/.test(host)) continue;
+      if (!images.includes(url)) images.push(url);
+      if (images.length >= 8) break;
+    }
+  }
+  return images;
+}
+
 export function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const ldProduct = jsonLdProducts(html)[0] || {};
   const name =
@@ -286,6 +327,7 @@ export function productDetailsFromHtml(html, productUrl, fallback = {}) {
   const images = [
     ...normalizeImageList(ldProduct.image, productUrl),
     ...normalizeImageList(metaContent(html, "og:image"), productUrl),
+    ...extractMarketplaceGalleryImages(html, productUrl),
     ...(Array.isArray(fallback.images) ? fallback.images : []),
   ];
 
@@ -499,7 +541,7 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
 
   if (!candidates.length) {
     const single = productDetailsFromHtml(page.html, baseUrl, {});
-    if (single.name && single.images.length && !/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(single.name)) candidates = [single];
+    if (single.name && single.images.length && !isSupplierVerificationName(single.name)) candidates = [single];
   }
   if (!candidates.length) {
     return manualCatalogPreview(urlValue, "No encontramos una ficha estructurada en esa web. Puedes guardar el artículo como borrador introduciendo su nombre.");
@@ -508,11 +550,17 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
   const enriched = await mapWithConcurrency(candidates, 4, async (candidate) => {
     try {
       const detail = await fetchHtml(candidate.productUrl);
+      if (supplierChallengeHtml(detail.html)) return { ...candidate, blocked: true };
       return productDetailsFromHtml(detail.html, detail.url, candidate);
     } catch {
       return { ...candidate, image: candidate.images?.[0] || "", images: candidate.images || [] };
     }
   });
+
+  const validProducts = enriched.filter((item) => !item.blocked && !isSupplierVerificationName(item.name));
+  if (!validProducts.length || (validProducts.length === 1 && !validProducts[0].images?.length)) {
+    return manualCatalogPreview(urlValue, "El proveedor no devolvió una ficha verificable con imágenes del producto. Revisa los datos en su web antes de crear el borrador.");
+  }
 
   const source = new URL(baseUrl);
   const limit = Math.max(1, Math.min(100, Number(maxProducts) || 60));
@@ -520,9 +568,9 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
     ok: true,
     sourceUrl: baseUrl,
     sourceHost: normalizeSupplierHost(source.hostname),
-    count: enriched.length,
-    truncated: enriched.length >= limit,
-    products: enriched.map((item) => {
+    count: validProducts.length,
+    truncated: validProducts.length >= limit,
+    products: validProducts.map((item) => {
       const taxonomy = guessCatalogTaxonomy(item.productUrl || baseUrl, item.category || item.name);
       return {
         id: item.id || item.productUrl,
@@ -544,8 +592,11 @@ export async function analyzeCatalogUrl(urlValue, { maxProducts = 60 } = {}) {
 
 export async function analyzeProductUrl(urlValue) {
   const page = await fetchHtml(urlValue);
+  if (supplierChallengeHtml(page.html)) {
+    throw Object.assign(new Error("El proveedor mostró una verificación en lugar del producto"), { statusCode: 422 });
+  }
   const details = productDetailsFromHtml(page.html, page.url, {});
-  if (!details?.name) {
+  if (!details?.name || isSupplierVerificationName(details.name)) {
     throw Object.assign(new Error("No se pudo reconocer la ficha del producto"), { statusCode: 422 });
   }
   const source = new URL(page.url);
