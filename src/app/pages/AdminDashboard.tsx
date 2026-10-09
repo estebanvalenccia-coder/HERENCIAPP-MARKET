@@ -151,6 +151,12 @@ export function AdminDashboard() {
   const [currentSection, setCurrentSection] =
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [importedProductToOpen, setImportedProductToOpen] = useState<string | null>(null);
+  const openImportedProduct = (productId: string) => {
+    setImportedProductToOpen(String(productId));
+    setCurrentSection("products");
+    setSidebarOpen(false);
+  };
   const [productsMenuOpen, setProductsMenuOpen] = useState(true);
   const [orderAlerts, setOrderAlerts] = useState<AdminOrderAlert[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -922,7 +928,7 @@ export function AdminDashboard() {
           {currentSection === "herencia-sales" && <AdminHerenciaSales onNavigate={(section) => setCurrentSection(section as AdminSection)} />}
 
           {currentSection === "products" && (
-            <AdminProducts onAddNew={() => setCurrentSection("add-product")} />
+            <AdminProducts onAddNew={() => setCurrentSection("add-product")} focusProductId={importedProductToOpen} onFocusHandled={() => setImportedProductToOpen(null)} />
           )}
 
           {currentSection === "add-product" && (
@@ -930,7 +936,7 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "bulk-product-import" && (
-            <AdminBulkProductImport onBack={() => setCurrentSection("products")} />
+            <AdminBulkProductImport onBack={() => setCurrentSection("products")} onOpenProduct={openImportedProduct} />
           )}
 
           {currentSection === "collections" && <AdminCollectionsManager />}
@@ -978,7 +984,7 @@ export function AdminDashboard() {
           {currentSection === "crm" && <AdminCRMClients />}
           {currentSection === "support" && <AdminSupportPro />}
 
-          {currentSection === "suppliers" && <AdminSuppliersPanel />}
+          {currentSection === "suppliers" && <AdminSuppliersPanel onOpenProduct={openImportedProduct} />}
 
           {currentSection === "stock" && <AdminStockControl />}
 

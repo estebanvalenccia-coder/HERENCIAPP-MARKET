@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { backendApi, backendStorage } from "../../lib/backendStorage";
+import { backendApi } from "../../lib/backendStorage";
 import { REAL_PLANT_CATALOG_DRAFTS } from "../../data/realPlantCatalogDrafts";
 
 type TaxonomyOption = {
@@ -340,11 +340,22 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
+export function AdminBulkProductImport({
+  onBack, onOpenProduct,
+}: {
+  onBack: () => void;
+  onOpenProduct: (productId: string) => void;
+}) {
   const [drafts, setDrafts] = useState<ProductDraft[]>([]);
   const [isClassifying, setIsClassifying] = useState(false);
   const [savingLibrary, setSavingLibrary] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceManual, setSourceManual] = useState<{ url: string; host: string; reason: string } | null>(null);
+  const [sourceManualName, setSourceManualName] = useState("");
+  const [sourceManualCost, setSourceManualCost] = useState("");
+  const [sourceManualImage, setSourceManualImage] = useState("");
+  const [sourceManualSaving, setSourceManualSaving] = useState(false);
+  const [savedSourceProduct, setSavedSourceProduct] = useState<{ id: string; name: string; status: string; outcome: string } | null>(null);
   const [sourceProducts, setSourceProducts] = useState<SourceCatalogProduct[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Record<string, boolean>>({});
   const [selectedSourceImages, setSelectedSourceImages] = useState<Record<string, boolean>>({});
@@ -403,6 +414,8 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
 
     setSourceLoading(true);
     setSourceProducts([]);
+    setSourceManual(null);
+    setSavedSourceProduct(null);
     setSelectedSourceIds({});
     setSelectedSourceImages({});
     setSourceProgress({ done: 0, total: 0 });
@@ -413,8 +426,13 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       setSourceProducts(products);
       setSelectedSourceIds({});
       setSelectedSourceImages({});
-      if (!products.length) {
-        toast.warning("No se detectaron productos en esa página");
+      if (result.requiresManual || !products.length) {
+        setSourceManual({
+          url: result.sourceUrl || url,
+          host: result.sourceHost || new URL(url).hostname,
+          reason: result.message || "El proveedor no permitió acceder a las fotografías o los datos del producto.",
+        });
+        toast.warning("Importación automática incompleta. Puedes crear un borrador privado con los datos reales.");
       } else {
         toast.success(products.length + " productos detectados en " + result.sourceHost);
       }
@@ -422,6 +440,62 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       toast.error(error?.message || "No se pudo analizar el catálogo del proveedor");
     } finally {
       setSourceLoading(false);
+    }
+  };
+
+  const saveSourceManualDraft = async () => {
+    if (!sourceManual) return;
+    const name = sourceManualName.trim();
+    if (!name) return toast.error("Escribe el nombre real del producto");
+    if (/^(human verification|human machine check|verify you are human|just a moment|access denied|security verification|captcha)(?:\\b|[\\s.:|—-])/i.test(name)) {
+      return toast.error("La pantalla de verificación no es un producto");
+    }
+    if (sourceManualCost.trim() && (!Number.isFinite(Number(sourceManualCost)) || Number(sourceManualCost) < 0)) {
+      return toast.error("Revisa el coste del proveedor");
+    }
+    const rawImage = sourceManualImage.trim();
+    if (rawImage) {
+      try {
+        const url = new URL(rawImage);
+        if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
+      } catch { return toast.error("Pega una URL pública válida de imagen"); }
+    }
+    setSourceManualSaving(true);
+    setSavedSourceProduct(null);
+    try {
+      const result = await backendApi.importCatalogUrlProduct({
+        name,
+        productUrl: sourceManual.url,
+        sourceCatalogUrl: sourceManual.url,
+        sourceHost: sourceManual.host,
+        supplierPrice: Number(sourceManualCost || 0),
+        supplierCurrency: "EUR",
+        description: "",
+        image: rawImage,
+        images: rawImage ? [rawImage] : [],
+        manualImport: true,
+      });
+      if (!result.ok || !result.product?.id) throw new Error("El servidor no confirmó el producto guardado");
+      const lookup = await backendApi.getCommerceProduct(result.product.id);
+      if (!lookup.product || String(lookup.product.id) !== String(result.product.id)) {
+        throw new Error("No se encuentra el artículo en el catálogo después de guardarlo");
+      }
+      const found = lookup.product;
+      const archived = found.status === "archived" || Boolean(found.deletedAt);
+      setSavedSourceProduct({
+        id: String(found.id),
+        name: String(found.name || name),
+        status: String(found.status || "draft"),
+        outcome: archived ? "archived" : result.skipped ? "existing" : result.updated ? "updated" : "created",
+      });
+      toast.info(archived ? "Ya existe en la Papelera; no se creó otro." :
+        result.skipped ? "El producto ya existía. Puedes abrirlo desde aquí." : "Borrador guardado en Productos → Ver productos");
+      if (result.imageImportWarning) toast.warning(result.imageImportWarning);
+      if (!result.skipped && !archived) setSourceManual(null);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo confirmar que el producto se guardó");
+    } finally {
+      setSourceManualSaving(false);
     }
   };
 
@@ -523,6 +597,8 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     let skipped = 0;
     let errors = 0;
     const completedIds: string[] = [];
+    let lastSaved: { id: string; name: string; status: string; outcome: string } | null = null;
+    setSavedSourceProduct(null);
 
     for (let index = 0; index < selected.length; index += 1) {
       const product = selected[index];
@@ -535,9 +611,17 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
           image: importImages[0] || "",
           images: importImages,
         });
+        if (!result.product?.id) throw new Error("El proveedor no devolvió un ID de producto");
         if (result.skipped) skipped += 1;
         else if (result.updated) updated += 1;
         else imported += 1;
+        lastSaved = {
+          id: String(result.product.id),
+          name: String(result.product.name || product.name),
+          status: String(result.product.status || "draft"),
+          outcome: result.reason === "archived_duplicate" ? "archived" :
+            result.skipped ? "existing" : result.updated ? "updated" : "created",
+        };
         completedIds.push(product.id);
       } catch {
         errors += 1;
@@ -557,6 +641,14 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
     }
 
     setSourceImporting(false);
+    if (lastSaved) {
+      try {
+        const lookup = await backendApi.getCommerceProduct(lastSaved.id);
+        if (lookup.product && String(lookup.product.id) === lastSaved.id) {
+          setSavedSourceProduct(lastSaved);
+        } else toast.warning("No se pudo localizar el último producto en el catálogo");
+      } catch { toast.warning("Se importaron productos, pero no pudimos comprobar el último registro"); }
+    }
     if (errors) {
       toast.warning("Importación terminada: " + imported + " nuevos, " + updated + " reparados, " + skipped + " ya existentes y " + errors + " con error");
     } else {
@@ -725,33 +817,49 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
       toast.error("No hay productos para importar");
       return;
     }
-
-    const existingProducts = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-    const startId = Date.now();
-
-    const newProducts = drafts.map((draft, index) => ({
-      id: startId + index,
-      name: draft.name.trim() || draft.family,
-      description: draft.description.trim() || "Producto de floristería seleccionado para Herencia Market.",
-      price: Number(draft.price || 0),
-      category: draft.category,
-      department: draft.department,
-      area: draft.area,
-      family: draft.family,
-      subcategory: draft.family,
-      image: draft.image,
-      images: draft.images?.length ? draft.images : [draft.image],
-      featured: draft.featured,
-      onSale: false,
-      active: draft.active,
-    }));
-
-    await backendStorage.setItem("adminProducts", JSON.stringify([...existingProducts, ...newProducts]));
-    window.dispatchEvent(new Event("storage"));
-
-    toast.success(`✅ ${newProducts.length} productos importados al admin`);
-    setDrafts([]);
-    onBack();
+    // The visible catalog is stored in Neon commerce_products, not in the
+    // legacy adminProducts storage key. Persist each product to the same
+    // backend read by Productos → Ver productos.
+    setSourceImporting(true);
+    const failed: ProductDraft[] = [];
+    let saved = 0;
+    let lastId = "";
+    for (const draft of drafts) {
+      try {
+        const response = await backendApi.createCommerceProduct({
+          name: draft.name.trim() || draft.family,
+          description: draft.description.trim() || "Artículo importado para revisar antes de publicar.",
+          price: Number(draft.price || 0),
+          collection: draft.category.startsWith("plantas") ? "plantas" : "jardineria",
+          category: draft.category,
+          department: draft.department,
+          area: draft.area,
+          family: draft.family,
+          subcategory: draft.family,
+          image: draft.image,
+          images: draft.images?.length ? draft.images : [draft.image],
+          featured: draft.featured,
+          onSale: false,
+          active: draft.active,
+          status: draft.active ? "active" : "draft",
+          stock: 0,
+        });
+        if (!response.product?.id) throw new Error("No se confirmó el guardado");
+        saved += 1;
+        lastId = String(response.product.id);
+      } catch {
+        failed.push(draft);
+      }
+    }
+    setSourceImporting(false);
+    setDrafts(failed);
+    if (failed.length) {
+      toast.warning(`${saved} guardados en Productos y ${failed.length} sin guardar. Los fallidos siguen aquí para reintentar.`);
+    } else {
+      toast.success(`${saved} artículos guardados en Productos → Ver productos`);
+      if (saved === 1 && lastId) onOpenProduct(lastId);
+      else onBack();
+    }
   };
 
   return (
@@ -805,11 +913,11 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
             <button
               type="button"
               onClick={importProducts}
-              disabled={!drafts.length || isClassifying}
+              disabled={!drafts.length || isClassifying || sourceImporting}
               className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Importar productos
+              {sourceImporting ? "Guardando en Productos..." : "Importar productos"}
             </button>
           </div>
         </div>
@@ -830,7 +938,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input
               value={sourceUrl}
-              onChange={(event) => setSourceUrl(event.target.value)}
+              onChange={(event) => { setSourceUrl(event.target.value); setSourceManual(null); setSavedSourceProduct(null); }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !sourceLoading && !sourceImporting && !sourceSavingMedia && !repairingImported) {
                   event.preventDefault();
@@ -862,6 +970,43 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
             </button>
           </div>
 
+          {savedSourceProduct && (
+            <div role="status" className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <p className="font-bold">{savedSourceProduct.outcome === "archived" ? "Ya existe en la Papelera" :
+                savedSourceProduct.outcome === "existing" ? "Ya estaba importado" :
+                savedSourceProduct.outcome === "updated" ? "Borrador actualizado" : "Producto guardado en el catálogo"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{savedSourceProduct.name} · ID: {savedSourceProduct.id} · {savedSourceProduct.status}</p>
+              <button type="button" onClick={() => onOpenProduct(savedSourceProduct.id)}
+                className="mt-3 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">
+                {savedSourceProduct.outcome === "archived" ? "Abrir en Papelera" : "Ver y editar este producto"}
+              </button>
+            </div>
+          )}
+          {sourceManual && (
+            <div className="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+              <p className="font-bold">El proveedor no permite importar automáticamente esta ficha</p>
+              <p className="text-sm">{sourceManual.reason}</p>
+              <p className="text-sm">Puedes crear un borrador privado. Aún NO es una integración de pedidos con AliExpress.</p>
+              <a className="inline-block text-sm font-semibold underline" href={sourceManual.url} target="_blank" rel="noopener noreferrer">Abrir producto en la web del proveedor</a>
+              <div className="grid gap-3 md:grid-cols-2">
+                <input value={sourceManualName} onChange={(event) => setSourceManualName(event.target.value)}
+                  placeholder="Nombre REAL del producto" aria-label="Nombre del producto"
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2.5" />
+                <input type="number" min="0" step="0.01" value={sourceManualCost} onChange={(event) => setSourceManualCost(event.target.value)}
+                  placeholder="Coste proveedor en EUR (opcional)" aria-label="Coste proveedor"
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2.5" />
+                <input type="url" value={sourceManualImage} onChange={(event) => setSourceManualImage(event.target.value)}
+                  placeholder="URL directa de la foto (opcional)" aria-label="URL de fotografía"
+                  className="md:col-span-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5" />
+              </div>
+              <button type="button" onClick={() => void saveSourceManualDraft()}
+                disabled={sourceManualSaving || !sourceManualName.trim()}
+                className="rounded-lg bg-amber-900 px-4 py-2.5 font-bold text-white disabled:opacity-50">
+                {sourceManualSaving ? "Guardando…" : "Guardar borrador en Productos"}
+              </button>
+              <p className="text-xs">Si no añades una imagen, quedará pendiente de fotografía. No se publicará ni realizará compras automáticas.</p>
+            </div>
+          )}
           {sourceProducts.length > 0 && (
             <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-background">
               <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -903,7 +1048,7 @@ export function AdminBulkProductImport({ onBack }: { onBack: () => void }) {
                     {sourceSavingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                     {sourceSavingMedia
                       ? "Guardando fotos " + sourceProgress.done + "/" + sourceProgress.total
-                      : "Guardar " + selectedSourceImageCount + " foto" + (selectedSourceImageCount === 1 ? "" : "s") + " en biblioteca"}
+                      : "Solo guardar " + selectedSourceImageCount + " foto" + (selectedSourceImageCount === 1 ? "" : "s") + " (NO crea producto)"}
                   </button>
                   <button
                     type="button"

@@ -147,7 +147,13 @@ function makeEditVariant(): EditVariant {
   };
 }
 
-export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
+export function AdminProducts({
+  onAddNew, focusProductId, onFocusHandled,
+}: {
+  onAddNew: () => void;
+  focusProductId?: string | null;
+  onFocusHandled?: () => void;
+}) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -207,6 +213,24 @@ export function AdminProducts({ onAddNew }: { onAddNew: () => void }) {
   useEffect(() => {
     void loadProducts();
   }, []);
+
+  // The import screens open the exact persisted item instead of leaving the
+  // merchant guessing which category or page contains the new draft.
+  useEffect(() => {
+    if (loading || !focusProductId) return;
+    const matched = products.find((product) => String(product.id) === String(focusProductId));
+    onFocusHandled?.();
+    if (!matched) {
+      toast.error("No se ha encontrado el producto importado en el catálogo");
+      return;
+    }
+    setCollectionFilter("todos");
+    setSearch(String(matched.name || ""));
+    const inTrash = matched.status === "archived" || Boolean(matched.deletedAt);
+    setShowTrash(inTrash);
+    if (!inTrash) startEdit(matched);
+    else toast.info("Ese producto ya existe en la Papelera. Revísalo allí antes de importar de nuevo.");
+  }, [focusProductId, loading, products]);
 
   const visibleProducts = useMemo(() => {
     const query = search.trim().toLowerCase();

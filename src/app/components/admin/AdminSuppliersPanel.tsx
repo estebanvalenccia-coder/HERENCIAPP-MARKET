@@ -66,7 +66,7 @@ function fulfillmentBadge(status = "") {
   return normalized || "pendiente";
 }
 
-export function AdminSuppliersPanel() {
+export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (productId: string) => void }) {
   const [operations, setOperations] = useState<any>({ suppliers: [], purchases: [], supplierFulfillments: [] });
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
@@ -97,6 +97,7 @@ export function AdminSuppliersPanel() {
   const [manualCurrency, setManualCurrency] = useState("EUR");
   const [manualImageUrl, setManualImageUrl] = useState("");
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [savedImport, setSavedImport] = useState<{ id: string; name: string; status: string; outcome: string } | null>(null);
   const [importSearch, setImportSearch] = useState("");
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
@@ -246,6 +247,11 @@ export function AdminSuppliersPanel() {
 
   const saveSupplier = async () => {
     if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
+    const aliExpressHost = normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com";
+    const cannotAutopilot = form.integrationType === "manual" || aliExpressHost;
+    if (form.fulfillmentMode === "autopilot" && cannotAutopilot) {
+      return toast.error("AliExpress y los proveedores manuales no tienen un conector de pedidos autorizado. Usa el modo Manual.");
+    }
     try {
       const result = await backendApi.savePosSupplier(form);
       setOperations(result.operations || operations);
@@ -313,27 +319,29 @@ export function AdminSuppliersPanel() {
   };
 
   const saveImportedCandidate = async (candidate: any, wasManual = false) => {
-      const result = await backendApi.importCatalogUrlProduct(candidate);
-      const imported = result.product;
-      if (!imported) {
-        setImportFeedback({ ok: false, message: result.skipped ? "Este producto ya estaba importado." : "No se pudo guardar el borrador." });
-        if (result.skipped) toast.info("Ese producto ya estaba importado");
-        else toast.warning("La ficha fue analizada pero no se pudo crear el borrador");
-        await load();
-        return;
-      }
+    setSavedImport(null);
+    const result = await backendApi.importCatalogUrlProduct(candidate);
+    const imported = result.product;
+    if (!result.ok || !imported?.id) {
+      throw new Error("El servidor no confirmó dónde se ha guardado el artículo.");
+    }
 
+    // Existing products must not be re-linked or presented as newly created.
+    const existing = Boolean(result.skipped);
+    if (!existing) {
       const sourceHost = normalizedSupplierDomain(String(candidate.sourceHost || ""));
       const matchedSupplier = suppliers.find((supplier: any) =>
         normalizedSupplierDomain(String(supplier?.sourceHost || "")) === sourceHost
       );
-
       if (matchedSupplier) {
         const metadata = imported?.metadata && typeof imported.metadata === "object" ? imported.metadata : {};
         const sourceCurrency = String(candidate.supplierCurrency || metadata.supplierCurrency || "").toUpperCase();
         const detectedCost = (!sourceCurrency || sourceCurrency === "EUR")
           ? Number(metadata.supplierCost || candidate.supplierPrice || 0)
           : 0;
+        // A supplier record alone is NOT a working AliExpress/Alibaba connector.
+        const supportsAutomaticOrders = matchedSupplier.integrationType === "cj" &&
+          matchedSupplier.fulfillmentMode === "autopilot" && !wasManual;
         await backendApi.updateCommerceProduct(imported.id, {
           metadata: {
             ...metadata,
@@ -341,7 +349,7 @@ export function AdminSuppliersPanel() {
             manuallyReviewedImport: wasManual,
             fulfillmentType: "dropship",
             supplierId: matchedSupplier.id,
-            fulfillmentMode: wasManual ? "manual" : (matchedSupplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual"),
+            fulfillmentMode: supportsAutomaticOrders ? "autopilot" : "manual",
             supplierCost: detectedCost,
             supplierOriginalPrice: Number(candidate.supplierPrice || metadata.supplierOriginalPrice || 0),
             supplierCurrency: sourceCurrency,
@@ -351,28 +359,51 @@ export function AdminSuppliersPanel() {
           trackInventory: false,
         });
       }
+    }
 
+    // Verify the persisted item before saying "saved" to the merchant.
+    const confirmation = await backendApi.getCommerceProduct(imported.id);
+    const confirmedProduct = confirmation.product;
+    if (!confirmedProduct || String(confirmedProduct.id) !== String(imported.id)) {
+      throw new Error("La importación respondió, pero no pudimos encontrar el borrador guardado en el catálogo.");
+    }
+
+    const inTrash = confirmedProduct.status === "archived" || Boolean(confirmedProduct.deletedAt);
+    const outcome = inTrash ? "archived" : existing ? "existing" : result.updated ? "updated" : "created";
+    setSavedImport({
+      id: String(confirmedProduct.id),
+      name: String(confirmedProduct.name || candidate.name || "Producto"),
+      status: String(confirmedProduct.status || "draft"),
+      outcome,
+    });
+    setImportSearch(String(confirmedProduct.name || candidate.name || ""));
+    setOnlyCjImports(false);
+    const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
+    const labels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
+    const prefix = inTrash ? "El producto ya existe en la Papelera."
+      : existing ? "Este enlace ya tenía un producto guardado."
+      : result.updated ? "Borrador existente actualizado." : "Borrador creado en Productos → Ver productos.";
+    setImportFeedback({
+      ok: !inTrash,
+      message: prefix + (missing.length ? " Pendiente: " + missing.map((field) => labels[field] || field).join(", ") + "." : "") +
+        " No se enviará automáticamente ningún pedido a AliExpress.",
+    });
+    if (result.imageImportWarning) toast.warning(result.imageImportWarning);
+    toast.info(inTrash ? "El artículo está en Papelera; revísalo antes de volver a importar." : prefix);
+    if (!existing && !inTrash) {
       setImportUrl("");
       setManualImport(null);
       setManualName("");
       setManualCost("");
       setManualImageUrl("");
-      const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
-      const labels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
-      if (result.imageImportWarning) toast.warning(result.imageImportWarning);
-      setImportFeedback({
-        ok: true,
-        message: "Borrador guardado: " + candidate.name + ". " +
-          (missing.length
-            ? "Falta completar: " + missing.map((field) => labels[field] || field).join(", ") + ". No publiques todavía."
-            : "Imágenes copiadas. Revisa precio de venta, variantes y envío antes de publicar."),
-      });
-      toast.success(
-        matchedSupplier
-          ? "Producto importado y vinculado con " + matchedSupplier.name + " (compra automática no verificada)"
-          : "Producto importado como borrador. Ahora asígnale proveedor y coste."
-      );
-      await load();
+    }
+    try {
+      const refreshed = await backendApi.listCommerceProducts({ includeArchived: true });
+      setProducts(Array.isArray(refreshed.products) ? refreshed.products : []);
+    } catch {
+      // The confirmed product still remains accessible via the card above.
+    }
+    return confirmedProduct;
   };
 
   const importProductByUrl = async () => {
@@ -386,6 +417,7 @@ export function AdminSuppliersPanel() {
     }
 
     setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
+    setSavedImport(null);
     setImportingUrl(true);
     setManualImport(null);
     setManualName("");
@@ -490,6 +522,11 @@ export function AdminSuppliersPanel() {
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
     if (!supplier) return toast.error("Proveedor no encontrado");
+    const isAliExpress = normalizedSupplierDomain(sourceHostFromProduct(product)) === "aliexpress.com" ||
+      normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com";
+    if (mode === "autopilot" && (isAliExpress || !["cj", "webhook"].includes(String(supplier.integrationType || "")))) {
+      return toast.error("No hay integración de pedidos automática para este proveedor. Conecta el producto en modo Manual.");
+    }
 
     setSavingProductId(String(product.id));
     try {
@@ -835,6 +872,20 @@ export function AdminSuppliersPanel() {
         </div>
       )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
+      {savedImport && (
+        <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-4" role="status">
+          <p className="font-bold text-foreground">
+            {savedImport.outcome === "archived" ? "Producto localizado en la Papelera" :
+              savedImport.outcome === "existing" ? "Producto ya existente, localizado" :
+              savedImport.outcome === "updated" ? "Borrador actualizado y verificado" : "Borrador guardado y verificado"}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{savedImport.name} · ID: {savedImport.id} · Estado: {savedImport.status}</p>
+          <button type="button" onClick={() => onOpenProduct(savedImport.id)}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">
+            <PackagePlus className="h-4 w-4" />{savedImport.outcome === "archived" ? "Abrir en Papelera" : "Ver y editar este producto"}
+          </button>
+        </div>
+      )}
       <p className="mt-3 text-xs text-muted-foreground">
         La importación queda en borrador para que revises precio, descripción, variantes e imágenes antes de publicar.
       </p>
@@ -1330,7 +1381,7 @@ function ImportedProductRow({
     </select>
     <select value={mode} onChange={(e)=>setMode(e.target.value as SupplierMode)} className="rounded-xl border border-border bg-background p-3 text-sm">
       <option value="manual">🖱️ Manual</option>
-      <option value="autopilot">🤖 Autopilot</option>
+      <option value="autopilot" disabled={normalizedSupplierDomain(sourceHost) === "aliexpress.com" || !["cj", "webhook"].includes(String(selectedSupplier?.integrationType || ""))}>🤖 Autopilot (conector real)</option>
     </select>
     <label className="rounded-xl border border-border px-3 py-2">
       <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor (€)</span>
@@ -1345,6 +1396,7 @@ function ImportedProductRow({
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
+    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación MANUAL. Aún no hay conexión DSers/API para crear, pagar o rastrear pedidos automáticamente.</p>}
     {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
