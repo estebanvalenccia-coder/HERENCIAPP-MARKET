@@ -534,7 +534,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
   const updateSupplierHubItems = async (ids: string[], action: "hide" | "show" | "unlink" | "archive") => {
     if (bulkImportBusy || !ids.length) return;
-    const items = importedProducts.filter((product: any) => ids.includes(String(product.id)) && !suspiciousImportedProduct(product));
+    // Only act on currently visible rows: changing tabs or filters must not
+    // accidentally modify products from another supplier.
+    const visibleIds = new Set(visibleImports.map(product => String(product.id)));
+    const items = importedProducts.filter((product: any) =>
+      ids.includes(String(product.id)) && visibleIds.has(String(product.id)) && !suspiciousImportedProduct(product));
     if (!items.length) return toast.error("No hay productos seleccionados.");
     const warnings: Record<typeof action, string> = {
       hide: "Ocultar en Proveedores NO elimina ni despublica los productos.",
@@ -1114,7 +1118,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             ))}
           </div>
           <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-muted/20 p-3">
-            <input value={importSearch} onChange={event => setImportSearch(event.target.value)}
+            <input value={importSearch} onChange={event => { setImportSearch(event.target.value); setSelectedImportIds([]); }}
               placeholder="Buscar producto, SKU o URL" aria-label="Buscar productos importados"
               className="min-w-[160px] flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
             <select value={sourceFilter} onChange={event => { setSourceFilter(event.target.value); setSelectedImportIds([]); }}
@@ -1123,7 +1127,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               {availableSourceHosts.map(host => <option key={host} value={host.toLowerCase()}>{host}</option>)}
             </select>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={onlyCjImports} onChange={event => setOnlyCjImports(event.target.checked)}/>
+              <input type="checkbox" checked={onlyCjImports} onChange={event => { setOnlyCjImports(event.target.checked); setSelectedImportIds([]); }}/>
               Solo CJdropshipping
             </label>
             <span className="self-center text-xs text-muted-foreground">{visibleImports.length} resultados</span>
@@ -1140,9 +1144,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 text-sm font-semibold">
               <input type="checkbox" disabled={bulkImportBusy || !visibleImports.length}
-                checked={visibleImports.length > 0 && visibleImports.every(product => selectedImportIds.includes(String(product.id)))}
-                onChange={event => setSelectedImportIds(event.target.checked ? visibleImports.map(product => String(product.id)) : [])}/>
-              Seleccionar visibles ({selectedImportIds.length})
+                checked={visibleImports.length > 0 && visibleImports.slice(0, 50).every(product => selectedImportIds.includes(String(product.id)))}
+                onChange={event => setSelectedImportIds(event.target.checked ? visibleImports.slice(0, 50).map(product => String(product.id)) : [])}/>
+              Seleccionar hasta 50 visibles ({selectedImportIds.length})
             </label>
             {selectedImportIds.length > 0 && (
               <>
