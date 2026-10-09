@@ -5989,8 +5989,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   return { fulfillment: updated, executed: true, manual: false };
 }
 
-function supplierConnectorAuthorized(req) {
-  const expected = String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_TOKEN || "");
+function supplierConnectorAuthorized(req, expectedToken = "") {
+  const expected = String(expectedToken || "");
   if (!expected) return false;
   const auth = String(req.headers?.authorization || "");
   const provided = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
@@ -6000,7 +6000,6 @@ function supplierConnectorAuthorized(req) {
 }
 
 app.post("/api/supplier-autopilot/webhook", async (req, res) => {
-  if (!supplierConnectorAuthorized(req)) return res.status(401).json({ error: "Firma de conector no válida" });
   if (!requirePrimaryDatabase(res)) return;
   try {
     const id = String(req.body?.fulfillmentId || req.body?.id || "").trim();
@@ -6010,6 +6009,14 @@ app.post("/api/supplier-autopilot/webhook", async (req, res) => {
     if (index < 0) return res.status(404).json({ error: "Preparación de proveedor no encontrada" });
 
     const previous = operations.supplierFulfillments[index];
+    const supplier = (operations.suppliers || []).find((row) => String(row?.id || "") === String(previous.supplierId || ""));
+    const connector = resolveSupplierWebhookConnector(supplier);
+    // For keyed connectors the callback MUST use that exact supplier's token.
+    // A global legacy token cannot update another supplier's orders.
+    const authorized = supplier && connector.configured &&
+      supplierConnectorAuthorized(req, connector.token) &&
+      (connector.legacy || supplierConnectorReadiness(supplier, process.env, crypto.createHash).automaticOrders);
+    if (!authorized) return res.status(401).json({ error: "Firma de conector no válida" });
     const allowed = new Set(["ordered", "shipped", "delivered", "cancelled", "action_required"]);
     const incomingStatus = String(req.body?.status || previous.status);
     const status = allowed.has(incomingStatus) ? incomingStatus : previous.status;
