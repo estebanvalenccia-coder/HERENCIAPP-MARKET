@@ -825,6 +825,19 @@ export const backendApi = {
     });
   },
 
+  async listSupplierConnectorStatuses() {
+    return request<{
+      connectors: Array<{ supplierId: string; type: string; state: string; automaticOrders: boolean; reason: string }>;
+    }>("/api/admin/suppliers/connector-status");
+  },
+
+  async testSupplierConnector(supplierId: string) {
+    return request<{ ok: boolean; status: string; testedAt: string; capabilities: { orders: boolean } }>(
+      `/api/admin/suppliers/${encodeURIComponent(supplierId)}/test-connector`,
+      { method: "POST", body: "{}" }
+    );
+  },
+
   async listSupplierFulfillments() {
     return request<{
       fulfillments: any[];
