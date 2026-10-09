@@ -380,6 +380,9 @@ export function AdminSuppliersPanel() {
     setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
     setImportingUrl(true);
     setManualImport(null);
+    setManualName("");
+    setManualImageUrl("");
+    setManualCost("");
     try {
       const preview = await backendApi.previewCatalogUrl(url, 1);
       if (preview.requiresManual) {
@@ -388,7 +391,7 @@ export function AdminSuppliersPanel() {
           sourceHost: normalizedSupplierDomain(preview.sourceHost || new URL(url).hostname),
           reason: preview.message || "El proveedor no permite importar automáticamente la ficha.",
         });
-        setImportFeedback({ ok: true, message: "Puedes guardarlo como borrador manual. No se publicará ni se comprará automáticamente." });
+        setImportFeedback({ ok: false, message: "La ficha no se pudo importar por completo. Se requiere revisión manual; no se publicará ni se comprará automáticamente." });
         return;
       }
       const candidate = Array.isArray(preview.products) ? preview.products[0] : null;
@@ -397,8 +400,32 @@ export function AdminSuppliersPanel() {
         toast.error("No se pudo detectar el producto en esa URL");
         return;
       }
+      const automaticImages = Array.isArray(candidate.images) && candidate.images.length > 0
+        ? candidate.images : candidate.image ? [candidate.image] : [];
+      if (!automaticImages.length) {
+        setManualImport({
+          url: candidate.productUrl || url,
+          sourceHost: normalizedSupplierDomain(candidate.sourceHost || new URL(url).hostname),
+          reason: "La página no proporcionó ninguna fotografía válida. Completa y verifica el borrador manualmente.",
+        });
+        setManualName(String(candidate.name || ""));
+        setImportFeedback({ ok: false, message: "No se ha guardado una importación incompleta. Revisa nombre, coste e imagen." });
+        return;
+      }
       setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
-      await saveImportedCandidate(candidate, false);
+      try {
+        await saveImportedCandidate(candidate, false);
+      } catch (saveError: any) {
+        const message = String(saveError?.message || "");
+        if (!/copiar ninguna imagen|copiar las imágenes|cloudflare r2/i.test(message)) throw saveError;
+        setManualImport({
+          url: candidate.productUrl || url,
+          sourceHost: normalizedSupplierDomain(candidate.sourceHost || new URL(url).hostname),
+          reason: "Detectamos el producto, pero el proveedor impidió guardar sus fotografías en la biblioteca. Puedes completar un borrador manual.",
+        });
+        setManualName(String(candidate.name || ""));
+        setImportFeedback({ ok: false, message: "Las imágenes no se pudieron guardar. Revisa el borrador manual antes de publicarlo." });
+      }
     } catch (error: any) {
       const message = String(error?.message || "No se pudo importar el producto desde esa URL");
       setImportFeedback({ ok: false, message });
@@ -410,6 +437,9 @@ export function AdminSuppliersPanel() {
 
   const saveManualImport = async () => {
     if (!manualImport || !manualName.trim()) return toast.error("Escribe el nombre del producto");
+    if (/^(human verification|human machine check|verify you are human|just a moment|access denied|security verification|captcha)(?:\b|[\s.:|—-])/i.test(manualName.trim())) {
+      return toast.error("Esa es una página de verificación del proveedor, no un producto");
+    }
     const amount = Number(manualCost);
     if (manualCost.trim() && (!Number.isFinite(amount) || amount < 0)) return toast.error("Revisa el coste del proveedor");
     if (manualImageUrl.trim()) {
@@ -777,6 +807,7 @@ export function AdminSuppliersPanel() {
           <p className="font-semibold">Este proveedor no permite leer su ficha automáticamente</p>
           <p>{manualImport.reason}</p>
           <p>Guardaremos un borrador privado: no se publica, no se compra ni se sincroniza con el proveedor hasta que lo revises.</p>
+          <a href={manualImport.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold underline"><ExternalLink className="h-4 w-4"/>Abrir ficha original del proveedor</a>
           <div className="grid gap-3 md:grid-cols-2">
             <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Nombre del producto (obligatorio)" aria-label="Nombre del producto" className="rounded-lg border border-amber-200 bg-white p-3" />
             <input value={manualCost} onChange={(e) => setManualCost(e.target.value)} type="number" min="0" step="0.01" placeholder="Coste del proveedor (opcional)" aria-label="Coste del proveedor" className="rounded-lg border border-amber-200 bg-white p-3" />
@@ -786,7 +817,7 @@ export function AdminSuppliersPanel() {
             <input value={manualImageUrl} onChange={(e) => setManualImageUrl(e.target.value)} type="url" placeholder="URL de imagen (opcional)" aria-label="URL de imagen" className="rounded-lg border border-amber-200 bg-white p-3" />
           </div>
           <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
-          <p className="text-xs">Si el proveedor bloquea las imágenes, podrás subirlas después desde la biblioteca de Herencia Market. Una URL no habilita la compra automática.</p>
+          <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Ninguna fotografía se puede extraer de una página de verificación: añade una URL pública de imagen válida o súbela más tarde desde la biblioteca. Una URL no habilita la compra automática.</p>
         </div>
       )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
