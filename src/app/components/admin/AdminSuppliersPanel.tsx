@@ -247,6 +247,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
   const saveSupplier = async () => {
     if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
+    const aliExpressHost = normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com";
+    const cannotAutopilot = form.integrationType === "manual" || aliExpressHost;
+    if (form.fulfillmentMode === "autopilot" && cannotAutopilot) {
+      return toast.error("AliExpress y los proveedores manuales no tienen un conector de pedidos autorizado. Usa el modo Manual.");
+    }
     try {
       const result = await backendApi.savePosSupplier(form);
       setOperations(result.operations || operations);
@@ -517,6 +522,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     if (!supplierId) return toast.error("Selecciona un proveedor");
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
     if (!supplier) return toast.error("Proveedor no encontrado");
+    const isAliExpress = normalizedSupplierDomain(sourceHostFromProduct(product)) === "aliexpress.com" ||
+      normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com";
+    if (mode === "autopilot" && (isAliExpress || !["cj", "webhook"].includes(String(supplier.integrationType || "")))) {
+      return toast.error("No hay integración de pedidos automática para este proveedor. Conecta el producto en modo Manual.");
+    }
 
     setSavingProductId(String(product.id));
     try {
@@ -1371,7 +1381,7 @@ function ImportedProductRow({
     </select>
     <select value={mode} onChange={(e)=>setMode(e.target.value as SupplierMode)} className="rounded-xl border border-border bg-background p-3 text-sm">
       <option value="manual">🖱️ Manual</option>
-      <option value="autopilot">🤖 Autopilot</option>
+      <option value="autopilot" disabled={normalizedSupplierDomain(sourceHost) === "aliexpress.com" || !["cj", "webhook"].includes(String(selectedSupplier?.integrationType || ""))}>🤖 Autopilot (conector real)</option>
     </select>
     <label className="rounded-xl border border-border px-3 py-2">
       <span className="block text-[11px] font-semibold text-muted-foreground">Coste proveedor (€)</span>
@@ -1386,6 +1396,7 @@ function ImportedProductRow({
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
+    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación MANUAL. Aún no hay conexión DSers/API para crear, pagar o rastrear pedidos automáticamente.</p>}
     {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
