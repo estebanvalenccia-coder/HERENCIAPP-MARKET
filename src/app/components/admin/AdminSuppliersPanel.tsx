@@ -5,6 +5,10 @@ import {
   Building2,
   CheckCircle2,
   ExternalLink,
+  EyeOff,
+  Eye,
+  Trash2,
+  Unlink2,
   Link2,
   MousePointerClick,
   PackagePlus,
@@ -17,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
+import { SupplierImportImages } from "./SupplierImportImages";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -96,9 +101,16 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [manualCost, setManualCost] = useState("");
   const [manualCurrency, setManualCurrency] = useState("EUR");
   const [manualImageUrl, setManualImageUrl] = useState("");
+  const [manualUploadedImages, setManualUploadedImages] = useState<string[]>([]);
+  const [manualUploading, setManualUploading] = useState(false);
   const [importFeedback, setImportFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [savedImport, setSavedImport] = useState<{ id: string; name: string; status: string; outcome: string } | null>(null);
   const [importSearch, setImportSearch] = useState("");
+  const [showImportedProducts, setShowImportedProducts] = useState(false);
+  const [importTab, setImportTab] = useState<"pending" | "connected" | "hidden">("pending");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
@@ -161,26 +173,32 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     }), [products]
   );
   const suspectImports = importedProducts.filter(suspiciousImportedProduct);
+  const importState = (product: any): "pending" | "connected" | "hidden" => {
+    const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    if (metadata.supplierHubHidden) return "hidden";
+    return metadata.supplierId ? "connected" : "pending";
+  };
+  const importCounts = {
+    pending: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "pending").length,
+    connected: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "connected").length,
+    hidden: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "hidden").length,
+  };
+  const availableSourceHosts = [...new Set(importedProducts.map(sourceHostFromProduct).filter(Boolean))].sort();
   const visibleImports = useMemo(() => {
     const searchText = importSearch.trim().toLocaleLowerCase("es");
     return importedProducts.filter((product: any) => {
       if (suspiciousImportedProduct(product)) return false;
-      if (onlyCjImports && !sourceHostFromProduct(product).toLowerCase().endsWith("cjdropshipping.com")) return false;
+      if (importState(product) !== importTab) return false;
+      const host = sourceHostFromProduct(product).toLowerCase();
+      if (sourceFilter !== "all" && host !== sourceFilter) return false;
+      if (onlyCjImports && !host.endsWith("cjdropshipping.com")) return false;
       if (!searchText) return true;
       const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : product;
       return [product.name, product.sku, metadata.sourceProductUrl, metadata.supplierProductId, metadata.supplierSku]
         .some((part) => String(part || "").toLocaleLowerCase("es").includes(searchText));
-    }).sort((first: any, second: any) => {
-      const score = (product: any) => {
-        const host = sourceHostFromProduct(product).toLowerCase();
-        const name = String(product.name || "").toLowerCase();
-        return (host.endsWith("cjdropshipping.com") ? 100 : 0) +
-          (name.includes("garden irrigation controller") ? 200 : 0) +
-          (product.metadata?.supplierId ? 30 : 0);
-      };
-      return score(second) - score(first);
-    });
-  }, [importedProducts, importSearch, onlyCjImports]);
+    }).sort((first: any, second: any) =>
+      String(first.name || "").localeCompare(String(second.name || ""), "es"));
+  }, [importedProducts, importSearch, onlyCjImports, importTab, sourceFilter]);
 
   const existingMatches = products.filter((product: any) => {
     if (String(product.status || "") === "archived") return false;
@@ -378,6 +396,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     });
     setImportSearch(String(confirmedProduct.name || candidate.name || ""));
     setOnlyCjImports(false);
+    setShowImportedProducts(false);
+    setSelectedImportIds([]);
     const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
     const labels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
     const prefix = inTrash ? "El producto ya existe en la Papelera."
@@ -396,6 +416,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       setManualName("");
       setManualCost("");
       setManualImageUrl("");
+      setManualUploadedImages([]);
     }
     try {
       const refreshed = await backendApi.listCommerceProducts({ includeArchived: true });
@@ -422,6 +443,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     setManualImport(null);
     setManualName("");
     setManualImageUrl("");
+    setManualUploadedImages([]);
     setManualCost("");
     try {
       const preview = await backendApi.previewCatalogUrl(url, 1);
@@ -488,6 +510,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         if (!["http:", "https:"].includes(media.protocol)) throw new Error("protocol");
       } catch { return toast.error("La URL de la imagen no es válida"); }
     }
+    if (manualUploading) return toast.warning("Espera a que las fotografías terminen de guardarse.");
     setImportingUrl(true);
     try {
       await saveImportedCandidate({
@@ -498,7 +521,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         supplierPrice: Number.isFinite(amount) && amount > 0 ? amount : 0,
         supplierCurrency: manualCurrency,
         description: "",
-        images: manualImageUrl.trim() ? [manualImageUrl.trim()] : [],
+        images: [...new Set([...manualUploadedImages, ...(manualImageUrl.trim() ? [manualImageUrl.trim()] : [])])],
         manualImport: true,
       }, true);
     } catch (error: any) {
@@ -867,7 +890,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               <span className="text-xs">Verifica que aparece la foto real del producto y no un CAPTCHA ni un logotipo.</span>
             </div>
           )}
-          <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
+          <SupplierImportImages images={manualUploadedImages} onChange={setManualUploadedImages} onBusyChange={setManualUploading} disabled={importingUrl}/>
+          <button type="button" disabled={importingUrl || manualUploading || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : manualUploading ? "Copiando fotos…" : (manualUploadedImages.length || manualImageUrl.trim()) ? "Guardar borrador con fotos" : "Guardar borrador SIN fotos"}</button>
           <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Abre la ficha original, haz clic derecho sobre la fotografía → «Copiar dirección de imagen» y pega esa URL arriba. Herencia intentará copiarla a la biblioteca. Si la foto está protegida, súbela manualmente después. No habilita la compra automática.</p>
         </div>
       )}
