@@ -5757,8 +5757,9 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
   const allCostsKnown = (record.items || []).every((item) => Number(item?.supplierCost || 0) > 0);
-  // force never overrides missing CJ costs, mismatched mapping or a negative margin.
-  if (!allCostsKnown && (integrationType === "cj" || !force)) {
+  // Strict newly registered connectors must never bypass costs via the force flag.
+  const strictWebhook = integrationType === "webhook" && Boolean(supplier.connectorKey);
+  if (!allCostsKnown && (integrationType === "cj" || strictWebhook || !force)) {
     const updated = { ...record, status: "cost_required", blocker: "Falta el coste proveedor de uno o más productos.", updatedAt: now };
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
@@ -5766,7 +5767,7 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   }
 
   const maxAutoOrderTotal = normalizeMoney(supplier.maxAutoOrderTotal || 0);
-  if (!force && maxAutoOrderTotal > 0 && Number(record.estimatedCost || 0) > maxAutoOrderTotal) {
+  if ((!force || strictWebhook) && maxAutoOrderTotal > 0 && Number(record.estimatedCost || 0) > maxAutoOrderTotal) {
     const updated = { ...record, status: "approval_required", blocker: "Supera el límite automático configurado.", updatedAt: now };
     operations.supplierFulfillments[index] = updated;
     await writeSupplierOperations(operations);
@@ -5909,6 +5910,47 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
 
+  // New provider integrations require real captured customer funds, a
+  // strict cost ceiling and a durable claim BEFORE customer PII leaves Herencia.
+  // This never replaces CJ's separate approval and payment process.
+  const dispatchKey = "supplierWebhookDispatch:" + String(record.id);
+  if (strictWebhook) {
+    try {
+      if (record.status !== "autopilot_ready" || !record.orderId ||
+          !(maxAutoOrderTotal > 0) || !(record.estimatedCost > 0) ||
+          record.estimatedCost > maxAutoOrderTotal ||
+          !Array.isArray(record.items) || !record.items.length ||
+          !(Number(record.grossMarginPercent) >= Number(supplier.minMarginPercent || 0)) ||
+          !record.shippingAddress?.address || !record.shippingAddress?.city ||
+          !record.shippingAddress?.country) {
+        throw Object.assign(new Error("Revisa margen, dirección, coste, límite y estado antes de enviar al proveedor."), { statusCode: 409 });
+      }
+      const order = await getOrderPrimary(record.orderId);
+      if (!order) throw Object.assign(new Error("El pedido de Herencia no existe."), { statusCode: 409 });
+      const funding = classifyCjOrderFunding(order);
+      if (funding.freeCoupon || !(funding.total > 0)) {
+        throw Object.assign(new Error("Los pedidos financiados por cupones requieren autorización manual; no se envían automáticamente."), { statusCode: 409 });
+      }
+      await verifyCjCustomerFunding(order, funding);
+      if (!hasNeon()) throw Object.assign(new Error("Sin base de datos transaccional para asegurar envíos únicos."), { statusCode: 503 });
+      await mutateNeonStorageValue(dispatchKey, (raw) => {
+        if (String(raw || "").trim()) {
+          throw Object.assign(new Error("Este pedido ya tiene un envío de proveedor registrado. Concílialo, no lo repitas."), { statusCode: 409 });
+        }
+        return JSON.stringify({
+          fulfillmentId: record.id, supplierId: supplier.id,
+          idempotencyKey: "HERENCIA-" + record.id, state: "claimed", claimedAt: now,
+        });
+      });
+      // No automatic retry if a network response is ambiguous.
+    } catch (error) {
+      return {
+        fulfillment: { ...record, status: "approval_required", blocker: String(error.message || "Revisión necesaria").slice(0, 300) },
+        executed: false, manual: false,
+      };
+    }
+  }
+
   let response;
   let payload = {};
   try {
@@ -5919,6 +5961,7 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
         "idempotency-key": "HERENCIA-" + record.id,
         ...(connectorToken ? { authorization: "Bearer " + connectorToken } : {}),
       },
+      signal: strictWebhook ? AbortSignal.timeout(15000) : undefined,
       body: JSON.stringify({
         event: "supplier.order.create",
         idempotencyKey: "HERENCIA-" + record.id,
@@ -5950,8 +5993,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   } catch (error) {
     const updated = {
       ...record,
-      status: "action_required",
-      blocker: "El conector Autopilot no respondió.",
+      status: strictWebhook ? "supplier_dispatch_unknown" : "action_required",
+      blocker: strictWebhook ? "Respuesta ambigua del proveedor. No se repetirá la compra: concilia con el proveedor." : "El conector Autopilot no respondió.",
       lastError: String(error?.message || error).slice(0, 600),
       updatedAt: now,
     };
@@ -5963,8 +6006,8 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   if (!response.ok) {
     const updated = {
       ...record,
-      status: "action_required",
-      blocker: "El proveedor rechazó la compra automática.",
+      status: strictWebhook ? "supplier_dispatch_unknown" : "action_required",
+      blocker: strictWebhook ? "El proveedor respondió con error. No se repetirá: consulta primero si registró el pedido." : "El proveedor rechazó la compra automática.",
       lastError: String(payload?.error || payload?.message || ("HTTP " + response.status)).slice(0, 600),
       updatedAt: now,
     };
@@ -5973,6 +6016,17 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     return { fulfillment: updated, executed: false, manual: false };
   }
 
+  const verifiedExternalId = String(payload?.externalOrderId || payload?.orderId || "").trim();
+  if (strictWebhook && (!verifiedExternalId || !["ordered", "shipped", "delivered"].includes(String(payload?.status || "")))) {
+    const uncertain = {
+      ...record, status: "supplier_dispatch_unknown",
+      blocker: "Falta confirmación inequívoca del pedido y su ID externo. No se repetirá la operación.",
+      updatedAt: now,
+    };
+    operations.supplierFulfillments[index] = uncertain;
+    await writeSupplierOperations(operations);
+    return { fulfillment: uncertain, executed: false, manual: false };
+  }
   const updated = {
     ...record,
     status: String(payload?.status || "ordered"),
