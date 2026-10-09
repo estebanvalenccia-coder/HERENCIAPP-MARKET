@@ -7,6 +7,7 @@ import {
   extractProductGalleryImages,
   productDetailsFromHtml,
   normalizeSupplierHost,
+  isSupplierChallengeName,
   supportsManualCatalogFallback,
   analyzeCatalogUrl,
 } from "./catalogUrlImporter.js";
@@ -147,4 +148,52 @@ test("un producto con JSON-LD en una web pública se importa automáticamente", 
 
 test("un enlace a una red privada sigue bloqueado", async () => {
   await assert.rejects(() => analyzeCatalogUrl("http://127.0.0.1/item/1234"), /redes privadas/i);
+});
+
+test("rechaza nombres de página de verificación aunque incluyan la marca del proveedor", () => {
+  for (const name of ["Human verification", "Human verification - AliExpress", "Human machine check", "Just a moment...", "Checking your browser - Alibaba", "Access denied: captcha"]) {
+    assert.equal(isSupplierChallengeName(name), true, name);
+  }
+  assert.equal(isSupplierChallengeName("Kit de riego con verificación de humedad"), false);
+});
+
+test("una verificación que incorpora JSON-LD falso no llega a importarse", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><head><title>Human verification - AliExpress</title></head><body>' +
+    '<h1>Human machine check</h1><script type="application/ld+json">' +
+    JSON.stringify({ "@type": "Product", name: "Producto falso", image: ["https://cdn.example.com/captcha.png"] }) +
+    '</script></body></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  const result = await analyzeCatalogUrl("https://es.aliexpress.com/item/1005000000000.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, true);
+  assert.equal(result.products.length, 0);
+});
+
+test("no considera una ficha sin imágenes como importación automática exitosa", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><script type="application/ld+json">' +
+    JSON.stringify({ "@type": "Product", name: "Maceta sin foto", offers: { price: 8.9 } }) +
+    '</script></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  const result = await analyzeCatalogUrl("https://spanish.alibaba.com/product-detail/no-image.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, true);
+  assert.deepEqual(result.products, []);
+  assert.match(result.message, /fotografías|imagen/i);
+});
+
+test("un sitio con script de captcha pero producto JSON-LD válido conserva importación", async (t) => {
+  const dns = await import("node:dns/promises");
+  t.mock.method(dns.default, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
+  const html = '<html><script>var captchaEnabled=true</script><script type="application/ld+json">' +
+    JSON.stringify({ "@type": "Product", name: "Maceta con foto", image: ["https://cdn.example.com/maceta.jpg"] }) +
+    '</script></html>';
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(html, { status: 200, headers: { "content-type": "text/html" } }));
+  const result = await analyzeCatalogUrl("https://spanish.alibaba.com/product-detail/with-image.html", { maxProducts: 1 });
+  assert.equal(result.requiresManual, undefined);
+  assert.equal(result.products[0].name, "Maceta con foto");
 });
