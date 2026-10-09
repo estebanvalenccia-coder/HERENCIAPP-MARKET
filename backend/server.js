@@ -5956,6 +5956,7 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   try {
     response = await fetch(connectorUrl, {
       method: "POST",
+      redirect: "error",
       headers: {
         "content-type": "application/json",
         "idempotency-key": "HERENCIA-" + record.id,
@@ -7000,6 +7001,7 @@ app.post("/api/admin/suppliers/:id/test-connector", requireAdmin, async (req, re
     // Dry-run handshake: no customer name, address, order, inventory, or payment.
     const response = await fetch(connector.url, {
       method: "POST",
+      redirect: "error",
       headers: { "content-type": "application/json", authorization: "Bearer " + connector.token },
       body: JSON.stringify({
         event: "supplier.connector.test",
