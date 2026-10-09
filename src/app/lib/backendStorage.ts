@@ -454,6 +454,7 @@ export const backendApi = {
       product?: any;
       copiedImages?: number;
       imageImportWarning?: string;
+      missingFields?: string[];
       source?: string;
     }>("/api/admin/catalog/import-url/product", {
       method: "POST",
