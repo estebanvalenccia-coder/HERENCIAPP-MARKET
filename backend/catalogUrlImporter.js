@@ -289,7 +289,7 @@ export function extractMarketplaceGalleryImages(html, productUrl) {
   if (!["aliexpress.com", "alibaba.com", "1688.com"].includes(domain)) return [];
 
   const images = [];
-  const listPattern = /["']imagePathList["']\\s*:\\s*(\\[[^\\]]{1,30000}\\])/gi;
+  const listPattern = /["']imagePathList["']\s*:\s*(\[[^\]]{1,30000}\])/gi;
   let match;
   while ((match = listPattern.exec(String(html))) && images.length < 8) {
     let candidates = [];
@@ -298,9 +298,9 @@ export function extractMarketplaceGalleryImages(html, productUrl) {
     for (const raw of candidates) {
       if (typeof raw !== "string") continue;
       const absolute = safeAbsoluteUrl(raw.startsWith("//") ? "https:" + raw : raw, productUrl);
-      if (!absolute || !/\\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(absolute)) continue;
+      if (!absolute || !/\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(absolute)) continue;
       const host = new URL(absolute).hostname.toLowerCase();
-      if (!/(?:^|\\.)(?:alicdn\\.com|aliexpress-media\\.com|alibaba\\.com)$/.test(host)) continue;
+      if (!/(?:^|\.)(?:alicdn\.com|aliexpress-media\.com|alibaba\.com)$/.test(host)) continue;
       if (!images.includes(absolute)) images.push(absolute);
       if (images.length >= 8) break;
     }
