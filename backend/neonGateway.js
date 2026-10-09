@@ -19,7 +19,7 @@ import {
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
-import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy } from "./catalogUrlImporter.js";
+import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy, isSupplierVerificationName } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
@@ -367,7 +367,7 @@ const server=http.createServer(async(req,res)=>{try{
     const sourcePrice=Math.max(0,Number(input?.supplierPrice||input?.supplierCost||0));
     const sourceCurrency=String(input?.supplierCurrency||input?.currency||"").trim().toUpperCase().slice(0,8);
     const safeSupplierCost=(!sourceCurrency||sourceCurrency==="EUR")?sourcePrice:0;
-    if(/^(human verification|human machine check|just a moment|access denied|captcha)$/i.test(name)||/human machine check|verify you are human/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
+    if(isSupplierVerificationName(name)||/human machine check|verify you are human|security verification|checking your browser|captcha-container/i.test(String(input?.description||"").slice(0,500)))return json(res,422,{error:"El proveedor ha mostrado una verificación anti-bot, no una ficha de producto. No se importará como artículo."});
     if(!name)return json(res,400,{error:"El producto importado necesita nombre"});
     if(!sourceProductUrl)return json(res,400,{error:"Falta la URL original del producto"});
     try{const parsed=new URL(sourceProductUrl);if(!["https:","http:"].includes(parsed.protocol)||parsed.username||parsed.password||!parsed.hostname.includes("."))throw new Error("bad link");}
@@ -393,13 +393,21 @@ const server=http.createServer(async(req,res)=>{try{
       catch(error){
         // Do not discard a merchant's work just because a marketplace also blocks image downloads.
         // Keep the draft unpublished and report that the images must be uploaded by the merchant.
-        if(!input?.manualImport||![502,504].includes(Number(error?.statusCode)))throw error;
+        if(![502,504].includes(Number(error?.statusCode)))throw error;
         imageImportWarning="No se pudieron copiar las imágenes remotas; sube imágenes propias desde la biblioteca antes de publicar.";
       }
     }
     const taxonomy=guessCatalogTaxonomy(sourceProductUrl,String(input?.supplierCategory||input?.category||name));
     const imageUrls=mirrored.map((item)=>item.url).filter(Boolean);
     const now=new Date().toISOString();
+    const missingFields=[
+      ...(!imageUrls.length?["images"]:[]),
+      ...(!String(input?.description||"").trim()?["description"]:[]),
+      ...(!(sourcePrice>0)?["supplierPrice"]:[]),
+    ];
+    if(!imageUrls.length&&!imageImportWarning){
+      imageImportWarning="Borrador sin fotografía: el proveedor no ofreció una imagen descargable. Copia la URL directa de la imagen o súbela desde la biblioteca antes de publicar.";
+    }
 
     if(duplicate){
       const refreshed=await saveNeonCommerceProduct({
@@ -431,6 +439,7 @@ const server=http.createServer(async(req,res)=>{try{
           supplierPriceCapturedAt:sourcePrice>0?now:(duplicateMetadata?.supplierPriceCapturedAt||null),
           originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
           mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+          missingImportFields:missingFields,
           refreshedFromSourceAt:now,
         },
       },{id:String(duplicate.id)});
@@ -443,6 +452,7 @@ const server=http.createServer(async(req,res)=>{try{
         product:refreshed,
         copiedImages:imageUrls.length,
         imageImportWarning,
+        missingFields,
         source:"neon"
       });
     }
@@ -478,10 +488,11 @@ const server=http.createServer(async(req,res)=>{try{
         supplierPriceCapturedAt:sourcePrice>0?now:null,
         originalImageUrls:Array.isArray(input?.images)?input.images.slice(0,8):[],
         mirroredImagePaths:mirrored.map((item)=>item.path).filter(Boolean),
+        missingImportFields:missingFields,
         importedAt:now,
       },
     });
-    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,imageImportWarning,source:"neon"});
+    return json(res,201,{ok:true,skipped:false,updated:false,product,copiedImages:imageUrls.length,imageImportWarning,missingFields,source:"neon"});
   }
 
   if(path==="/api/admin/catalog/import-url/repair-drafts"&&req.method==="POST"){
