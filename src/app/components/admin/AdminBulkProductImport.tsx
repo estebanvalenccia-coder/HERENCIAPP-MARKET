@@ -817,33 +817,49 @@ export function AdminBulkProductImport({
       toast.error("No hay productos para importar");
       return;
     }
-
-    const existingProducts = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
-    const startId = Date.now();
-
-    const newProducts = drafts.map((draft, index) => ({
-      id: startId + index,
-      name: draft.name.trim() || draft.family,
-      description: draft.description.trim() || "Producto de floristería seleccionado para Herencia Market.",
-      price: Number(draft.price || 0),
-      category: draft.category,
-      department: draft.department,
-      area: draft.area,
-      family: draft.family,
-      subcategory: draft.family,
-      image: draft.image,
-      images: draft.images?.length ? draft.images : [draft.image],
-      featured: draft.featured,
-      onSale: false,
-      active: draft.active,
-    }));
-
-    await backendStorage.setItem("adminProducts", JSON.stringify([...existingProducts, ...newProducts]));
-    window.dispatchEvent(new Event("storage"));
-
-    toast.success(`✅ ${newProducts.length} productos importados al admin`);
-    setDrafts([]);
-    onBack();
+    // The visible catalog is stored in Neon commerce_products, not in the
+    // legacy adminProducts storage key. Persist each product to the same
+    // backend read by Productos → Ver productos.
+    setSourceImporting(true);
+    const failed: ProductDraft[] = [];
+    let saved = 0;
+    let lastId = "";
+    for (const draft of drafts) {
+      try {
+        const response = await backendApi.createCommerceProduct({
+          name: draft.name.trim() || draft.family,
+          description: draft.description.trim() || "Artículo importado para revisar antes de publicar.",
+          price: Number(draft.price || 0),
+          collection: draft.category.startsWith("plantas") ? "plantas" : draft.category === "flores" ? "plantas" : "jardineria",
+          category: draft.category,
+          department: draft.department,
+          area: draft.area,
+          family: draft.family,
+          subcategory: draft.family,
+          image: draft.image,
+          images: draft.images?.length ? draft.images : [draft.image],
+          featured: draft.featured,
+          onSale: false,
+          active: draft.active,
+          status: draft.active ? "active" : "draft",
+          stock: 0,
+        });
+        if (!response.product?.id) throw new Error("No se confirmó el guardado");
+        saved += 1;
+        lastId = String(response.product.id);
+      } catch {
+        failed.push(draft);
+      }
+    }
+    setSourceImporting(false);
+    setDrafts(failed);
+    if (failed.length) {
+      toast.warning(`${saved} guardados en Productos y ${failed.length} sin guardar. Los fallidos siguen aquí para reintentar.`);
+    } else {
+      toast.success(`${saved} artículos guardados en Productos → Ver productos`);
+      if (saved === 1 && lastId) onOpenProduct(lastId);
+      else onBack();
+    }
   };
 
   return (
