@@ -45,7 +45,7 @@ function suspiciousImportedProduct(product: any) {
   const name = String(product?.name || "").trim().toLowerCase();
   const description = String(product?.description || "").slice(0, 500).toLowerCase();
   const host = sourceHostFromProduct(product).toLowerCase();
-  return /^(human verification|human machine check|just a moment|access denied|captcha)$/.test(name) ||
+  return /^(human verification|human machine check|verify you are human|robot check|just a moment|access denied|captcha|security verification|security check|checking your browser|attention required)(?:\b|\s*[-|:—])/.test(name) ||
     (/human machine check|verify you are human/.test(description) && /cjdropshipping\.com$/.test(host));
 }
 
@@ -357,8 +357,16 @@ export function AdminSuppliersPanel() {
       setManualName("");
       setManualCost("");
       setManualImageUrl("");
+      const missing = Array.isArray(result.missingFields) ? result.missingFields : [];
+      const fieldLabels: Record<string, string> = { images: "fotografías", description: "descripción", supplierPrice: "coste del proveedor" };
       if (result.imageImportWarning) toast.warning(result.imageImportWarning);
-      setImportFeedback({ ok: true, message: "Borrador importado: " + candidate.name + ". Revisa precio, imágenes y variantes antes de publicar." });
+      setImportFeedback({
+        ok: true,
+        message: "Borrador guardado: " + candidate.name + ". " +
+          (missing.length
+            ? "Pendiente de completar: " + missing.map((field) => fieldLabels[field] || field).join(", ") + ". No publiques todavía."
+            : "Imágenes copiadas. Revisa precio de venta, variantes y envío antes de publicar."),
+      });
       toast.success(
         matchedSupplier
           ? "Producto importado y vinculado con " + matchedSupplier.name + " (compra automática no verificada)"
@@ -380,6 +388,9 @@ export function AdminSuppliersPanel() {
     setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
     setImportingUrl(true);
     setManualImport(null);
+    setManualName("");
+    setManualCost("");
+    setManualImageUrl("");
     try {
       const preview = await backendApi.previewCatalogUrl(url, 1);
       if (preview.requiresManual) {
@@ -756,7 +767,7 @@ export function AdminSuppliersPanel() {
         <input
           type="url"
           value={importUrl}
-          onChange={(e) => { setImportUrl(e.target.value); setManualImport(null); }}
+          onChange={(e) => { setImportUrl(e.target.value); setManualImport(null); setManualName(""); setManualCost(""); setManualImageUrl(""); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !importingUrl) void importProductByUrl();
           }}
@@ -785,8 +796,14 @@ export function AdminSuppliersPanel() {
             </select>
             <input value={manualImageUrl} onChange={(e) => setManualImageUrl(e.target.value)} type="url" placeholder="URL de imagen (opcional)" aria-label="URL de imagen" className="rounded-lg border border-amber-200 bg-white p-3" />
           </div>
+          {manualImageUrl.trim() && (
+            <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white p-2">
+              <img src={manualImageUrl.trim()} alt="Vista previa de la imagen indicada" referrerPolicy="no-referrer" className="h-20 w-20 rounded-md object-contain" />
+              <span className="text-xs">Comprueba que aparece la fotografía real del producto y no un CAPTCHA o logotipo del proveedor.</span>
+            </div>
+          )}
           <button type="button" disabled={importingUrl || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : "Guardar borrador manual"}</button>
-          <p className="text-xs">Si el proveedor bloquea las imágenes, podrás subirlas después desde la biblioteca de Herencia Market. Una URL no habilita la compra automática.</p>
+          <p className="text-xs">Para añadir una fotografía, abre el producto en la web del proveedor, haz clic derecho en la foto y selecciona «Copiar dirección de imagen». Pega esa dirección arriba. Herencia intentará copiarla a la biblioteca; si está protegida, podrás subirla manualmente después. No habilita la compra automática.</p>
         </div>
       )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
