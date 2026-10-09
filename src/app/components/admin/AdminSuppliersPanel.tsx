@@ -5,6 +5,7 @@ import {
   Building2,
   CheckCircle2,
   ExternalLink,
+  Download,
   EyeOff,
   Eye,
   Trash2,
@@ -22,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 import { SupplierImportImages } from "./SupplierImportImages";
+import { createDsersProductCsv, isAliExpressProduct } from "../../lib/dsersCsv";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -111,6 +113,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
+  const [dsersBusy, setDsersBusy] = useState(false);
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
@@ -173,6 +176,12 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     }), [products]
   );
   const suspectImports = importedProducts.filter(suspiciousImportedProduct);
+  const dsersExport = useMemo(() => createDsersProductCsv(products), [products]);
+  const dsersMissingOwnSku = useMemo(() => products.filter((product: any) =>
+    isAliExpressProduct(product) && !product.deletedAt && product.status !== "archived" &&
+    (!Array.isArray(product.variants) || product.variants.length === 0) &&
+    !String(product.sku || "").trim() && /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(String(product.id || ""))
+  ), [products]);
   const importState = (product: any): "pending" | "connected" | "hidden" => {
     const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
     if (metadata.supplierHubHidden) return "hidden";
@@ -529,6 +538,58 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       toast.error(error?.message || "No se pudo guardar el borrador manual");
     } finally {
       setImportingUrl(false);
+    }
+  };
+
+  const downloadDsersProducts = () => {
+    const result = createDsersProductCsv(products);
+    if (!result.exported) {
+      toast.error("No hay productos AliExpress con SKU válido. Edita los artículos o genera los SKU internos primero.");
+      return;
+    }
+    const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = blobUrl;
+    anchor.download = "import_products_herencia_dsers.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+    toast.success(`${result.exported} SKU exportados para DSers. Sube el archivo en CSV Upload → Product → Import.`);
+  };
+
+  const generateDsersOwnSkus = async () => {
+    const candidates = dsersMissingOwnSku;
+    if (dsersBusy || !candidates.length) return;
+    if (!window.confirm(`Se asignará un SKU interno HM-<ID> a ${candidates.length} productos de AliExpress que no tienen SKU. Se guardará en el catálogo de Herencia. No se modifica el SKU del proveedor ni se crea ninguna compra. ¿Continuar?`)) return;
+    setDsersBusy(true);
+    let updated = 0;
+    let failed = 0;
+    const occupied = new Set(products.map((item: any) => String(item.sku || "").toUpperCase()).filter(Boolean));
+    try {
+      for (const product of candidates) {
+        const proposedSku = "HM-" + String(product.id);
+        if (occupied.has(proposedSku.toUpperCase())) { failed += 1; continue; }
+        try {
+          await backendApi.updateCommerceProduct(product.id, { sku: proposedSku });
+          occupied.add(proposedSku.toUpperCase());
+          updated += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      try {
+        const catalog = await backendApi.listCommerceProducts({ includeArchived: true });
+        setProducts(Array.isArray(catalog.products) ? catalog.products : []);
+      } catch {
+        toast.warning("Los cambios fueron enviados, pero no pudimos actualizar el listado. Recarga el panel antes de exportar.");
+        return;
+      }
+      if (failed) toast.warning(`SKU generados: ${updated}; pendientes: ${failed}. Revisa el catálogo.`);
+      else toast.success(`${updated} SKU internos guardados. Ya puedes exportarlos para DSers.`);
+    } finally {
+      setDsersBusy(false);
     }
   };
 
@@ -954,6 +1015,56 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       )}
       <p className="mt-3 text-xs text-muted-foreground">
         La importación queda en borrador para que revises precio, descripción, variantes e imágenes antes de publicar.
+      </p>
+    </section>
+
+    <section className="rounded-2xl border border-border bg-card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-wider text-primary">DSers · AliExpress</p>
+          <h2 className="mt-1 text-xl font-bold">Exportar productos a DSers por CSV</h2>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            Exporta únicamente productos vinculados a AliExpress con ID y SKU propio válido.
+            Los encabezados coinciden exactamente con la plantilla import_products.xlsx que descargaste.
+            Este paso NO importa fotografías ni sincroniza pedidos o pagos automáticamente.
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm">
+          <p className="font-bold">{dsersExport.candidates} productos AliExpress detectados</p>
+          <p className="text-xs text-muted-foreground">{dsersExport.exported} SKU listos · {dsersExport.skipped.length} filas pendientes de revisión</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" disabled={!dsersExport.exported || dsersBusy} onClick={downloadDsersProducts}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">
+          <Download className="h-4 w-4"/> Descargar CSV para DSers ({dsersExport.exported})
+        </button>
+        {dsersMissingOwnSku.length > 0 && (
+          <button type="button" disabled={dsersBusy} onClick={() => void generateDsersOwnSkus()}
+            className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold disabled:opacity-50">
+            {dsersBusy ? "Guardando SKU…" : `Generar SKU propios faltantes (${dsersMissingOwnSku.length})`}
+          </button>
+        )}
+        <a href="https://help.dsers.com/import-products-via-csv/" target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold">
+          Instrucciones oficiales de DSers <ExternalLink className="ml-2 h-4 w-4"/>
+        </a>
+      </div>
+      {dsersExport.skipped.length > 0 && (
+        <details className="mt-4 rounded-xl border border-amber-300 p-3">
+          <summary className="cursor-pointer text-sm font-semibold">Ver artículos que requieren SKU válido ({dsersExport.skipped.length})</summary>
+          <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+            {dsersExport.skipped.slice(0, 30).map((item: any, index: number) => (
+              <p key={String(item.id) + "-" + index}>{item.name} · ID {item.id || "sin ID"} · {item.reason}</p>
+            ))}
+            {dsersExport.skipped.length > 30 && <p>Hay {dsersExport.skipped.length - 30} más. Puedes editarlos desde Productos → Ver productos.</p>}
+          </div>
+        </details>
+      )}
+      <p className="mt-3 text-xs text-muted-foreground">
+        Después: en DSers abre CSV Upload → Product → IMPORT; sube el CSV descargado y ve a My Products → Map
+        para elegir la variante correcta de AliExpress. Conserva los mismos ID y SKU al exportar pedidos más adelante.
+        Los productos de CJdropshipping y otros proveedores NO se incluyen.
       </p>
     </section>
 
