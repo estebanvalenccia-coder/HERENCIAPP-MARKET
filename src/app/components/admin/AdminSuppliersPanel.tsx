@@ -240,14 +240,18 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     if (String(product.status || "") === "archived") return toast.error("No se puede vincular un producto de la papelera");
     let parsed: URL;
     try { parsed = new URL(existingProductUrl.trim()); }
-    catch { return toast.error("Pega la URL real del producto en CJdropshipping"); }
+    catch { return toast.error("Pega una URL válida del producto del proveedor"); }
     if (parsed.protocol !== "https:") return toast.error("La URL del proveedor debe ser HTTPS");
     const sourceHost = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    const supplier = suppliers.find((entry: any) =>
-      String(entry.sourceHost || "").toLowerCase().replace(/^www\./, "") === sourceHost
-    );
+    const supplier = suppliers.find((entry: any) => {
+      const registeredHost = normalizedSupplierDomain(String(entry.sourceHost || ""));
+      const incomingHost = normalizedSupplierDomain(sourceHost);
+      return Boolean(registeredHost) && (incomingHost === registeredHost || incomingHost.endsWith("." + registeredHost));
+    });
     if (!supplier) return toast.error("No hay un proveedor registrado para este dominio. Revisa la URL.");
-    const cjMatch = parsed.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
+    const cjMatch = supplier.integrationType === "cj"
+      ? parsed.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)
+      : null;
     if (supplier.integrationType === "cj" && !cjMatch) {
       return toast.error("La URL CJ debe contener su identificador de producto (-p-...html)");
     }
@@ -260,11 +264,12 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           importedFromUrl: true,
           fulfillmentType: "dropship",
           supplierId: supplier.id,
-          fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+          fulfillmentMode: supplier.integrationType === "cj" && supplier.fulfillmentMode === "autopilot"
+            ? "autopilot" : "manual",
           sourceProductUrl: parsed.toString(),
           sourceCatalogUrl: metadata.sourceCatalogUrl || parsed.toString(),
           sourceHost,
-          ...(cjMatch ? { supplierProductId: cjMatch[1] } : {}),
+          supplierProductId: cjMatch ? cjMatch[1] : "",
           supplierCost: Math.max(0, Number(metadata.supplierCost || 0)),
           supplierCurrency: metadata.supplierCurrency || (cjMatch ? "USD" : "EUR"),
           supplierAssignedAt: new Date().toISOString(),
@@ -1284,7 +1289,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
     <section className="rounded-2xl border border-border bg-card p-6">
       <h2 className="text-xl font-bold">Vincular un producto que ya existe</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Recupera la conexión con CJdropshipping sin duplicar el artículo ni cambiar su precio, fotografías o estado publicado.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Vincula un artículo existente con AliExpress, CJdropshipping u otro proveedor registrado, sin duplicarlo ni cambiar su precio, fotos o publicación. Los enlaces de AliExpress quedan en gestión manual hasta conectar un sistema de pedidos autorizado.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="space-y-2">
           <label className="text-sm font-semibold">Buscar artículo del catálogo</label>
@@ -1300,9 +1305,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-semibold">URL original del producto en CJdropshipping</label>
-          <input type="url" value={existingProductUrl} onChange={(event) => setExistingProductUrl(event.target.value)} placeholder="https://www.cjdropshipping.com/product/..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
-          <p className="text-xs text-muted-foreground">Solo vincula productos de proveedores ya registrados. El precio de CJ, los envíos y las variantes se revisan después.</p>
+          <label className="text-sm font-semibold">URL original del producto en su proveedor (AliExpress, CJ u otro)</label>
+          <input type="url" value={existingProductUrl} onChange={(event) => setExistingProductUrl(event.target.value)} placeholder="https://www.aliexpress.com/item/... o https://www.cjdropshipping.com/product/..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+          <p className="text-xs text-muted-foreground">El proveedor debe estar registrado. Esta acción solo guarda el vínculo: no importa imágenes, no verifica stock ni crea o paga pedidos. Los costes y variantes se revisan por separado.</p>
         </div>
       </div>
       {selectedExistingProduct && <div className="mt-3 flex items-center gap-3 rounded-xl bg-muted/50 p-3 text-sm">
