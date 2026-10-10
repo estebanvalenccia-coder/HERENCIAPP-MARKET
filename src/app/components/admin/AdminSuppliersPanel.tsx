@@ -1773,6 +1773,9 @@ function ImportedProductRow({
   const [cjLoading, setCjLoading] = useState(false);
   const [cjLookupError, setCjLookupError] = useState("");
   const [cjLookupComplete, setCjLookupComplete] = useState(false);
+  const [cjHealth, setCjHealth] = useState<Awaited<ReturnType<typeof backendApi.checkCjVariantReadiness>> | null>(null);
+  const [cjHealthLoading, setCjHealthLoading] = useState(false);
+  const [cjHealthError, setCjHealthError] = useState("");
   const [quoteDestination, setQuoteDestination] = useState("ES");
   const [quoteMode, setQuoteMode] = useState<"country" | "city">("country");
   const [quoteCity, setQuoteCity] = useState("");
@@ -1843,7 +1846,24 @@ function ImportedProductRow({
     }
   };
 
+  const inspectCjStockAndCost = async () => {
+    if (!supplierVariantId.trim()) return toast.error("Selecciona primero el VID de CJ");
+    setCjHealthLoading(true);
+    setCjHealth(null);
+    setCjHealthError("");
+    try {
+      const report = await backendApi.checkCjVariantReadiness(String(product.id), supplierVariantId.trim());
+      setCjHealth(report);
+    } catch (error: any) {
+      setCjHealthError(String(error?.message || "No se pudo consultar CJ"));
+    } finally {
+      setCjHealthLoading(false);
+    }
+  };
+
   const lookupCjVariants = async () => {
+    setCjHealth(null);
+    setCjHealthError("");
     setFreightQuote(null);
     setFreightError("");
     setCjLoading(true);
@@ -1891,8 +1911,8 @@ function ImportedProductRow({
     </label>
     <div className="space-y-2 rounded-xl border border-border px-3 py-2">
       <span className="block text-[11px] font-semibold text-muted-foreground">{selectedSupplier?.integrationType === "cj" ? "CJ VID o SKU" : "ID/SKU proveedor"}</span>
-      <input value={supplierVariantId} onChange={(e)=>setSupplierVariantId(e.target.value)} placeholder="VID (preferido)" className="w-full bg-transparent text-xs font-semibold outline-none"/>
-      <input value={supplierSku} onChange={(e)=>setSupplierSku(e.target.value)} placeholder="SKU proveedor" className="w-full bg-transparent text-xs outline-none"/>
+      <input value={supplierVariantId} onChange={(e)=>{setSupplierVariantId(e.target.value);setCjHealth(null);setCjHealthError("");}} placeholder="VID (preferido)" className="w-full bg-transparent text-xs font-semibold outline-none"/>
+      <input value={supplierSku} onChange={(e)=>{setSupplierSku(e.target.value);setCjHealth(null);setCjHealthError("");}} placeholder="SKU proveedor" className="w-full bg-transparent text-xs outline-none"/>
     </div>
     <div className="flex gap-2">
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
@@ -1910,6 +1930,13 @@ function ImportedProductRow({
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
             <RefreshCw className={"h-4 w-4" + (cjLoading ? " animate-spin" : "")}/>
             {cjLoading ? "Consultando CJ…" : "Consultar variantes CJ"}
+          </button>
+          <button type="button" disabled={cjHealthLoading || !supplierVariantId.trim()}
+            onClick={() => void inspectCjStockAndCost()}
+            title="Consulta en CJ precio y existencias del VID exacto, sin modificar el catálogo"
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
+            <ShieldCheck className="h-4 w-4"/>
+            {cjHealthLoading ? "Verificando inventario…" : "Comprobar precio y stock CJ"}
           </button>
           <button type="button" disabled={freightLoading || !supplierVariantId.trim()}
             onClick={() => void quoteCjShippingForEu()}
@@ -1988,6 +2015,8 @@ function ImportedProductRow({
             const variant = cjVariants.find((entry) => entry.vid === event.target.value);
             setSupplierVariantId(variant?.vid || "");
             setSupplierSku(variant?.sku || "");
+            setCjHealth(null);
+            setCjHealthError("");
             setFreightQuote(null);
             setSelectedFreightName("");
             setFreightError("");
@@ -1998,6 +2027,20 @@ function ImportedProductRow({
           </option>)}
         </select>
         <span className="text-xs text-muted-foreground">{cjVariants.length} variantes consultadas</span>
+      </div>}
+      {cjHealthError && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{cjHealthError}</p>}
+      {cjHealth && <div className="space-y-2 rounded-xl border border-border bg-background p-3 text-xs">
+        <p className="font-bold">Diagnóstico CJ · variante {cjHealth.sku} · almacén {cjHealth.origin}</p>
+        <p>Existencias CJ: <strong>{cjHealth.stock.verified ? cjHealth.stock.quantity + " unidades verificadas" : "no verificadas"}</strong>
+          {cjHealth.stock.verified && !cjHealth.stock.available ? " · AGOTADO" : ""}</p>
+        <p>Precio proveedor: <strong>{cjHealth.supplierPriceUsd == null ? "Sin dato" : "$" + cjHealth.supplierPriceUsd.toFixed(2) + " USD"}</strong>
+          {cjHealth.supplierBaseEur != null ? " · " + money(cjHealth.supplierBaseEur) + " aprox. al cambio consultado" : ""}
+          {" "}· sin transporte, IVA ni comisiones.</p>
+        {cjHealth.issues.length > 0
+          ? <ul className="list-disc space-y-1 pl-5 font-semibold text-amber-800">{cjHealth.issues.map((issue, index)=><li key={index}>{issue}</li>)}</ul>
+          : <p className="font-semibold text-emerald-800">Datos básicos comprobados. Pendiente de transporte y margen por dirección del cliente.</p>}
+        <p className="text-muted-foreground">{cjHealth.message} Fecha: {new Date(cjHealth.checkedAt).toLocaleString("es-ES")}.</p>
+        <p className="font-medium">Solo lectura: no actualiza stock ni precios públicos, no activa el checkout y no crea o paga pedidos.</p>
       </div>}
       {metadata.cjPreferredLogisticName && <p className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-xs font-semibold text-emerald-900">Transportista preferido guardado para España: {String(metadata.cjPreferredLogisticName)}. No se aplicará automáticamente a pedidos reales hasta validar el flujo de cumplimiento.</p>}
       {selectedCjVariant && <div className="rounded-lg bg-background/80 px-3 py-2 text-xs">

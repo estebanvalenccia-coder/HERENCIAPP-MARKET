@@ -413,6 +413,23 @@ export const backendApi = {
     }>(`/api/admin/catalog/cj-variants?productId=${encodeURIComponent(productId)}`);
   },
 
+  async checkCjVariantReadiness(productId: string, vid: string) {
+    return request<{
+      ok: true; productId: string; provider: "cj"; source: "cj_api";
+      checkedAt: string; origin: "CN"; vid: string; sku: string;
+      variant: {vid: string; sku: string; name: string; option: string};
+      stock: {verified: boolean; available: boolean; quantity: number | null};
+      supplierPriceUsd: number | null; supplierBaseEur: number | null;
+      supplierBaseCostIncludesShipping: false; salePriceEur: number | null;
+      savedVidMatches: boolean; savedSkuMatches: boolean; publicVariantMapped: boolean;
+      productDataValid: boolean; issues: string[];
+      shippingVerified: false; checkoutEnabled: false; automaticOrdersEnabled: false; automaticStockWrite: false;
+      fxDate: string | null; stockWarning?: string; fxWarning?: string; message: string;
+    }>("/api/admin/catalog/cj-readiness", {
+      method: "POST", body: JSON.stringify({productId,vid}),
+    });
+  },
+
   async preflightCjProduct(productId: string) {
     return request<{
       ok: boolean; simulationOnly: boolean; safe: boolean; readyForManualReview: boolean;
