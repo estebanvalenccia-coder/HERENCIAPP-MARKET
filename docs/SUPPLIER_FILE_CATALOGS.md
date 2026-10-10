@@ -45,7 +45,7 @@ También se acepta un array plano de productos. Las variantes conservan identifi
 
 ## Límites y seguridad
 
-- Máximo 512 KB, 300 filas, 60 productos y 60 variantes por producto por archivo.
+- Máximo 512 KB, 300 filas, 30 productos y 60 variantes por producto por archivo.
 - Proveedor registrado y activo, sesión de administrador y confirmación manual obligatoria para escribir en Neon.
 - Duplicados detectados por ID determinista de proveedor+ID del producto y por URL original. No se sobrescriben datos previos.
 - Los borradores empiezan con \`status=draft\`, \`active=false\`, precio público \`0\`, stock \`0\` y \`fulfillmentMode=manual\`; no hay compras ni pagos.
