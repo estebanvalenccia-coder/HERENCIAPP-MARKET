@@ -741,7 +741,7 @@ async function uniqueNeonCommerceSlug(productId, value) {
   return `${base}-${suffix}`;
 }
 
-export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
+export async function saveNeonCommerceProduct(input = {}, { id = null, createOnly = false } = {}) {
   if (!neonPool) throw new Error("Neon no está configurado");
   await ensureNeonCommerceDefaults();
   const productId=String(id||input.id||Date.now());
@@ -758,20 +758,20 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
   const price=num(input.salePrice ?? input.price,0);
   const compare=input.compareAtPrice ?? input.originalPrice ?? (input.onSale && input.salePrice ? input.price : null);
   const uniqueSlug = await uniqueNeonCommerceSlug(productId, input.slug || input.name || productId);
-  await neonPool.query(
+  const initialWrite = await neonPool.query(
     `insert into commerce_products(
       id,slug,type,name,scientific_name,description,category,status,featured,price,compare_at_price,cost,tax_rate,sku,stock,
       environment,light,size,difficulty,pet_safe,toxicity,water,temperature,occasion,allow_dedication,seo_title,seo_description,metadata,created_at,updated_at
     ) values(
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),now()
     )
-    on conflict(id) do update set
+    on conflict(id) ${createOnly ? "do nothing" : `do update set
       slug=excluded.slug,type=excluded.type,name=excluded.name,scientific_name=excluded.scientific_name,description=excluded.description,
       category=excluded.category,status=excluded.status,featured=excluded.featured,price=excluded.price,compare_at_price=excluded.compare_at_price,
       cost=excluded.cost,tax_rate=excluded.tax_rate,sku=excluded.sku,stock=excluded.stock,environment=excluded.environment,light=excluded.light,
       size=excluded.size,difficulty=excluded.difficulty,pet_safe=excluded.pet_safe,toxicity=excluded.toxicity,water=excluded.water,
       temperature=excluded.temperature,occasion=excluded.occasion,allow_dedication=excluded.allow_dedication,seo_title=excluded.seo_title,
-      seo_description=excluded.seo_description,metadata=excluded.metadata,updated_at=now()`,
+      seo_description=excluded.seo_description,metadata=excluded.metadata,updated_at=now()`} returning id`,
     [productId,uniqueSlug,String(input.type||"plant"),String(input.name||"").trim(),
      String(input.scientificName||input.scientific_name||"")||null,String(input.description||""),String(input.category||"plantas"),status,
      Boolean(input.featured),Math.max(0,price),compare==null?null:Math.max(0,num(compare)),input.cost==null||input.cost===""?null:Math.max(0,num(input.cost)),
@@ -781,6 +781,9 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
      String(input.occasion||"")||null,input.allowDedication!==false,String(input.seoTitle||input.name||"")||null,
      String(input.seoDescription||input.description||"")||null,metadata]
   );
+  // A file import must NEVER overwrite a product created or edited between
+  // the initial preview and commit. ON CONFLICT DO NOTHING is enforced by Neon.
+  if (createOnly && !initialWrite.rows?.length) return null;
   await neonPool.query(
     "update commerce_products set track_inventory=$2, updated_at=now() where id=$1",
     [productId, input.trackInventory !== false]
