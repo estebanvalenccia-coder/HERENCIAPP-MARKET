@@ -43,11 +43,16 @@ export function createCjTrackingRunner({
       const changed=[...items];changed[index]=saved;
       return JSON.stringify({...data,supplierFulfillments:changed});
     });
-    if(projection.meaningfulChange && saved?.orderId &&
-       ["shipped","delivered"].includes(saved.status)){
+    if(saved?.orderId && ["shipped","delivered"].includes(saved.status)){
       try{
         const order=await readOrder(saved.orderId);
-        if(order){
+        const old=order?.metadata?.supplierTracking?.[saved.id]||{};
+        // Self-heal a local metadata update that failed after the first CJ
+        // sync. An existing identical tracking snapshot is never rewritten.
+        const needsTrackingUpdate=String(old.trackingNumber||"")!==String(saved.trackingNumber||"") ||
+          String(old.status||"")!==String(saved.status) ||
+          String(old.trackingUrl||"")!==String(saved.trackingUrl||"");
+        if(order && needsTrackingUpdate){
           await patchOrder(saved.orderId,{metadata:{
             ...(order.metadata||{}),
             supplierTracking:{
@@ -63,7 +68,7 @@ export function createCjTrackingRunner({
       }catch{
         // A failed customer metadata write must not alter or redo CJ's shipment.
       }
-      if(typeof notify==="function"){
+      if(projection.meaningfulChange && typeof notify==="function"){
         await notify({
           type:"supplier_tracking_update",
           title:"Actualización del envío CJ",
