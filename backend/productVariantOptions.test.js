@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { splitSupplierOptions, deriveVariantOptionGroups, chooseExistingVariant } from "../src/app/lib/productVariantOptions.js";
+import { splitSupplierOptions, deriveVariantOptionGroups, chooseExistingVariant } from "./productVariantOptions.js";
 
 const variants=[
  {name:"Rosa · EU Plug",optionValues:["Rosa","EU Plug"],sku:"CJ-PINK-EU"},
