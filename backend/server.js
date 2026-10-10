@@ -17,7 +17,7 @@ import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } fro
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
   cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
-  validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
+  validateManualCjCreate, validateManualCjPayment, validateCjLiveWarehouseStock, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import {
@@ -6571,11 +6571,7 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   } catch {
     throw cjManualError("CJ no pudo verificar precio, stock o envío de la variante al código postal. No se creará ningún pedido.");
   }
-  if(stock?.verified!==true || stock?.available!==true ||
-     stock?.vid!==vid || stock?.origin!=="CN" ||
-     !Number.isSafeInteger(stock?.quantity) || stock.quantity<1){
-    throw cjManualError("CJ no confirmó una unidad disponible del VID exacto en el almacén CN. La compra está bloqueada.");
-  }
+  validateCjLiveWarehouseStock(stock,{vid,origin:"CN"});
   const method = (freight?.methods || []).find((row) =>
     String(row.name || "") === String(line.cjPreferredLogisticName || ""));
   // Recheck authoritative CJ identity immediately before actual supplier order
