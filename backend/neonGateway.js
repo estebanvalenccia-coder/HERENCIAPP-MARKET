@@ -24,10 +24,13 @@ import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } f
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
+import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
 const legacyUrl = `http://127.0.0.1:${legacyPort}`;
+// Intentionally small per-process quota; prevents expensive Printful rate spam.
+let recentPrintfulQuoteCalls = [];
 
 const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings"]);
 const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
@@ -283,6 +286,31 @@ const server=http.createServer(async(req,res)=>{try{
     const description=String(completion?.choices?.[0]?.message?.content||"").replace(/```[\s\S]*?```/g,"").trim().slice(0,1400);
     if(description.length<45)return json(res,502,{error:"Groq no devolvió una descripción suficiente."});
     return json(res,200,{description,reviewRequired:true,source:"groq"});
+  }
+
+  // Official Printful v2 shipping quote endpoint (admin-only, read-only).
+  // No buyer details, purchase requests or credentials leave Railway except
+  // the bearer token sent directly to Printful over its fixed HTTPS hostname.
+  if(path==="/api/admin/suppliers/printful/status"){
+    if(req.method!=="GET")return json(res,405,{error:"Método no permitido"});
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    return json(res,200,{provider:"printful",...printfulConnectionStatus()});
+  }
+  if(path==="/api/admin/suppliers/printful/shipping-quote"){
+    if(req.method!=="POST")return json(res,405,{error:"Método no permitido"});
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const now=Date.now();
+    recentPrintfulQuoteCalls=recentPrintfulQuoteCalls.filter(t=>now-t<60000);
+    if(recentPrintfulQuoteCalls.length>=12)return json(res,429,{
+      error:"Demasiadas cotizaciones Printful. Consulta más tarde."
+    });
+    recentPrintfulQuoteCalls.push(now);
+    const raw=await bodyBuffer(req,{maxBytes:8192});
+    let payload;
+    try{payload=raw.length?JSON.parse(raw.toString("utf8")):{};}
+    catch{return json(res,400,{error:"La solicitud debe ser JSON válido"});}
+    const quote=await quotePrintfulShipping(payload);
+    return json(res,200,quote);
   }
 
   if(path==="/api/admin/catalog/cj-freight"&&req.method==="POST"){

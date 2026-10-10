@@ -1,5 +1,6 @@
 import { SUPPLIER_PRESETS, EU_COUNTRIES } from "../../lib/supplierMarketplace.js";
 import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
+import { AdminProviderApiQuotes } from "./AdminProviderApiQuotes";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1035,6 +1036,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           { id: "supplier-catalog", name: "Productos", icon: Layers3, detail: "Vincular y organizar" },
           { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
           { id: "supplier-compare", name: "Comparar costes", icon: Truck, detail: "27 países UE" },
+          { id: "supplier-printful", name: "Printful API", icon: Link2, detail: "Cotizar portes UE" },
           { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
           { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
           { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
@@ -1049,6 +1051,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     </nav>
 
     <AdminSupplierCostComparison suppliers={suppliers}/>
+    <AdminProviderApiQuotes/>
 
     <section id="supplier-import" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-2">
