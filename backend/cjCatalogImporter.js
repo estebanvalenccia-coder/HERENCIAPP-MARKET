@@ -1,6 +1,6 @@
 // CJdropshipping read-only catalog adapter. Never creates or pays orders.
 import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
-import { splitSupplierOptions } from "../src/app/lib/productVariantOptions.js";
+import { splitSupplierOptions } from "./productVariantOptions.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
