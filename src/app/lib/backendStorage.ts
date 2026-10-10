@@ -475,7 +475,7 @@ export const backendApi = {
     return request<{
       ok: boolean; productId: string;
       variant: { vid: string; sku: string; name: string; option: string; priceUsd: number | null };
-      origin: string; destination: string; currency: "USD"; rateType: string;
+      origin: string; destination: string; currency: "USD"; rateType: string; checkedAt: string;
       checkoutEnabled: false; manualReviewRequired: true; destinationNotice: string;
       methods: Array<{ name: string; time: string; shippingUsd: number; taxesUsd: number | null; clearanceUsd: number | null; totalPostageUsd: number | null;
         profitability: { available: boolean; feasible?: boolean; costEur?: number; estimatedProfitEur?: number; estimatedMarginPercent?: number; recommendedMinimumPriceEur?: number; supplierTotalUsd?: number; reason?: string; caution?: string }
