@@ -1,3 +1,4 @@
+import { SUPPLIER_PRESETS } from "../../lib/supplierMarketplace.js";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1171,6 +1172,31 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     <div className="grid gap-6 xl:grid-cols-2">
       <section id="supplier-new" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
         <h2 className="text-xl font-bold">{form.id ? "Editar proveedor" : "Nuevo proveedor"}</h2>
+        {!form.id && (
+          <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4">
+            <label htmlFor="herencia-supplier-preset" className="mb-2 block text-sm font-semibold">
+              Añadir proveedor conocido (o escribe cualquiera manualmente)
+            </label>
+            <select id="herencia-supplier-preset" defaultValue=""
+              onChange={(event) => {
+                const preset = SUPPLIER_PRESETS.find(p => p.id === event.target.value);
+                if (!preset) return;
+                setForm((current: any) => ({
+                  ...current, name:preset.name, sourceHost:preset.host,
+                  integrationType:preset.type, fulfillmentMode:"manual", connectorKey:"",
+                }));
+              }}
+              className="w-full rounded-xl border border-border bg-background p-3">
+              <option value="">Selecciona una plantilla (opcional)</option>
+              {SUPPLIER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Una plantilla solo rellena los datos del proveedor. No concede permisos API,
+              no importa productos automáticamente ni autoriza compras reales.
+              Temu y los proveedores sin API autorizada permanecen en modo manual.
+            </p>
+          </div>
+        )}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre · ej. AliExpress" className="rounded-xl border border-border bg-background p-3"/>
           <input value={form.sourceHost} onChange={(e) => setForm({ ...form, sourceHost: e.target.value })} placeholder="Dominio · aliexpress.com" className="rounded-xl border border-border bg-background p-3"/>
