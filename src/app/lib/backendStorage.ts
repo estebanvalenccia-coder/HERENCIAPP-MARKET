@@ -428,11 +428,12 @@ export const backendApi = {
     });
   },
 
-  async quoteCjProductFreight(productId: string, vid: string, zip = "") {
+  async quoteCjProductFreight(productId: string, vid: string, zip = "", destination = "ES") {
     return request<{
       ok: boolean; productId: string;
       variant: { vid: string; sku: string; name: string; option: string; priceUsd: number | null };
       origin: string; destination: string; currency: "USD"; rateType: string;
+      checkoutEnabled: false; manualReviewRequired: true; destinationNotice: string;
       methods: Array<{ name: string; time: string; shippingUsd: number; taxesUsd: number | null; clearanceUsd: number | null; totalPostageUsd: number | null;
         profitability: { available: boolean; feasible?: boolean; costEur?: number; estimatedProfitEur?: number; estimatedMarginPercent?: number; recommendedMinimumPriceEur?: number; supplierTotalUsd?: number; reason?: string; caution?: string }
       }>;
@@ -442,7 +443,7 @@ export const backendApi = {
       warning: string;
     }>("/api/admin/catalog/cj-freight", {
       method: "POST",
-      body: JSON.stringify({ productId, vid, zip }),
+      body: JSON.stringify({ productId, vid, zip, destination }),
     });
   },
 
