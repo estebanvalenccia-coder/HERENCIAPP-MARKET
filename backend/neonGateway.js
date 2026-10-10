@@ -335,7 +335,7 @@ const server=http.createServer(async(req,res)=>{try{
     const variants=await queryCjProductVariants(sourcePid);
     const matching=variants.variants.find((item)=>String(item.vid)===vid);
     if(!matching)return json(res,422,{error:"Esta variante no pertenece al artículo CJ enlazado"});
-    // Explicit EU preview: does not extend the customer checkout policy.
+    // International admin-only preview: never extends the customer checkout policy.
     // Country, ZIP and quantity are server-validated, not delegated to UI.
     const request=validateCjEuFreightPreview({
       destination:body?.destination ?? "ES",zip:body?.zip ?? "",
@@ -365,7 +365,7 @@ const server=http.createServer(async(req,res)=>{try{
       manualReviewRequired:true,
       destinationNotice:request.disclaimer,
       pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
-      pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar para el código postal concreto antes de enviar un pedido real.",
+      pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar usando la dirección y el código postal del cliente antes de enviar un pedido real.",
     });
   }
 
