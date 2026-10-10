@@ -6153,6 +6153,69 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
   }
 });
 
+// CJ automation health is a status/preflight, NOT a purchase approval.
+app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const operations=await readSupplierOperations();
+    const suppliers=(operations.suppliers||[]).filter(s=>supplierIntegrationType(s)==="cj");
+    const records=(operations.supplierFulfillments||[]).filter(f=>f.provider==="cj" ||
+      suppliers.some(s=>String(s.id)===String(f.supplierId)));
+    const counts={queued:records.length,trackingEligible:0,
+      needsManualReview:0,creationUnknown:0,paymentUnknown:0};
+    counts.trackingEligible=pickCjTrackingCandidates(records,suppliers,{limit:3}).length;
+    counts.creationUnknown=records.filter(r=>r.status==="cj_creation_unknown"||
+      r.status==="cj_creating").length;
+    counts.paymentUnknown=records.filter(r=>r.status==="cj_payment_unknown"||
+      r.status==="cj_paying").length;
+    counts.needsManualReview=records.filter(r=>[
+      "approval_required","action_required","payment_required","mapping_required",
+      "cost_required","address_required"
+    ].includes(String(r.status))).length;
+    const previews=[];
+    for(const record of records.slice(0,12)){
+      const supplier=suppliers.find(s=>String(s.id)===String(record.supplierId));
+      const order=await getOrderPrimary(record.orderId).catch(()=>null);
+      previews.push({
+        fulfillmentId:record.id,orderId:record.orderId,status:record.status,
+        ...explainCjAutomationReadiness({
+          record,supplier,order,env:{
+            CJ_API_KEY:cjConfigured()?"set":"",
+            CJ_LIVE_ORDER_CREATION_ENABLED:process.env.CJ_LIVE_ORDER_CREATION_ENABLED,
+            CJ_LIVE_PAYMENT_ENABLED:process.env.CJ_LIVE_PAYMENT_ENABLED
+          }
+        }),
+      });
+    }
+    res.setHeader("Cache-Control","no-store");
+    return res.json({
+      provider:"cj",configured:cjConfigured(),
+      accountConnectionNotRetested:true,
+      trackingReadOnlyEnabled:cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false",
+      trackingBatchMax:3,trackingIntervalMinutes:15,counts,
+      canCreateWithManualApproval:String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED).toLowerCase()==="true",
+      canPayWithManualApproval:cjManualReadyForPayment(),
+      unattendedOrderCreationEnabled:false,unattendedSupplierPaymentEnabled:false,
+      whyNotAutomated:"Faltan presupuesto diario autorizado, verificación Stripe y prueba integral de compra sin duplicados.",
+      previews,readOnly:true,
+    });
+  }catch(error){
+    return res.status(503).json({error:"No se pudo calcular la preparación CJ sin operar con dinero."});
+  }
+});
+
+// Manual on-demand run of the SAME rate-limited, read-only tracking worker.
+app.post("/api/admin/suppliers/cj/tracking-sweep", requireAdmin, async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  if(!cjConfigured())return res.status(503).json({error:"Conexión CJ no configurada."});
+  try{
+    const result=await cjTrackingRunner.sweep();
+    return res.json(result);
+  }catch(error){
+    return res.status(503).json({error:"La sincronización de solo lectura no está disponible."});
+  }
+});
+
 app.post("/api/admin/suppliers/cj/test", requireAdmin, async (_req, res) => {
   try {
     if (!cjConfigured()) return res.status(409).json({ configured: false, error: "Falta CJ_API_KEY" });
