@@ -473,6 +473,25 @@ export const backendApi = {
     });
   },
 
+  async getSupplierFileColumnMap(supplierId: string, format: "csv"|"json"|"xml") {
+    return request<{
+      ok:true;supplierId:string;format:string;exists:boolean;updatedAt:string|null;
+      columnMap:Record<string,string>;
+    }>(`/api/admin/catalog/supplier-file/mapping?supplierId=${encodeURIComponent(supplierId)}&format=${encodeURIComponent(format)}`);
+  },
+
+  async saveSupplierFileColumnMap(payload:{
+    supplierId:string;format:"csv"|"json"|"xml";
+    columns:string[];columnMap:Record<string,string>;
+  }) {
+    return request<{
+      ok:true;supplierId:string;format:string;exists:boolean;updatedAt:string|null;
+      columnMap:Record<string,string>;
+    }>("/api/admin/catalog/supplier-file/mapping",{
+      method:"PUT",body:JSON.stringify(payload),
+    });
+  },
+
   async inspectSupplierFileCatalog(payload: {
     format: "csv" | "json" | "xml"; content: string;
   }) {

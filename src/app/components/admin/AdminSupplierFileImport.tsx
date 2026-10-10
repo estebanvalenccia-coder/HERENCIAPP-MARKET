@@ -34,6 +34,8 @@ export function AdminSupplierFileImport({
   const [columnMap, setColumnMap] = useState<Record<string,string>>({});
   const [optionFields, setOptionFields] = useState<Array<{label:string;source:string}>>([]);
   const [inspectionBusy, setInspectionBusy] = useState(false);
+  const [profileBusy,setProfileBusy] = useState(false);
+  const [profileSavedAt,setProfileSavedAt] = useState("");
   const [content, setContent] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [committed, setCommitted] = useState<Committed | null>(null);
@@ -45,6 +47,7 @@ export function AdminSupplierFileImport({
   const loadFile = async (file?: File) => {
     clearResult();
     setColumns([]);
+    setProfileSavedAt("");
     setColumnMap({});
     setOptionFields([]);
     setContent("");
@@ -81,6 +84,19 @@ export function AdminSupplierFileImport({
     try {
       const result=await backendApi.inspectSupplierFileCatalog({format,content});
       setColumns(result.columns);
+      setProfileSavedAt("");
+      if(supplierId) {
+        const saved=await backendApi.getSupplierFileColumnMap(supplierId,format)
+          .catch(()=>null);
+        if(saved?.exists) {
+          const present=new Set(result.columns.map(c=>c.key));
+          const accepted=Object.entries(saved.columnMap).filter(([,source])=>present.has(source));
+          setColumnMap(Object.fromEntries(accepted.filter(([target])=>!target.startsWith("option_"))));
+          setOptionFields(accepted.filter(([target])=>target.startsWith("option_"))
+            .map(([target,source])=>({label:target.slice(7),source})));
+          setProfileSavedAt(String(saved.updatedAt||""));
+        } else {setColumnMap({});setOptionFields([]);}
+      }
     } catch(err:any) {
       setColumns([]);
       setError(String(err?.message||"No se pudo analizar la estructura del catálogo."));
@@ -92,7 +108,22 @@ export function AdminSupplierFileImport({
       if(source)next[target]=source;else delete next[target];
       return next;
     });
+    setProfileSavedAt("");
     clearResult();
+  };
+  const saveProfile=async()=>{
+    if(profileBusy||!supplierId||columns.length===0)return;
+    setProfileBusy(true);
+    setError("");
+    try {
+      const saved=await backendApi.saveSupplierFileColumnMap({
+        supplierId,format,columns:columns.map(c=>c.key),columnMap:targetColumns,
+      });
+      setProfileSavedAt(String(saved.updatedAt||""));
+      toast.success("Mapeo del proveedor guardado para próximas importaciones.");
+    } catch(err:any) {
+      setError(String(err?.message||"No se pudo guardar el perfil."));
+    } finally {setProfileBusy(false);}
   };
   const previewFile = async () => {
     if(busy || inspectionBusy) return;
@@ -148,7 +179,7 @@ export function AdminSupplierFileImport({
     <div className="mt-4 grid gap-3 md:grid-cols-2">
       <label className="text-sm font-semibold">
         Proveedor registrado
-        <select value={supplierId} onChange={e=>{setSupplierId(e.target.value);clearResult();}}
+        <select value={supplierId} onChange={e=>{setSupplierId(e.target.value);setColumns([]);setColumnMap({});setOptionFields([]);setProfileSavedAt("");clearResult();}}
           className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-3">
           <option value="">Selecciona un proveedor</option>
           {activeSuppliers.map(p=><option key={String(p.id)} value={String(p.id)}>{p.name}</option>)}
@@ -208,25 +239,35 @@ export function AdminSupplierFileImport({
           {optionFields.map((option,index)=><div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
             <input aria-label={"Nombre del atributo "+(index+1)} value={option.label}
               placeholder="Color, talla, enchufe, material…"
-              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,label:e.target.value.slice(0,48)}:x));clearResult();}}
+              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,label:e.target.value.slice(0,48)}:x));setProfileSavedAt("");clearResult();}}
               className="rounded-lg border border-border bg-background p-2.5 text-sm"/>
             <select aria-label={"Columna del atributo "+(index+1)} value={option.source}
-              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,source:e.target.value}:x));clearResult();}}
+              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,source:e.target.value}:x));setProfileSavedAt("");clearResult();}}
               className="rounded-lg border border-border bg-background p-2.5 text-sm">
               <option value="">Selecciona columna</option>
               {columns.map(c=><option key={c.key} value={c.key}>{c.key}</option>)}
             </select>
-            <button type="button" onClick={()=>{setOptionFields(current=>current.filter((_,i)=>i!==index));clearResult();}}
+            <button type="button" onClick={()=>{setOptionFields(current=>current.filter((_,i)=>i!==index));setProfileSavedAt("");clearResult();}}
               className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">Quitar</button>
           </div>)}
         </div>
         <button type="button" disabled={optionFields.length>=VARIANT_OPTION_LIMIT}
-          onClick={()=>{setOptionFields(current=>[...current,{label:"",source:""}]);clearResult();}}
+          onClick={()=>{setOptionFields(current=>[...current,{label:"",source:""}]);setProfileSavedAt("");clearResult();}}
           className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">
           + Añadir atributo
         </button>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">Si cambias el archivo, proveedor o columnas, vuelve a ejecutar la vista previa antes de guardar.</p>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button type="button" disabled={!supplierId||profileBusy||!!busy||inspectionBusy}
+          onClick={()=>void saveProfile()}
+          className="rounded-lg border border-primary px-4 py-2.5 text-xs font-bold disabled:opacity-50">
+          {profileBusy?"Guardando perfil…":"Guardar mapeo para este proveedor"}
+        </button>
+        {profileSavedAt && <p className="text-xs font-semibold text-emerald-800">
+          Perfil guardado y recuperable al inspeccionar otro archivo del mismo proveedor y formato.
+        </p>}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Los perfiles solo incluyen nombres de columnas, nunca precios, contraseñas ni productos. Si cambias el archivo, proveedor o columnas, vuelve a ejecutar la vista previa antes de importar.</p>
     </div>}
 
     {error && <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-900">{error}</p>}
