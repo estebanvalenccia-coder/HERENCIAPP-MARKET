@@ -6,6 +6,7 @@ const cj={id:"cj-product",name:"Garden irrigation controller",price:20,metadata:
   fulfillmentType:"dropship",sourceHost:"cjdropshipping.com",supplierId:"cj-supplier",
   supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug",
   cjPreferredLogisticName:"CJPacket Liquid Line",
+  sourceProductUrl:"https://cjdropshipping.com/product-p-1531107375489495040.html",
 }};
 const supplier={id:"cj-supplier",name:"CJdropshipping",integrationType:"cj",active:true};
 test("ordinary Herencia goods keep their original local shipping checkout", async () => {
@@ -52,14 +53,39 @@ test("checkout does not confuse Herencia delivery with CJ fulfillment", () => {
   assert.equal(isCjSupplierItem(enriched[0]), false);
 });
 
-test("CJ authentic multi-option catalog rejects a wrong supplier VID before any API call or charge", async () => {
+test("CJ checkout quotes exact blue US variant, never product default", async () => {
+  const variant={name:"Azul · US Plug",supplierVariantId:"1531107375489495051",
+    supplierSku:"CJJZGJYL00285-Blue US Plug"};
   const product={...cj,variants:[
-    {name:"Rosa · EU Plug",supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug"},
-    {name:"Azul · US Plug",supplierVariantId:"1531107375489495051",supplierSku:"CJJZGJYL00285-Blue US Plug"},
+    {name:"Rosa · EU Plug",supplierVariantId:"1531107375489495040",
+      supplierSku:"CJJZGJYL00285-Green EU Plug"},variant
   ]};
-  await assert.rejects(evaluateCjCheckout({
-    lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:"Azul · US Plug"}],
-    catalog:[product],suppliers:[supplier],
-    shippingAddress:{country:"ES",postalCode:"08032"},
-  }), (error) => error.statusCode===409 && /No se realizará ningún cobro/.test(error.message));
+  const seen=[];
+  const deps={
+    verifyVariant:async({vid})=>{seen.push("verify:"+vid);return {vid,sku:variant.supplierSku,priceUsd:5};},
+    quoteShipping:async({vid,zip})=>{seen.push("shipping:"+vid+":"+zip);
+      return {vid,zip,destination:"ES",methods:[{name:"CJPacket Liquid Line",totalPostageUsd:2,time:"5-10 días"}]};},
+    getRate:async()=>({rate:0.9}),
+  };
+  const r=await evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:variant.name}],
+    catalog:[product],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
+  assert.equal(r.cjOnly,true);
+  assert.equal(r.verifiedQuote.vid,variant.supplierVariantId);
+  assert.equal(r.verifiedQuote.sku,variant.supplierSku);
+  assert.equal(r.verifiedQuote.postalCode,"08032");
+  assert.deepEqual(seen,["verify:"+variant.supplierVariantId,"shipping:"+variant.supplierVariantId+":08032"]);
+});
+test("CJ wrong VID/SKU, unlisted combination and mismatched freight block checkout",async()=>{
+  const product={...cj,variants:[{name:"Rosa · EU Plug",supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug"}]};
+  const make=(choice,changes={})=>evaluateCjCheckout({
+    lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:choice}],
+    catalog:[product],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},
+    deps:{verifyVariant:async()=>({vid:"1531107375489495040",sku:changes.sku||"wrong",priceUsd:5}),
+      quoteShipping:async()=>({vid:changes.vid||"1531107375489495040",
+        destination:"ES",zip:"08032",methods:[{name:"CJPacket Liquid Line",totalPostageUsd:2}]}),
+      getRate:async()=>({rate:.9})},
+  });
+  await assert.rejects(make("Azul · US Plug"),/no existe/);
+  await assert.rejects(make("Rosa · EU Plug"),/SKU exactos/);
+  await assert.rejects(make("Rosa · EU Plug",{sku:"CJJZGJYL00285-Green EU Plug",vid:"wrong"}),/no coincide/);
 });
