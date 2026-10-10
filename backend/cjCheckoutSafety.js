@@ -1,5 +1,5 @@
 // CJ-only checkout verification. All supplier requests are read-only. Never creates orders.
-import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { resolveCjPurchasedVariant, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
@@ -56,6 +56,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     (deps.verifyVariant || verifyCjVariantPrice)({ pid, vid }),
     (deps.quoteShipping || quoteCjVariantShipping)({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
     (deps.getRate || getUsdToEurRate)(),
+    (deps.getStock || queryCjVariantStock)({vid,origin:"CN"}),
   ]);
   const failure = checks.findIndex((check) => check.status === "rejected");
   if (failure !== -1) {
@@ -63,12 +64,13 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       "CJ no pudo verificar la variante y su precio actual.",
       "CJ no pudo cotizar el transporte para el código postal indicado.",
       "No se pudo verificar el cambio de dólares a euros.",
+      "CJ no pudo verificar las existencias de esta variante.",
     ];
     const reason = checks[failure].reason;
     if (reason?.code === "CJ_RATE_LIMITED" || reason?.code === "CJ_QUOTA_EXHAUSTED" ||
         Number(reason?.upstreamCode) === 1600200 || Number(reason?.upstreamHttpStatus) === 429) {
       console.warn("[cj.checkout] CJ API throttled", {
-        step: ["variant", "shipping", "fx"][failure],
+        step: ["variant", "shipping", "fx", "stock"][failure],
         code: String(reason?.code || "CJ_RATE_LIMITED").slice(0, 35),
       });
       const error = new Error(reason?.code === "CJ_QUOTA_EXHAUSTED"
@@ -80,14 +82,15 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     }
     // No API key, customer address, request payload or CJ response bodies in logs.
     console.warn("[cj.checkout] supplier validation failed", {
-      step: ["variant", "shipping", "fx"][failure],
+      step: ["variant", "shipping", "fx", "stock"][failure],
       code: String(reason?.code || "UPSTREAM_UNAVAILABLE").replace(/[^A-Z0-9_]/gi, "").slice(0, 60),
       upstreamHttpStatus: Number(reason?.upstreamHttpStatus) || undefined,
       upstreamCode: Number(reason?.upstreamCode) || undefined,
     });
     invalid(reasons[failure] + " No se realizará ningún cobro.");
   }
-  const [selectedVariant, freight, fx] = checks.map((check) => check.value);
+  const [selectedVariant, freight, fx, stock] = checks.map((check) => check.value);
+  if (stock?.verified !== true || stock?.available !== true || stock?.vid !== vid || stock?.origin !== "CN") invalid("CJ no confirmó existencias en el almacén de origen para esta variante. No se realizará ningún cobro.");
   if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
   if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
@@ -116,6 +119,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       available: true, vid:identity.vid, sku:identity.sku,
       selectedVariant:identity.name, destination:"ES", postalCode:String(shippingAddress.postalCode).trim(),
       methodName: logisticName, checkedAt:new Date().toISOString(),
+      stockAtQuote:stock.quantity,
     },
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
