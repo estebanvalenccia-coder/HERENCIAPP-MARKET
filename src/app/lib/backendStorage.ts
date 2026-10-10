@@ -1101,6 +1101,30 @@ export const backendApi = {
     );
   },
 
+  async getCjAutomationReadiness() {
+    return request<{
+      provider: "cj";configured:boolean;accountConnectionNotRetested:boolean;
+      trackingReadOnlyEnabled:boolean;trackingBatchMax:number;trackingIntervalMinutes:number;
+      counts:{queued:number;trackingEligible:number;needsManualReview:number;
+        creationUnknown:number;paymentUnknown:number};
+      canCreateWithManualApproval:boolean;canPayWithManualApproval:boolean;
+      unattendedOrderCreationEnabled:false;unattendedSupplierPaymentEnabled:false;
+      whyNotAutomated:string;readOnly:true;
+      previews:Array<{fulfillmentId:string;orderId:string;status:string;
+        autoPurchaseEnabled:false;autoPaymentEnabled:false;
+        blockers:string[];readyForUnattendedBuying:false}>;
+    }>("/api/admin/suppliers/cj/automation-readiness");
+  },
+
+  async synchronizeCjTrackingSafely() {
+    return request<{
+      checked:number;changed:number;errors:string[];readOnly:true;
+      automaticSupplierOrders:false;automaticSupplierPayments:false;
+    }>("/api/admin/suppliers/cj/tracking-sweep",{
+      method:"POST",body:"{}",
+    });
+  },
+
   async testCjSupplierConnection() {
     return request<{
       configured: boolean;
