@@ -1,4 +1,4 @@
-import { SUPPLIER_PRESETS, EU_COUNTRIES } from "../../lib/supplierMarketplace.js";
+import { SUPPLIER_PRESETS, CJ_PREVIEW_COUNTRIES } from "../../lib/supplierMarketplace.js";
 import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { AdminProviderApiQuotes } from "./AdminProviderApiQuotes";
 import { AdminSupplierFileImport } from "./AdminSupplierFileImport";
@@ -37,6 +37,24 @@ import { createDsersProductCsv, isAliExpressProduct } from "../../lib/dsersCsv";
 import { extractCjProductId } from "../../../../backend/cjProductIds.js";
 
 type SupplierMode = "manual" | "autopilot";
+
+// Reference ZIPs describe sample locations, not a guaranteed city-wide CJ rate.
+// Other countries and cities can always use the country-only quote.
+const CJ_REFERENCE_CITIES: Record<string, Array<{ city: string; postalCode: string }>> = {
+  ES: [{ city: "Barcelona", postalCode: "08001" }, { city: "Madrid", postalCode: "28001" }],
+  FR: [{ city: "París", postalCode: "75001" }, { city: "Lyon", postalCode: "69001" }],
+  DE: [{ city: "Berlín", postalCode: "10115" }, { city: "Múnich", postalCode: "80331" }],
+  IT: [{ city: "Roma", postalCode: "00118" }, { city: "Milán", postalCode: "20121" }],
+  PT: [{ city: "Lisboa", postalCode: "1100-001" }, { city: "Oporto", postalCode: "4000-001" }],
+  NL: [{ city: "Ámsterdam", postalCode: "1012 AB" }],
+  GB: [{ city: "Londres", postalCode: "SW1A 1AA" }],
+  US: [{ city: "Nueva York", postalCode: "10001" }, { city: "Los Ángeles", postalCode: "90001" }],
+  CO: [{ city: "Bogotá", postalCode: "110111" }, { city: "Medellín", postalCode: "050001" }],
+  CA: [{ city: "Toronto", postalCode: "M5H 2N2" }],
+  MX: [{ city: "Ciudad de México", postalCode: "06000" }],
+  AU: [{ city: "Sídney", postalCode: "2000" }],
+  CH: [{ city: "Zúrich", postalCode: "8001" }],
+};
 
 function normalizedSupplierDomain(value: string) {
   const host = String(value || "").toLowerCase().trim().replace(/^www\./, "");
@@ -1753,6 +1771,8 @@ function ImportedProductRow({
   const [cjLookupError, setCjLookupError] = useState("");
   const [cjLookupComplete, setCjLookupComplete] = useState(false);
   const [quoteDestination, setQuoteDestination] = useState("ES");
+  const [quoteMode, setQuoteMode] = useState<"country" | "city">("country");
+  const [quoteCity, setQuoteCity] = useState("");
   const [quoteZip, setQuoteZip] = useState("");
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
@@ -1773,9 +1793,16 @@ function ImportedProductRow({
   const isCjSupplier = selectedSupplier?.integrationType === "cj";
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
+  const referenceCities = CJ_REFERENCE_CITIES[quoteDestination] || [];
+  const referenceCity = referenceCities.find((place) => place.city === quoteCity);
+  // Country mode never sends a saved city/ZIP to CJ. Reference city ZIPs
+  // are samples, not the shopper's postcode and cannot authorize checkout.
+  const freightPostalCode = quoteMode === "city" ? (quoteZip.trim() || referenceCity?.postalCode || "") : "";
+  const referenceEstimate = quoteMode === "city" && !quoteZip.trim() && !!referenceCity;
   const chosenFreight = freightQuote?.methods?.find((item: any) => item.name === selectedFreightName);
   const profitability = chosenFreight?.profitability;
-  const quoteForSave = quoteDestination === "ES" && freightQuote?.destination === "ES" && profitability?.available && freightQuote?.fx?.rate
+  const quoteForSave = quoteDestination === "ES" && quoteMode === "city" && /^\d{5}$/.test(quoteZip.trim()) &&
+    freightQuote?.zip === quoteZip.trim() && freightQuote?.destination === "ES" && profitability?.available && freightQuote?.fx?.rate
     ? {
         ...profitability, methodName: selectedFreightName,
         vid: supplierVariantId, fx: freightQuote.fx,
@@ -1797,14 +1824,15 @@ function ImportedProductRow({
 
   const quoteCjShippingForEu = async () => {
     if (!String(supplierVariantId || "").trim()) return toast.error("Selecciona primero una variante CJ con VID válido");
-    if (quoteDestination !== "ES" && !quoteZip.trim()) return toast.error("Introduce el código postal para consultar este país de la UE.");
     setFreightLoading(true);
     setFreightError("");
     setFreightQuote(null);
     try {
-      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), quoteZip.trim(), quoteDestination);
+      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), freightPostalCode, quoteDestination);
       setFreightQuote(result);
-      if (!result.methods?.length) setFreightError("CJ no ofrece una tarifa para este destino desde CN. No actives este artículo para envío automático.");
+      if (!result.methods?.length) setFreightError(freightPostalCode
+        ? "CJ no devuelve tarifas para esta ubicación desde CN. Prueba otro código postal o almacén cuando esté disponible; no actives el envío automático."
+        : "CJ no devuelve tarifas generales para este país desde CN. Prueba una ciudad de referencia o código postal; no actives el envío automático.");
     } catch (error: any) {
       setFreightError(String(error?.message || "CJ no pudo calcular el transporte"));
     } finally {
@@ -1885,7 +1913,7 @@ function ImportedProductRow({
             title={!supplierVariantId.trim() ? "Selecciona primero la variante CJ" : "Consultar tarifas CJ por variante y destino UE, sin pedidos"}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
             <Truck className="h-4 w-4"/>
-            {freightLoading ? "Calculando envío…" : "Cotizar envío UE"}
+            {freightLoading ? "Calculando envío…" : "Cotizar envío internacional"}
           </button>
           <button type="button" disabled={preflightLoading} onClick={() => void runCjPreflight()}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
@@ -1894,20 +1922,46 @@ function ImportedProductRow({
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 rounded-xl border border-emerald-200 bg-background p-3 md:grid-cols-[160px_minmax(0,1fr)]">
-        <label className="text-xs font-semibold">País UE
-          <select aria-label="País de destino para cotización CJ" value={quoteDestination}
-            onChange={e=>{setQuoteDestination(e.target.value);setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
-            className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
-            {EU_COUNTRIES.map(country=><option value={country} key={country}>{country}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-semibold">Código postal para cotizar (obligatorio fuera de España)
-          <input value={quoteZip} onChange={e=>{setQuoteZip(e.target.value.slice(0,15));setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
-            placeholder={quoteDestination==="ES"?"Ej. 08032":"Código postal del destino"}
-            className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2"/>
-        </label>
-        <p className="text-xs text-muted-foreground md:col-span-2">Presupuesto de solo lectura. El checkout público CJ sigue habilitado únicamente para España y una unidad. Los demás países requieren configuración fiscal y pruebas antes de vender.</p>
+      <div className="space-y-3 rounded-xl border border-emerald-200 bg-background p-3">
+        <div className="grid gap-2 md:grid-cols-2">
+          <label className="text-xs font-semibold">País de destino
+            <select aria-label="País de destino para cotización CJ" value={quoteDestination}
+              onChange={e=>{setQuoteDestination(e.target.value);setQuoteCity("");setQuoteZip("");setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+              className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
+              {CJ_PREVIEW_COUNTRIES.map(country=><option value={country} key={country}>{new Intl.DisplayNames(["es"], {type: "region"}).of(country) || country} ({country})</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold">Tipo de estimación
+            <select aria-label="Precisión de cotización CJ" value={quoteMode}
+              onChange={e=>{setQuoteMode(e.target.value as "country" | "city");setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+              className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
+              <option value="country">General por país · sin código postal</option>
+              <option value="city">Ciudad de referencia · código postal opcional</option>
+            </select>
+          </label>
+        </div>
+        {quoteMode === "city" && <div className="grid gap-2 md:grid-cols-2">
+          <label className="text-xs font-semibold">Ciudad de referencia
+            <select aria-label="Ciudad de referencia CJ" value={quoteCity}
+              onChange={e=>{setQuoteCity(e.target.value);setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+              className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
+              <option value="">Otra ciudad / solo estimación por país</option>
+              {referenceCities.map(place=><option key={place.city} value={place.city}>{place.city} · CP de ejemplo {place.postalCode}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold">Código postal del destino (opcional en Administración)
+            <input value={quoteZip} onChange={e=>{setQuoteZip(e.target.value.slice(0,15));setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+              placeholder={referenceCity ? "Referencia: " + referenceCity.postalCode : "Código postal para afinar la estimación"}
+              className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2"/>
+          </label>
+        </div>}
+        <p className="text-xs text-muted-foreground">
+          {quoteMode === "country" ? "Consulta una tarifa preliminar del país sin utilizar tu dirección ni tu código postal." :
+           referenceEstimate ? "Se usará un código postal de ejemplo de " + quoteCity + " (" + referenceCity?.postalCode + "). No representa toda la ciudad ni la dirección del cliente." :
+           freightPostalCode ? "Se consultará el código postal indicado. La tarifa sigue siendo provisional hasta validar el checkout real." :
+           "Sin código postal, CJ solo puede devolver una estimación general por país. El nombre de una ciudad no basta para una tarifa exacta."}
+        </p>
+        <p className="text-xs font-semibold text-amber-800">Solo lectura: consultar no crea pedidos. La disponibilidad del país depende de las tarifas que CJ devuelva para esta variante y origen CN. El checkout CJ sigue limitado a España y una unidad.</p>
       </div>
       {preflight && <div className={"rounded-xl border p-3 text-sm " + (preflight.readyForManualReview ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50")}>
         <p className="font-bold">{preflight.readyForManualReview ? "Previsión apta para revisión manual" : "Simulación bloqueada: hay requisitos pendientes"}</p>
@@ -1952,20 +2006,21 @@ function ImportedProductRow({
       {(freightQuote || freightError) && <div className="space-y-3 rounded-xl border border-border bg-background/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-bold">Calcular transporte CJ a países de la UE</p>
+            <p className="text-sm font-bold">Cotización internacional CJdropshipping</p>
             <p className="text-xs text-muted-foreground">Una unidad · origen China (CN) · destino {freightQuote?.destination || quoteDestination}. No crea pedidos ni realiza pagos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {selectedFreightName && freightQuote?.destination === "ES" && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
+            {selectedFreightName && quoteForSave && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
               onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-              {saving ? "Guardando…" : freightQuote?.destination === "ES" ? "Guardar transportista preferido ES" : "Cotización UE: solo consulta"}
+              {saving ? "Guardando…" : "Guardar preferencia para España"}
             </button>}
             <span className="text-xs font-semibold text-emerald-800">Cotización de solo lectura</span>
           </div>
         </div>
         {freightError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-900">{freightError}</p>}
         {freightQuote && freightQuote.methods?.length > 0 && <div className="space-y-2">
+          <p className="text-xs font-semibold">{freightQuote.rateType === "country_estimate" ? "Estimación general por país" : referenceEstimate ? "Estimación para una ciudad de referencia (CP de ejemplo)" : "Estimación para el código postal indicado"}. No es una tarifa final.</p>
           <p className="text-xs font-semibold">Opciones de CJ (estimación en USD, no incluye automáticamente impuestos no declarados):</p>
           {freightQuote.methods.slice(0, 12).map((method: any, index: number) => <button type="button" key={method.name + "-" + index}
             aria-pressed={selectedFreightName === method.name}
@@ -1997,10 +2052,10 @@ function ImportedProductRow({
               {!profitability.feasible && <p className="mt-1 font-bold text-red-700">Margen insuficiente. Precio orientativo para un margen del 30%: {money(profitability.recommendedMinimumPriceEur)} €. Tu precio de venta no cambia.</p>}
               <p className="mt-1 text-xs text-muted-foreground">Hipótesis: IVA, comisión de pago aproximada y reserva del 3% por cambio de divisa; el importe final puede variar.</p>
             </div>}
-            <button type="button" disabled={saving || !supplierId || !supplierVariantId || freightQuote?.destination !== "ES"}
+            <button type="button" disabled={saving || !supplierId || !supplierVariantId || !quoteForSave}
               onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-              {saving ? "Guardando…" : "Guardar transportista preferido"}
+              {saving ? "Guardando…" : quoteForSave ? "Guardar transportista preferido" : "Solo consulta: para guardar usa CP real de España"}
             </button>
             {(() => {
               const option = freightQuote.methods.find((entry: any) => entry.name === selectedFreightName);
