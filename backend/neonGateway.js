@@ -24,6 +24,7 @@ import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } f
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
+import { previewSupplierFile, draftForSupplierFile } from "./supplierFileImporter.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -420,6 +421,85 @@ const server=http.createServer(async(req,res)=>{try{
         sourceUrl:item.sourceUrl,
       })),
       source:"cloudflare_r2",
+    });
+  }
+
+  // Supplier-owned files use a preview + explicit commit; never call a provider
+  // API or purchase endpoint. Existing catalog entries (even drafts) are immutable
+  // from this path and must be edited manually through Administration.
+  if(path==="/api/admin/catalog/supplier-file/preview"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const buffer=await bodyBuffer(req,{maxBytes:530000});
+    let request;
+    try{request=JSON.parse(buffer.toString("utf8"));}
+    catch{return json(res,400,{error:"El catálogo debe enviarse como JSON válido."});}
+    const stored=await readNeonStorageValue("posOperations");
+    let operations;
+    try{operations=JSON.parse(stored||"{}");}
+    catch{return json(res,503,{error:"No se pudo leer la lista de proveedores."});}
+    const supplier=(Array.isArray(operations?.suppliers)?operations.suppliers:[])
+      .find(row=>String(row.id)===String(request?.supplierId));
+    if(!supplier||supplier.active===false)return json(res,404,{error:"Registra y activa primero el proveedor."});
+    const preview=previewSupplierFile(request);
+    return json(res,200,{
+      ...preview,supplier:{id:String(supplier.id),name:String(supplier.name||"Proveedor")},
+      writable:false,automaticOrdersEnabled:false,
+      message:"Revisa los artículos y pulsa 'Guardar borradores' para importar. No se ha escrito ningún producto.",
+    });
+  }
+
+  if(path==="/api/admin/catalog/supplier-file/commit"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const buffer=await bodyBuffer(req,{maxBytes:530000});
+    let request;
+    try{request=JSON.parse(buffer.toString("utf8"));}
+    catch{return json(res,400,{error:"El catálogo debe enviarse como JSON válido."});}
+    if(request?.confirmDrafts!==true)return json(res,409,{
+      error:"Debes confirmar explícitamente la creación de borradores.",
+    });
+    const stored=await readNeonStorageValue("posOperations");
+    let operations;
+    try{operations=JSON.parse(stored||"{}");}
+    catch{return json(res,503,{error:"No se pudo leer la lista de proveedores."});}
+    const supplier=(Array.isArray(operations?.suppliers)?operations.suppliers:[])
+      .find(row=>String(row.id)===String(request?.supplierId));
+    if(!supplier||supplier.active===false)return json(res,404,{error:"El proveedor ha dejado de estar disponible."});
+
+    // Re-parse on the backend instead of trusting the previously shown preview.
+    const normalized=previewSupplierFile(request);
+    const existing=await listNeonCommerceProducts({includeArchived:true});
+    const usedIds=new Set(existing.map(row=>String(row.id)));
+    const usedUrls=new Set(existing.flatMap(row=>{
+      const m=row.metadata&&typeof row.metadata==="object"?row.metadata:{};
+      return [m.sourceProductUrl,m.supplierFileOriginalUrl].map(v=>String(v||"").trim()).filter(Boolean);
+    }));
+    const results=[];
+    for(const product of normalized.products) {
+      if(usedIds.has(product.id)||
+         (product.sourceProductUrl && usedUrls.has(product.sourceProductUrl))) {
+        results.push({id:product.id,name:product.name,status:"skipped_existing",
+          message:"Ya existe un producto con ese ID o URL. No se han sobrescrito los cambios manuales."});
+        continue;
+      }
+      try {
+        const draft=draftForSupplierFile(product,supplier);
+        // No visible image, stock or sellable price is supplied by a file.
+        const saved=await saveNeonCommerceProduct(draft,{id:product.id});
+        if(!saved||String(saved.id)!==String(product.id))throw Error("Neon no confirmó el nuevo borrador.");
+        usedIds.add(product.id);
+        if(product.sourceProductUrl)usedUrls.add(product.sourceProductUrl);
+        results.push({id:product.id,name:product.name,status:"created",variantCount:product.variantCount});
+      } catch(err) {
+        results.push({id:product.id,name:product.name,status:"failed",
+          message:"No se pudo guardar el borrador: "+String(err?.message||"Error de Neon").slice(0,140)});
+      }
+    }
+    return json(res,200,{
+      ok:true,source:"neon",mode:"manual_drafts_only",automaticOrdersEnabled:false,
+      created:results.filter(row=>row.status==="created").length,
+      skipped:results.filter(row=>row.status==="skipped_existing").length,
+      failed:results.filter(row=>row.status==="failed").length,
+      results,
     });
   }
 
