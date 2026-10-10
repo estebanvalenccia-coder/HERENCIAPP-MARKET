@@ -131,7 +131,7 @@ export function AdminSupplierFileImport({
       </button>
     </div>
     <p className="mt-2 text-xs text-muted-foreground">
-      Máximo 512 KB, 300 filas y 60 productos por importación. CSV con separador coma, punto y coma o tabulación.
+      Máximo 512 KB, 300 filas y 30 productos por importación. CSV con separador coma, punto y coma o tabulación.
       JSON como array o como objeto con <code>products</code>; admite variantes anidadas.
       XML necesita un parser seguro y queda para una fase posterior.
     </p>
