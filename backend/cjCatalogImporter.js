@@ -1,5 +1,6 @@
 // CJdropshipping read-only catalog adapter. Never creates or pays orders.
 import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
+import { splitSupplierOptions } from "../src/app/lib/productVariantOptions.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
@@ -132,7 +133,38 @@ export async function previewCjProductUrl(input) {
     supplierPrice: 0, supplierCurrency: "USD", supplierProductId: pid,
     type: "product", department: "Catálogo", area: "Importados", family: "Proveedor"
   };
-  return { ok: true, sourceUrl: url.toString(), sourceHost: url.hostname, count: 1, products: [product], source: "cj_api" };
+  // Read-only convenience step: automatically load the real SKU/VID choices
+  // for a draft, but never let a variant API failure block ordinary imports.
+  let variantsWarning = "";
+  try {
+    const response = await queryCjProductVariants(pid);
+    if (response.truncated) {
+      variantsWarning = "CJ tiene más de 200 variantes: revisa las opciones desde Administración.";
+    } else if (Array.isArray(response.variants) && response.variants.length) {
+      const mapped = response.variants.map(variant => {
+        const optionValues=splitSupplierOptions(variant.option || variant.name || variant.sku || variant.vid);
+        return {
+          name: optionValues.join(" · "),
+          sku: String(variant.sku || ""),
+          stock:0,
+          supplierVariantId:String(variant.vid),
+          supplierSku:String(variant.sku || ""),
+          optionValues,
+          image: String(variant.image || ""),
+        };
+      });
+      const labels=new Set(mapped.map(v=>v.name.toLowerCase()));
+      if (mapped.every(v=>v.supplierVariantId && v.supplierSku) && labels.size===mapped.length) {
+        product.variants=mapped;
+      } else {
+        variantsWarning="CJ devolvió opciones repetidas o incompletas; consulta las variantes desde Administración.";
+      }
+    }
+  } catch (error) {
+    variantsWarning="No se pudieron consultar todas las opciones CJ. Puedes volver a intentarlo desde Administración.";
+  }
+  return { ok: true, sourceUrl: url.toString(), sourceHost: url.hostname, count: 1, products: [product], source: "cj_api",
+    ...(variantsWarning ? {variantsWarning} : {}) };
 }
 
 /**
