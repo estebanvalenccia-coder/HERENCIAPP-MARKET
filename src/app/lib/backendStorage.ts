@@ -389,6 +389,7 @@ export const backendApi = {
       sourceHost: string;
       count: number;
       truncated?: boolean;
+      variantsWarning?: string;
       requiresManual?: boolean;
       message?: string;
       products: any[];
@@ -1718,6 +1719,13 @@ export const backendApi = {
 
   async generateProductImage(payload: { prompt: string; references?: Array<{ image: string }>; outputType?: "photo" | "collage" }) {
     return request<{ image: string; model?: string }>("/api/admin/ai/product-image", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async generateCommerceDescription(payload: { name: string; category?: string; facts?: string; variants?: string[] }) {
+    return request<{ description: string; reviewRequired: boolean }>("/api/admin/ai/product-description", {
       method: "POST",
       body: JSON.stringify(payload),
     });

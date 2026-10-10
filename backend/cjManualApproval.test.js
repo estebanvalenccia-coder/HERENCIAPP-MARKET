@@ -25,8 +25,8 @@ function fixtures() {
     items: [{ productId: "item1", supplierVariantId: "VID1", supplierSku: "plant-green",
       cjPreferredLogisticCountry: "ES", cjPreferredLogisticName: "CJPacket",
       quantity: 1, salePrice: 50, supplierCost: 21.64,
-      cjPricingEstimate: { available: true, feasible: true, checkedAt: "2026-10-09T11:40:00Z",
-        vid: "VID1", destination: "ES", methodName: "CJPacket", salePriceEur: 50,
+      cjPricingEstimate: { available: true, feasible: true, checkedAt: "2026-10-09T11:50:00Z",
+        vid: "VID1", sku:"plant-green", selectedVariant:"", postalCode:"08032", destination: "ES", methodName: "CJPacket", salePriceEur: 50,
         supplierTotalUsd: 23.5, costEur: 21.64 } }],
   };
   return { order, record, supplier };
@@ -139,4 +139,12 @@ test("creation/payment uncertain outcomes are never retried by status mutation",
       status:"cj_creating",
     }),/cambió de estado/);
   }
+});
+
+test("manual creation refuses a mismatched supplier SKU or delivery postal code",()=>{
+  const base=fixtures();
+  assert.throws(()=>validateManualCjCreate({...base,record:{...base.record,items:base.record.items.map(x=>({
+    ...x,supplierSku:"other"
+  }))},nowMs:NOW}),/Cotización/);
+  assert.throws(()=>validateManualCjCreate({...base,record:{...base.record,shippingAddress:{...base.record.shippingAddress,postalCode:"08033"}},nowMs:NOW}),/Cotización/);
 });

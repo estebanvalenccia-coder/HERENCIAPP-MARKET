@@ -1,3 +1,5 @@
+import { SUPPLIER_PRESETS } from "../../lib/supplierMarketplace.js";
+import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -423,9 +425,29 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
     // Verify the persisted item before saying "saved" to the merchant.
     const confirmation = await backendApi.getCommerceProduct(imported.id);
-    const confirmedProduct = confirmation.product;
+    let confirmedProduct = confirmation.product;
     if (!confirmedProduct || String(confirmedProduct.id) !== String(imported.id)) {
       throw new Error("La importación respondió, pero no pudimos encontrar el borrador guardado en el catálogo.");
+    }
+    // Draft-only copywriting: never overwrite a merchant's existing text and
+    // never fail or publish an import just because an AI provider is unavailable.
+    if (!existing && String(confirmedProduct.status || "draft") === "draft" &&
+        !String(confirmedProduct.description || "").trim() && !String(candidate.description || "").trim()) {
+      try {
+        const ai = await backendApi.generateCommerceDescription({
+          name:String(confirmedProduct.name || candidate.name || ""),
+          category:String(candidate.supplierCategory || candidate.category || ""),
+          facts:"",
+          variants:(Array.isArray(candidate.variants)?candidate.variants:[]).slice(0,18).map((v:any)=>String(v?.name || "")).filter(Boolean),
+        });
+        if (String(ai.description || "").trim()) {
+          const updated=await backendApi.updateCommerceProduct(imported.id,{description:ai.description.trim()});
+          confirmedProduct=updated.product || confirmedProduct;
+          toast.info("Groq preparó una descripción. Revísala en el borrador antes de publicar.");
+        }
+      } catch {
+        toast.info("Importado sin descripción IA; puedes generarla desde Editar producto.");
+      }
     }
 
     const inTrash = confirmedProduct.status === "archived" || Boolean(confirmedProduct.deletedAt);
@@ -519,6 +541,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
       try {
         await saveImportedCandidate(candidate, false);
+        if (preview.variantsWarning) toast.warning(preview.variantsWarning);
       } catch (saveError: any) {
         const message = String(saveError?.message || "");
         if (!/copiar ninguna imagen|copiar las imágenes|cloudflare r2/i.test(message)) throw saveError;
@@ -1011,6 +1034,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           { id: "supplier-import", name: "Importar por URL", icon: Search, detail: "Tu importador actual" },
           { id: "supplier-catalog", name: "Productos", icon: Layers3, detail: "Vincular y organizar" },
           { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
+          { id: "supplier-compare", name: "Comparar costes", icon: Truck, detail: "27 países UE" },
           { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
           { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
           { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
@@ -1023,6 +1047,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         </button>)}
       </div>
     </nav>
+
+    <AdminSupplierCostComparison suppliers={suppliers}/>
 
     <section id="supplier-import" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-2">
@@ -1150,6 +1176,31 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     <div className="grid gap-6 xl:grid-cols-2">
       <section id="supplier-new" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
         <h2 className="text-xl font-bold">{form.id ? "Editar proveedor" : "Nuevo proveedor"}</h2>
+        {!form.id && (
+          <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4">
+            <label htmlFor="herencia-supplier-preset" className="mb-2 block text-sm font-semibold">
+              Añadir proveedor conocido (o escribe cualquiera manualmente)
+            </label>
+            <select id="herencia-supplier-preset" defaultValue=""
+              onChange={(event) => {
+                const preset = SUPPLIER_PRESETS.find(p => p.id === event.target.value);
+                if (!preset) return;
+                setForm((current: any) => ({
+                  ...current, name:preset.name, sourceHost:preset.host,
+                  integrationType:preset.type, fulfillmentMode:"manual", connectorKey:"",
+                }));
+              }}
+              className="w-full rounded-xl border border-border bg-background p-3">
+              <option value="">Selecciona una plantilla (opcional)</option>
+              {SUPPLIER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Una plantilla solo rellena los datos del proveedor. No concede permisos API,
+              no importa productos automáticamente ni autoriza compras reales.
+              Temu y los proveedores sin API autorizada permanecen en modo manual.
+            </p>
+          </div>
+        )}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre · ej. AliExpress" className="rounded-xl border border-border bg-background p-3"/>
           <input value={form.sourceHost} onChange={(e) => setForm({ ...form, sourceHost: e.target.value })} placeholder="Dominio · aliexpress.com" className="rounded-xl border border-border bg-background p-3"/>

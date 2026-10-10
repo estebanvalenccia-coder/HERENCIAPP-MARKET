@@ -1,3 +1,4 @@
+import { verifiedCjQuoteMatches } from "./cjVariantIdentity.js";
 // Reconcile supplier preparation records without reordering, paying, or resubmitting
 // supplier purchases. This module does not perform side effects.
 const protectedStatuses = new Set([
@@ -8,16 +9,27 @@ const protectedStatuses = new Set([
   "supplier_dispatching", "supplier_dispatch_unknown",
 ]);
 
-export function hasVerifiedCjQuote(record) {
+export function hasVerifiedCjQuote(record, { nowMs = Date.now() } = {}) {
   const items = Array.isArray(record?.items) ? record.items : [];
-  return items.length > 0 && Number(record?.estimatedCost || 0) > 0 &&
-    items.every((item) =>
-      item?.cjPricingEstimate?.available === true &&
-      Number(item?.supplierCost || 0) > 0
-    );
+  const postalCode=String(record?.shippingAddress?.postalCode || "").trim();
+  return items.length === 1 && Number(record?.estimatedCost || 0) > 0 &&
+    items.every((item) => {
+      const quote=item.cjPricingEstimate;
+      return Number(item?.quantity) === 1 && Number(item?.supplierCost || 0) > 0 &&
+        verifiedCjQuoteMatches({
+          quote,
+          identity:{vid:String(item?.supplierVariantId || ""),sku:String(item?.supplierSku || ""),
+            name:String(item?.selectedVariant || "")},
+          destination:"ES",postalCode,
+          methodName:String(item?.cjPreferredLogisticName || ""),
+          salePriceEur:Number(item?.salePrice || 0),
+          nowMs,
+        }) &&
+        Math.abs(Number(quote.costEur) - Number(item.supplierCost)) < 0.02;
+    });
 }
 
-export function preserveSupplierFulfillment(existing, proposed, { force = false } = {}) {
+export function preserveSupplierFulfillment(existing, proposed, { force = false, nowMs = Date.now() } = {}) {
   if (!existing) return false;
   // A submitted, settled or already manually approved supplier action must
   // never be overwritten by catalog re-pricing or repeated sync requests.
@@ -25,9 +37,22 @@ export function preserveSupplierFulfillment(existing, proposed, { force = false 
       existing?.approvedAt ||
       protectedStatuses.has(String(existing?.status || "").toLowerCase())) return true;
   if (force) return false;
-  // Even a cached admin view may send force=false. Refresh only when the
-  // authoritative catalog now has a verified quote and the queue did not.
-  return !(hasVerifiedCjQuote(proposed) && !hasVerifiedCjQuote(existing));
+  const currentVerified = hasVerifiedCjQuote(existing, { nowMs });
+  const incomingVerified = hasVerifiedCjQuote(proposed, { nowMs });
+  if (!currentVerified) return false;
+  if (!incomingVerified) return true;
+  // A valid newly quoted variant/address/method must replace a different
+  // unapproved quote, but exact replays should preserve the existing row.
+  const current = existing.items?.[0]?.cjPricingEstimate;
+  const next = proposed.items?.[0]?.cjPricingEstimate;
+  const exact = current?.vid === next?.vid &&
+    current?.sku === next?.sku &&
+    current?.selectedVariant === next?.selectedVariant &&
+    current?.postalCode === next?.postalCode &&
+    current?.methodName === next?.methodName &&
+    Math.abs(Number(current?.costEur) - Number(next?.costEur)) < 0.02 &&
+    Math.abs(Number(current?.salePriceEur) - Number(next?.salePriceEur)) < 0.02;
+  return exact;
 }
 
 export function mergePreparedSupplierFulfillments(operations, proposals, { force = false } = {}) {

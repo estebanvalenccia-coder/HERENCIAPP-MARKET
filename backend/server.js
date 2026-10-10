@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { resolveCjPurchasedVariant, verifiedCjQuoteMatches } from "./cjVariantIdentity.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
@@ -5249,17 +5250,22 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
         updatedAt: now }, executed: false, manual: false,
     };
   }
-  const mismatchedSelection=(record.items || []).filter((item)=>{
-    const chosen=String(item.selectedVariant || "").trim().toLowerCase();
-    if (!chosen) return false;
-    const sku=String(item.supplierSku || "").trim().toLowerCase();
-    const suffix=sku.includes("-") ? sku.split("-").slice(1).join("-") : "";
-    return !suffix || !(suffix.includes(chosen) || chosen.includes(suffix));
-  });
+  // No supplier order can be created using a cached quote for a different
+  // customer-selected variant, ZIP, method or price. Legacy rows must re-quote.
+  const mismatchedSelection = (record.items || []).filter((item) =>
+    !verifiedCjQuoteMatches({
+      quote:item.cjPricingEstimate,
+      identity:{vid:String(item.supplierVariantId || ""),sku:String(item.supplierSku || ""),
+        name:String(item.selectedVariant || "")},
+      destination:countryCode,postalCode:String(address.postalCode || "").trim(),
+      methodName:String(item.cjPreferredLogisticName || ""),
+      salePriceEur:Number(item.salePrice || 0),
+    })
+  );
   if (mismatchedSelection.length) {
     return {
       fulfillment: { ...record, status: "mapping_required",
-        blocker: "El cliente eligió una variante que no coincide con el SKU CJ asignado. Revisa el mapeo antes de enviar.",
+        blocker: "La variante, SKU, precio, transporte o código postal no coincide con una cotización CJ reciente. Recotiza antes de enviar.",
         updatedAt: now }, executed: false, manual: false,
     };
   }
@@ -5521,16 +5527,35 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     const salePrice = normalizeMoney(item?.price ?? 0);
     const revenue = normalizeMoney(salePrice * quantity);
     const isCj = Boolean(supplier && supplierIntegrationType(supplier) === "cj");
-    const quote = metadata.cjPricingEstimate && typeof metadata.cjPricingEstimate === "object" ? metadata.cjPricingEstimate : null;
-    const quoteTimestamp = Date.parse(String(quote?.checkedAt || ""));
-    const quoteVerified = isCj && quantity === 1 && quote?.available === true &&
-      Number(quote.costEur) > 0 && Number.isFinite(quoteTimestamp) &&
-      Date.now() >= quoteTimestamp && Date.now() - quoteTimestamp < 24 * 60 * 60 * 1000 &&
-      String(quote.vid || "") === String(metadata.supplierVariantId || metadata.cjVid || "") &&
-      String(quote.methodName || "") === String(metadata.cjPreferredLogisticName || "") &&
-      quote.destination === "ES" &&
-      Math.abs(Number(quote.salePriceEur || 0) - salePrice) < 0.02;
-    // Never use a USD figure as an EUR cost or ignore CJ shipping charges.
+    // Refresh the precise customer-selected variant after payment, using read-only
+    // CJ calls. The admin's product-level quote MUST NOT price another option.
+    // Any failure keeps the supplier fulfillment in cost_required, not purchased.
+    let cjIdentity = null;
+    let quote = null;
+    if (isCj && quantity === 1) {
+      try {
+        cjIdentity = resolveCjPurchasedVariant(product, item?.selectedVariant);
+        const address = compactShippingAddress(order);
+        const verified = await evaluateCjCheckout({
+          lines: [{...item, id:product.id, quantity:1, price:salePrice}],
+          catalog:[product], suppliers, shippingAddress:address,
+          discount: Number(order?.metadata?.discount || 0),
+          promotionAuthorized: Boolean(order?.metadata?.coupon && Number(order?.metadata?.discount || 0) > 0),
+        });
+        quote = verified.verifiedQuote || null;
+      } catch (error) {
+        console.warn("[cj.fulfillment] read-only variant verification unavailable", {
+          code: String(error?.code || "CJ_REQUOTE_REQUIRED").slice(0, 60),
+        });
+      }
+    }
+    const shippingAddress = compactShippingAddress(order);
+    const quoteVerified = isCj && quantity === 1 && verifiedCjQuoteMatches({
+      quote, identity:cjIdentity, destination:"ES",
+      postalCode:shippingAddress.postalCode,
+      methodName:String(metadata.cjPreferredLogisticName || "").trim(),
+      salePriceEur:salePrice - Math.max(0, Number(order?.metadata?.discount || 0)),
+    });
     const supplierCost = quoteVerified ? normalizeMoney(quote.costEur) :
       isCj ? 0 : normalizeMoney(metadata.supplierCost ?? metadata.supplierUnitCost ?? 0);
     const key = supplier?.id ? "supplier:" + supplier.id : "host:" + (sourceHost || "unassigned");
@@ -5554,13 +5579,11 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       sourceProductUrl,
       sourceHost,
       supplierCost,
-      supplierVariantId: String(metadata.supplierVariantId || metadata.cjVid || "").trim().slice(0, 100),
-      supplierSku: String(metadata.supplierSku || metadata.cjSku || "").trim().slice(0, 100),
+      supplierVariantId: String(isCj ? (cjIdentity?.vid || "") : (metadata.supplierVariantId || metadata.cjVid || "")).trim().slice(0, 100),
+      supplierSku: String(isCj ? (cjIdentity?.sku || "") : (metadata.supplierSku || metadata.cjSku || "")).trim().slice(0, 100),
       cjPreferredLogisticName: String(metadata.cjPreferredLogisticName || "").trim().slice(0, 120),
       cjPreferredLogisticCountry: String(metadata.cjPreferredLogisticCountry || "").trim().slice(0, 2),
-      cjPricingEstimate: quoteVerified ? {
-        ...quote, checkedAt: new Date(quoteTimestamp).toISOString()
-      } : null,
+      cjPricingEstimate: quoteVerified ? quote : null,
       pricingReviewNeeded: isCj && !quoteVerified,
       estimatedCost: normalizeMoney(supplierCost * quantity),
       salePrice,
@@ -5585,6 +5608,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     if (preserveSupplierFulfillment(found, {
       estimatedCost: group.estimatedCost,
       items: group.items,
+      shippingAddress: compactShippingAddress(order),
     }, { force })) {
       created.push(found);
       continue;

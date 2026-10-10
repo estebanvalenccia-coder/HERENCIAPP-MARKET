@@ -1,5 +1,6 @@
 // CJdropshipping read-only catalog adapter. Never creates or pays orders.
 import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
+import { splitSupplierOptions } from "./productVariantOptions.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
@@ -58,7 +59,7 @@ function scheduleCjRequest(fn) {
 }
 async function cjFetch(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
-  const cacheable = path.startsWith("/product/variant/") || path === "/logistic/freightCalculate";
+  const cacheable = path.startsWith("/product/variant/") || path.startsWith("/product/stock/") || path === "/logistic/freightCalculate";
   const key = cacheable ? method + " " + path + " " + String(options.body || "") : "";
   const previous = key && recentResults.get(key);
   if (previous && previous.expiresAt > Date.now()) return previous.data;
@@ -132,7 +133,38 @@ export async function previewCjProductUrl(input) {
     supplierPrice: 0, supplierCurrency: "USD", supplierProductId: pid,
     type: "product", department: "Catálogo", area: "Importados", family: "Proveedor"
   };
-  return { ok: true, sourceUrl: url.toString(), sourceHost: url.hostname, count: 1, products: [product], source: "cj_api" };
+  // Read-only convenience step: automatically load the real SKU/VID choices
+  // for a draft, but never let a variant API failure block ordinary imports.
+  let variantsWarning = "";
+  try {
+    const response = await queryCjProductVariants(pid);
+    if (response.truncated) {
+      variantsWarning = "CJ tiene más de 200 variantes: revisa las opciones desde Administración.";
+    } else if (Array.isArray(response.variants) && response.variants.length) {
+      const mapped = response.variants.map(variant => {
+        const optionValues=splitSupplierOptions(variant.option || variant.name || variant.sku || variant.vid);
+        return {
+          name: optionValues.join(" · "),
+          sku: String(variant.sku || ""),
+          stock:0,
+          supplierVariantId:String(variant.vid),
+          supplierSku:String(variant.sku || ""),
+          optionValues,
+          image: String(variant.image || ""),
+        };
+      });
+      const labels=new Set(mapped.map(v=>v.name.toLowerCase()));
+      if (mapped.every(v=>v.supplierVariantId && v.supplierSku) && labels.size===mapped.length) {
+        product.variants=mapped;
+      } else {
+        variantsWarning="CJ devolvió opciones repetidas o incompletas; consulta las variantes desde Administración.";
+      }
+    }
+  } catch (error) {
+    variantsWarning="No se pudieron consultar todas las opciones CJ. Puedes volver a intentarlo desde Administración.";
+  }
+  return { ok: true, sourceUrl: url.toString(), sourceHost: url.hostname, count: 1, products: [product], source: "cj_api",
+    ...(variantsWarning ? {variantsWarning} : {}) };
 }
 
 /**
@@ -298,4 +330,38 @@ export async function verifyCjVariantPrice(
     failure.upstreamCode = error?.upstreamCode ?? originalError?.upstreamCode;
     throw failure;
   }
+}
+
+/**
+ * CJ documented read-only stock lookup by exact VID, per warehouse country.
+ * Do not sum other variants, countries or factory-inventory guesses.
+ * Unknown/missing figures fail closed; this is an observation, not a reservation.
+ */
+export function interpretCjVariantStock(rows, vidInput, originInput = "CN") {
+  const vid = String(vidInput || "").trim();
+  const origin = String(originInput || "CN").trim().toUpperCase();
+  if (!Array.isArray(rows) || !vid || !/^[A-Z]{2}$/.test(origin)) return { available:false, quantity:0, verified:false };
+  const matched = rows.filter(row => String(row?.vid || "") === vid &&
+    String(row?.countryCode || "").toUpperCase() === origin);
+  if (!matched.length) return { available:false, quantity:0, verified:false };
+  const quantities = matched.map(row => Number(row?.storageNum ?? row?.cjInventoryNum ?? row?.totalInventoryNum));
+  if (quantities.some(n => !Number.isSafeInteger(n) || n < 0)) {
+    return { available:false, quantity:0, verified:false };
+  }
+  const quantity = quantities.reduce((sum,n)=>sum+n,0);
+  return { available:quantity>=1, quantity, verified:true, vid, origin, source:"cj_api" };
+}
+
+export async function queryCjVariantStock({vid, origin = "CN"} = {}) {
+  const safeVid=String(vid || "").trim();
+  if (!/^[a-z0-9-]{8,100}$/i.test(safeVid)) {
+    const error=new Error("VID CJ inválido para la consulta de inventario");
+    error.statusCode=422;
+    throw error;
+  }
+  const accessToken=await token();
+  const data=await cjFetch("/product/stock/queryByVid?vid="+encodeURIComponent(safeVid),{
+    headers:{"CJ-Access-Token":accessToken},
+  });
+  return interpretCjVariantStock(data,safeVid,origin);
 }
