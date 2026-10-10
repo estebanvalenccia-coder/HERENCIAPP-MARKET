@@ -389,6 +389,7 @@ export const backendApi = {
       sourceHost: string;
       count: number;
       truncated?: boolean;
+      variantsWarning?: string;
       requiresManual?: boolean;
       message?: string;
       products: any[];
