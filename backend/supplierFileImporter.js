@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 
 const MAX_BYTES = 512 * 1024;
 const MAX_ROWS = 300;
-const MAX_PRODUCTS = 60;
+const MAX_PRODUCTS = 30;
 const MAX_VARIANTS = 60;
 const MAX_COLUMNS = 60;
 const MAX_OPTIONS = 4;
@@ -219,7 +219,7 @@ export function previewSupplierFile({ format, content, supplierId } = {}) {
   const groups=new Map();
   for(const row of rows) {
     if (!groups.has(row.key)) {
-      if(groups.size>=MAX_PRODUCTS) error("Máximo 60 productos diferentes por archivo.");
+      if(groups.size>=MAX_PRODUCTS) error("Máximo 30 productos diferentes por archivo.");
       groups.set(row.key,[]);
     }
     const group=groups.get(row.key);
@@ -301,8 +301,8 @@ export function draftForSupplierFile(product, supplier = {}) {
   return {
     id:product.id,
     name:product.name,description:product.description||"",
-    category:product.category||"otros",collection:product.category||"otros",
-    collections:[product.category||"otros"],type:"product",department:"Catálogo",
+    category:product.category||"otros",collection:"",
+    collections:[],type:"product",department:"Catálogo",
     area:"Importados",family:"Proveedor",
     status:"draft",active:false,featured:false,
     price:0,stock:0,trackInventory:true,
