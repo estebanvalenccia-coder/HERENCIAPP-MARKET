@@ -1,33 +1,38 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
-import { EU_COUNTRIES } from "./supplierMarketplace.js";
+import { EU_COUNTRIES, CJ_PREVIEW_COUNTRIES } from "./supplierMarketplace.js";
 
-test("CJ preview accepts all EU countries with postal codes but never enables checkout",()=>{
- for (const country of EU_COUNTRIES) {
-  const result=validateCjEuFreightPreview({destination:country,zip:country==="ES"?"08032":"12345"});
+test("CJ previews all EU countries and selected international destinations without postal codes or checkout",()=>{
+ for (const country of CJ_PREVIEW_COUNTRIES) {
+  const result=validateCjEuFreightPreview({destination:country});
   assert.equal(result.destination,country);
+  assert.equal(result.zip,"");
+  assert.equal(result.precision,"country_estimate");
   assert.equal(result.origin,"CN");
   assert.equal(result.quantity,1);
   assert.equal(result.checkoutEnabled,false);
   assert.equal(result.manualReviewRequired,true);
  }
+ assert.equal(EU_COUNTRIES.length,27);
+ for (const country of ["US","CO","GB","CA","MX","AU","CH"]) assert.ok(CJ_PREVIEW_COUNTRIES.includes(country));
 });
-test("rejects non-EU countries and missing postal codes outside Spain",()=>{
- assert.throws(()=>validateCjEuFreightPreview({destination:"US",zip:"10001"}),/UE/);
- assert.throws(()=>validateCjEuFreightPreview({destination:"GB",zip:"EC1"}),/UE/);
- assert.throws(()=>validateCjEuFreightPreview({destination:"DE",zip:""}),/código postal/);
+test("postal code improves preview precision but still never enables checkout",()=>{
+ for (const [country, zip] of [["ES","08032"],["DE","10115"],["US","10001"],["CO","110111"]]) {
+  const result=validateCjEuFreightPreview({destination:country,zip});
+  assert.equal(result.zip,zip);
+  assert.equal(result.precision,"postal_estimate");
+  assert.equal(result.checkoutEnabled,false);
+ }
+});
+test("rejects unknown countries and malformed postcodes",()=>{
+ assert.throws(()=>validateCjEuFreightPreview({destination:"ZZ",zip:"10001"}),/país/);
  assert.throws(()=>validateCjEuFreightPreview({destination:"FR",zip:"<script>"}),/formato/);
  assert.throws(()=>validateCjEuFreightPreview({destination:"ES",zip:"1234"}),/cinco cifras/);
-});
-test("legacy Spain admin-only country preview remains accepted without ZIP",()=>{
- const result=validateCjEuFreightPreview({});
- assert.equal(result.destination,"ES");
- assert.equal(result.zip,"");
- assert.equal(result.checkoutEnabled,false);
+ assert.throws(()=>validateCjEuFreightPreview({destination:"US",zip:"X"}),/formato/);
 });
 
-test("gateway can estimate EU shipping read-only without changing Spain live checkout",async()=>{
+test("gateway can estimate international shipping read-only without changing Spain live checkout",async()=>{
  const fs=await import("node:fs/promises");
  const gateway=await fs.readFile(new URL("./neonGateway.js",import.meta.url),"utf8");
  const server=await fs.readFile(new URL("./server.js",import.meta.url),"utf8");

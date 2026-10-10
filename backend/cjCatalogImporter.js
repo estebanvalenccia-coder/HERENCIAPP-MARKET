@@ -253,8 +253,10 @@ export async function quoteCjVariantShipping({ vid, quantity = 1, origin = "CN",
   return {
     origin: from, destination: to, zip: postal, vid:safeVid, quantity:qty,
     methods: methods.sort((a,b) => (a.totalPostageUsd ?? a.shippingUsd) - (b.totalPostageUsd ?? b.shippingUsd)),
-    currency: "USD", rateType: "country_estimate", source: "cj_api",
-    warning: "Estimación preliminar, no una cotización final. Revisa coste total, impuestos y destino exacto antes de pagar."
+    currency: "USD", rateType: postal ? "postal_estimate" : "country_estimate", source: "cj_api",
+    warning: postal
+      ? "Estimación postal preliminar. Revalida la dirección y la ruta exactas antes de aceptar un pedido."
+      : "Estimación general del país: no garantiza una tarifa para cada ciudad. Verifica el código postal del cliente antes de vender."
   };
 }
 
