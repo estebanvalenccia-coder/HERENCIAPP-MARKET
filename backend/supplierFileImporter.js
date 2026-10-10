@@ -41,6 +41,10 @@ const NAMES = Object.freeze({
   currency: ["currency", "moneda", "supplier_currency"],
   cost: ["cost", "supplier_cost", "supplier_price", "precio_compra", "purchase_price", "wholesale_price"],
   image: ["image", "image_url", "foto", "imagen", "picture", "photo_url"],
+  brand: ["manufacturer", "brand", "marca", "fabricante"],
+  mpn: ["mpn", "manufacturer_part_number", "modelo_fabricante"],
+  gtin: ["gtin", "ean", "upc", "barcode", "codigo_barras"],
+  stock: ["supplier_stock", "stock", "supplier_quantity", "existencias_proveedor"],
 });
 
 function field(row, key) {
@@ -210,6 +214,15 @@ function asImportRow(row, index) {
     optionValues:values,
     cost:price(rawCost),
     currency:currency(rawCurrency),
+    brand:field(row,"brand").slice(0,120),
+    mpn:field(row,"mpn").slice(0,120),
+    gtin:field(row,"gtin").slice(0,24),
+    supplierStock:(()=>{
+      const value=field(row,"stock");
+      if(!value) return null;
+      if(!/^(?:0|[1-9][0-9]{0,8})$/.test(value))error("Inventario del proveedor no válido.");
+      return Number(value);
+    })(),
   };
 }
 
@@ -279,6 +292,7 @@ export function previewSupplierFile({ format, content, supplierId, columnMap = {
       .update(id+"\u0000"+key).digest("hex").slice(0,32);
     products.push({
       id:stableId,supplierId:id,supplierProductId:key,
+      brand:first.brand,mpn:first.mpn,gtin:first.gtin,
       name:first.name,category:first.category||"otros",
       description:first.description,sourceProductUrl:originalUrl,
       sourceImageUrl:items.find(row=>row.imageUrl)?.imageUrl||"",
@@ -287,7 +301,7 @@ export function previewSupplierFile({ format, content, supplierId, columnMap = {
       variants,optionLabels,variantCount:variants.length,
       originalOffers:items.map(row=>({
         supplierVariantId:row.supplierVariantId,supplierSku:row.supplierSku,
-        variantName:row.variantName,cost:row.cost,currency:row.currency,
+        variantName:row.variantName,cost:row.cost,currency:row.currency,stock:row.supplierStock,
       })),
       warnings:[
         "Requiere verificar precios, stock, portes y autorización del proveedor antes de vender.",
@@ -326,6 +340,7 @@ export function draftForSupplierFile(product, supplier = {}) {
       supplierOriginalPrice:product.minSupplierCost,
       supplierCurrency:product.currency,
       supplierOffersUnverified:true,
+      brand:product.brand||"",manufacturer:product.brand||"",mpn:product.mpn||"",gtin:product.gtin||"",
       supplierVariantPrices:product.originalOffers,
       variantOptionLabels:product.optionLabels,
       missingImportFields:["images","salePrice","verifiedShipping","verifiedStock"],
