@@ -2,6 +2,7 @@
 import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
+import { resolveCjPurchasedVariant, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 
 function invalid(message) {
   const error = new Error(message);
@@ -26,7 +27,7 @@ export function canProceedWithVerifiedCjCosts({ profitability, promotionAuthoriz
     (Boolean(profitability?.feasible) || (promotionAuthorized === true && Number(discount) > 0));
 }
 
-export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, promotionAuthorized = false, suppliers = [] } = {}) {
+export async function evaluateCjCheckout({ lines, catalog, shippingAddress, discount = 0, promotionAuthorized = false, suppliers = [], deps = {} } = {}) {
   const byId = new Map((Array.isArray(catalog) ? catalog : []).map((p) => [String(p?.id || ""),p]));
   const items = Array.isArray(lines) ? lines : [];
   const cjItems = items.filter((item) => isCjProduct(byId.get(String(item?.id || ""))));
@@ -42,35 +43,19 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   const meta = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
   const supplier = suppliers.find((entry)=>String(entry.id)===String(meta.supplierId || ""));
   if (!supplier || supplier.active === false || supplier.integrationType !== "cj") invalid("La conexión del proveedor CJ no está disponible.");
-  const vid = String(meta.supplierVariantId || meta.cjVid || "").trim();
+  // Resolve from the server-side persisted variants, never the cart's VID/SKU.
+  const identity = resolveCjPurchasedVariant(product, item.selectedVariant);
+  const vid = identity.vid;
   const logisticName = String(meta.cjPreferredLogisticName || "").trim();
-  if (!vid || !logisticName) invalid("Este artículo CJ todavía necesita una variante y transportista válidos.");
-  const mappedVariants=Array.isArray(product.variants)
-    ? product.variants.filter(entry=>String(entry?.supplierVariantId||"").trim()) : [];
-  if (mappedVariants.length) {
-    // Fail closed: the historical fulfillment contract is for ONE quoted CJ VID.
-    // Other authentic customer-facing combinations cannot be charged until
-    // quote + fulfillment are mapped to the exact merchant-selected VID.
-    const chosen=String(item.selectedVariant||"").trim();
-    const variant=mappedVariants.find(entry=>String(entry.name||"")===chosen);
-    if (!variant || String(variant.supplierVariantId)!==String(meta.supplierVariantId||"") ||
-        String(variant.supplierSku||"")!==String(meta.supplierSku||"")) {
-      invalid("Esta combinación CJ necesita cotización y asignación de envío individual antes de estar disponible para compra. No se realizará ningún cobro.");
-    }
-  } else if (String(item.selectedVariant || "").trim()) {
-    const chosen=String(item.selectedVariant).toLowerCase().trim();
-    const sku=String(meta.supplierSku || "").toLowerCase().trim();
-    const suffix=sku.includes("-")?sku.split("-").slice(1).join("-"):"";
-    if (!suffix || !(suffix.includes(chosen)||chosen.includes(suffix))) invalid("La variante seleccionada no está asociada a un SKU CJ válido.");
-  }
+  if (!logisticName) invalid("Este artículo CJ todavía necesita un transportista válido.");
   // Parallel read-only lookups. No personal name, phone or street address goes to CJ.
   const pid = extractCjProductId(meta.sourceProductUrl);
   if (!pid) invalid("Falta el producto de origen CJ para verificar su variante.");
   // Diagnostic messages are deliberately generic: never leak supplier API payloads or credentials.
   const checks = await Promise.allSettled([
-    verifyCjVariantPrice({ pid, vid }),
-    quoteCjVariantShipping({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
-    getUsdToEurRate(),
+    (deps.verifyVariant || verifyCjVariantPrice)({ pid, vid }),
+    (deps.quoteShipping || quoteCjVariantShipping)({vid, quantity:1, origin:"CN", destination:"ES",zip:String(shippingAddress.postalCode)}),
+    (deps.getRate || getUsdToEurRate)(),
   ]);
   const failure = checks.findIndex((check) => check.status === "rejected");
   if (failure !== -1) {
@@ -106,6 +91,8 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
   if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
+  assertCjSupplierIdentity(identity, selectedVariant);
+  if (freight.vid !== vid || freight.destination !== "ES" || String(freight.zip || "") !== String(shippingAddress.postalCode)) invalid("La cotización CJ no coincide con la variante o el destino.");
   const selectedFreight = freight.methods.find((entry)=>entry.name===logisticName);
   if (!selectedFreight || selectedFreight.totalPostageUsd==null) invalid("El transportista CJ guardado no tiene un coste de envío completo para este código postal.");
   const effectiveUnitPrice = Number(item.price || 0) - Math.max(0, Number(discount || 0));
@@ -124,6 +111,12 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   }
   return {
     cjOnly:true, profitability, storeFundedPromotion,
+    verifiedQuote: {
+      ...profitability,
+      available: true, vid:identity.vid, sku:identity.sku,
+      selectedVariant:identity.name, destination:"ES", postalCode:String(shippingAddress.postalCode).trim(),
+      methodName: logisticName, checkedAt:new Date().toISOString(),
+    },
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
       durationText:String(selectedFreight.time || ""),
