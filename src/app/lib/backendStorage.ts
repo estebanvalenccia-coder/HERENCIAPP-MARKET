@@ -1723,6 +1723,13 @@ export const backendApi = {
     });
   },
 
+  async generateCommerceDescription(payload: { name: string; category?: string; facts?: string; variants?: string[] }) {
+    return request<{ description: string; reviewRequired: boolean }>("/api/admin/ai/product-description", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async generatePlantDescription(payload: { plantName: string; baseDescription?: string }) {
     return request<{ result: any }>("/api/ai/plant-description", {
       method: "POST",
