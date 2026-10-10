@@ -5250,17 +5250,22 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
         updatedAt: now }, executed: false, manual: false,
     };
   }
-  const mismatchedSelection=(record.items || []).filter((item)=>{
-    const chosen=String(item.selectedVariant || "").trim().toLowerCase();
-    if (!chosen) return false;
-    const sku=String(item.supplierSku || "").trim().toLowerCase();
-    const suffix=sku.includes("-") ? sku.split("-").slice(1).join("-") : "";
-    return !suffix || !(suffix.includes(chosen) || chosen.includes(suffix));
-  });
+  // No supplier order can be created using a cached quote for a different
+  // customer-selected variant, ZIP, method or price. Legacy rows must re-quote.
+  const mismatchedSelection = (record.items || []).filter((item) =>
+    !verifiedCjQuoteMatches({
+      quote:item.cjPricingEstimate,
+      identity:{vid:String(item.supplierVariantId || ""),sku:String(item.supplierSku || ""),
+        name:String(item.selectedVariant || "")},
+      destination:countryCode,postalCode:String(address.postalCode || "").trim(),
+      methodName:String(item.cjPreferredLogisticName || ""),
+      salePriceEur:Number(item.salePrice || 0),
+    })
+  );
   if (mismatchedSelection.length) {
     return {
       fulfillment: { ...record, status: "mapping_required",
-        blocker: "El cliente eligió una variante que no coincide con el SKU CJ asignado. Revisa el mapeo antes de enviar.",
+        blocker: "La variante, SKU, precio, transporte o código postal no coincide con una cotización CJ reciente. Recotiza antes de enviar.",
         updatedAt: now }, executed: false, manual: false,
     };
   }
