@@ -8,7 +8,7 @@ import {
   listNeonOrders, getNeonOrder, patchNeonOrder, mutateNeonStorageValue,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
-  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
 } from "./neonDb.js";
 import {
   hasR2,
@@ -26,6 +26,9 @@ import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
+import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
+import { suggestSupplierMatches, checkSupplierFileAlerts } from "./supplierOfflineIntelligence.js";
+import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,supplierAftercareInstructions } from "./supplierAftercare.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
@@ -36,8 +39,8 @@ const legacyUrl = `http://127.0.0.1:${legacyPort}`;
 let recentPrintfulQuoteCalls = [];
 
 const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings"]);
-const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","supplierFileMappings","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
-const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","supplierFileMappings","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
+const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","supplierFileMappings","supplierAftercareCases","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
+const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","supplierFileMappings","supplierAftercareCases","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
 
 function json(res,status,body){if(res.headersSent||res.writableEnded)return res;if(!res.destroyed){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}return res;}
 function cookies(req){return String(req.headers.cookie||"");}
@@ -491,8 +494,23 @@ const server=http.createServer(async(req,res)=>{try{
     const preview=previewSupplierFile(request);
     const previous=await listNeonCommerceProducts({includeArchived:true});
     const changes=compareSupplierFileProducts(preview.products,previous);
+    const previousById=new Map(previous.map(p=>[String(p.id),p]));
+    const reconciliation=changes.map(row=>{
+      const product=preview.products.find(p=>p.id===row.id);
+      const current=previousById.get(row.id);
+      const oldOffers=current?.metadata?.supplierVariantPrices||[];
+      const alerts=product&&current?checkSupplierFileAlerts(oldOffers,product.originalOffers,{
+        productId:row.id,expectedSupplierId:preview.supplierId
+      }).alerts:[];
+      let canApproveCosts=false;
+      if(current&&product&&row.status==="changes_detected" && row.changedFields.includes("supplier_cost")){
+        try {prepareSupplierCostApproval(product,current,current.updatedAt);canApproveCosts=true;} catch{}
+      }
+      return {...row,sourceUpdatedAt:current?.updatedAt||null,canApproveCosts,
+        alerts:alerts.slice(0,15)};
+    });
     return json(res,200,{
-      ...preview,reconciliation:changes,
+      ...preview,reconciliation,
       supplier:{id:String(supplier.id),name:String(supplier.name||"Proveedor")},
       writable:false,automaticOrdersEnabled:false,
       message:"Revisa artículos y diferencias. Guardar crea solo productos nuevos; los existentes no se modifican.",
@@ -559,6 +577,104 @@ const server=http.createServer(async(req,res)=>{try{
       failed:results.filter(row=>row.status==="failed").length,
       results,
     });
+  }
+
+  // Existing drafts: explicit cost-only approval, re-reading and validating
+  // the source file. Published prices, stock, images and variants are untouched.
+  if(path==="/api/admin/catalog/supplier-file/review-costs"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const raw=await bodyBuffer(req,{maxBytes:530000});
+    let body;
+    try{body=JSON.parse(raw.toString("utf8"));}
+    catch{return json(res,400,{error:"El archivo de revisión debe ser JSON válido."});}
+    if(body?.approveCosts!==true)return json(res,409,{error:"Confirma expresamente la revisión de costes."});
+    const operations=JSON.parse(await readNeonStorageValue("posOperations")||"{}");
+    if(!(Array.isArray(operations.suppliers)&&operations.suppliers.some(x=>
+      String(x.id)===String(body.supplierId)&&x.active!==false)))
+      return json(res,404,{error:"Proveedor no registrado o inactivo."});
+    const file=previewSupplierFile(body);
+    const product=file.products.find(x=>x.id===String(body.productId||""));
+    if(!product)return json(res,404,{error:"El producto no aparece en el archivo original."});
+    const current=await getNeonCommerceProduct(product.id,{includeArchived:true});
+    const review=prepareSupplierCostApproval(product,current,body.expectedUpdatedAt);
+    const updated=await approveNeonSupplierFileCosts(review);
+    return json(res,200,{ok:true,mode:"supplier_cost_only",productId:updated.id,
+      updatedAt:updated.updatedAt,automaticPurchasesEnabled:false,
+      supplierCostsVerifiedByApi:false,
+      message:"Solo se han guardado los costes del archivo como datos no verificados; no se han modificado el precio de venta, stock, fotos, variantes ni pedidos."});
+  }
+
+  // A read-only inventory and provider-identity dashboard. Never marks
+  // filename-sourced stock or costs as verified; no supplier calls.
+  if(path==="/api/admin/dropshipping/offline-overview"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    const imported=products.filter(p=>p.metadata?.importedFromFile===true);
+    const cases=readSupplierAftercare(await readNeonStorageValue("supplierAftercareCases"));
+    const candidates=suggestSupplierMatches(imported);
+    return json(res,200,{
+      ok:true,readOnly:true,totalImported:imported.length,
+      unpublishedDrafts:imported.filter(p=>p.status==="draft").length,
+      missingSupplierIdentity:imported.filter(p=>
+        !(Array.isArray(p.variants)&&p.variants.length) ||
+        p.variants.some(v=>!v.supplierSku||!v.supplierVariantId)).length,
+      supplierCostsUnverified:imported.filter(p=>p.metadata?.supplierOffersUnverified!==false).length,
+      aftercareOpen:cases.filter(c=>!["closed","resolved"].includes(c.status)).length,
+      potentialMatches:candidates.candidates.slice(0,50),
+      matchesRequireApproval:true,automaticSupplierSwitching:false,
+      automaticPurchasesEnabled:false
+    });
+  }
+
+  if(path==="/api/admin/dropshipping/aftercare" &&
+      (req.method==="GET"||req.method==="POST")){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(req.method==="GET"){
+      const cases=readSupplierAftercare(await readNeonStorageValue("supplierAftercareCases"));
+      return json(res,200,{ok:true,cases:cases.slice(0,200).map(c=>({
+        ...c,instructions:supplierAftercareInstructions(c)
+      })),automaticRefunds:false,automaticPurchases:false});
+    }
+    const raw=await bodyBuffer(req,{maxBytes:2500});
+    let payload;
+    try{payload=JSON.parse(raw.toString("utf8"));}
+    catch{return json(res,400,{error:"Incidencia JSON inválida."});}
+    // A manual case must always refer to a real known order.
+    if(!/^[a-zA-Z0-9_-]{1,110}$/.test(String(payload?.orderId||"")))
+      return json(res,422,{error:"ID de pedido no válido."});
+    if(!(await getNeonOrder(payload.orderId)))
+      return json(res,404,{error:"No existe el pedido indicado."});
+    const operations=JSON.parse(await readNeonStorageValue("posOperations")||"{}");
+    if(!(Array.isArray(operations.suppliers)&&operations.suppliers.some(x=>
+      String(x.id)===String(payload?.supplierId)&&x.active!==false)))
+      return json(res,404,{error:"Proveedor no registrado o inactivo."});
+    let result;
+    await mutateNeonStorageValue("supplierAftercareCases",old=>{
+      result=createAftercareCase(old,payload);
+      return result.serialized;
+    });
+    return json(res,result.created?201:200,{ok:true,created:result.created,
+      case:{...result.case,instructions:supplierAftercareInstructions(result.case)},
+      automaticRefunds:false,automaticPurchases:false});
+  }
+
+  const supplierAftercareMatch=path.match(/^\/api\/admin\/dropshipping\/aftercare\/(scase_[a-f0-9]{32})$/);
+  if(supplierAftercareMatch && req.method==="PATCH"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const raw=await bodyBuffer(req,{maxBytes:1800});
+    let payload;
+    try{payload=JSON.parse(raw.toString("utf8"));}
+    catch{return json(res,400,{error:"Incidencia JSON inválida."});}
+    let result;
+    await mutateNeonStorageValue("supplierAftercareCases",old=>{
+      result=transitionAftercareCase(old,{
+        ...payload,caseId:supplierAftercareMatch[1]
+      });
+      return result.serialized;
+    });
+    return json(res,200,{ok:true,case:{...result.case,
+      instructions:supplierAftercareInstructions(result.case)},
+      automaticRefunds:false,automaticPurchases:false});
   }
 
   if(path==="/api/admin/catalog/import-url/product"&&req.method==="POST"){
