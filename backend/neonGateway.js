@@ -403,6 +403,7 @@ const server=http.createServer(async(req,res)=>{try{
       }),
     }));
     return json(res,200,{ok:true,productId,variant:matching,...result,methods,
+      checkedAt:new Date().toISOString(), // Server-side time of the completed supplier lookup.
       fx:rate>0?fx:null,
       checkoutEnabled:false, // Preview-only, never an order or charge.
       manualReviewRequired:true,
