@@ -1,5 +1,6 @@
 // CJ-only checkout verification. All supplier requests are read-only. Never creates orders.
 import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
 function invalid(message) {
@@ -51,7 +52,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     if (!suffix || !(suffix.includes(chosen)||chosen.includes(suffix))) invalid("La variante seleccionada no está asociada a un SKU CJ válido.");
   }
   // Parallel read-only lookups. No personal name, phone or street address goes to CJ.
-  const pid = (()=>{try{return new URL(meta.sourceProductUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)?.[1]||"";}catch{return "";}})();
+  const pid = extractCjProductId(meta.sourceProductUrl);
   if (!pid) invalid("Falta el producto de origen CJ para verificar su variante.");
   // Diagnostic messages are deliberately generic: never leak supplier API payloads or credentials.
   const checks = await Promise.allSettled([
