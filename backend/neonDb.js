@@ -561,7 +561,7 @@ async function hydrateNeonProductRows(rows = []) {
       occasion:row.occasion||"", allowDedication:row.allow_dedication!==false,
       seoTitle:row.seo_title||row.name, seoDescription:row.seo_description||row.description||"",
       image:primary?.url||row.metadata?.image||"", images:imgs.map(x=>({id:x.id,url:x.url,alt:x.alt_text,position:x.position})),
-      variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||""})),
+      variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||"",supplierVariantId:v.metadata?.supplierVariantId||"",supplierSku:v.metadata?.supplierSku||"",optionValues:Array.isArray(v.metadata?.optionValues)?v.metadata.optionValues:[]})),
       // Keep the supplier/import metadata accessible to admin panels and editors.
       // Historically it was flattened and lost on the next product edit.
       collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {}
