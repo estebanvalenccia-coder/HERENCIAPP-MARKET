@@ -785,7 +785,13 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
     "update commerce_products set track_inventory=$2, updated_at=now() where id=$1",
     [productId, input.trackInventory !== false]
   );
-  const collections=inferCollections(input);
+  // Unverified supplier-file drafts may have arbitrary provider categories.
+  // Do not invent an existing storefront collection (e.g. plants) and do not
+  // create a foreign-key reference to an unknown collection. A merchant must
+  // assign a real collection before publication.
+  const isUnclassifiedFileDraft = status==="draft" && input?.metadata?.importedFromFile===true &&
+    !input?.collection && !(Array.isArray(input?.collections)&&input.collections.length);
+  const collections=isUnclassifiedFileDraft ? [] : inferCollections(input);
   await neonPool.query("delete from commerce_product_collections where product_id=$1",[productId]);
   for(let i=0;i<collections.length;i++){
     await neonPool.query(
