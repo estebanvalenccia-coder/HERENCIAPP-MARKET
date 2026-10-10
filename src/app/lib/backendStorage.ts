@@ -473,6 +473,40 @@ export const backendApi = {
     });
   },
 
+  async previewSupplierFileCatalog(payload: {
+    supplierId: string; format: "csv" | "json"; content: string;
+  }) {
+    return request<{
+      ok: true; source: "supplier_file"; supplierId: string; format: string;
+      rows: number; products: Array<{
+        id: string; supplierId: string; supplierProductId: string;
+        name: string; category: string; currency: string;
+        minSupplierCost: number | null; variantCount: number;
+        variants: Array<{name:string;supplierSku:string;supplierVariantId:string}>;
+        optionLabels: string[]; warnings: string[];
+      }>;
+      warnings: string[]; writable: false; automaticOrdersEnabled: false;
+      supplier: {id:string;name:string}; message: string;
+    }>("/api/admin/catalog/supplier-file/preview", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+
+  async commitSupplierFileCatalog(payload: {
+    supplierId: string; format: "csv" | "json"; content: string;
+  }) {
+    const result=await request<{
+      ok: true; source: "neon"; mode: "manual_drafts_only";
+      created: number; skipped: number; failed: number;
+      automaticOrdersEnabled: false;
+      results: Array<{id:string;name:string;status:"created"|"skipped_existing"|"failed";variantCount?:number;message?:string}>;
+    }>("/api/admin/catalog/supplier-file/commit", {
+      method: "POST", body: JSON.stringify({...payload,confirmDrafts:true}),
+    });
+    emitCommerceProductsChange();
+    return result;
+  },
+
   async importCatalogUrlProduct(product: any) {
     const result = await request<{
       ok: boolean;
