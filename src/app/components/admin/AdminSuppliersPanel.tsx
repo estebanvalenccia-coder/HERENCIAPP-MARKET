@@ -1,4 +1,5 @@
 import { SUPPLIER_PRESETS } from "../../lib/supplierMarketplace.js";
+import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1033,6 +1034,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           { id: "supplier-import", name: "Importar por URL", icon: Search, detail: "Tu importador actual" },
           { id: "supplier-catalog", name: "Productos", icon: Layers3, detail: "Vincular y organizar" },
           { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
+          { id: "supplier-compare", name: "Comparar costes", icon: Truck, detail: "27 países UE" },
           { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
           { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
           { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
@@ -1045,6 +1047,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         </button>)}
       </div>
     </nav>
+
+    <AdminSupplierCostComparison suppliers={suppliers}/>
 
     <section id="supplier-import" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-2">
