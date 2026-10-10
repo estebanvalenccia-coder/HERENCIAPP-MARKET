@@ -428,6 +428,32 @@ export const backendApi = {
     });
   },
 
+  async getPrintfulShippingStatus() {
+    return request<{
+      provider: "printful"; configured: boolean; storeIdConfigured: boolean;
+      capabilities: string[]; automaticOrders: false; reason: string;
+    }>("/api/admin/suppliers/printful/status");
+  },
+
+  async quotePrintfulShipping(catalogVariantId: number, destination: string, postalCode: string) {
+    return request<{
+      ok: true; provider: "printful"; source: string; checkedAt: string;
+      destination: string; postalCode: string; catalogVariantId: number;
+      quantity: 1;
+      methods: Array<{
+        code: string; name: string; rateEur: number; currency: "EUR";
+        minDeliveryDays: number | null; maxDeliveryDays: number | null;
+        customsFeesPossible: boolean;
+      }>;
+      hasMoreMethods: boolean;
+      supplierProductPriceVerified: false; supplierStockVerified: false;
+      checkoutEnabled: false; automaticOrdersEnabled: false; message: string;
+    }>("/api/admin/suppliers/printful/shipping-quote", {
+      method: "POST",
+      body: JSON.stringify({ catalogVariantId, destination, postalCode, quantity: 1 }),
+    });
+  },
+
   async quoteCjProductFreight(productId: string, vid: string, zip = "", destination = "ES") {
     return request<{
       ok: boolean; productId: string;
