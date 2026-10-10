@@ -21,7 +21,7 @@ export function resolveCjPurchasedVariant(product, selectedName = "") {
     const vid = String(match.supplierVariantId || "").trim();
     const sku = String(match.supplierSku || "").trim();
     if (!vid || !sku) fail("La combinación CJ no tiene VID y SKU auténticos.");
-    const duplicated = variants.some((v) => v !== match &&
+    const duplicated = variants.some((v, index) => index !== variants.indexOf(match) &&
       (String(v?.supplierVariantId || "").trim() === vid ||
        (String(v?.name || v).trim() === String(match.name || match).trim())));
     if (duplicated) fail("El catálogo CJ tiene variantes duplicadas. Revisa el producto.");
