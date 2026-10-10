@@ -884,6 +884,7 @@ export function AdminProducts({
           ...(variant.supplierVariantId ? {supplierVariantId:variant.supplierVariantId,supplierSku:variant.supplierSku,optionValues:variant.optionValues||[]} : {}),
         }));
 
+      if (new Set(variants.map(v=>v.name.toLowerCase())).size !== variants.length) throw new Error("Hay variantes con el mismo nombre. Cada combinación debe ser única.");
       const basePayload: any = {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
@@ -1535,7 +1536,16 @@ export function AdminProducts({
                             <label className="text-xs font-bold">Nombre
                               <input value={variant.name} onChange={(e) => updateEditVariant(variant.id, { name: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
                               {variant.supplierVariantId && <span className="mt-1 block break-all text-[10px] text-muted-foreground">CJ VID: {variant.supplierVariantId}</span>}
+                              {Boolean(variant.supplierVariantId) && (
+                                <span className="mt-1 block text-[10px] text-muted-foreground">Origen CJ: no modifiques el SKU si debe conservar la vinculación.</span>
+                              )}
                             </label>
+                            {Boolean(variant.supplierVariantId) && <label className="text-xs font-bold sm:col-span-2">Valores de opciones (separados por |)
+                              <input value={(variant.optionValues||[]).join(" | ")}
+                                onChange={e=>updateEditVariant(variant.id,{optionValues:e.target.value.split("|").map(x=>x.trim()).filter(Boolean).slice(0,4)})}
+                                placeholder="Rosa | EU Plug"
+                                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"/>
+                            </label>}
                             <label className="text-xs font-bold">Precio €
                               <input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateEditVariant(variant.id, { price: e.target.value })} placeholder="General" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
                             </label>
