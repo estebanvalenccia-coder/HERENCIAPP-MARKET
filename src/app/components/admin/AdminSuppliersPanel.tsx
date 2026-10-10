@@ -1807,12 +1807,17 @@ function ImportedProductRow({
   const referenceEstimate = quoteMode === "city" && !quoteZip.trim() && !!referenceCity;
   const chosenFreight = freightQuote?.methods?.find((item: any) => item.name === selectedFreightName);
   const profitability = chosenFreight?.profitability;
+  const verifiedQuoteAge = Date.now() - Date.parse(String(freightQuote?.checkedAt || ""));
+  const hasFreshCjQuote = Number.isFinite(verifiedQuoteAge) && verifiedQuoteAge >= 0 &&
+    verifiedQuoteAge < 15 * 60_000;
   const quoteForSave = quoteDestination === "ES" && quoteMode === "city" && /^\d{5}$/.test(quoteZip.trim()) &&
-    freightQuote?.zip === quoteZip.trim() && freightQuote?.destination === "ES" && profitability?.available && freightQuote?.fx?.rate
+    freightQuote?.zip === quoteZip.trim() && freightQuote?.destination === "ES" &&
+    freightQuote?.variant?.vid === supplierVariantId && hasFreshCjQuote &&
+    profitability?.available && freightQuote?.fx?.rate
     ? {
         ...profitability, methodName: selectedFreightName,
         vid: supplierVariantId, fx: freightQuote.fx,
-        checkedAt: new Date().toISOString(), destination: "ES", origin: "CN", quantity: 1,
+        checkedAt: freightQuote.checkedAt, destination: "ES", origin: "CN", quantity: 1,
       }
     : null;
 
@@ -1826,6 +1831,12 @@ function ImportedProductRow({
     } finally {
       setPreflightLoading(false);
     }
+  };
+
+  const saveFreshCjQuote = async () => {
+    if (!quoteForSave || Date.now() - Date.parse(String(freightQuote?.checkedAt || "")) >= 15 * 60_000)
+      return toast.error("La cotización caducó o no corresponde a la variante y dirección. Vuelve a consultar CJ.");
+    await onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave);
   };
 
   const quoteCjShippingForEu = async () => {
@@ -2057,7 +2068,7 @@ function ImportedProductRow({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {selectedFreightName && quoteForSave && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
-              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
+              onClick={() => void saveFreshCjQuote()}
               className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
               {saving ? "Guardando…" : "Guardar preferencia para España"}
             </button>}
@@ -2099,7 +2110,7 @@ function ImportedProductRow({
               <p className="mt-1 text-xs text-muted-foreground">Hipótesis: IVA, comisión de pago aproximada y reserva del 3% por cambio de divisa; el importe final puede variar.</p>
             </div>}
             <button type="button" disabled={saving || !supplierId || !supplierVariantId || !quoteForSave}
-              onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
+              onClick={() => void saveFreshCjQuote()}
               className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
               {saving ? "Guardando…" : quoteForSave ? "Guardar transportista preferido" : "Solo consulta: para guardar usa CP real de España"}
             </button>
