@@ -13,6 +13,8 @@ const MAPPING_FIELDS = [
   ["cost","Coste de compra"],["currency","Moneda"],["product_url","URL original"],
   ["image_url","URL de imagen"],["category","Categoría"],
   ["description","Descripción"],["variant_name","Nombre de combinación"],
+  ["brand","Fabricante / marca"],["mpn","Referencia MPN"],["gtin","GTIN/EAN"],
+  ["supplier_stock","Stock declarado (sin verificar)"],
 ] as const;
 const VARIANT_OPTION_LIMIT=4;
 
