@@ -17,6 +17,12 @@ function variantSignature(list) {
 function previousOffers(metadata={}) {
   return Array.isArray(metadata?.supplierVariantPrices)?metadata.supplierVariantPrices:[];
 }
+function offersSignature(list) {
+  return (Array.isArray(list)?list:[]).map(offer=>[
+    str(offer.supplierVariantId),str(offer.supplierSku),str(offer.variantName),
+    money(offer.cost),str(offer.currency),
+  ].join("\u0001")).sort().join("\u0002");
+}
 export function compareSupplierFileProducts(products=[],existingProducts=[]) {
   const byId=new Map(existingProducts.map(p=>[str(p.id),p]));
   const byUrl=new Map();
@@ -50,7 +56,7 @@ export function compareSupplierFileProducts(products=[],existingProducts=[]) {
     if(str(m.supplierCurrency)!==str(product.currency))differences.push("supplier_currency");
     const sourceCost=money(m.supplierOriginalPrice);
     const offeredCost=money(product.minSupplierCost);
-    if(sourceCost!==offeredCost)differences.push("supplier_cost");
+    if(sourceCost!==offeredCost || offersSignature(previousOffers(m))!==offersSignature(product.originalOffers)) differences.push("supplier_cost");
     if(variantSignature(existing.variants)!==variantSignature(product.variants))differences.push("variants");
     if(str(m.sourceImageUrl)!==str(product.sourceImageUrl))differences.push("source_image");
     const oldUrl=str(m.supplierFileOriginalUrl);
