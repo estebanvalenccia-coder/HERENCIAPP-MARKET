@@ -23,6 +23,7 @@ import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessC
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
+import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -303,8 +304,14 @@ const server=http.createServer(async(req,res)=>{try{
     const variants=await queryCjProductVariants(sourcePid);
     const matching=variants.variants.find((item)=>String(item.vid)===vid);
     if(!matching)return json(res,422,{error:"Esta variante no pertenece al artículo CJ enlazado"});
+    // Explicit EU preview: does not extend the customer checkout policy.
+    // Country, ZIP and quantity are server-validated, not delegated to UI.
+    const request=validateCjEuFreightPreview({
+      destination:body?.destination ?? "ES",zip:body?.zip ?? "",
+    });
     const result=await quoteCjVariantShipping({
-      vid,quantity:1,origin:"CN",destination:"ES",zip:String(body?.zip||"")
+      vid,quantity:request.quantity,origin:request.origin,
+      destination:request.destination,zip:request.zip,
     });
     // The rate source is independent of CJ. A failed rate lookup never pretends
     // that USD and EUR are interchangeable or invents a valid profit margin.
@@ -323,6 +330,9 @@ const server=http.createServer(async(req,res)=>{try{
     }));
     return json(res,200,{ok:true,productId,variant:matching,...result,methods,
       fx:rate>0?fx:null,
+      checkoutEnabled:false, // Preview-only, never an order or charge.
+      manualReviewRequired:true,
+      destinationNotice:request.disclaimer,
       pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
       pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar para el código postal concreto antes de enviar un pedido real.",
     });

@@ -1,4 +1,4 @@
-import { SUPPLIER_PRESETS } from "../../lib/supplierMarketplace.js";
+import { SUPPLIER_PRESETS, EU_COUNTRIES } from "../../lib/supplierMarketplace.js";
 import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -1746,6 +1746,8 @@ function ImportedProductRow({
   const [cjLoading, setCjLoading] = useState(false);
   const [cjLookupError, setCjLookupError] = useState("");
   const [cjLookupComplete, setCjLookupComplete] = useState(false);
+  const [quoteDestination, setQuoteDestination] = useState("ES");
+  const [quoteZip, setQuoteZip] = useState("");
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState("");
@@ -1767,7 +1769,7 @@ function ImportedProductRow({
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
   const chosenFreight = freightQuote?.methods?.find((item: any) => item.name === selectedFreightName);
   const profitability = chosenFreight?.profitability;
-  const quoteForSave = profitability?.available && freightQuote?.fx?.rate
+  const quoteForSave = quoteDestination === "ES" && freightQuote?.destination === "ES" && profitability?.available && freightQuote?.fx?.rate
     ? {
         ...profitability, methodName: selectedFreightName,
         vid: supplierVariantId, fx: freightQuote.fx,
@@ -1787,15 +1789,16 @@ function ImportedProductRow({
     }
   };
 
-  const quoteShippingToSpain = async () => {
+  const quoteCjShippingForEu = async () => {
     if (!String(supplierVariantId || "").trim()) return toast.error("Selecciona primero una variante CJ con VID válido");
+    if (quoteDestination !== "ES" && !quoteZip.trim()) return toast.error("Introduce el código postal para consultar este país de la UE.");
     setFreightLoading(true);
     setFreightError("");
     setFreightQuote(null);
     try {
-      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim());
+      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), quoteZip.trim(), quoteDestination);
       setFreightQuote(result);
-      if (!result.methods?.length) setFreightError("CJ no ofrece una tarifa para España desde CN. No actives este artículo para envío automático.");
+      if (!result.methods?.length) setFreightError("CJ no ofrece una tarifa para este destino desde CN. No actives este artículo para envío automático.");
     } catch (error: any) {
       setFreightError(String(error?.message || "CJ no pudo calcular el transporte"));
     } finally {
@@ -1871,11 +1874,12 @@ function ImportedProductRow({
             <RefreshCw className={"h-4 w-4" + (cjLoading ? " animate-spin" : "")}/>
             {cjLoading ? "Consultando CJ…" : "Consultar variantes CJ"}
           </button>
-          <button type="button" disabled={freightLoading || !supplierVariantId.trim()} onClick={() => void quoteShippingToSpain()}
-            title={!supplierVariantId.trim() ? "Primero selecciona la variante CJ" : "Consultar tarifas de envío a España sin crear pedidos"}
+          <button type="button" disabled={freightLoading || !supplierVariantId.trim()}
+            onClick={() => void quoteCjShippingForEu()}
+            title={!supplierVariantId.trim() ? "Selecciona primero la variante CJ" : "Consultar tarifas CJ por variante y destino UE, sin pedidos"}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
             <Truck className="h-4 w-4"/>
-            {freightLoading ? "Calculando envío…" : "Consultar envío a España"}
+            {freightLoading ? "Calculando envío…" : "Cotizar envío UE"}
           </button>
           <button type="button" disabled={preflightLoading} onClick={() => void runCjPreflight()}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
@@ -1883,6 +1887,21 @@ function ImportedProductRow({
             {preflightLoading ? "Comprobando…" : "Simular preparación sin comprar"}
           </button>
         </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 rounded-xl border border-emerald-200 bg-background p-3 md:grid-cols-[160px_minmax(0,1fr)]">
+        <label className="text-xs font-semibold">País UE
+          <select aria-label="País de destino para cotización CJ" value={quoteDestination}
+            onChange={e=>{setQuoteDestination(e.target.value);setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+            className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
+            {EU_COUNTRIES.map(country=><option value={country} key={country}>{country}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold">Código postal para cotizar (obligatorio fuera de España)
+          <input value={quoteZip} onChange={e=>{setQuoteZip(e.target.value.slice(0,15));setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+            placeholder={quoteDestination==="ES"?"Ej. 08032":"Código postal del destino"}
+            className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2"/>
+        </label>
+        <p className="text-xs text-muted-foreground md:col-span-2">Presupuesto de solo lectura. El checkout público CJ sigue habilitado únicamente para España y una unidad. Los demás países requieren configuración fiscal y pruebas antes de vender.</p>
       </div>
       {preflight && <div className={"rounded-xl border p-3 text-sm " + (preflight.readyForManualReview ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50")}>
         <p className="font-bold">{preflight.readyForManualReview ? "Previsión apta para revisión manual" : "Simulación bloqueada: hay requisitos pendientes"}</p>
@@ -1927,14 +1946,14 @@ function ImportedProductRow({
       {(freightQuote || freightError) && <div className="space-y-3 rounded-xl border border-border bg-background/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-bold">Calcular transporte CJ a España</p>
-            <p className="text-xs text-muted-foreground">Una unidad · salida de China (CN) · destino España (ES). No crea pedidos ni realiza pagos.</p>
+            <p className="text-sm font-bold">Calcular transporte CJ a países de la UE</p>
+            <p className="text-xs text-muted-foreground">Una unidad · origen China (CN) · destino {freightQuote?.destination || quoteDestination}. No crea pedidos ni realiza pagos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {selectedFreightName && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
+            {selectedFreightName && freightQuote?.destination === "ES" && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
               onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-              {saving ? "Guardando…" : "Guardar transportista preferido"}
+              {saving ? "Guardando…" : freightQuote?.destination === "ES" ? "Guardar transportista preferido ES" : "Cotización UE: solo consulta"}
             </button>}
             <span className="text-xs font-semibold text-emerald-800">Cotización de solo lectura</span>
           </div>
@@ -1972,7 +1991,7 @@ function ImportedProductRow({
               {!profitability.feasible && <p className="mt-1 font-bold text-red-700">Margen insuficiente. Precio orientativo para un margen del 30%: {money(profitability.recommendedMinimumPriceEur)} €. Tu precio de venta no cambia.</p>}
               <p className="mt-1 text-xs text-muted-foreground">Hipótesis: IVA, comisión de pago aproximada y reserva del 3% por cambio de divisa; el importe final puede variar.</p>
             </div>}
-            <button type="button" disabled={saving || !supplierId || !supplierVariantId}
+            <button type="button" disabled={saving || !supplierId || !supplierVariantId || freightQuote?.destination !== "ES"}
               onClick={() => void onSave(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave)}
               className="mt-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
               {saving ? "Guardando…" : "Guardar transportista preferido"}

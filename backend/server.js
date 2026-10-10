@@ -9,7 +9,8 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
-import { resolveCjPurchasedVariant, verifiedCjQuoteMatches } from "./cjVariantIdentity.js";
+import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
+import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
@@ -6508,11 +6509,7 @@ async function recordCjExternalActionResult(key, operationId, status, cjOrderId 
 async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUsd) {
   const line = record.items?.[0] || {};
   const sourceUrl = String(line.sourceProductUrl || "");
-  const pid = (() => {
-    try {
-      return new URL(sourceUrl).pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i)?.[1] || "";
-    } catch { return ""; }
-  })();
+  const pid = extractCjProductId(sourceUrl);
   if (!pid) throw cjManualError("Falta la URL original válida de CJ para verificar el precio.");
   const vid = String(line.supplierVariantId || "");
   const zip = String(record.shippingAddress?.postalCode || "");
@@ -6531,6 +6528,19 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   }
   const method = (freight?.methods || []).find((row) =>
     String(row.name || "") === String(line.cjPreferredLogisticName || ""));
+  // Recheck authoritative CJ identity immediately before actual supplier order
+  // creation. A correct VID with a different SKU is NOT the paid-for variant.
+  try {
+    assertCjSupplierIdentity({
+      vid, sku:String(line.supplierSku || "").trim(),
+    }, variant);
+  } catch {
+    throw cjManualError("CJ no confirmó el SKU y VID exactos del artículo elegido. No se creará ningún pedido.");
+  }
+  if (freight?.vid !== vid || freight?.destination !== "ES" ||
+      String(freight?.zip || "") !== zip) {
+    throw cjManualError("El destino o variante de la cotización CJ han cambiado. No se creará ningún pedido.");
+  }
   const postageUsd = Number(method?.totalPostageUsd);
   const productUsd = Number(variant?.priceUsd);
   if (!(productUsd >= 0 && postageUsd >= 0) ||
