@@ -29,6 +29,7 @@ import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
 import { suggestSupplierMatches, checkSupplierFileAlerts } from "./supplierOfflineIntelligence.js";
 import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,supplierAftercareInstructions } from "./supplierAftercare.js";
+import { readSupplierProductLinks,confirmSupplierProductLink } from "./supplierProductLinks.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
@@ -39,8 +40,8 @@ const legacyUrl = `http://127.0.0.1:${legacyPort}`;
 let recentPrintfulQuoteCalls = [];
 
 const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings"]);
-const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","supplierFileMappings","supplierAftercareCases","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
-const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","supplierFileMappings","supplierAftercareCases","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
+const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","supplierFileMappings","supplierAftercareCases","supplierProductLinks","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
+const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","supplierFileMappings","supplierAftercareCases","supplierProductLinks","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
 
 function json(res,status,body){if(res.headersSent||res.writableEnded)return res;if(!res.destroyed){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}return res;}
 function cookies(req){return String(req.headers.cookie||"");}
@@ -604,6 +605,30 @@ const server=http.createServer(async(req,res)=>{try{
       message:"Solo se han guardado los costes del archivo como datos no verificados; no se han modificado el precio de venta, stock, fotos, variantes ni pedidos."});
   }
 
+  // Product-family grouping is opt-in and cannot route any orders. Different
+  // suppliers can have identical products but incompatible physical variants.
+  if(path==="/api/admin/dropshipping/links" &&
+     (req.method==="GET"||req.method==="POST")){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    if(req.method==="GET"){
+      const links=readSupplierProductLinks(await readNeonStorageValue("supplierProductLinks"));
+      return json(res,200,{ok:true,links,automaticRouting:false,variantsEquivalent:false});
+    }
+    const raw=await bodyBuffer(req,{maxBytes:1200});
+    let body;
+    try{body=JSON.parse(raw.toString("utf8"));}
+    catch{return json(res,400,{error:"Solicitud JSON inválida."});}
+    if(body?.confirmLink!==true)return json(res,409,{error:"Debes confirmar expresamente la coincidencia."});
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    let result;
+    await mutateNeonStorageValue("supplierProductLinks",old=>{
+      result=confirmSupplierProductLink(old,body,products);
+      return result.serialized;
+    });
+    return json(res,result.created?201:200,{ok:true,created:result.created,
+      link:result.link,automaticRouting:false,variantsEquivalent:false});
+  }
+
   // A read-only inventory and provider-identity dashboard. Never marks
   // filename-sourced stock or costs as verified; no supplier calls.
   if(path==="/api/admin/dropshipping/offline-overview"&&req.method==="GET"){
@@ -612,6 +637,7 @@ const server=http.createServer(async(req,res)=>{try{
     const imported=products.filter(p=>p.metadata?.importedFromFile===true);
     const cases=readSupplierAftercare(await readNeonStorageValue("supplierAftercareCases"));
     const candidates=suggestSupplierMatches(imported);
+    const links=readSupplierProductLinks(await readNeonStorageValue("supplierProductLinks"));
     return json(res,200,{
       ok:true,readOnly:true,totalImported:imported.length,
       unpublishedDrafts:imported.filter(p=>p.status==="draft").length,
@@ -621,6 +647,7 @@ const server=http.createServer(async(req,res)=>{try{
       supplierCostsUnverified:imported.filter(p=>p.metadata?.supplierOffersUnverified!==false).length,
       aftercareOpen:cases.filter(c=>!["closed","resolved"].includes(c.status)).length,
       potentialMatches:candidates.candidates.slice(0,50),
+      confirmedProductFamilies:links.length,
       matchesRequireApproval:true,automaticSupplierSwitching:false,
       automaticPurchasesEnabled:false
     });
