@@ -23,8 +23,9 @@ test("CJ order creation has a prior hard sandbox exit and live order creation ga
   assert.ok(sandboxExit<createOrder && liveGate<createOrder);
 });
 test("CJ pricing requires a recent matching quote before queue auto-readiness", () => {
-  assert.match(server,/quoteVerified\s*=\s*isCj/);
-  assert.match(server,/Date\.now\(\) - quoteTimestamp < 24/);
+  assert.match(server,/quoteVerified\s*=\s*isCj && quantity === 1 && verifiedCjQuoteMatches/);
+  assert.match(server,/const verified = await evaluateCjCheckout\(/);
+  assert.match(server,/cjIdentity = resolveCjPurchasedVariant\(/);
   assert.match(server,/record\.items\s*\|\|\s*\[\]\)\.some\(\(item\) => !item\.cjPricingEstimate\?\.feasible/);
 });
 
