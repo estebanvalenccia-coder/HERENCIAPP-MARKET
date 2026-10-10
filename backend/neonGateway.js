@@ -253,6 +253,37 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   // Read-only CJ shipping-rate estimate: no order creation or payment.
+  // Merchant-reviewed Groq copywriting: never persists or publishes text automatically.
+  if(path==="/api/admin/ai/product-description"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const payload=await bodyJson(req);
+    const name=String(payload?.name||"").trim().slice(0,180);
+    const facts=String(payload?.facts||"").trim().slice(0,1000);
+    const category=String(payload?.category||"").trim().slice(0,100);
+    const variantNames=Array.isArray(payload?.variants)
+      ? payload.variants.slice(0,18).map(v=>String(v||"").slice(0,90)).filter(Boolean) : [];
+    if(!name)return json(res,400,{error:"Escribe primero el nombre del producto."});
+    const key=String(process.env.GROQ_API_KEY||"").trim();
+    if(!key)return json(res,503,{error:"Groq no está configurado en Railway."});
+    const groqResponse=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",signal:AbortSignal.timeout(16000),
+      headers:{"content-type":"application/json",Authorization:"Bearer "+key},
+      body:JSON.stringify({
+        model:process.env.GROQ_MODEL||"openai/gpt-oss-120b",
+        temperature:0.3,max_tokens:360,
+        messages:[
+          {role:"system",content:"Redacta en español una descripción clara de comercio electrónico para Herencia Market (60 a 100 palabras). Utiliza solo datos que el comercio te haya proporcionado y evita inventar materiales, especificaciones técnicas, compatibilidades, dimensiones, certificados, envío, garantía o beneficios. No afirmes que todas las variantes están disponibles. No incluyas precios, promociones ni referencias al proveedor. Devuelve únicamente texto plano, sin títulos, JSON ni Markdown."},
+          {role:"user",content:JSON.stringify({nombre:name,categoria:category,datosConfirmados:facts,opcionesConocidas:variantNames})}
+        ]
+      })
+    });
+    if(!groqResponse.ok)return json(res,502,{error:"Groq no pudo generar la descripción en este momento."});
+    const completion=await groqResponse.json().catch(()=>null);
+    const description=String(completion?.choices?.[0]?.message?.content||"").replace(/```[\s\S]*?```/g,"").trim().slice(0,1400);
+    if(description.length<45)return json(res,502,{error:"Groq no devolvió una descripción suficiente."});
+    return json(res,200,{description,reviewRequired:true,source:"groq"});
+  }
+
   if(path==="/api/admin/catalog/cj-freight"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const body=await bodyJson(req);
