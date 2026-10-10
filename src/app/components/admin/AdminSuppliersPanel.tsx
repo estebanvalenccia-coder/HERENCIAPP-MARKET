@@ -423,9 +423,29 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
     // Verify the persisted item before saying "saved" to the merchant.
     const confirmation = await backendApi.getCommerceProduct(imported.id);
-    const confirmedProduct = confirmation.product;
+    let confirmedProduct = confirmation.product;
     if (!confirmedProduct || String(confirmedProduct.id) !== String(imported.id)) {
       throw new Error("La importación respondió, pero no pudimos encontrar el borrador guardado en el catálogo.");
+    }
+    // Draft-only copywriting: never overwrite a merchant's existing text and
+    // never fail or publish an import just because an AI provider is unavailable.
+    if (!existing && String(confirmedProduct.status || "draft") === "draft" &&
+        !String(confirmedProduct.description || "").trim() && !String(candidate.description || "").trim()) {
+      try {
+        const ai = await backendApi.generateCommerceDescription({
+          name:String(confirmedProduct.name || candidate.name || ""),
+          category:String(candidate.supplierCategory || candidate.category || ""),
+          facts:"",
+          variants:(Array.isArray(candidate.variants)?candidate.variants:[]).slice(0,18).map((v:any)=>String(v?.name || "")).filter(Boolean),
+        });
+        if (String(ai.description || "").trim()) {
+          const updated=await backendApi.updateCommerceProduct(imported.id,{description:ai.description.trim()});
+          confirmedProduct=updated.product || confirmedProduct;
+          toast.info("Groq preparó una descripción. Revísala en el borrador antes de publicar.");
+        }
+      } catch {
+        toast.info("Importado sin descripción IA; puedes generarla desde Editar producto.");
+      }
     }
 
     const inTrash = confirmedProduct.status === "archived" || Boolean(confirmedProduct.deletedAt);
