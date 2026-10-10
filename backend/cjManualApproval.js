@@ -1,3 +1,4 @@
+import { verifiedCjQuoteMatches } from "./cjVariantIdentity.js";
 // Explicit two-step manual authorization for CJ supplier orders.
 // Pure safeguards shared by the admin preview and the mutation routes.
 // No network requests or supplier purchases are made from this module.
@@ -90,18 +91,19 @@ export function validateManualCjCreate({ record, supplier, order, nowMs = Date.n
     throw cjManualError("Falta el identificador real de variante CJ (VID).");
   }
   const quote = item.cjPricingEstimate;
-  const checkedAt = Date.parse(String(quote?.checkedAt || ""));
-  const quoteAge = nowMs - checkedAt;
-  if (quote?.available !== true || !(Number(item.supplierCost || 0) > 0) ||
-    !(Number(record.estimatedCost || 0) > 0) ||
-    !Number.isFinite(checkedAt) || quoteAge < 0 || quoteAge >= 24 * 3600 * 1000 ||
-    String(quote.vid || "") !== String(item.supplierVariantId || "") ||
-    String(quote.methodName || "") !== String(item.cjPreferredLogisticName || "") ||
-    String(quote.destination || "") !== "ES" ||
-    String(item.cjPreferredLogisticCountry || "") !== "ES" ||
-    Math.abs(Number(quote.salePriceEur || 0) - Number(item.salePrice || 0)) >= 0.02 ||
-    Math.abs(Number(quote.costEur || 0) - Number(item.supplierCost || 0)) >= 0.02) {
-    throw cjManualError("Cotización CJ incompleta, desactualizada o incompatible con el pedido. Consulta el transporte y resincroniza.");
+  if (!verifiedCjQuoteMatches({
+    quote,
+    identity:{vid:String(item.supplierVariantId || ""),sku:String(item.supplierSku || ""),
+      name:String(item.selectedVariant || "")},
+    destination:"ES",postalCode:String(address.postalCode || "").trim(),
+    methodName:String(item.cjPreferredLogisticName || ""),
+    salePriceEur:Number(item.salePrice || 0),
+    nowMs,
+  }) || !(Number(item.supplierCost || 0) > 0) ||
+      !(Number(record.estimatedCost || 0) > 0) ||
+      String(item.cjPreferredLogisticCountry || "") !== "ES" ||
+      Math.abs(Number(quote.costEur || 0) - Number(item.supplierCost || 0)) >= 0.02) {
+    throw cjManualError("Cotización CJ incompleta, desactualizada o incompatible con la variante, SKU, transporte y dirección. Consulta el transporte y resincroniza.");
   }
   if (quote.feasible !== true && !funding.storeFunded) {
     throw cjManualError("El pedido no tiene margen suficiente y no consta una promoción financiada por Herencia.");
@@ -116,14 +118,6 @@ export function validateManualCjCreate({ record, supplier, order, nowMs = Date.n
   const budgetEur = Number(supplier.maxAutoOrderTotal || 0);
   if (!(budgetEur > 0) || Number(record.estimatedCost || 0) > budgetEur) {
     throw cjManualError("Coste CJ desconocido o superior al presupuesto máximo configurado en EUR.");
-  }
-  const selected = String(item.selectedVariant || "").trim().toLowerCase();
-  if (selected) {
-    const sku = String(item.supplierSku || "").trim().toLowerCase();
-    const suffix = sku.includes("-") ? sku.split("-").slice(1).join("-") : "";
-    if (!suffix || !(suffix.includes(selected) || selected.includes(suffix))) {
-      throw cjManualError("La variante elegida no coincide con el SKU vinculado al producto.");
-    }
   }
   return {
     funding,
