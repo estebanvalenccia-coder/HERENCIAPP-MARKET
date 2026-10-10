@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
+import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -141,6 +142,17 @@ export function ProductDetail() {
 
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
+  const optionLabels = Array.isArray(product?.metadata?.variantOptionLabels) ? product.metadata.variantOptionLabels : [];
+  const variantOptionGroups = useMemo(() => deriveVariantOptionGroups(variants, optionLabels), [variants, product?.metadata?.variantOptionLabels]);
+  const selectedOptionValues = Array.isArray(selected?.optionValues) && selected.optionValues.length
+    ? selected.optionValues : splitSupplierOptions(selected?.name || selectedVariant);
+  const changeVariantOption = (index: number, value: string) => {
+    const next = chooseExistingVariant(variants, selectedVariant, index, value);
+    if (!next) return;
+    setSelectedVariant(String(next.name || next));
+    if (next.image) setSelectedImage(String(next.image));
+    setQuantity(1);
+  };
   const galleryImages = useMemo(() => {
     const urls = [
       selected?.image,
@@ -446,7 +458,31 @@ export function ProductDetail() {
           </div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
-          {detailConfig.showVariants !== false && variants.length > 0 && <div><label className="block text-sm font-medium mb-2">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant: any) => { const name=String(variant?.name || variant); return <button key={name} onClick={() => { setSelectedVariant(name); if (variant?.image) setSelectedImage(String(variant.image)); }} className={`rounded-xl border px-4 py-2 ${selectedVariant===name ? "border-primary bg-primary/10 text-primary" : "border-border"}`}>{name}{variant?.price ? ` · €${Number(variant.price).toFixed(2)}` : ""}</button>; })}</div></div>}
+          {detailConfig.showVariants !== false && variants.length > 0 && (variantOptionGroups.length > 0 ? (
+            <div className="space-y-4">
+              {variantOptionGroups.map((group,index)=>(
+                <div key={index}>
+                  <p className="mb-2 text-sm font-bold">{group.label}: <span className="font-normal">{selectedOptionValues[index] || "Selecciona"}</span></p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.values.map(value=>{
+                      const exists=variants.some((v:any)=>{
+                        const options=Array.isArray(v.optionValues)&&v.optionValues.length?v.optionValues:splitSupplierOptions(v.name||v);
+                        return options[index]===value;
+                      });
+                      return <button type="button" key={value} disabled={!exists}
+                        aria-pressed={selectedOptionValues[index]===value}
+                        onClick={()=>changeVariantOption(index,value)}
+                        className={`rounded-xl border px-4 py-2 text-sm font-semibold ${selectedOptionValues[index]===value?"border-primary bg-primary/10 text-primary":"border-border"}`}>{value}</button>;
+                    })}
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">Solo se pueden elegir combinaciones existentes en el catálogo. Precio final según la variante seleccionada.</p>
+            </div>
+          ) : <div><label className="mb-2 block text-sm font-medium">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant:any)=>{
+            const name=String(variant?.name||variant);
+            return <button key={name} type="button" onClick={()=>{setSelectedVariant(name);if(variant?.image)setSelectedImage(String(variant.image));}} className={`rounded-xl border px-4 py-2 ${selectedVariant===name?"border-primary bg-primary/10 text-primary":"border-border"}`}>{name}</button>;
+          })}</div></div>)}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
           {serviceProduct ? (
             <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
