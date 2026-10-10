@@ -66,6 +66,7 @@ test("CJ checkout quotes exact blue US variant, never product default", async ()
     quoteShipping:async({vid,zip})=>{seen.push("shipping:"+vid+":"+zip);
       return {vid,zip,destination:"ES",methods:[{name:"CJPacket Liquid Line",totalPostageUsd:2,time:"5-10 días"}]};},
     getRate:async()=>({rate:0.9}),
+    getStock:async({vid})=>({verified:true,available:true,quantity:6,vid,origin:"CN"}),
   };
   const r=await evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:variant.name}],
     catalog:[product],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
@@ -83,9 +84,21 @@ test("CJ wrong VID/SKU, unlisted combination and mismatched freight block checko
     deps:{verifyVariant:async()=>({vid:"1531107375489495040",sku:changes.sku||"wrong",priceUsd:5}),
       quoteShipping:async()=>({vid:changes.vid||"1531107375489495040",
         destination:"ES",zip:"08032",methods:[{name:"CJPacket Liquid Line",totalPostageUsd:2}]}),
-      getRate:async()=>({rate:.9})},
+      getRate:async()=>({rate:.9}),
+      getStock:async({vid})=>({verified:true,available:true,quantity:6,vid,origin:"CN"})},
   });
   await assert.rejects(make("Azul · US Plug"),/no existe/);
   await assert.rejects(make("Rosa · EU Plug"),/SKU exactos/);
   await assert.rejects(make("Rosa · EU Plug",{sku:"CJJZGJYL00285-Green EU Plug",vid:"wrong"}),/no coincide/);
+});
+
+test("out-of-stock supplier VID never allows payment despite a valid shipping quote",async()=>{
+ const variant={name:"Rosa · EU Plug",supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug"};
+ await assert.rejects(evaluateCjCheckout({
+  lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:variant.name}],catalog:[{...cj,variants:[variant]}],
+  suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},
+  deps:{verifyVariant:async()=>({vid:variant.supplierVariantId,sku:variant.supplierSku,priceUsd:5}),
+    quoteShipping:async()=>({vid:variant.supplierVariantId,destination:"ES",zip:"08032",methods:[{name:"CJPacket Liquid Line",totalPostageUsd:2}]}),
+    getRate:async()=>({rate:.9}),getStock:async()=>({verified:true,available:false,quantity:0,vid:variant.supplierVariantId,origin:"CN"})}
+ }),/no confirmó existencias/);
 });
