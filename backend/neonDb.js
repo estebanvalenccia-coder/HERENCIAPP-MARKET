@@ -564,7 +564,9 @@ async function hydrateNeonProductRows(rows = []) {
       variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||"",supplierVariantId:v.metadata?.supplierVariantId||"",supplierSku:v.metadata?.supplierSku||"",optionValues:Array.isArray(v.metadata?.optionValues)?v.metadata.optionValues:[]})),
       // Keep the supplier/import metadata accessible to admin panels and editors.
       // Historically it was flattened and lost on the next product edit.
-      collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {}
+      collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      // Always use the database revision, never an untrusted metadata shadow.
+      updatedAt:new Date(row.updated_at).toISOString()
     };
   });
 }
