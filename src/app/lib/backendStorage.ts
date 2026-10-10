@@ -579,7 +579,7 @@ export const backendApi = {
         optionLabels: string[]; warnings: string[];
       }>;
       warnings: string[]; writable: false; automaticOrdersEnabled: false;
-      reconciliation: Array<{id:string;status:"new"|"unchanged"|"changes_detected"|"conflict";changedFields:string[];existingProductId:string|null;merchantChangesProtected:true;automaticUpdateEnabled:false}>;
+      reconciliation: Array<{id:string;status:"new"|"unchanged"|"changes_detected"|"conflict";changedFields:string[];existingProductId:string|null;merchantChangesProtected:true;automaticUpdateEnabled:false;sourceUpdatedAt:string|null;canApproveCosts:boolean;alerts:Array<{type:string;variant:string;severity:string}>}>;
       supplier: {id:string;name:string}; message: string;
     }>("/api/admin/catalog/supplier-file/preview", {
       method: "POST", body: JSON.stringify(payload),
