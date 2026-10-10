@@ -7,6 +7,11 @@ export const EU_COUNTRIES = Object.freeze([
   "AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE",
   "IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE",
 ]);
+// Countries administrators can REQUEST preview quotes for. This list does not
+// guarantee that CJ ships any given variant to a destination.
+export const CJ_PREVIEW_COUNTRIES = Object.freeze([
+  ...EU_COUNTRIES, "US", "CO", "GB", "CA", "MX", "AU", "CH",
+]);
 export const SUPPLIER_PRESETS = Object.freeze([
   { id:"cj", name:"CJdropshipping", host:"cjdropshipping.com", type:"cj", api:"existing_read_only" },
   { id:"eprolo", name:"EPROLO", host:"eprolo.com", type:"api", api:"authorization_required" },
