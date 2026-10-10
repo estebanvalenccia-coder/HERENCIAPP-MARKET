@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { buildPlantProfilePublishPatch } from "../../lib/plantProfile";
+import { splitSupplierOptions, deriveVariantOptionGroups } from "../../lib/productVariantOptions";
 import { MediaLibraryPicker } from "./MediaLibraryPicker";
 import {
   COMMERCE_COLLECTIONS,
@@ -134,6 +135,9 @@ type EditVariant = {
   stock: string;
   sku: string;
   image: string;
+  supplierVariantId?: string;
+  supplierSku?: string;
+  optionValues?: string[];
 };
 
 function makeEditVariant(): EditVariant {
@@ -173,6 +177,9 @@ export function AdminProducts({
   const [aiGenerating, setAiGenerating] = useState(false);
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editVariants, setEditVariants] = useState<EditVariant[]>([]);
+  const [variantOptionLabels, setVariantOptionLabels] = useState<string[]>([]);
+  const [cjVariantsBusy, setCjVariantsBusy] = useState(false);
+  const [descriptionBusy, setDescriptionBusy] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -596,6 +603,7 @@ export function AdminProducts({
         : []),
     ].filter(Boolean)));
     setEditImages(gallery);
+    setVariantOptionLabels(Array.isArray(product.metadata?.variantOptionLabels) ? product.metadata.variantOptionLabels.map(String) : []);
     setEditVariants(
       (product.variants || []).map((variant, index) => ({
         id: `edit-variant-${product.id}-${index}`,
@@ -604,6 +612,9 @@ export function AdminProducts({
         stock: String(Math.max(0, Number(variant.stock || 0))),
         sku: String(variant.sku || ""),
         image: String(variant.image || ""),
+        supplierVariantId: String((variant as any).supplierVariantId || ""),
+        supplierSku: String((variant as any).supplierSku || ""),
+        optionValues: Array.isArray((variant as any).optionValues) ? (variant as any).optionValues.map(String) : [],
       }))
     );
 
@@ -780,6 +791,50 @@ export function AdminProducts({
     );
   }
 
+  async function generateGroqDescription() {
+    if (!editingProduct || !editForm.name.trim()) return toast.error("Añade el nombre del producto");
+    setDescriptionBusy(true);
+    try {
+      const result = await backendApi.generateCommerceDescription({
+        name:editForm.name.trim(),category:getCommerceCollection(editForm.collection).name,
+        facts:editForm.description.trim(),variants:editVariants.map(v=>v.name).filter(Boolean).slice(0,18),
+      });
+      if (!result.description?.trim()) throw new Error("Groq no devolvió una descripción");
+      setEditForm(current=>({...current,description:result.description}));
+      toast.success("Descripción propuesta por Groq. Revísala antes de guardar.");
+    } catch (error:any) { toast.error(error?.message || "No fue posible generar la descripción"); }
+    finally { setDescriptionBusy(false); }
+  }
+
+  async function importRealCjVariants() {
+    if (!editingProduct) return;
+    if (editVariants.some(v=>!v.supplierVariantId && v.name.trim()) &&
+        !window.confirm("Esto sustituirá las variantes escritas manualmente. ¿Continuar?")) return;
+    setCjVariantsBusy(true);
+    try {
+      const response = await backendApi.listCjProductVariants(String(editingProduct.id));
+      if (!Array.isArray(response.variants) || !response.variants.length) throw new Error("CJ no devolvió variantes.");
+      if (response.truncated) throw new Error("CJ tiene más de 200 variantes; no se importará una lista incompleta.");
+      const previous = new Map(editVariants.filter(v=>v.supplierVariantId).map(v=>[v.supplierVariantId,v]));
+      const used = new Set<string>();
+      const mapped: EditVariant[] = response.variants.map((v:any)=>{
+        const parts=splitSupplierOptions(v.option || v.name || v.sku || v.vid);
+        const display=parts.join(" · ");
+        if(!v.vid || !v.sku || used.has(display.toLowerCase()))
+          throw new Error("CJ devolvió opciones duplicadas o sin SKU/VID. No se cambiaron las variantes.");
+        used.add(display.toLowerCase());
+        const old=previous.get(String(v.vid));
+        return {id:`cj-variant-${String(v.vid)}`,name:display,price:old?.price || "",stock:old?.stock || "0",
+          sku:String(v.sku),image:old?.image || String(v.image || ""),
+          supplierVariantId:String(v.vid),supplierSku:String(v.sku),optionValues:parts};
+      });
+      setEditVariants(mapped);
+      setVariantOptionLabels(deriveVariantOptionGroups(mapped).map(g=>g.label));
+      toast.success(`${mapped.length} variantes reales cargadas. Define los precios EUR y revisa antes de guardar.`);
+    } catch (error:any) { toast.error(error?.message || "No se pudieron importar variantes CJ"); }
+    finally { setCjVariantsBusy(false); }
+  }
+
   async function saveEdit() {
     if (!editingProduct) return;
     setSaveError("");
@@ -826,6 +881,7 @@ export function AdminProducts({
           stock: variant.stock ? Math.max(0, Math.floor(Number(variant.stock))) : 0,
           sku: variant.sku.trim() || undefined,
           image: variant.image ? (imageMap.get(variant.image) || variant.image) : undefined,
+          ...(variant.supplierVariantId ? {supplierVariantId:variant.supplierVariantId,supplierSku:variant.supplierSku,optionValues:variant.optionValues||[]} : {}),
         }));
 
       const basePayload: any = {
@@ -868,6 +924,7 @@ export function AdminProducts({
           ...(editingProduct.metadata || {}),
           tags: editForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
           relatedProductIds: editRelatedIds,
+          variantOptionLabels: variantOptionLabels.map(x=>x.trim()).filter(Boolean),
           billingUnit: editForm.collection === "servicios" ? "hour" : editingProduct.metadata?.billingUnit,
           serviceMinHours: editForm.collection === "servicios" ? Math.max(1, Number(editForm.serviceMinHours || 1)) : editingProduct.metadata?.serviceMinHours,
           serviceMaxHours: editForm.collection === "servicios"
@@ -1268,9 +1325,16 @@ export function AdminProducts({
                   <label className="sm:col-span-2 text-sm font-bold">Nombre
                     <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3" />
                   </label>
-                  <label className="sm:col-span-2 text-sm font-bold">Descripción
-                    <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3" />
-                  </label>
+                  <div className="sm:col-span-2 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label htmlFor="herencia-product-description" className="text-sm font-bold">Descripción</label>
+                      <button type="button" disabled={descriptionBusy} onClick={()=>void generateGroqDescription()} className="inline-flex items-center gap-1 rounded-lg border border-primary/40 px-3 py-2 text-xs font-bold text-primary disabled:opacity-50">
+                        <Sparkles className="h-4 w-4" />{descriptionBusy?"Generando con Groq…":"Generar descripción con Groq"}
+                      </button>
+                    </div>
+                    <textarea id="herencia-product-description" value={editForm.description} onChange={(e)=>setEditForm({...editForm,description:e.target.value})} rows={4} className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3"/>
+                    <p className="text-xs text-muted-foreground">La descripción generada es editable. Revisa los datos antes de guardar.</p>
+                  </div>
 
                   <label className="text-sm font-bold">Colección
                     <select
@@ -1441,9 +1505,22 @@ export function AdminProducts({
                       <p className="font-black">Variantes</p>
                       <p className="text-xs text-muted-foreground">Tallas, colores, tamaños, sabores o packs.</p>
                     </div>
-                    <button type="button" onClick={() => setEditVariants((current) => [...current, makeEditVariant()])} className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground">+ Variante</button>
+                    <div className="flex flex-wrap gap-2">
+                      {String(editingProduct.metadata?.sourceHost||editingProduct.metadata?.sourceProductUrl||"").includes("cjdropshipping.com") && (
+                        <button type="button" disabled={cjVariantsBusy} onClick={()=>void importRealCjVariants()} className="rounded-xl border border-primary/40 px-3 py-2 text-xs font-black text-primary disabled:opacity-50">
+                          {cjVariantsBusy?"Consultando CJ…":"Importar variantes reales CJ"}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => setEditVariants(current=>[...current,makeEditVariant()])} className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground">+ Variante</button>
+                    </div>
                   </div>
 
+                  {editVariants.length > 0 && <div className="mb-3">
+                    <label className="text-xs font-bold">Etiquetas de opciones (separadas por coma)
+                      <input value={variantOptionLabels.join(", ")} onChange={e=>setVariantOptionLabels(e.target.value.split(",").map(x=>x.trim()).slice(0,4))} placeholder="Color, Enchufe, Tamaño" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5"/>
+                    </label>
+                    <p className="mt-1 text-xs text-muted-foreground">Revisa las combinaciones y configura precios de venta en EUR; CJ informa costes en USD.</p>
+                  </div>}
                   {editVariants.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Sin variantes</div>
                   ) : (
@@ -1457,6 +1534,7 @@ export function AdminProducts({
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <label className="text-xs font-bold">Nombre
                               <input value={variant.name} onChange={(e) => updateEditVariant(variant.id, { name: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
+                              {variant.supplierVariantId && <span className="mt-1 block break-all text-[10px] text-muted-foreground">CJ VID: {variant.supplierVariantId}</span>}
                             </label>
                             <label className="text-xs font-bold">Precio €
                               <input type="number" min="0" step="0.01" value={variant.price} onChange={(e) => updateEditVariant(variant.id, { price: e.target.value })} placeholder="General" className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
