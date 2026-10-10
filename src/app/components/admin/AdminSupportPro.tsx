@@ -3,7 +3,7 @@ import {
   AlertCircle, ArrowRight, Bell, BellRing, Check, CheckCheck, CircleHelp,
   Clock3, Headphones, Inbox, Loader2, Mail, MessageCircle, Package,
   RefreshCcw, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles,
-  Ticket, UserRound, X,
+  Ticket, Trash2, UserRound, X,
 } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { AdminSupportKnowledge } from "./AdminSupportKnowledge";
@@ -148,6 +148,7 @@ export function AdminSupportPro() {
   const [draft, setDraft] = useState("");
   const [internalNote, setInternalNote] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; ticketId: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -300,6 +301,30 @@ export function AdminSupportPro() {
     finally { setBusy(false); }
   };
 
+  const deleteConversation = async () => {
+    if (!deleteTarget || busy) return;
+    const target = deleteTarget;
+    setBusy(true);
+    setError("");
+    try {
+      await supportFetch<{ ok: boolean; deletedId: string }>(
+        "/api/admin/support/v2/tickets/" + encodeURIComponent(target.id),
+        { method: "DELETE" },
+      );
+      setThreads(current => current.filter(thread => thread.id !== target.id));
+      setSelectedId(current => current === target.id ? "" : current);
+      delete seenMessageRef.current[target.id];
+      setDraft("");
+      setInternalNote(false);
+      setDeleteTarget(null);
+      await refresh(true);
+    } catch (cause: any) {
+      setError(cause.message || "No se pudo eliminar la conversación.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updateMeta = async (change: Partial<Pick<SupportThread, "priority" | "category">>) => {
     if (!active || busy) return;
     setBusy(true);
@@ -323,6 +348,36 @@ export function AdminSupportPro() {
 
   return (
     <div className="min-h-[calc(100vh-120px)] bg-[#fafaf7] p-3 text-[#263d2c] sm:p-6 lg:p-8">
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/55 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="support-delete-title" aria-describedby="support-delete-description"
+            className="w-full max-w-md rounded-2xl border border-[#f0d4d4] bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="rounded-xl bg-red-50 p-3 text-red-700"><Trash2 size={22}/></span>
+              <h2 id="support-delete-title" className="text-xl font-bold text-[#852727]">¿Eliminar esta conversación?</h2>
+            </div>
+            <p id="support-delete-description" className="text-sm leading-6 text-[#536057]">
+              Se borrarán permanentemente todos los mensajes y archivos adjuntos de esta consulta de
+              <strong> {deleteTarget.name}</strong> ({deleteTarget.ticketId}). Esta acción no se puede deshacer.
+            </p>
+            <p className="mt-3 rounded-lg bg-[#f3f6f1] p-3 text-xs font-medium text-[#43614b]">
+              Los pedidos y la ficha del cliente no se eliminarán.
+            </p>
+            {error && <p role="alert" className="mt-3 text-sm font-semibold text-red-700">{error}</p>}
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={busy} onClick={() => { setDeleteTarget(null); setError(""); }}
+                className="rounded-xl border border-[#dde6dc] px-4 py-3 text-sm font-bold text-[#355442] hover:bg-[#f5f8f4] disabled:opacity-50">
+                Cancelar
+              </button>
+              <button type="button" disabled={busy} onClick={() => void deleteConversation()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#b32626] px-4 py-3 text-sm font-bold text-white hover:bg-[#8f2020] disabled:opacity-50">
+                {busy ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16}/>}
+                {busy ? "Eliminando…" : "Sí, eliminar chat"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto max-w-[1550px] space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -518,6 +573,10 @@ export function AdminSupportPro() {
                       <button type="button" onClick={() => setShowCustomerDetails(v=>!v)}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-[#e5ebe4] px-3 py-2 text-xs font-semibold text-[#4a6e55] hover:bg-[#f5f8f4]">
                         <UserRound size={14}/> {showCustomerDetails ? "Ocultar cliente" : "Ver cliente"}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => { setError(""); setDeleteTarget({ id: active.id, ticketId: active.ticketId || active.id, name: active.customerName || "Cliente" }); }}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-[#f1c5c5] px-3 py-2 text-xs font-semibold text-[#a93636] hover:bg-[#fff1f1] disabled:opacity-50" title="Eliminar permanentemente la conversación">
+                        <Trash2 size={14}/> Eliminar chat
                       </button>
                       <button disabled={busy} type="button" onClick={() => void setStatus(active.status === "resolved" ? "open" : "resolved")}
                         className={"inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-50 " +
