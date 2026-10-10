@@ -26,3 +26,20 @@ test("legacy Spain admin-only country preview remains accepted without ZIP",()=>
  assert.equal(result.zip,"");
  assert.equal(result.checkoutEnabled,false);
 });
+
+test("gateway can estimate EU shipping read-only without changing Spain live checkout",async()=>{
+ const fs=await import("node:fs/promises");
+ const gateway=await fs.readFile(new URL("./neonGateway.js",import.meta.url),"utf8");
+ const server=await fs.readFile(new URL("./server.js",import.meta.url),"utf8");
+ const checkout=await fs.readFile(new URL("./cjCheckoutSafety.js",import.meta.url),"utf8");
+ const route=gateway.slice(gateway.indexOf('if(path==="/api/admin/catalog/cj-freight"'),
+   gateway.indexOf('if(path==="/api/admin/catalog/cj-variants"'));
+ assert.match(route,/adminSession\(req\)/);
+ assert.match(route,/validateCjEuFreightPreview/);
+ assert.match(route,/destination:request.destination/);
+ assert.match(route,/checkoutEnabled:false/);
+ assert.doesNotMatch(route,/createOrderV2|payBalance|paymentIntents/);
+ assert.match(checkout,/countryCode\(shippingAddress\?\.country\) !== "ES"/);
+ assert.match(server,/extractCjProductId\(sourceUrl\)/);
+ assert.match(server,/assertCjSupplierIdentity\(/);
+});
