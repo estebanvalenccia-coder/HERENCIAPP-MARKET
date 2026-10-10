@@ -397,6 +397,23 @@ const server=http.createServer(async(req,res)=>{try{
     const sourceProductUrl=String(input?.productUrl||"").trim();
     const sourceCatalogUrl=String(input?.sourceCatalogUrl||sourceProductUrl||"").trim();
     const sourceHost=String(input?.sourceHost||"").trim().slice(0,255);
+    // Only CJ preview variants with distinct official VID/SKU can be carried
+    // into a draft. Never assign an automatic EUR price or enable purchasing.
+    const rawCjVariants=String(sourceHost).replace(/^www\\./,"")==="cjdropshipping.com" && Array.isArray(input?.variants) ? input.variants.slice(0,200) : [];
+    const cjVariants=rawCjVariants.map(row=>({
+      name:String(row?.name||"").trim().slice(0,220),
+      sku:String(row?.sku||"").trim().slice(0,100),
+      stock:0,
+      image:String(row?.image||"").trim().slice(0,2000),
+      supplierVariantId:String(row?.supplierVariantId||"").trim().slice(0,100),
+      supplierSku:String(row?.supplierSku||"").trim().slice(0,100),
+      optionValues:Array.isArray(row?.optionValues)?row.optionValues.slice(0,4).map(v=>String(v).slice(0,120)):[],
+    }));
+    const validCjVariants = cjVariants.length && cjVariants.every(row=>row.name&&row.supplierVariantId&&row.supplierSku) &&
+      new Set(cjVariants.map(row=>row.name.toLowerCase())).size===cjVariants.length &&
+      new Set(cjVariants.map(row=>row.supplierVariantId)).size===cjVariants.length;
+    const safeCjVariants=validCjVariants?cjVariants:[];
+
     const sourcePrice=Math.max(0,Number(input?.supplierPrice||input?.supplierCost||0));
     const sourceCurrency=String(input?.supplierCurrency||input?.currency||"").trim().toUpperCase().slice(0,8);
     const safeSupplierCost=(!sourceCurrency||sourceCurrency==="EUR")?sourcePrice:0;
@@ -450,6 +467,7 @@ const server=http.createServer(async(req,res)=>{try{
     if(duplicate){
       const refreshed=await saveNeonCommerceProduct({
         ...duplicate,
+        ...(safeCjVariants.length && !(Array.isArray(duplicate.variants)&&duplicate.variants.length) ? {variants:safeCjVariants} : {}),
         name,
         description:String(input?.description||duplicate?.description||"").trim().slice(0,5000),
         category:String(input?.category||taxonomy.category||duplicate?.category||"jardineria"),
@@ -497,6 +515,7 @@ const server=http.createServer(async(req,res)=>{try{
 
     const product=await saveNeonCommerceProduct({
       name,
+      ...(safeCjVariants.length ? {variants:safeCjVariants} : {}),
       description:String(input?.description||"").trim().slice(0,5000),
       category:String(input?.category||taxonomy.category||"jardineria"),
       collection:String(input?.collection||taxonomy.collection||"jardineria"),
