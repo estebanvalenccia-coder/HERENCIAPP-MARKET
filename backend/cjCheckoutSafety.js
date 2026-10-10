@@ -45,7 +45,19 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   const vid = String(meta.supplierVariantId || meta.cjVid || "").trim();
   const logisticName = String(meta.cjPreferredLogisticName || "").trim();
   if (!vid || !logisticName) invalid("Este artículo CJ todavía necesita una variante y transportista válidos.");
-  if (String(item.selectedVariant || "").trim()) {
+  const mappedVariants=Array.isArray(product.variants)
+    ? product.variants.filter(entry=>String(entry?.supplierVariantId||"").trim()) : [];
+  if (mappedVariants.length) {
+    // Fail closed: the historical fulfillment contract is for ONE quoted CJ VID.
+    // Other authentic customer-facing combinations cannot be charged until
+    // quote + fulfillment are mapped to the exact merchant-selected VID.
+    const chosen=String(item.selectedVariant||"").trim();
+    const variant=mappedVariants.find(entry=>String(entry.name||"")===chosen);
+    if (!variant || String(variant.supplierVariantId)!==String(meta.supplierVariantId||"") ||
+        String(variant.supplierSku||"")!==String(meta.supplierSku||"")) {
+      invalid("Esta combinación CJ necesita cotización y asignación de envío individual antes de estar disponible para compra. No se realizará ningún cobro.");
+    }
+  } else if (String(item.selectedVariant || "").trim()) {
     const chosen=String(item.selectedVariant).toLowerCase().trim();
     const sku=String(meta.supplierSku || "").toLowerCase().trim();
     const suffix=sku.includes("-")?sku.split("-").slice(1).join("-"):"";
