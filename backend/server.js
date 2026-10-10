@@ -5608,6 +5608,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     if (preserveSupplierFulfillment(found, {
       estimatedCost: group.estimatedCost,
       items: group.items,
+      shippingAddress: compactShippingAddress(order),
     }, { force })) {
       created.push(found);
       continue;
