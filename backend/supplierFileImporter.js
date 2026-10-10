@@ -1,9 +1,10 @@
 /**
  * Universal supplier file import, independent of any supplier API.
- * CSV / JSON only. No XML without a vetted parser: rejects it explicitly.
+ * CSV / JSON / XML, with a bounded XML parser and explicit column mapping.
  * Pure parser/validator: no side effects, publishing or payments.
  */
 import crypto from "node:crypto";
+import { parseSupplierXml, mappedSupplierRows, inspectSupplierRows } from "./supplierFileSchema.js";
 
 const MAX_BYTES = 512 * 1024;
 const MAX_ROWS = 300;
@@ -172,7 +173,8 @@ function rowsForFile(format, content) {
   if (Buffer.byteLength(text,"utf8")>MAX_BYTES) error("El catálogo supera 512 KB.",413);
   if (format==="csv") return parseSupplierCsv(text);
   if (format==="json") return parseSupplierJson(text);
-  error("Formato aún no admitido. Para XML exporta el feed como CSV o JSON; no se interpretará XML sin un analizador seguro.");
+  if (format==="xml") return parseSupplierXml(text);
+  error("Solo se admiten catálogos CSV, JSON o XML de origen autorizado.");
 }
 
 function optionNames(row) {
@@ -211,10 +213,16 @@ function asImportRow(row, index) {
   };
 }
 
-export function previewSupplierFile({ format, content, supplierId } = {}) {
+export function inspectSupplierFile({ format, content } = {}) {
+  const rows=rowsForFile(String(format||"").toLowerCase(),content);
+  return {...inspectSupplierRows(rows),format:String(format||"").toLowerCase(),rows:rows.length};
+}
+
+export function previewSupplierFile({ format, content, supplierId, columnMap = {} } = {}) {
   const id=clean(supplierId,100);
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) error("Selecciona un proveedor registrado válido.");
-  const rows=rowsForFile(String(format||"").toLowerCase(),content).map(asImportRow);
+  const sourceRows=rowsForFile(String(format||"").toLowerCase(),content);
+  const rows=mappedSupplierRows(sourceRows,columnMap).map(asImportRow);
   if(!rows.length) error("El catálogo no contiene productos.");
   const groups=new Map();
   for(const row of rows) {
