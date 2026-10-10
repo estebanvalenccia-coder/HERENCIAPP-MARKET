@@ -48,3 +48,13 @@ test("gateway can estimate international shipping read-only without changing Spa
  assert.match(server,/extractCjProductId\(sourceUrl\)/);
  assert.match(server,/assertCjSupplierIdentity\(/);
 });
+
+test("shipping preview stamps quote on server, not when the admin saves it", async()=>{
+ const {readFileSync}=await import("node:fs");
+ const gateway=readFileSync(new URL("./neonGateway.js",import.meta.url),"utf8");
+ const start=gateway.indexOf('if(path==="/api/admin/catalog/cj-freight"');
+ const end=gateway.indexOf('if(path==="/api/admin/catalog/cj-variants"',start);
+ const route=gateway.slice(start,end);
+ assert.match(route,/checkedAt:new Date\(\)\.toISOString\(\)/);
+ assert.match(route,/checkoutEnabled:false/);
+});
