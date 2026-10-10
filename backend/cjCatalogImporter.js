@@ -1,4 +1,5 @@
 // CJdropshipping read-only catalog adapter. Never creates or pays orders.
+import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
@@ -114,9 +115,8 @@ export async function previewCjProductUrl(input) {
   if (!["cjdropshipping.com", "www.cjdropshipping.com"].includes(url.hostname.toLowerCase()) || url.protocol !== "https:") {
     const e = new Error("La URL no pertenece a CJdropshipping"); e.statusCode = 400; throw e;
   }
-  const match = url.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
-  if (!match) { const e = new Error("No se encontró el identificador del producto CJ en esta URL"); e.statusCode = 422; throw e; }
-  const pid = match[1];
+  const pid = extractCjProductId(url);
+  if (!pid) { const e = new Error("No se encontró el identificador del producto CJ en esta URL"); e.statusCode = 422; throw e; }
   const accessToken = await token();
   const data = await cjFetch("/product/query?pid=" + encodeURIComponent(pid), {
     headers: { "CJ-Access-Token": accessToken }
@@ -142,7 +142,7 @@ export async function previewCjProductUrl(input) {
  */
 export async function queryCjProductVariants(pidInput) {
   const pid = String(pidInput || "").trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid)) {
+  if (!isCjProductId(pid)) {
     const error = new Error("Identificador de producto CJ no válido");
     error.statusCode = 422;
     throw error;
@@ -265,7 +265,7 @@ export async function verifyCjVariantPrice(
 ) {
   const pid = String(rawPid || "").trim();
   const vid = String(rawVid || "").trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid) || !/^[a-z0-9-]{8,100}$/i.test(vid)) {
+  if (!isCjProductId(pid) || !/^[a-z0-9-]{8,100}$/i.test(vid)) {
     const error = new Error("Producto o variante CJ inválidos");
     error.statusCode = 422;
     throw error;
