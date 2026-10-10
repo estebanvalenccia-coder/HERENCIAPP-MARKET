@@ -817,7 +817,7 @@ export async function saveNeonCommerceProduct(input = {}, { id = null } = {}) {
       await neonPool.query(
         "insert into commerce_product_variants(product_id,name,sku,price,compare_at_price,stock,position,metadata) values($1,$2,$3,$4,$5,$6,$7,$8)",
         [productId,String(v.name).trim(),String(v.sku||"")||null,v.price==null||v.price===""?null:num(v.price),
-         v.compareAtPrice==null||v.compareAtPrice===""?null:num(v.compareAtPrice),int(v.stock),i,v.image?{image:v.image}:{}]
+         v.compareAtPrice==null||v.compareAtPrice===""?null:num(v.compareAtPrice),int(v.stock),i,{...(v.image?{image:v.image}:{}),...(v.supplierVariantId?{supplierVariantId:String(v.supplierVariantId)}:{}),...(v.supplierSku?{supplierSku:String(v.supplierSku)}:{}),...(Array.isArray(v.optionValues)?{optionValues:v.optionValues.map(x=>String(x).slice(0,120)).slice(0,4)}:{})}]
       );
     }
   }
