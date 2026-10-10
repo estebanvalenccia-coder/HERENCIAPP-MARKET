@@ -5412,7 +5412,7 @@ const cjTrackingRunner=createCjTrackingRunner({
   notify:addAutomationNotification,
 });
 
-// Any action_required remote state is left unchanged for manual review.
+// Any unknown remote "action_required" state is left unchanged for manual review.
 // No permission to create/pay CJ is available from this helper.
 async function syncCjSupplierFulfillment(record) {
   const result=await cjTrackingRunner.syncOne(record);
