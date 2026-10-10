@@ -292,7 +292,11 @@ export function previewSupplierFile({ format, content, supplierId, columnMap = {
       .update(id+"\u0000"+key).digest("hex").slice(0,32);
     products.push({
       id:stableId,supplierId:id,supplierProductId:key,
-      brand:first.brand,mpn:first.mpn,gtin:first.gtin,
+      brand:items.every(x=>x.brand===first.brand)?first.brand:"",
+      mpn:items.every(x=>x.mpn===first.mpn)?first.mpn:"",
+      // GTIN is commonly per variant. A mixed GTIN cannot justify treating
+      // two products from different suppliers as an identical family.
+      gtin:items.every(x=>x.gtin===first.gtin)?first.gtin:"",
       name:first.name,category:first.category||"otros",
       description:first.description,sourceProductUrl:originalUrl,
       sourceImageUrl:items.find(row=>row.imageUrl)?.imageUrl||"",
