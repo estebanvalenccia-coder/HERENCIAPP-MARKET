@@ -23,6 +23,21 @@ jobs:
           set -o pipefail
           npm run build 2>&1 | tee full-build.log
 
+      # Railway deploys with rootDirectory=backend and npm i from
+      # backend/package.json. The root install alone can hide missing imports.
+      - name: Railway isolated backend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          isolated="$(mktemp -d)"
+          trap 'rm -rf "$isolated"' EXIT
+          cp -R backend/. "$isolated/"
+          (
+            cd "$isolated"
+            npm install --ignore-scripts --no-audit --no-fund
+            node --input-type=module -e "await import('./supplierFileSchema.js'); await import('./supplierFileImporter.js'); await import('./supplierFileProfiles.js'); console.log('Railway backend imports verified in isolation')"
+          )
+
       - name: Backend syntax
         shell: bash
         run: |
