@@ -504,6 +504,68 @@ export const backendApi = {
     });
   },
 
+  async reviewSupplierFileCosts(payload: {
+    supplierId:string;format:"csv"|"json"|"xml";content:string;
+    columnMap?:Record<string,string>;productId:string;expectedUpdatedAt:string;
+  }) {
+    return request<{
+      ok:true;mode:"supplier_cost_only";productId:string;updatedAt:string;
+      automaticPurchasesEnabled:false;supplierCostsVerifiedByApi:false;message:string;
+    }>("/api/admin/catalog/supplier-file/review-costs",{
+      method:"POST",body:JSON.stringify({...payload,approveCosts:true}),
+    });
+  },
+
+  async getOfflineSupplierOverview() {
+    return request<{
+      ok:true;readOnly:true;totalImported:number;unpublishedDrafts:number;
+      missingSupplierIdentity:number;supplierCostsUnverified:number;aftercareOpen:number;
+      potentialMatches:Array<{leftProductId:string;rightProductId:string;reason:string;reviewRequired:true}>;
+      confirmedProductFamilies:number;automaticSupplierSwitching:false;
+    }>("/api/admin/dropshipping/offline-overview");
+  },
+
+  async getSupplierProductLinks() {
+    return request<{
+      ok:true;links:Array<{id:string;leftProductId:string;rightProductId:string;
+        reason:string;createdAt:string;variantsEquivalent:false}>;
+      automaticRouting:false;variantsEquivalent:false;
+    }>("/api/admin/dropshipping/links");
+  },
+
+  async confirmSupplierProductLink(leftProductId:string,rightProductId:string) {
+    return request<{
+      ok:true;created:boolean;link:{id:string;leftProductId:string;rightProductId:string;
+      variantsEquivalent:false;automaticRouting:false};
+    }>("/api/admin/dropshipping/links",{
+      method:"POST",body:JSON.stringify({leftProductId,rightProductId,confirmLink:true}),
+    });
+  },
+
+  async listSupplierAftercareCases() {
+    return request<{
+      ok:true;cases:Array<{id:string;orderId:string;supplierId:string;reason:string;
+      status:string;revision:number;note:string;updatedAt:string;
+      instructions:{steps:string[];nextStatuses:string[];automaticRefund:false}}>;
+      automaticRefunds:false;automaticPurchases:false;
+    }>("/api/admin/dropshipping/aftercare");
+  },
+
+  async createSupplierAftercareCase(payload:{orderId:string;supplierId:string;reason:string;note?:string}) {
+    return request<{ok:true;created:boolean;case:{id:string;revision:number;status:string}}>(
+      "/api/admin/dropshipping/aftercare",{
+      method:"POST",body:JSON.stringify(payload),
+    });
+  },
+
+  async transitionSupplierAftercareCase(caseId:string,expectedRevision:number,
+    toStatus:string,note="") {
+    return request<{ok:true;case:{id:string;revision:number;status:string}}>(
+      "/api/admin/dropshipping/aftercare/"+encodeURIComponent(caseId),{
+      method:"PATCH",body:JSON.stringify({expectedRevision,toStatus,note}),
+    });
+  },
+
   async previewSupplierFileCatalog(payload: {
     supplierId: string; format: "csv" | "json" | "xml"; content: string; columnMap?: Record<string,string>;
   }) {
@@ -517,7 +579,7 @@ export const backendApi = {
         optionLabels: string[]; warnings: string[];
       }>;
       warnings: string[]; writable: false; automaticOrdersEnabled: false;
-      reconciliation: Array<{id:string;status:"new"|"unchanged"|"changes_detected"|"conflict";changedFields:string[];existingProductId:string|null;merchantChangesProtected:true;automaticUpdateEnabled:false}>;
+      reconciliation: Array<{id:string;status:"new"|"unchanged"|"changes_detected"|"conflict";changedFields:string[];existingProductId:string|null;merchantChangesProtected:true;automaticUpdateEnabled:false;sourceUpdatedAt:string|null;canApproveCosts:boolean;alerts:Array<{type:string;variant:string;severity:string}>}>;
       supplier: {id:string;name:string}; message: string;
     }>("/api/admin/catalog/supplier-file/preview", {
       method: "POST", body: JSON.stringify(payload),
@@ -525,7 +587,7 @@ export const backendApi = {
   },
 
   async commitSupplierFileCatalog(payload: {
-    supplierId: string; format: "csv" | "json"; content: string;
+    supplierId: string; format: "csv" | "json" | "xml"; content: string; columnMap?: Record<string,string>;
   }) {
     const result=await request<{
       ok: true; source: "neon"; mode: "manual_drafts_only";

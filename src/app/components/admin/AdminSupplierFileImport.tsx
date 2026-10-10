@@ -13,6 +13,8 @@ const MAPPING_FIELDS = [
   ["cost","Coste de compra"],["currency","Moneda"],["product_url","URL original"],
   ["image_url","URL de imagen"],["category","Categoría"],
   ["description","Descripción"],["variant_name","Nombre de combinación"],
+  ["brand","Fabricante / marca"],["mpn","Referencia MPN"],["gtin","GTIN/EAN"],
+  ["supplier_stock","Stock declarado (sin verificar)"],
 ] as const;
 const VARIANT_OPTION_LIMIT=4;
 
@@ -41,9 +43,11 @@ export function AdminSupplierFileImport({
   const [committed, setCommitted] = useState<Committed | null>(null);
   const [busy, setBusy] = useState<"preview" | "commit" | "">("");
   const [error, setError] = useState("");
+  const [reviewBusy,setReviewBusy]=useState("");
+  const [reviewConfirmed,setReviewConfirmed]=useState<Record<string,boolean>>({});
 
   const activeSuppliers = (Array.isArray(suppliers) ? suppliers : []).filter(s => s?.active !== false);
-  const clearResult = () => {setPreview(null);setCommitted(null);setError("");};
+  const clearResult = () => {setPreview(null);setCommitted(null);setError("");setReviewConfirmed({});};
   const loadFile = async (file?: File) => {
     clearResult();
     setColumns([]);
@@ -126,7 +130,7 @@ export function AdminSupplierFileImport({
     } finally {setProfileBusy(false);}
   };
   const previewFile = async () => {
-    if(busy || inspectionBusy) return;
+    if(busy || inspectionBusy || reviewBusy) return;
     clearResult();
     if(!supplierId) return setError("Registra y selecciona un proveedor primero.");
     if(!content.trim()) return setError("Selecciona un archivo CSV, JSON o XML.");
@@ -138,8 +142,25 @@ export function AdminSupplierFileImport({
       setError(String(err?.message || "El archivo no superó la validación."));
     } finally {setBusy("");}
   };
+  const approveSupplierCosts=async(productId:string,expectedUpdatedAt:string)=>{
+    if(reviewBusy||!reviewConfirmed[productId])return;
+    setReviewBusy(productId);setError("");
+    try{
+      const result=await backendApi.reviewSupplierFileCosts({
+        ...params,productId,expectedUpdatedAt,
+      });
+      toast.success("Costes del proveedor revisados; precio de venta y stock intactos.");
+      const fresh=await backendApi.previewSupplierFileCatalog(params);
+      setPreview(fresh);
+      setReviewConfirmed({});
+      if(onCompleted)await onCompleted();
+    }catch(err:any){
+      setError(String(err?.message||"El borrador cambió; actualiza la vista previa antes de aprobar."));
+    }finally{setReviewBusy("");}
+  };
+
   const commitFile = async () => {
-    if(busy || !preview || inspectionBusy) return;
+    if(busy || !preview || inspectionBusy || reviewBusy) return;
     setBusy("commit");
     setError("");
     try {
@@ -305,6 +326,37 @@ export function AdminSupplierFileImport({
             return <p className="mt-1 text-xs font-semibold text-primary">
               {label}{comparison.changedFields.length>0?" · Campos: "+comparison.changedFields.join(", "):""}
             </p>;
+          })()}
+          {(() => {
+            const comparison=preview.reconciliation.find(r=>r.id===item.id);
+            if(!comparison?.canApproveCosts||!comparison.sourceUpdatedAt)return null;
+            return <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50/50 p-3">
+              <p className="text-xs font-semibold text-amber-900">
+                El archivo contiene costes nuevos para variantes que mantienen los mismos SKU/VID.
+                Puedes guardar solo esos costes como datos NO verificados. El precio público,
+                la descripción, las fotos y el stock permanecerán exactamente igual.
+              </p>
+              {!!comparison.alerts?.length&&<ul className="mt-2 list-disc pl-5 text-xs text-amber-900">
+                {comparison.alerts.slice(0,5).map((warning,i)=><li key={i}>
+                  {warning.type==="cost_increase"?"Subida de coste":
+                    warning.type==="supplier_reports_out_of_stock"?"Proveedor declara agotado":
+                    warning.type==="currency_changed"?"Cambio de divisa":warning.type}
+                  {" · "}{warning.variant}
+                </li>)}
+              </ul>}
+              <label className="mt-2 flex items-start gap-2 text-xs font-semibold">
+                <input type="checkbox" checked={Boolean(reviewConfirmed[item.id])}
+                  onChange={e=>setReviewConfirmed(old=>({...old,[item.id]:e.target.checked}))}/>
+                Confirmo que he revisado la ficha original y deseo guardar SOLO costes del archivo,
+                sin publicar ni actualizar stock.
+              </label>
+              <button type="button"
+                disabled={!reviewConfirmed[item.id]||Boolean(reviewBusy)||Boolean(busy)}
+                onClick={()=>void approveSupplierCosts(item.id,comparison.sourceUpdatedAt!)}
+                className="mt-2 rounded-lg border border-amber-600 bg-white px-3 py-2 text-xs font-bold text-amber-950 disabled:opacity-50">
+                {reviewBusy===item.id?"Guardando revisión…":"Aprobar únicamente costes del proveedor"}
+              </button>
+            </div>;
           })()}
           <p className="mt-1 text-xs text-amber-800">Stock y portes pendientes de verificar · Precio público: sin configurar</p>
         </div>)}

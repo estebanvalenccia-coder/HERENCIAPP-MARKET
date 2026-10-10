@@ -547,7 +547,7 @@ async function hydrateNeonProductRows(rows = []) {
     const regularPrice=saleActive?num(row.compare_at_price):num(row.price);
     const currentPrice=num(row.price);
     return {
-      id:String(row.id), name:row.name, scientificName:row.scientific_name||"", description:row.description||"",
+      id:String(row.id), updatedAt:new Date(row.updated_at).toISOString(), name:row.name, scientificName:row.scientific_name||"", description:row.description||"",
       category:row.category||"plantas", type:row.type||"plant", price:regularPrice,
       salePrice:saleActive?currentPrice:undefined,
       originalPrice:saleActive?regularPrice:undefined,
@@ -564,7 +564,9 @@ async function hydrateNeonProductRows(rows = []) {
       variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||"",supplierVariantId:v.metadata?.supplierVariantId||"",supplierSku:v.metadata?.supplierSku||"",optionValues:Array.isArray(v.metadata?.optionValues)?v.metadata.optionValues:[]})),
       // Keep the supplier/import metadata accessible to admin panels and editors.
       // Historically it was flattened and lost on the next product edit.
-      collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {}
+      collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      // Always use the database revision, never an untrusted metadata shadow.
+      updatedAt:new Date(row.updated_at).toISOString()
     };
   });
 }
@@ -831,6 +833,57 @@ export async function saveNeonCommerceProduct(input = {}, { id = null, createOnl
     }
   }
   return getNeonCommerceProduct(productId,{includeArchived:true});
+}
+
+/**
+ * Approve only unverified supplier cost metadata on an existing imported draft.
+ * Retail price, stock, variants, gallery and payment options are unchanged.
+ * The database update enforces an optimistic last-write version check.
+ */
+export async function approveNeonSupplierFileCosts({
+  productId,supplierId,expectedUpdatedAt,offers,currency,minimumCost
+}={}) {
+  if(!neonPool)throw new Error("Neon no está configurado");
+  const id=String(productId||""),owner=String(supplierId||"");
+  const date=new Date(expectedUpdatedAt||"");
+  if(!/^supplierfile_[0-9a-f]{32}$/.test(id)||!(/^[a-zA-Z0-9_-]{1,100}$/.test(owner)) ||
+     !Number.isFinite(date.getTime())) {
+    const error=new Error("Identidad o versión de catálogo no válida.");error.statusCode=422;throw error;
+  }
+  if(!Array.isArray(offers)||offers.length<1||offers.length>60 ||
+     !offers.every(o=>o&&typeof o==="object"&&
+       (o.cost===null||Number.isFinite(o.cost)&&o.cost>=0&&o.cost<=1000000) &&
+       String(o.currency||"").toUpperCase()===String(currency||"").toUpperCase() &&
+       String(o.supplierSku||"").length<=100 && String(o.supplierVariantId||"").length<=100)){
+    const error=new Error("Costes o variantes del archivo no válidos.");error.statusCode=422;throw error;
+  }
+  const amount=minimumCost===null?null:Number(minimumCost);
+  if(amount!==null&&(!Number.isFinite(amount)||amount<0||amount>1000000)){
+    const error=new Error("Coste mínimo inválido.");error.statusCode=422;throw error;
+  }
+  const res=await neonPool.query(
+    `update commerce_products
+       set metadata=coalesce(metadata,'{}'::jsonb) || jsonb_build_object(
+         'supplierVariantPrices',$3::jsonb,
+         'supplierOriginalPrice',$4::numeric,
+         'supplierCurrency',$5::text,
+         'supplierOffersUnverified',true,
+         'supplierCostReviewedAt',now()::text,
+         'supplierCostReviewSource','admin_approved_file'
+       ),
+       updated_at=now()
+     where id=$1 and status='draft'
+       and metadata->>'supplierId'=$2
+       and metadata->>'importedFromFile'='true'
+       and updated_at=$6::timestamptz
+     returning id`,
+    [id,owner,JSON.stringify(offers),amount,currency,date.toISOString()]
+  );
+  if(!res.rows?.length){
+    const error=new Error("El borrador ha cambiado o no corresponde a este proveedor. Actualiza la vista previa antes de aprobar.");
+    error.statusCode=409;throw error;
+  }
+  return getNeonCommerceProduct(id,{includeArchived:true});
 }
 
 export async function archiveNeonCommerceProduct(id, { permanent = false } = {}) {

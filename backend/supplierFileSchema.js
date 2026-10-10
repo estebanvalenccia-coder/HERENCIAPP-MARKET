@@ -7,6 +7,7 @@ import { XMLParser, XMLValidator } from "fast-xml-parser";
 export const SUPPLIER_FILE_TARGETS = Object.freeze([
   "product_id","product_name","product_url","category","description",
   "variant_id","supplier_sku","variant_name","currency","cost","image_url",
+  "brand","mpn","gtin","supplier_stock",
 ]);
 const VALID_KEY=/^[a-z][a-z0-9_]{0,79}$/;
 const OPTION_KEY=/^option_[a-z][a-z0-9_]{0,48}$/;
