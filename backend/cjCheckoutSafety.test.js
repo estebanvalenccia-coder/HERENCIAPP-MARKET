@@ -51,3 +51,15 @@ test("checkout does not confuse Herencia delivery with CJ fulfillment", () => {
   const enriched = enrichCartWithCatalog(cart, [{ id: "flower", name: "Plant", metadata: {} }]);
   assert.equal(isCjSupplierItem(enriched[0]), false);
 });
+
+test("CJ authentic multi-option catalog rejects a wrong supplier VID before any API call or charge", async () => {
+  const product={...cj,variants:[
+    {name:"Rosa · EU Plug",supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug"},
+    {name:"Azul · US Plug",supplierVariantId:"1531107375489495051",supplierSku:"CJJZGJYL00285-Blue US Plug"},
+  ]};
+  await assert.rejects(evaluateCjCheckout({
+    lines:[{id:"cj-product",quantity:1,price:20,selectedVariant:"Azul · US Plug"}],
+    catalog:[product],suppliers:[supplier],
+    shippingAddress:{country:"ES",postalCode:"08032"},
+  }), (error) => error.statusCode===409 && /No se realizará ningún cobro/.test(error.message));
+});
