@@ -15,7 +15,8 @@
     "@supabase/supabase-js": "^2.45.4",
     "ws": "^8.18.0",
     "pg": "^8.16.3",
-    "@aws-sdk/client-s3": "^3.893.0"
+    "@aws-sdk/client-s3": "^3.893.0",
+    "fast-xml-parser": "5.11.2"
   },
   "engines": {
     "node": "22.x"
