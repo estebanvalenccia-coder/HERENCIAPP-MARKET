@@ -44,8 +44,13 @@ test("free-coupon checkout queues supplier fulfillment for review without CJ pur
 
 test("Supplier Hub persists CJ EUR quotation from either shipping save button", () => {
   const ui = readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx", import.meta.url), "utf8");
-  const saveQuoteCalls = ui.match(/onSave\(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave\)/g) || [];
-  assert.equal(saveQuoteCalls.length, 2, "both shipping save buttons must keep the selected freight quotation");
+  const guardedButtonCalls = ui.match(/onClick=\{\(\) => void saveFreshCjQuote\(\)\}/g) || [];
+  assert.equal(guardedButtonCalls.length, 2, "both save buttons must verify freshness at click time");
+  assert.match(ui, /checkedAt: freightQuote\.checkedAt/);
+  assert.match(ui, /hasFreshCjQuote/);
+  assert.match(ui, /freightQuote\?\.variant\?\.vid === supplierVariantId/);
+  assert.match(ui, /await onSave\(product, supplierId, mode, cost, supplierVariantId, supplierSku, selectedFreightName, quoteForSave\)/);
+  assert.doesNotMatch(ui, /checkedAt: new Date\(\)\.toISOString\(\), destination: "ES"/);
   assert.match(ui, /prepareSupplierFulfillments\(String\(order\.id\), true\)/);
 });
 
