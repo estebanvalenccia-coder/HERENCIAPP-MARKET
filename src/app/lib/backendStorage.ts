@@ -473,8 +473,20 @@ export const backendApi = {
     });
   },
 
+  async inspectSupplierFileCatalog(payload: {
+    format: "csv" | "json" | "xml"; content: string;
+  }) {
+    return request<{
+      ok: true; format: string; rows: number;
+      columns: Array<{key:string; example:string}>;
+      targets: string[]; maximumOptions: number; readOnly:true;
+    }>("/api/admin/catalog/supplier-file/inspect", {
+      method: "POST",body:JSON.stringify(payload),
+    });
+  },
+
   async previewSupplierFileCatalog(payload: {
-    supplierId: string; format: "csv" | "json"; content: string;
+    supplierId: string; format: "csv" | "json" | "xml"; content: string; columnMap?: Record<string,string>;
   }) {
     return request<{
       ok: true; source: "supplier_file"; supplierId: string; format: string;
@@ -486,6 +498,7 @@ export const backendApi = {
         optionLabels: string[]; warnings: string[];
       }>;
       warnings: string[]; writable: false; automaticOrdersEnabled: false;
+      reconciliation: Array<{id:string;status:"new"|"unchanged"|"changes_detected"|"conflict";changedFields:string[];existingProductId:string|null;merchantChangesProtected:true;automaticUpdateEnabled:false}>;
       supplier: {id:string;name:string}; message: string;
     }>("/api/admin/catalog/supplier-file/preview", {
       method: "POST", body: JSON.stringify(payload),

@@ -4,9 +4,17 @@ import { backendApi } from "../../lib/backendStorage";
 
 type Preview = Awaited<ReturnType<typeof backendApi.previewSupplierFileCatalog>>;
 type Committed = Awaited<ReturnType<typeof backendApi.commitSupplierFileCatalog>>;
-type Format = "csv" | "json";
+type Format = "csv" | "json" | "xml";
 
 const MAX_FILE_BYTES = 512 * 1024;
+const MAPPING_FIELDS = [
+  ["product_id","Identificador de producto"],["product_name","Nombre del producto"],
+  ["variant_id","Identificador de variante"],["supplier_sku","SKU del proveedor"],
+  ["cost","Coste de compra"],["currency","Moneda"],["product_url","URL original"],
+  ["image_url","URL de imagen"],["category","Categoría"],
+  ["description","Descripción"],["variant_name","Nombre de combinación"],
+] as const;
+const VARIANT_OPTION_LIMIT=4;
 
 /**
  * No API keys or provider sessions. This component never auto-publishes and
@@ -22,6 +30,10 @@ export function AdminSupplierFileImport({
   const [supplierId, setSupplierId] = useState("");
   const [fileName, setFileName] = useState("");
   const [format, setFormat] = useState<Format>("csv");
+  const [columns, setColumns] = useState<Array<{key:string; example:string}>>([]);
+  const [columnMap, setColumnMap] = useState<Record<string,string>>({});
+  const [optionFields, setOptionFields] = useState<Array<{label:string;source:string}>>([]);
+  const [inspectionBusy, setInspectionBusy] = useState(false);
   const [content, setContent] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [committed, setCommitted] = useState<Committed | null>(null);
@@ -32,6 +44,9 @@ export function AdminSupplierFileImport({
   const clearResult = () => {setPreview(null);setCommitted(null);setError("");};
   const loadFile = async (file?: File) => {
     clearResult();
+    setColumns([]);
+    setColumnMap({});
+    setOptionFields([]);
     setContent("");
     setFileName("");
     if(!file) return;
@@ -40,24 +55,50 @@ export function AdminSupplierFileImport({
       return;
     }
     const suffix = String(file.name.split(".").pop() || "").toLowerCase();
-    if(suffix !== "csv" && suffix !== "json") {
-      setError("Solo CSV y JSON. Para feeds XML utiliza una exportación autorizada CSV/JSON.");
+    if(suffix !== "csv" && suffix !== "json" && suffix !== "xml") {
+      setError("Solo CSV, JSON y XML. Para otros formatos solicita un catálogo compatible al proveedor.");
       return;
     }
     try {
       setContent(await file.text());
       setFileName(file.name);
-      setFormat(suffix);
+      setFormat(suffix as Format);
     } catch {
       setError("No se pudo leer el archivo en el navegador.");
     }
   };
-  const params = {supplierId,format,content};
+  const targetColumns:Record<string,string>={...columnMap};
+  for(const entry of optionFields) {
+    const normalized=entry.label.trim().toLowerCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+    if(entry.source && normalized)targetColumns["option_"+normalized]=entry.source;
+  }
+  const params = {supplierId,format,content,columnMap:targetColumns};
+  const inspectFile = async () => {
+    if(!content.trim() || busy || inspectionBusy)return;
+    setInspectionBusy(true);
+    clearResult();
+    try {
+      const result=await backendApi.inspectSupplierFileCatalog({format,content});
+      setColumns(result.columns);
+    } catch(err:any) {
+      setColumns([]);
+      setError(String(err?.message||"No se pudo analizar la estructura del catálogo."));
+    } finally {setInspectionBusy(false);}
+  };
+  const updateMapping = (target:string,source:string) => {
+    setColumnMap(current=>{
+      const next={...current};
+      if(source)next[target]=source;else delete next[target];
+      return next;
+    });
+    clearResult();
+  };
   const previewFile = async () => {
-    if(busy) return;
+    if(busy || inspectionBusy) return;
     clearResult();
     if(!supplierId) return setError("Registra y selecciona un proveedor primero.");
-    if(!content.trim()) return setError("Selecciona un archivo CSV o JSON.");
+    if(!content.trim()) return setError("Selecciona un archivo CSV, JSON o XML.");
     setBusy("preview");
     try {
       const result = await backendApi.previewSupplierFileCatalog(params);
@@ -67,7 +108,7 @@ export function AdminSupplierFileImport({
     } finally {setBusy("");}
   };
   const commitFile = async () => {
-    if(busy || !preview) return;
+    if(busy || !preview || inspectionBusy) return;
     setBusy("commit");
     setError("");
     try {
@@ -96,7 +137,7 @@ export function AdminSupplierFileImport({
     <p className="text-sm font-extrabold uppercase tracking-wide text-primary">
       Catálogos propios · Sin APIs · Sin DSers
     </p>
-    <h2 className="mt-1 text-xl font-black">Importar productos y variantes desde CSV / JSON</h2>
+    <h2 className="mt-1 text-xl font-black">Importar productos y variantes desde CSV / JSON / XML</h2>
     <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
       Selecciona un proveedor, carga su catálogo autorizado y revisa una vista previa.
       Una fila equivale a una variante; las filas que comparten <code>product_id</code>
@@ -115,15 +156,19 @@ export function AdminSupplierFileImport({
       </label>
       <label className="text-sm font-semibold">
         Archivo del proveedor
-        <input type="file" accept=".csv,.json,text/csv,application/json"
+        <input type="file" accept=".csv,.json,.xml,text/csv,application/json,text/xml,application/xml"
           onChange={e=>void loadFile(e.target.files?.[0])}
           className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
       </label>
     </div>
     <div className="mt-3 flex flex-wrap gap-2">
-      <button type="button" disabled={!supplierId || !content || !!busy} onClick={()=>void previewFile()}
+      <button type="button" disabled={!content || !!busy || inspectionBusy} onClick={()=>void inspectFile()}
+        className="rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50">
+        {inspectionBusy?"Leyendo columnas…":"Inspeccionar columnas"}
+      </button>
+      <button type="button" disabled={!supplierId || !content || !!busy || inspectionBusy} onClick={()=>void previewFile()}
         className="rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">
-        {busy==="preview"?"Analizando…":"Analizar archivo sin guardar"}
+        {busy==="preview"?"Analizando…":"Previsualizar productos y cambios"}
       </button>
       <button type="button" onClick={template}
         className="rounded-xl border border-border px-4 py-3 text-sm font-semibold">
@@ -133,14 +178,67 @@ export function AdminSupplierFileImport({
     <p className="mt-2 text-xs text-muted-foreground">
       Máximo 512 KB, 300 filas y 30 productos por importación. CSV con separador coma, punto y coma o tabulación.
       JSON como array o como objeto con <code>products</code>; admite variantes anidadas.
-      XML necesita un parser seguro y queda para una fase posterior.
+      XML acepta raíces <code>products</code>, <code>catalog</code>, <code>feed</code> o <code>items</code>, sin DTD ni entidades externas.
     </p>
     {!!fileName && <p className="mt-2 text-xs text-muted-foreground">Archivo: {fileName} · formato {format.toUpperCase()}</p>}
+
+    {columns.length>0 && <div className="mt-4 rounded-xl border border-primary/25 bg-muted/20 p-4">
+      <h3 className="font-bold">Relacionar columnas del proveedor</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Encontradas {columns.length} columnas. Deja «Detección automática» cuando la columna
+        ya tenga un nombre habitual. Elige una columna cuando el proveedor use otro nombre;
+        los cambios no se guardan ni se sincronizan automáticamente.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {MAPPING_FIELDS.map(([target,label])=><label key={target} className="text-xs font-semibold">
+          {label}
+          <select value={columnMap[target]||""} onChange={e=>updateMapping(target,e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-border bg-background p-2.5">
+            <option value="">Detección automática</option>
+            {columns.map(column=><option key={column.key} value={column.key}>
+              {column.key}{column.example?" · "+column.example.slice(0,30):""}
+            </option>)}
+          </select>
+        </label>)}
+      </div>
+      <div className="mt-4 border-t border-border pt-3">
+        <p className="text-sm font-semibold">Atributos dinámicos de variantes (hasta cuatro)</p>
+        <p className="mt-1 text-xs text-muted-foreground">Ejemplo: atributo «Enchufe» → columna «plug_type». No se inventarán combinaciones.</p>
+        <div className="mt-3 grid gap-2">
+          {optionFields.map((option,index)=><div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <input aria-label={"Nombre del atributo "+(index+1)} value={option.label}
+              placeholder="Color, talla, enchufe, material…"
+              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,label:e.target.value.slice(0,48)}:x));clearResult();}}
+              className="rounded-lg border border-border bg-background p-2.5 text-sm"/>
+            <select aria-label={"Columna del atributo "+(index+1)} value={option.source}
+              onChange={e=>{setOptionFields(current=>current.map((x,i)=>i===index?{...x,source:e.target.value}:x));clearResult();}}
+              className="rounded-lg border border-border bg-background p-2.5 text-sm">
+              <option value="">Selecciona columna</option>
+              {columns.map(c=><option key={c.key} value={c.key}>{c.key}</option>)}
+            </select>
+            <button type="button" onClick={()=>{setOptionFields(current=>current.filter((_,i)=>i!==index));clearResult();}}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">Quitar</button>
+          </div>)}
+        </div>
+        <button type="button" disabled={optionFields.length>=VARIANT_OPTION_LIMIT}
+          onClick={()=>{setOptionFields(current=>[...current,{label:"",source:""}]);clearResult();}}
+          className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">
+          + Añadir atributo
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Si cambias el archivo, proveedor o columnas, vuelve a ejecutar la vista previa antes de guardar.</p>
+    </div>}
 
     {error && <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-900">{error}</p>}
 
     {preview && <div className="mt-4 rounded-xl border border-primary/30 bg-muted/20 p-4" role="status">
       <h3 className="font-bold">Vista previa: {preview.products.length} productos, {preview.rows} filas</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Nuevos: {preview.reconciliation.filter(r=>r.status==="new").length} ·
+        Existentes con cambios: {preview.reconciliation.filter(r=>r.status==="changes_detected").length} ·
+        Conflictos: {preview.reconciliation.filter(r=>r.status==="conflict").length}.
+        Solo se guardan borradores nuevos. Los existentes se comparan sin modificarse.
+      </p>
       <p className="mt-1 text-xs text-muted-foreground">{preview.message}</p>
       <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
         {preview.products.map(item=><div key={item.id} className="rounded-lg border border-border bg-background p-3">
@@ -154,6 +252,19 @@ export function AdminSupplierFileImport({
             Combinaciones reales: {item.variants.slice(0,5).map(v=>v.name).join(" · ")}
             {item.variantCount>5?" …":""}
           </p>}
+          {(() => {
+            const comparison=preview.reconciliation.find(r=>r.id===item.id);
+            if(!comparison)return null;
+            const label={
+              new:"Producto nuevo",
+              unchanged:"Ya existe · Sin diferencias de proveedor",
+              changes_detected:"Cambios detectados (requiere revisión manual)",
+              conflict:"Conflicto con una ficha existente (no se importará)",
+            }[comparison.status];
+            return <p className="mt-1 text-xs font-semibold text-primary">
+              {label}{comparison.changedFields.length>0?" · Campos: "+comparison.changedFields.join(", "):""}
+            </p>;
+          })()}
           <p className="mt-1 text-xs text-amber-800">Stock y portes pendientes de verificar · Precio público: sin configurar</p>
         </div>)}
       </div>
