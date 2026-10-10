@@ -1654,6 +1654,9 @@ export const backendApi = {
       body: JSON.stringify({ text, conversationId }),
     });
   },
+  async neuralCodeJob(jobId: string) {
+    return request<any>("/api/neural/code/jobs/" + encodeURIComponent(jobId));
+  },
 
   async neuralCommand(text: string) {
     return request<any>("/api/neural/command", {
