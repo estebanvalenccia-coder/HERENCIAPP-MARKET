@@ -37,6 +37,11 @@ completo sin comprometer dinero o duplicar pedidos del proveedor.
   sustituidos o posibles retrocesos requieren revisión humana.
 - El tracking HTTP solo se acepta con URL HTTPS; nunca se guardan URLs
   ejecutables en el frontend.
+- Antes de que el administrador cree **sin pagar** un pedido CJ, se vuelven a
+  consultar el precio, los portes y **el stock del VID exacto en origen CN**.
+  Las consultas de proveedor son secuenciales para reducir errores API 429;
+  la compra se bloquea si CJ no acredita al menos una unidad real. Esto es
+  una lectura reciente, no una reserva de almacén.
 - Se actualizan los metadatos de seguimiento del pedido, **no** el saldo
   proveedor, el pedido externo, el importe real CJ o Stripe. Notificaciones
   internas idempotentes por pedido/estado/seguimiento.
