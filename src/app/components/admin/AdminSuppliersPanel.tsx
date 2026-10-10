@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 import { SupplierImportImages } from "./SupplierImportImages";
 import { createDsersProductCsv, isAliExpressProduct } from "../../lib/dsersCsv";
+import { extractCjProductId } from "../../../../backend/cjProductIds.js";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -247,8 +248,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       String(entry.sourceHost || "").toLowerCase().replace(/^www\./, "") === sourceHost
     );
     if (!supplier) return toast.error("No hay un proveedor registrado para este dominio. Revisa la URL.");
-    const cjMatch = parsed.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
-    if (supplier.integrationType === "cj" && !cjMatch) {
+    const cjPid = extractCjProductId(parsed);
+    if (supplier.integrationType === "cj" && !cjPid) {
       return toast.error("La URL CJ debe contener su identificador de producto (-p-...html)");
     }
     const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : {};
@@ -264,9 +265,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           sourceProductUrl: parsed.toString(),
           sourceCatalogUrl: metadata.sourceCatalogUrl || parsed.toString(),
           sourceHost,
-          ...(cjMatch ? { supplierProductId: cjMatch[1] } : {}),
+          ...(cjPid ? { supplierProductId: cjPid } : {}),
           supplierCost: Math.max(0, Number(metadata.supplierCost || 0)),
-          supplierCurrency: metadata.supplierCurrency || (cjMatch ? "USD" : "EUR"),
+          supplierCurrency: metadata.supplierCurrency || (cjPid ? "USD" : "EUR"),
           supplierAssignedAt: new Date().toISOString(),
         },
         trackInventory: false,

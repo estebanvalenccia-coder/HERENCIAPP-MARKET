@@ -21,6 +21,7 @@ import {
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -266,9 +267,9 @@ const server=http.createServer(async(req,res)=>{try{
     if(sourceUrl.protocol!=="https:"||!["cjdropshipping.com","www.cjdropshipping.com"].includes(sourceUrl.hostname.toLowerCase())){
       return json(res,422,{error:"El producto no está vinculado a CJdropshipping"});
     }
-    const sourceMatch=sourceUrl.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
-    if(!sourceMatch)return json(res,422,{error:"La URL vinculada no incluye el producto CJ"});
-    const variants=await queryCjProductVariants(sourceMatch[1]);
+    const sourcePid=extractCjProductId(sourceUrl);
+    if(!sourcePid)return json(res,422,{error:"La URL vinculada no incluye el producto CJ"});
+    const variants=await queryCjProductVariants(sourcePid);
     const matching=variants.variants.find((item)=>String(item.vid)===vid);
     if(!matching)return json(res,422,{error:"Esta variante no pertenece al artículo CJ enlazado"});
     const result=await quoteCjVariantShipping({
@@ -311,9 +312,9 @@ const server=http.createServer(async(req,res)=>{try{
     if(parsedUrl.protocol!=="https:"||!["cjdropshipping.com","www.cjdropshipping.com"].includes(parsedUrl.hostname.toLowerCase())){
       return json(res,422,{error:"La URL vinculada no pertenece a CJdropshipping"});
     }
-    const match=parsedUrl.pathname.match(/-p-([0-9a-f]{8}-[0-9a-f-]{27,})\.html$/i);
-    if(!match)return json(res,422,{error:"La URL de CJ no contiene un PID reconocible"});
-    const result=await queryCjProductVariants(match[1]);
+    const pid=extractCjProductId(parsedUrl);
+    if(!pid)return json(res,422,{error:"La URL de CJ no contiene un PID reconocible"});
+    const result=await queryCjProductVariants(pid);
     return json(res,200,{ok:true,productId, ...result});
   }
 

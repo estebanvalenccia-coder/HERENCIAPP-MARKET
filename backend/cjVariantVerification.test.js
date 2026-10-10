@@ -18,6 +18,27 @@ test("CJ uses the current verified PID variant when available", async () => {
   assert.equal(fallbackCalled, false);
 });
 
+test("CJ verifies a numeric product PID and its selected VID without treating it as a UUID", async () => {
+  const numericPid = "1465145114119770112";
+  const value = await verifyCjVariantPrice({ pid: numericPid, vid }, {
+    listVariants: async (requestedPid) => {
+      assert.equal(requestedPid, numericPid);
+      return { variants: [{ ...valid, pid: numericPid }] };
+    },
+    lookupVariant: async () => { throw new Error("Fallback should not run"); },
+  });
+  assert.equal(value.pid, numericPid);
+  assert.equal(value.priceUsd, 8.4);
+});
+
+test("CJ refuses mismatched numeric PID fallback variants", async () => {
+  const numericPid = "1465145114119770112";
+  await assert.rejects(verifyCjVariantPrice({ pid: numericPid, vid }, {
+    listVariants: async () => ({ variants: [] }),
+    lookupVariant: async () => ({ ...valid, pid: "1465145114119770113" }),
+  }), (error) => error.code === "CJ_VARIANT_IDENTITY_MISMATCH");
+});
+
 test("CJ falls back to official VID endpoint when PID listing fails", async () => {
   const value = await verifyCjVariantPrice({ pid, vid }, {
     listVariants: async () => { throw new Error("CJ listing temporarily unavailable"); },
