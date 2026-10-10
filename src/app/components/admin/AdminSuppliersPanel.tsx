@@ -519,6 +519,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       setImportFeedback({ ok: true, message: "Producto encontrado: " + candidate.name + ". Guardando borrador…" });
       try {
         await saveImportedCandidate(candidate, false);
+        if (preview.variantsWarning) toast.warning(preview.variantsWarning);
       } catch (saveError: any) {
         const message = String(saveError?.message || "");
         if (!/copiar ninguna imagen|copiar las imágenes|cloudflare r2/i.test(message)) throw saveError;
