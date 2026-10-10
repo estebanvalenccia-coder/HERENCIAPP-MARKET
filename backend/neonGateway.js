@@ -26,6 +26,7 @@ import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
+import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -35,8 +36,8 @@ const legacyUrl = `http://127.0.0.1:${legacyPort}`;
 let recentPrintfulQuoteCalls = [];
 
 const publicKeys = new Set(["chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","shippingSettings","bouquetCatalog","heroBanner","ctaBanner","siteContent","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings"]);
-const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
-const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
+const protectedKeys = new Set(["discountCodes","chatboxSettings","herenciaSettings","customTheme","menuIcons","stripeSettings","supabaseSettings","shippingSettings","aiSettings","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminProducts","adminSuppliers","supplierFileMappings","adminFlowerCosts","bouquetCatalog","adminLatestFlowerQuote","heroBanner","ctaBanner","siteContent","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","financeGoals","businessSuiteSettings","marketingContent","communityContent","internationalDeliverySettings","__backendStorage_test__"]);
+const adminOnly = ["discountCodes","supabaseSettings","aiSettings","heroBanner","ctaBanner","adminFlowerCosts","adminLatestFlowerQuote","tpvLayoutSettings","posCustomers","posFiscalSettings","posCashSession","adminSuppliers","supplierFileMappings","siteContentDraft","siteContentHistory","herencia_finance_sales","herencia_finance_expenses","herencia_finance_closures","businessSuiteSettings","automationRules","adminAutomationNotifications","customerAccounts","customerReferrals"];
 
 function json(res,status,body){if(res.headersSent||res.writableEnded)return res;if(!res.destroyed){res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(body));}return res;}
 function cookies(req){return String(req.headers.cookie||"");}
@@ -429,6 +430,42 @@ const server=http.createServer(async(req,res)=>{try{
   // API or purchase endpoint. Existing catalog entries (even drafts) are immutable
   // from this path and must be edited manually through Administration.
   // Read-only file structure inspection, before mapping or saving drafts.
+  // Per-provider source column mapping. Only metadata; never API secrets,
+  // inventory, order fulfilments or store display settings.
+  if(path==="/api/admin/catalog/supplier-file/mapping" &&
+      (req.method==="GET"||req.method==="PUT")){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    let body={};
+    if(req.method==="PUT"){
+      const raw=await bodyBuffer(req,{maxBytes:24000});
+      try{body=JSON.parse(raw.toString("utf8"));}
+      catch{return json(res,400,{error:"Mapeo JSON inválido."});}
+    } else {
+      const params=new URL(req.url,"http://localhost").searchParams;
+      body={supplierId:params.get("supplierId"),format:params.get("format")};
+    }
+    // Fail closed for unknown provider IDs or formats.
+    const key=supplierFileProfileKey(body.supplierId,body.format);
+    const stored=await readNeonStorageValue("posOperations");
+    let ops={};
+    try{ops=JSON.parse(stored||"{}");}
+    catch{return json(res,503,{error:"No se pudo consultar el proveedor registrado."});}
+    const registered=(Array.isArray(ops.suppliers)?ops.suppliers:[])
+      .some(item=>String(item.id)===String(body.supplierId) && item.active!==false);
+    if(!registered)return json(res,404,{error:"Proveedor no registrado o inactivo."});
+    if(req.method==="GET"){
+      const profile=readSupplierFileProfile(
+        await readNeonStorageValue("supplierFileMappings"),body.supplierId,body.format);
+      return json(res,200,{ok:true,supplierId:String(body.supplierId),
+        format:String(body.format).toLowerCase(),...profile});
+    }
+    const saved=await mutateNeonStorageValue("supplierFileMappings",
+      before=>saveSupplierFileProfile(before,{...body,columnMap:body.columnMap,columns:body.columns}));
+    const profile=readSupplierFileProfile(saved.value,body.supplierId,body.format);
+    return json(res,200,{ok:true,supplierId:String(body.supplierId),
+      format:String(body.format).toLowerCase(),...profile});
+  }
+
   if(path==="/api/admin/catalog/supplier-file/inspect"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const buffer=await bodyBuffer(req,{maxBytes:530000});
