@@ -535,8 +535,15 @@ const server=http.createServer(async(req,res)=>{try{
       try {
         const draft=draftForSupplierFile(product,supplier);
         // No visible image, stock or sellable price is supplied by a file.
-        const saved=await saveNeonCommerceProduct(draft,{id:product.id});
-        if(!saved||String(saved.id)!==String(product.id))throw Error("Neon no confirmó el nuevo borrador.");
+        const saved=await saveNeonCommerceProduct(draft,{id:product.id,createOnly:true});
+        // Another administrator/import may have saved this product since
+        // inspection. Do not upsert it, its variants or its gallery.
+        if(saved===null){
+          results.push({id:product.id,name:product.name,status:"skipped_existing",
+            message:"El producto fue creado simultáneamente; no se ha modificado."});
+          continue;
+        }
+        if(String(saved.id)!==String(product.id))throw Error("Neon no confirmó el nuevo borrador.");
         usedIds.add(product.id);
         if(product.sourceProductUrl)usedUrls.add(product.sourceProductUrl);
         results.push({id:product.id,name:product.name,status:"created",variantCount:product.variantCount});
