@@ -43,6 +43,23 @@ export function classifyCjOrderFunding(order = {}) {
   };
 }
 
+/**
+ * Live CJ stock is checked again immediately before real order creation.
+ * Observations from other VIDs/warehouses, null or zero inventory cannot be
+ * treated as purchasable stock. This does not reserve inventory at CJ.
+ */
+export function validateCjLiveWarehouseStock(stock,{vid,origin="CN"}={}){
+  const selected=String(vid||"").trim();
+  const location=String(origin||"").trim().toUpperCase();
+  if(!selected || location!=="CN" || stock?.verified!==true ||
+     stock?.available!==true || String(stock?.vid||"")!==selected ||
+     String(stock?.origin||"")!==location ||
+     !Number.isSafeInteger(stock?.quantity) || stock.quantity<1){
+    throw cjManualError("CJ no confirmó una unidad disponible del VID exacto en el almacén CN. La compra está bloqueada.");
+  }
+  return {vid:selected,origin:location,quantity:stock.quantity,verified:true};
+}
+
 export function cjManualOrderNumber(record = {}) {
   return ("HM-" + String(record.orderId || "") + "-" + String(record.id || "").slice(0, 8)).slice(0, 50);
 }
