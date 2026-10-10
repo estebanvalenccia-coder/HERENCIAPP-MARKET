@@ -13,7 +13,7 @@ import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIden
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
 import { extractCjProductId } from "./cjProductIds.js";
-import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
   cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
@@ -5415,6 +5415,7 @@ const cjTrackingRunner=createCjTrackingRunner({
 // Any unknown remote "action_required" state is left unchanged for manual review.
 // No permission to create/pay CJ is available from this helper.
 async function syncCjSupplierFulfillment(record) {
+  // Provider "action_required" states always fail closed in the tracking runner.
   const result=await cjTrackingRunner.syncOne(record);
   return result.fulfillment;
 }
@@ -6551,18 +6552,29 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   if (!pid) throw cjManualError("Falta la URL original válida de CJ para verificar el precio.");
   const vid = String(line.supplierVariantId || "");
   const zip = String(record.shippingAddress?.postalCode || "");
-  let variant, freight;
+  // This safeguard runs immediately before reserving a real CJ order.
+  // The checkout stock observation may already be stale when an admin approves.
+  const origin=String(supplier.cjFromCountryCode||"CN").trim().toUpperCase();
+  if(origin!=="CN")throw cjManualError(
+    "El checkout CJ actual solo ha validado existencias y portes de origen CN. No se creará el pedido.");
+  let variant, freight, stock;
   try {
-    [variant, freight] = await Promise.all([
-      verifyCjVariantPrice({ pid, vid }),
-      quoteCjVariantShipping({
-        vid, quantity: 1,
-        origin: String(supplier.cjFromCountryCode || "CN").toUpperCase(),
-        destination: "ES", zip,
-      }),
-    ]);
+    // CJ commonly rate-limits basic accounts to one request per second.
+    // Serialize the three independent read-only calls instead of bursting.
+    variant=await verifyCjVariantPrice({pid,vid});
+    await new Promise(resolve=>setTimeout(resolve,1150));
+    freight=await quoteCjVariantShipping({
+      vid,quantity:1,origin:"CN",destination:"ES",zip,
+    });
+    await new Promise(resolve=>setTimeout(resolve,1150));
+    stock=await queryCjVariantStock({vid,origin:"CN"});
   } catch {
-    throw cjManualError("CJ no pudo confirmar la variante o el envío al código postal. No se creará ningún pedido.");
+    throw cjManualError("CJ no pudo verificar precio, stock o envío de la variante al código postal. No se creará ningún pedido.");
+  }
+  if(stock?.verified!==true || stock?.available!==true ||
+     stock?.vid!==vid || stock?.origin!=="CN" ||
+     !Number.isSafeInteger(stock?.quantity) || stock.quantity<1){
+    throw cjManualError("CJ no confirmó una unidad disponible del VID exacto en el almacén CN. La compra está bloqueada.");
   }
   const method = (freight?.methods || []).find((row) =>
     String(row.name || "") === String(line.cjPreferredLogisticName || ""));
