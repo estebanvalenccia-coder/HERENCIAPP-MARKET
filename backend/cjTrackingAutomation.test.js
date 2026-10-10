@@ -5,6 +5,7 @@ import {
  isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness,
 } from "./cjTrackingAutomation.js";
 import {createCjTrackingRunner} from "./cjTrackingRunner.js";
+import {validateCjLiveWarehouseStock} from "./cjManualApproval.js";
 
 const NOW=Date.parse("2026-10-11T10:00:00.000Z");
 const supplier={id:"supplier-cj",active:true,integrationType:"cj",cjSandbox:false,
@@ -139,4 +140,33 @@ test("admin CJ tracking and status routes never call purchase, pay or refund fun
  assert.doesNotMatch(runner,/createOrderV2|payBalance|stripe\.paymentIntents|refunds\.create/);
  const timer=source.indexOf("runBackgroundChecks = async");
  assert.match(source.slice(timer,timer+900),/cjTrackingRunner\.sweep/);
+});
+
+test("live CJ stock validation refuses wrong warehouse, VID or insufficient inventory",()=>{
+ const stock={verified:true,available:true,vid:"VID-EXACT",origin:"CN",quantity:1};
+ assert.equal(validateCjLiveWarehouseStock(stock,{vid:"VID-EXACT",origin:"CN"}).quantity,1);
+ for(const next of [
+  {...stock,quantity:0},{...stock,quantity:0.5},
+  {...stock,verified:false},{...stock,available:false},
+  {...stock,vid:"ANOTHER"},{...stock,origin:"US"},{...stock,quantity:null},
+ ]) assert.throws(()=>validateCjLiveWarehouseStock(next,{vid:"VID-EXACT",origin:"CN"}),/bloqueada/);
+ assert.throws(()=>validateCjLiveWarehouseStock(stock,{vid:"VID-EXACT",origin:"US"}),/bloqueada/);
+});
+
+test("manual CJ create checks stock and quotes before an external createOrderV2 request",()=>{
+ const source=readFileSync(new URL("./server.js",import.meta.url),"utf8");
+ const check=source.slice(
+  source.indexOf("async function verifyCjManualLiveCosts("),
+  source.indexOf("async function verifyCjCustomerFunding("),
+ );
+ assert.match(check,/queryCjVariantStock/);
+ assert.match(check,/validateCjLiveWarehouseStock/);
+ assert.match(check,/origin:"CN"/);
+ assert.ok(check.indexOf("queryCjVariantStock")<check.indexOf("validateCjLiveWarehouseStock"));
+ const create=source.slice(
+  source.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid"'),
+  source.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay"'),
+ );
+ assert.ok(create.indexOf("verifyCjManualLiveCosts")>0);
+ assert.ok(create.indexOf("verifyCjManualLiveCosts")<create.indexOf('cjRequest("/shopping/order/createOrderV2"'));
 });
