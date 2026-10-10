@@ -10,6 +10,8 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
+import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
+import { createCjTrackingRunner } from "./cjTrackingRunner.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
@@ -5395,31 +5397,26 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
   };
 }
 
+// Reuse the existing CJ credentials but restrict automated tracking to
+// read-only getOrderDetail; atomic Neon compare-and-swap protects live actions.
+const cjTrackingRunner=createCjTrackingRunner({
+  readOperations:readSupplierOperations,
+  readRemote:async(orderId)=>{
+    const payload=await cjRequest("/shopping/order/getOrderDetail",{query:{orderId}});
+    return payload?.data || null;
+  },
+  mutateOperations:mutator=>mutateNeonStorageValue("posOperations",mutator),
+  claimLease:(key,mutator)=>mutateNeonStorageValue(key,mutator),
+  readOrder:getOrderPrimary,
+  patchOrder:patchOrderPrimary,
+  notify:addAutomationNotification,
+});
+
+// Any action_required remote state is left unchanged for manual review.
+// No permission to create/pay CJ is available from this helper.
 async function syncCjSupplierFulfillment(record) {
-  if (!record?.externalOrderId) throw Object.assign(new Error("El pedido CJ todavía no tiene ID externo"), { statusCode: 409 });
-  const payload = await cjRequest("/shopping/order/getOrderDetail", {
-    query: { orderId: record.externalOrderId },
-  });
-  const data = payload?.data || {};
-  const rawStatus = String(data.orderStatus || "").toUpperCase();
-  const status =
-    rawStatus === "DELIVERED" ? "delivered" :
-    rawStatus === "SHIPPED" ? "shipped" :
-    rawStatus === "CANCELLED" ? "cancelled" :
-    ["UNPAID", "CREATED", "IN_CART"].includes(rawStatus) ? "payment_required" :
-    ["UNSHIPPED", "PAID", "PROCESSING", "COMPLETED"].includes(rawStatus) ? "ordered" :
-    "action_required";
-  return {
-    ...record,
-    status,
-    providerOrderStatus: rawStatus || record.providerOrderStatus || "",
-    trackingNumber: String(data.trackNumber || record.trackingNumber || ""),
-    trackingUrl: String(data.trackingUrl || record.trackingUrl || ""),
-    providerActualPayment: normalizeMoney(data.orderAmount ?? record.providerActualPayment ?? 0),
-    providerCurrency: "USD",
-    providerSyncedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  const result=await cjTrackingRunner.syncOne(record);
+  return result.fulfillment;
 }
 
 async function prepareCjDispute(record, { expectType = 1, messageText = "", imageUrl = [], videoUrl = [] } = {}) {
@@ -6240,29 +6237,7 @@ app.post("/api/admin/supplier-fulfillments/:id/sync", requireAdmin, async (req, 
       return res.status(409).json({ error: "Este fulfillment no usa CJ" });
     }
     const updated = await syncCjSupplierFulfillment(record);
-    operations.supplierFulfillments[index] = updated;
-    await writeSupplierOperations(operations);
-    if (updated.orderId && ["shipped", "delivered"].includes(updated.status)) {
-      const order = await getOrderPrimary(updated.orderId).catch(() => null);
-      if (order) {
-        await patchOrderPrimary(updated.orderId, {
-          metadata: {
-            ...(order.metadata || {}),
-            supplierTracking: {
-              ...(order.metadata?.supplierTracking || {}),
-              [updated.id]: {
-                supplier: updated.supplierName,
-                externalOrderId: updated.externalOrderId,
-                trackingNumber: updated.trackingNumber,
-                trackingUrl: updated.trackingUrl,
-                status: updated.status,
-                updatedAt: updated.updatedAt,
-              },
-            },
-          },
-        }).catch(() => null);
-      }
-    }
+    // The guarded runner already persists status and customer tracking.
     res.json({ fulfillment: updated });
   } catch (error) {
     res.status(error.statusCode || 502).json({ error: error.message || "No se pudo sincronizar CJ" });
@@ -10586,6 +10561,14 @@ app.listen(port, () => {
   const runBackgroundChecks = async () => {
     try { await evaluateDelayedOrders(); } catch (error) { console.warn("Background delayed orders:", error?.message || error); }
     try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
+    // Safe by default: this polls at most 3 already ordered CJ shipments per
+    // 15 min and never purchases or spends supplier balance. Can opt out.
+    if(cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false"){
+      try{
+        const result=await cjTrackingRunner.sweep();
+        if(result.errors.length)console.warn("[cj.tracking] review needed",result.errors.length);
+      }catch(error){console.warn("[cj.tracking] read-only check unavailable",String(error?.code||"CHECK_FAILED").slice(0,50));}
+    }
   };
   setTimeout(() => void runBackgroundChecks(), 15000);
   setInterval(() => void runBackgroundChecks(), 15 * 60 * 1000);
