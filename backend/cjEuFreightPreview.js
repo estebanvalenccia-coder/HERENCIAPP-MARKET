@@ -1,6 +1,6 @@
-// Pure validation for administrator-only, read-only CJ EU shipping previews.
-// NEVER relax the live checkout restriction (ES, one unit) using this helper.
-import { EU_COUNTRIES } from "./supplierMarketplace.js";
+// Pure validation for administrator-only, read-only CJ international freight previews.
+// Never relax live checkout restrictions using this helper.
+import { CJ_PREVIEW_COUNTRIES } from "./supplierMarketplace.js";
 
 export function validateCjEuFreightPreview({ destination = "ES", zip = "" } = {}) {
   const country = String(destination || "").trim().toUpperCase();
@@ -10,19 +10,22 @@ export function validateCjEuFreightPreview({ destination = "ES", zip = "" } = {}
     failure.statusCode = 422;
     throw failure;
   };
-  if (!EU_COUNTRIES.includes(country)) error("La consulta de tarifas está limitada a los países de la UE.");
-  // CJ supports country-only preliminary ES queries for historical compatibility.
-  // A non-Spanish EU estimate always needs a postal code.
-  if (!postalCode && country !== "ES") error("Introduce el código postal del destino europeo.");
+  if (!CJ_PREVIEW_COUNTRIES.includes(country))
+    error("El país no está habilitado para consultas CJ. Selecciona un destino de la lista.");
+  // All allowed countries permit a country-only informational preview.
+  // A ZIP is optional for previews, but REQUIRED for verified live checkout.
   if (postalCode && !/^[A-Z0-9][A-Z0-9 -]{0,13}[A-Z0-9]$/.test(postalCode))
     error("El código postal tiene un formato no admitido.");
   if (country === "ES" && postalCode && !/^\d{5}$/.test(postalCode))
     error("El código postal de España debe tener cinco cifras.");
   return {
-    destination:country, zip:postalCode,
-    origin:"CN", quantity:1,
-    checkoutEnabled:false, // A preview never authorizes customer charging.
-    manualReviewRequired:true,
-    disclaimer:"Solo presupuesto informativo del proveedor. No reserva stock, no valida IVA/IOSS por destino ni autoriza pedidos.",
+    destination: country, zip: postalCode,
+    origin: "CN", quantity: 1,
+    precision: postalCode ? "postal_estimate" : "country_estimate",
+    checkoutEnabled: false,
+    manualReviewRequired: true,
+    disclaimer: postalCode
+      ? "Estimación informativa para el código postal indicado. El pedido real exige dirección, stock y tarifa nuevamente verificados."
+      : "Estimación general del país, no precio garantizado para una ciudad. Antes de vender verifica disponibilidad, código postal, IVA y tarifas reales.",
   };
 }
