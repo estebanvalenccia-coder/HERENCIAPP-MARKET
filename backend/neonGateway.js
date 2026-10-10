@@ -20,7 +20,8 @@ import {
   checkR2Connection,
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
-import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { previewCjProductUrl, queryCjProductVariants, queryCjVariantStock, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { assessCjCatalogReadiness } from "./cjCatalogReadiness.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
@@ -318,6 +319,44 @@ const server=http.createServer(async(req,res)=>{try{
     catch{return json(res,400,{error:"La solicitud debe ser JSON válido"});}
     const quote=await quotePrintfulShipping(payload);
     return json(res,200,quote);
+  }
+
+  // Audits one live CJ variant without saving stock, modifying pricing or buying.
+  // Customer checkout remains a separate server-verified flow.
+  if(path==="/api/admin/catalog/cj-readiness"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const productId=String(body?.productId||"").trim();
+    const vid=String(body?.vid||"").trim();
+    if(!productId || !/^[a-z0-9-]{8,100}$/i.test(vid))
+      return json(res,422,{error:"Selecciona un producto y un VID CJ válidos"});
+    const product=await getNeonCommerceProduct(productId,{includeArchived:true});
+    if(!product || product.status==="archived")return json(res,404,{error:"Producto no encontrado"});
+    const metadata=product.metadata&&typeof product.metadata==="object"?product.metadata:{};
+    let sourceUrl;
+    try{sourceUrl=new URL(String(metadata.sourceProductUrl||""));}
+    catch{return json(res,422,{error:"Falta la URL original de CJ"});}
+    if(sourceUrl.protocol!=="https:" ||
+      !["cjdropshipping.com","www.cjdropshipping.com"].includes(sourceUrl.hostname.toLowerCase()))
+      return json(res,422,{error:"El artículo no está vinculado a CJdropshipping"});
+    const pid=extractCjProductId(sourceUrl);
+    if(!pid)return json(res,422,{error:"La URL no contiene un PID CJ válido"});
+    const response=await queryCjProductVariants(pid);
+    const variant=response.variants.find(row=>String(row.vid)===vid);
+    if(!variant)return json(res,422,{error:"VID no pertenece al producto CJ vinculado"});
+    const [stockResult,fxResult]=await Promise.allSettled([
+      queryCjVariantStock({vid,origin:"CN"}),getUsdToEurRate(),
+    ]);
+    const stock=stockResult.status==="fulfilled"?stockResult.value:null;
+    const fx=fxResult.status==="fulfilled"?fxResult.value:null;
+    const report=assessCjCatalogReadiness({product,metadata,variant,stock,fx,origin:"CN"});
+    return json(res,200,{ok:true,productId,variant:{
+      vid:variant.vid,sku:variant.sku,name:variant.name,option:variant.option,
+    },...report,fxDate:fx?.date||null,
+      checkedAt:new Date().toISOString(),
+      ...(stockResult.status==="rejected"?{stockWarning:"No se pudo consultar el stock de CJ. No se considera disponible."}:{}),
+      ...(fxResult.status==="rejected"?{fxWarning:"No se pudo obtener el cambio de divisa actual."}:{}),
+    });
   }
 
   if(path==="/api/admin/catalog/cj-freight"&&req.method==="POST"){
