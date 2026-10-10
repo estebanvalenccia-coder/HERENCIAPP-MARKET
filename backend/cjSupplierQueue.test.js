@@ -9,10 +9,15 @@ import {
 function row({ id = "f1", cost = 0, status = "cost_required", quoted = false, ...extra } = {}) {
   return {
     id, dedupeKey: "order1::cj", orderId: "order1", status, estimatedCost: cost,
-    createdAt: "2026-10-08T20:00:00Z",
+    createdAt: "2026-10-08T20:00:00Z", shippingAddress:{postalCode:"08032"},
     items: [{
-      productId: "plant-1", quantity: 1, supplierCost: cost,
-      cjPricingEstimate: quoted ? { available: true, checkedAt: "2026-10-08T20:01:00Z", costEur: cost } : null,
+      productId: "plant-1", quantity: 1, supplierCost: cost, salePrice:50,
+      supplierVariantId:"CJ-VID", supplierSku:"CJ-SKU", selectedVariant:"Green EU",
+      cjPreferredLogisticName:"CJPacket",
+      cjPricingEstimate: quoted ? { available: true, checkedAt: new Date().toISOString(),
+        vid:"CJ-VID",sku:"CJ-SKU",selectedVariant:"Green EU",
+        destination:"ES",postalCode:"08032",methodName:"CJPacket",
+        supplierTotalUsd:25, salePriceEur:50, costEur:cost } : null,
     }],
     ...extra,
   };
@@ -78,4 +83,28 @@ test("a refreshed record still requires admin review and does not buy anything",
   const result = mergePreparedSupplierFulfillments({ supplierFulfillments: [old] }, [proposed]);
   assert.equal(result.supplierFulfillments[0].status, "approval_required");
   assert.equal(result.supplierFulfillments[0].externalOrderId, undefined);
+});
+
+test("stale or wrong destination quotes do not remain marked as verified",()=>{
+ const priced=row({cost:21.64,quoted:true});
+ const stale={...priced,items:priced.items.map(item=>({...item,
+   cjPricingEstimate:{...item.cjPricingEstimate,checkedAt:"2026-01-01T00:00:00Z"}}))};
+ assert.equal(hasVerifiedCjQuote(stale),false);
+ assert.equal(preserveSupplierFulfillment(stale,row({cost:0})),false);
+ const wrongZip={...priced,items:priced.items.map(item=>({...item,
+   cjPricingEstimate:{...item.cjPricingEstimate,postalCode:"28001"}}))};
+ assert.equal(hasVerifiedCjQuote(wrongZip),false);
+});
+test("new exact variant quote safely replaces an unapproved pending row",()=>{
+ const old=row({cost:21.64,quoted:true,status:"approval_required"});
+ const next=row({cost:22.22,quoted:true,status:"approval_required",items:[
+   {...old.items[0],supplierCost:22.22,selectedVariant:"Blue US",supplierVariantId:"CJ-VID-B",
+    supplierSku:"CJ-SKU-B",cjPricingEstimate:{...old.items[0].cjPricingEstimate,costEur:22.22,
+      selectedVariant:"Blue US",vid:"CJ-VID-B",sku:"CJ-SKU-B"}}
+ ]});
+ assert.equal(preserveSupplierFulfillment(old,next),false);
+ const result=mergePreparedSupplierFulfillments({supplierFulfillments:[old]},[next]);
+ assert.equal(result.supplierFulfillments.length,1);
+ assert.equal(result.supplierFulfillments[0].items[0].supplierVariantId,"CJ-VID-B");
+ assert.equal(result.supplierFulfillments[0].id,old.id);
 });
