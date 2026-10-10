@@ -2,6 +2,7 @@ import { SUPPLIER_PRESETS, EU_COUNTRIES } from "../../lib/supplierMarketplace.js
 import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { AdminProviderApiQuotes } from "./AdminProviderApiQuotes";
 import { AdminSupplierFileImport } from "./AdminSupplierFileImport";
+import { AdminSupplierOperations } from "./AdminSupplierOperations";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1038,7 +1039,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
           { id: "supplier-compare", name: "Comparar costes", icon: Truck, detail: "27 países UE" },
           { id: "supplier-printful", name: "Printful API", icon: Link2, detail: "Cotizar portes UE" },
-          { id: "supplier-file-import", name: "Importar CSV/JSON", icon: FileSpreadsheet, detail: "Sin APIs" },
+          { id: "supplier-file-import", name: "Importar archivos", icon: FileSpreadsheet, detail: "CSV, JSON, XML" },
+          { id: "supplier-operations", name: "Operaciones", icon: ShieldCheck, detail: "Precios e incidencias" },
           { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
           { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
           { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
@@ -1055,6 +1057,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     <AdminSupplierCostComparison suppliers={suppliers}/>
     <AdminProviderApiQuotes/>
     <AdminSupplierFileImport suppliers={suppliers} onOpenProduct={onOpenProduct} onCompleted={load}/>
+    <AdminSupplierOperations suppliers={suppliers} onOpenProduct={onOpenProduct}/>
 
     <section id="supplier-import" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-2">
