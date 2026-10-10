@@ -24,7 +24,8 @@ import { previewCjProductUrl, queryCjProductVariants, quoteCjVariantShipping } f
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
-import { previewSupplierFile, draftForSupplierFile } from "./supplierFileImporter.js";
+import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
+import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -427,6 +428,16 @@ const server=http.createServer(async(req,res)=>{try{
   // Supplier-owned files use a preview + explicit commit; never call a provider
   // API or purchase endpoint. Existing catalog entries (even drafts) are immutable
   // from this path and must be edited manually through Administration.
+  // Read-only file structure inspection, before mapping or saving drafts.
+  if(path==="/api/admin/catalog/supplier-file/inspect"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const buffer=await bodyBuffer(req,{maxBytes:530000});
+    let request;
+    try{request=JSON.parse(buffer.toString("utf8"));}
+    catch{return json(res,400,{error:"El catálogo debe enviarse como JSON válido."});}
+    return json(res,200,inspectSupplierFile(request));
+  }
+
   if(path==="/api/admin/catalog/supplier-file/preview"&&req.method==="POST"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const buffer=await bodyBuffer(req,{maxBytes:530000});
@@ -441,10 +452,13 @@ const server=http.createServer(async(req,res)=>{try{
       .find(row=>String(row.id)===String(request?.supplierId));
     if(!supplier||supplier.active===false)return json(res,404,{error:"Registra y activa primero el proveedor."});
     const preview=previewSupplierFile(request);
+    const previous=await listNeonCommerceProducts({includeArchived:true});
+    const changes=compareSupplierFileProducts(preview.products,previous);
     return json(res,200,{
-      ...preview,supplier:{id:String(supplier.id),name:String(supplier.name||"Proveedor")},
+      ...preview,reconciliation:changes,
+      supplier:{id:String(supplier.id),name:String(supplier.name||"Proveedor")},
       writable:false,automaticOrdersEnabled:false,
-      message:"Revisa los artículos y pulsa 'Guardar borradores' para importar. No se ha escrito ningún producto.",
+      message:"Revisa artículos y diferencias. Guardar crea solo productos nuevos; los existentes no se modifican.",
     });
   }
 
