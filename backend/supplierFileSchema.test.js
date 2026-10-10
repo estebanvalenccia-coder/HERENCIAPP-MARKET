@@ -82,3 +82,8 @@ test("XML and mapping preview/commit are restricted to admin-only and no real pa
  assert.match(section,/previewSupplierFile/);
  assert.doesNotMatch(section,/paymentIntents|createOrderV2|payBalance/);
 });
+
+test("Railway's independent backend installation includes the XML parser",()=>{
+ const backendPackage=JSON.parse(readFileSync(new URL("./package.json",import.meta.url),"utf8"));
+ assert.equal(backendPackage.dependencies["fast-xml-parser"],"5.11.2");
+});
