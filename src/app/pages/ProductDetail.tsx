@@ -153,11 +153,13 @@ export function ProductDetail() {
     if (next.image) setSelectedImage(String(next.image));
     setQuantity(1);
   };
+  // Every authentic CJ VID is eligible for read-only checkout verification.
+  // Never disable a valid alternative merely because it is not the default.
   const cjPendingVariantQuote = Boolean(
     String(product?.metadata?.sourceHost || "").toLowerCase().includes("cjdropshipping.com") &&
-    selected?.supplierVariantId &&
-    (String(selected.supplierVariantId) !== String(product?.metadata?.supplierVariantId || "") ||
-     String(selected.supplierSku || "") !== String(product?.metadata?.supplierSku || ""))
+    variants.length > 0 &&
+    (!selected || !String(selected?.supplierVariantId || "").trim() ||
+      !String(selected?.supplierSku || "").trim())
   );
   const galleryImages = useMemo(() => {
     const urls = [
@@ -323,7 +325,7 @@ export function ProductDetail() {
 
   const addToCart = () => {
     if (!product) return;
-    if (cjPendingVariantQuote) return toast.error("Esta combinación necesita confirmar coste, envío y proveedor antes de venderse.");
+    if (cjPendingVariantQuote) return toast.error("Selecciona una variante CJ que tenga SKU y VID válidos.");
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
 
@@ -484,13 +486,13 @@ export function ProductDetail() {
                   </div>
                 </div>
               ))}
-              <p className="text-xs text-muted-foreground">Solo se pueden elegir combinaciones existentes en el catálogo. Precio final según la variante seleccionada.</p>
+              <p className="text-xs text-muted-foreground">Solo se pueden elegir combinaciones existentes. El transporte y los costes CJ se verifican antes del cobro.</p>
             </div>
           ) : <div><label className="mb-2 block text-sm font-medium">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant:any)=>{
             const name=String(variant?.name||variant);
             return <button key={name} type="button" onClick={()=>{setSelectedVariant(name);if(variant?.image)setSelectedImage(String(variant.image));}} className={`rounded-xl border px-4 py-2 ${selectedVariant===name?"border-primary bg-primary/10 text-primary":"border-border"}`}>{name}</button>;
           })}</div></div>)}
-          {cjPendingVariantQuote && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Esta opción está pendiente de cotización y validación de envío con CJ; no se puede comprar todavía.</p>}
+          {cjPendingVariantQuote && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Esta opción no tiene un SKU/VID CJ válido. Revisa el producto en Administración.</p>}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
           {serviceProduct ? (
             <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
