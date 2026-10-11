@@ -1,4 +1,5 @@
 import {assessCjPublicProductStatus,isCjSupplierItem} from "./cjFulfillmentIdentity.js";
+import {assessCjDistanceSaleCompliance} from "./cjDistanceSaleCompliance.js";
 /**
  * Read-only, conservative onboarding indicators. Records in Neon describe what
  * has been configured, NOT proof that a supplier accepts live orders or that a
@@ -33,6 +34,7 @@ export function buildDropshippingLaunchStatus({
       issues.push(status==="archived"?"Producto archivado; no está a la venta.":"Producto en borrador o sin publicar.");
     const sellability=assessCjPublicProductStatus(p);
     if(sellability.cj) issues.push(...sellability.blockers);
+    if(sellability.cj)issues.push(...assessCjDistanceSaleCompliance(p).blockers);
     if(!Number.isFinite(Number(p?.price))||Number(p.price)<=0)
       issues.push("Falta un precio de venta válido.");
     if(!Number.isSafeInteger(Number(p?.stock))||Number(p.stock)<=0)
