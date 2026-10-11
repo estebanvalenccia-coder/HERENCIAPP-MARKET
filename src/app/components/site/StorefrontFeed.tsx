@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Image as ImageIcon } from "lucide-react";
+import { ArrowRight, Image as ImageIcon, Heart } from "lucide-react";
+import { toast } from "sonner";
 import { Link } from "react-router";
 import { backendStorage } from "../../lib/backendStorage";
 import {
@@ -66,6 +67,9 @@ function StandardCard({ post }: { post: StorefrontPost }) {
           {post.label || storefrontPostTypeLabel(post.type)}
         </span>
         <h3 className="mt-3 text-xl font-black leading-tight text-[#173126]">{post.title}</h3>
+                <button onClick={() => toggleFavorite(String(post.id))} className="absolute top-2 right-2 rounded-full bg-white/80 p-1 hover:bg-white">
+                  <Heart className="h-5 w-5 text-primary" />
+                </button>
         {post.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#69766d]">{post.description}</p>}
         {post.ctaLabel && post.ctaHref && (
           <PostLink href={post.ctaHref} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
@@ -93,6 +97,9 @@ function Banner({ post }: { post: StorefrontPost }) {
           {post.label || storefrontPostTypeLabel(post.type)}
         </span>
         <h3 className="mt-4 text-3xl font-black leading-tight sm:text-4xl">{post.title}</h3>
+                <button onClick={() => toggleFavorite(String(post.id))} className="absolute top-2 right-2 rounded-full bg-white/80 p-1 hover:bg-white">
+                  <Heart className="h-5 w-5 text-primary" />
+                </button>
         {post.description && <p className="mt-3 max-w-xl text-sm leading-6 text-white/82 sm:text-base">{post.description}</p>}
         {post.ctaLabel && post.ctaHref && (
           <span className="mt-5 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173126]">
@@ -113,6 +120,9 @@ function Feature({ post }: { post: StorefrontPost }) {
           {post.label || storefrontPostTypeLabel(post.type)}
         </span>
         <h3 className="mt-4 text-3xl font-black leading-tight text-[#173126] sm:text-4xl">{post.title}</h3>
+                <button onClick={() => toggleFavorite(String(post.id))} className="absolute top-2 right-2 rounded-full bg-white/80 p-1 hover:bg-white">
+                  <Heart className="h-5 w-5 text-primary" />
+                </button>
         {post.description && <p className="mt-4 text-sm leading-7 text-[#69766d] sm:text-base">{post.description}</p>}
         {post.ctaLabel && post.ctaHref && (
           <PostLink href={post.ctaHref} className="mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-[#315b42] px-5 py-3 text-sm font-black text-white">
@@ -125,6 +135,16 @@ function Feature({ post }: { post: StorefrontPost }) {
 }
 
 export function StorefrontFeed() {
+  const toggleFavorite = async (productId: string) => {
+    let list: string[] = [];
+    try { list = JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String); } catch {}
+    const next = list.includes(productId) ? list.filter((x) => x !== productId) : [...list, productId];
+    await backendStorage.setItem("wishlist", JSON.stringify(next));
+    backendApi.customerSaveWishlist(next).catch(() => null);
+    toast.success(next.includes(productId) ? "Añadido a favoritos" : "Eliminado de favoritos");
+  };
+
+  return (
   const [posts, setPosts] = useState<StorefrontPost[]>([]);
 
   useEffect(() => {
