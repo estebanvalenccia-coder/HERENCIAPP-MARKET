@@ -40,7 +40,7 @@ export function buildDropshippingLaunchStatus({
     if(!Number.isSafeInteger(Number(p?.stock))||Number(p.stock)<=0)
       issues.push("No hay unidades disponibles según el catálogo local.");
     // Neither positive local stock nor a previously saved quote proves live CJ stock.
-    if(status==="active"&&issues.length===0)
+    if(status==="active")
       issues.push("Pendiente de verificar stock, coste, IVA y portes CJ en tiempo real antes de cobrar.");
     return {id:String(p?.id||""),name:String(p?.name||"Producto sin nombre"),status,
       issues,needsReview:issues.length>0};
