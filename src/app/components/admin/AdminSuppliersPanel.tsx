@@ -1780,6 +1780,7 @@ function ImportedProductRow({
   const [cjHealthLoading, setCjHealthLoading] = useState(false);
   const [cjHealthError, setCjHealthError] = useState("");
   const [quoteDestination, setQuoteDestination] = useState("ES");
+  const [quoteOrigin, setQuoteOrigin] = useState("CN");
   const [quoteMode, setQuoteMode] = useState<"country" | "city">("country");
   const [quoteCity, setQuoteCity] = useState("");
   const [quoteZip, setQuoteZip] = useState("");
@@ -1802,6 +1803,10 @@ function ImportedProductRow({
   const isCjSupplier = selectedSupplier?.integrationType === "cj";
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
+  const availableCjWarehouses = (cjHealth?.vid === supplierVariantId ? cjHealth.warehouses : []) || [];
+  const alternateCjWarehouses = availableCjWarehouses.filter(
+    row => row.countryCode !== "CN" && row.verified && row.available
+  );
   const referenceCities = CJ_REFERENCE_CITIES[quoteDestination] || [];
   const referenceCity = referenceCities.find((place) => place.city === quoteCity);
   // Country mode never sends a saved city/ZIP to CJ. Reference city ZIPs
@@ -1813,7 +1818,8 @@ function ImportedProductRow({
   const verifiedQuoteAge = Date.now() - Date.parse(String(freightQuote?.checkedAt || ""));
   const hasFreshCjQuote = Number.isFinite(verifiedQuoteAge) && verifiedQuoteAge >= 0 &&
     verifiedQuoteAge < 15 * 60_000;
-  const quoteForSave = quoteDestination === "ES" && quoteMode === "city" && /^\d{5}$/.test(quoteZip.trim()) &&
+  const quoteForSave = quoteOrigin === "CN" && freightQuote?.origin === "CN" &&
+    quoteDestination === "ES" && quoteMode === "city" && /^\d{5}$/.test(quoteZip.trim()) &&
     freightQuote?.zip === quoteZip.trim() && freightQuote?.destination === "ES" &&
     freightQuote?.variant?.vid === supplierVariantId && hasFreshCjQuote &&
     profitability?.available && freightQuote?.fx?.rate
@@ -1848,11 +1854,11 @@ function ImportedProductRow({
     setFreightError("");
     setFreightQuote(null);
     try {
-      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), freightPostalCode, quoteDestination);
+      const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), freightPostalCode, quoteDestination, quoteOrigin);
       setFreightQuote(result);
       if (!result.methods?.length) setFreightError(freightPostalCode
-        ? "CJ no devuelve tarifas para esta ubicación desde CN. Prueba otro código postal o almacén cuando esté disponible; no actives el envío automático."
-        : "CJ no devuelve tarifas generales para este país desde CN. Prueba una ciudad de referencia o código postal; no actives el envío automático.");
+        ? "CJ no devuelve tarifas para esta ubicación desde " + quoteOrigin + ". Prueba otro código postal u otro almacén con stock verificado."
+        : "CJ no devuelve tarifas generales desde " + quoteOrigin + " para este país. Prueba una ciudad de referencia o cambia a otro almacén con existencias.");
     } catch (error: any) {
       setFreightError(String(error?.message || "CJ no pudo calcular el transporte"));
     } finally {
@@ -1868,6 +1874,9 @@ function ImportedProductRow({
     try {
       const report = await backendApi.checkCjVariantReadiness(String(product.id), supplierVariantId.trim());
       setCjHealth(report);
+      if (quoteOrigin !== "CN" && !report.warehouses?.some(w => w.countryCode === quoteOrigin && w.verified && w.available)) {
+        setQuoteOrigin("CN"); setFreightQuote(null); setSelectedFreightName("");
+      }
     } catch (error: any) {
       setCjHealthError(String(error?.message || "No se pudo consultar CJ"));
     } finally {
@@ -1925,7 +1934,7 @@ function ImportedProductRow({
     </label>
     <div className="space-y-2 rounded-xl border border-border px-3 py-2">
       <span className="block text-[11px] font-semibold text-muted-foreground">{selectedSupplier?.integrationType === "cj" ? "CJ VID o SKU" : "ID/SKU proveedor"}</span>
-      <input value={supplierVariantId} onChange={(e)=>{setSupplierVariantId(e.target.value);setCjHealth(null);setCjHealthError("");}} placeholder="VID (preferido)" className="w-full bg-transparent text-xs font-semibold outline-none"/>
+      <input value={supplierVariantId} onChange={(e)=>{setSupplierVariantId(e.target.value);setQuoteOrigin("CN");setCjHealth(null);setCjHealthError("");setFreightQuote(null);setFreightError("");setSelectedFreightName("");}} placeholder="VID (preferido)" className="w-full bg-transparent text-xs font-semibold outline-none"/>
       <input value={supplierSku} onChange={(e)=>{setSupplierSku(e.target.value);setCjHealth(null);setCjHealthError("");}} placeholder="SKU proveedor" className="w-full bg-transparent text-xs outline-none"/>
     </div>
     <div className="flex gap-2">
@@ -1967,6 +1976,20 @@ function ImportedProductRow({
         </div>
       </div>
       <div className="space-y-3 rounded-xl border border-emerald-200 bg-background p-3">
+        <label className="block text-xs font-semibold">Almacén de origen CJ
+          <select aria-label="Almacén origen de la cotización CJ" value={quoteOrigin}
+            onChange={e=>{setQuoteOrigin(e.target.value);setFreightQuote(null);setFreightError("");setSelectedFreightName("");}}
+            className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2">
+            <option value="CN">China (CN) · cotización orientativa</option>
+            {alternateCjWarehouses.map(w=><option key={w.countryCode} value={w.countryCode}>
+              {w.countryCode} · {w.quantity} unidades verificadas al consultar
+            </option>)}
+          </select>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Otros almacenes aparecen después de «Comprobar precio y stock CJ» y solo si CJ confirma existencias del VID exacto.
+          Cambiar el origen aquí no cambia el almacén del checkout real, que continúa en CN.
+        </p>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-xs font-semibold">País de destino
             <select aria-label="País de destino para cotización CJ" value={quoteDestination}
@@ -2029,6 +2052,7 @@ function ImportedProductRow({
             const variant = cjVariants.find((entry) => entry.vid === event.target.value);
             setSupplierVariantId(variant?.vid || "");
             setSupplierSku(variant?.sku || "");
+            setQuoteOrigin("CN");
             setCjHealth(null);
             setCjHealthError("");
             setFreightQuote(null);
@@ -2045,6 +2069,15 @@ function ImportedProductRow({
       {cjHealthError && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{cjHealthError}</p>}
       {cjHealth && <div className="space-y-2 rounded-xl border border-border bg-background p-3 text-xs">
         <p className="font-bold">Diagnóstico CJ · variante {cjHealth.sku} · almacén {cjHealth.origin}</p>
+        <p className="font-semibold">Almacenes reportados por CJ para este VID:</p>
+        {cjHealth.warehouses?.length
+          ? <div className="flex flex-wrap gap-2">{cjHealth.warehouses.map(w=><span key={w.countryCode}
+              className={"rounded-lg border px-2 py-1 " + (w.available ? "border-emerald-300 text-emerald-900" : "border-amber-300 text-amber-900")}>
+              {w.countryCode}: {w.verified ? w.quantity + " uds." : "sin dato fiable"}
+              {!w.available ? " · no disponible" : ""}
+            </span>)}</div>
+          : <p className="font-medium text-amber-800">CJ no devolvió almacenes con existencias verificables para este VID.</p>}
+        {cjHealth.warehousesWarning && <p className="font-medium text-amber-800">{cjHealth.warehousesWarning}</p>}
         <p>Existencias CJ: <strong>{cjHealth.stock.verified ? cjHealth.stock.quantity + " unidades verificadas" : "no verificadas"}</strong>
           {cjHealth.stock.verified && !cjHealth.stock.available ? " · AGOTADO" : ""}</p>
         <p>Precio proveedor: <strong>{cjHealth.supplierPriceUsd == null ? "Sin dato" : "$" + cjHealth.supplierPriceUsd.toFixed(2) + " USD"}</strong>
@@ -2067,7 +2100,7 @@ function ImportedProductRow({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-bold">Cotización internacional CJdropshipping</p>
-            <p className="text-xs text-muted-foreground">Una unidad · origen China (CN) · destino {freightQuote?.destination || quoteDestination}. No crea pedidos ni realiza pagos.</p>
+            <p className="text-xs text-muted-foreground">Una unidad · origen {freightQuote?.origin || quoteOrigin} · destino {freightQuote?.destination || quoteDestination}. Solo estimación: no crea pedidos ni realiza pagos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {selectedFreightName && quoteForSave && <button type="button" disabled={saving || !supplierId || !supplierVariantId}
