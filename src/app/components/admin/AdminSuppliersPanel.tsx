@@ -1132,7 +1132,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     </section>
 
     <DropshippingLaunchGuide suppliers={suppliers} products={products} fulfillments={fulfillments}
-      onNavigate={openWorkspaceSection} onRefresh={()=>{void load();}}/>
+      onNavigate={openWorkspaceSection} onRefresh={()=>{void load();}} onOpenProduct={onOpenProduct}/>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <p className="text-sm text-muted-foreground">{workspaceMode==="guided"?
         "Vista sencilla: sigue los cinco pasos sin perderte entre herramientas avanzadas.":

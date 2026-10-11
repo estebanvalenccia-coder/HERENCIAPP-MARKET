@@ -1,3 +1,4 @@
+import {assessCjPublicProductStatus,isCjSupplierItem} from "./cjFulfillmentIdentity.js";
 /**
  * Read-only, conservative onboarding indicators. Records in Neon describe what
  * has been configured, NOT proof that a supplier accepts live orders or that a
@@ -12,9 +13,35 @@ export function buildDropshippingLaunchStatus({
   const cj=safeSuppliers.filter(s=>s?.integrationType==="cj"&&s?.active!==false);
   const liveCj=cj.filter(s=>s.cjSandbox===false);
   const cjIds=new Set(cj.map(s=>String(s.id)));
-  const linked=safeProducts.filter(p=>{
+  const related=safeProducts.filter(p=>{
     const m=p?.metadata;
-    return m&&typeof m==="object"&&cjIds.has(String(m.supplierId||""));
+    return Boolean(m&&typeof m==="object"&&cjIds.has(String(m.supplierId||"")))||
+      isCjSupplierItem(p);
+  });
+  // Archived imports are historical records, not evidence of a usable catalog.
+  const linked=related.filter(p=>!["archived","deleted","trash"].includes(String(p?.status||"draft")));
+  const catalogReview=related.map(p=>{
+    const meta=p?.metadata&&typeof p.metadata==="object"?p.metadata:{};
+    const supplier=safeSuppliers.find(s=>String(s?.id||"")===String(meta.supplierId||""));
+    const issues=[];
+    const status=String(p?.status||"draft");
+    if(!supplier || supplier.active===false || supplier.integrationType!=="cj")
+      issues.push("No hay un proveedor CJ activo correctamente vinculado.");
+    else if(supplier.cjSandbox!==false)
+      issues.push("El proveedor CJ sigue en Sandbox: no se pueden cobrar pedidos reales.");
+    if(status!=="active")
+      issues.push(status==="archived"?"Producto archivado; no está a la venta.":"Producto en borrador o sin publicar.");
+    const sellability=assessCjPublicProductStatus(p);
+    if(sellability.cj) issues.push(...sellability.blockers);
+    if(!Number.isFinite(Number(p?.price))||Number(p.price)<=0)
+      issues.push("Falta un precio de venta válido.");
+    if(!Number.isSafeInteger(Number(p?.stock))||Number(p.stock)<=0)
+      issues.push("No hay unidades disponibles según el catálogo local.");
+    // Neither positive local stock nor a previously saved quote proves live CJ stock.
+    if(status==="active"&&issues.length===0)
+      issues.push("Pendiente de verificar stock, coste, IVA y portes CJ en tiempo real antes de cobrar.");
+    return {id:String(p?.id||""),name:String(p?.name||"Producto sin nombre"),status,
+      issues,needsReview:issues.length>0};
   });
   const cjQueue=safeFulfillments.filter(row=>
     row?.provider==="cj"||cjIds.has(String(row?.supplierId||"")));
@@ -60,6 +87,7 @@ export function buildDropshippingLaunchStatus({
   ];
   const next=steps.find(s=>s.state!=="configured")||steps[steps.length-1];
   return {steps,next,blockers:blockerList,linkedCount:linked.length,
+    catalogReview,activeCjProducts:catalogReview.filter(p=>p.status==="active").length,
     cjCount:cj.length,queueCount:cjQueue.length,supervisedRecord:supervised,
     automaticPurchasesVerified:automatic,backendReadinessLoaded:loaded};
 }
