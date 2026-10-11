@@ -4,6 +4,7 @@ import { AdminProviderApiQuotes } from "./AdminProviderApiQuotes";
 import { AdminSupplierFileImport } from "./AdminSupplierFileImport";
 import { AdminSupplierOperations } from "./AdminSupplierOperations";
 import { AdminCjAutomationStatus } from "./AdminCjAutomationStatus";
+import { DropshippingLaunchGuide } from "./DropshippingLaunchGuide";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -136,6 +137,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [cjOrderAudit, setCjOrderAudit] = useState<any>(null);
   const [cjOrderAuditLoading, setCjOrderAuditLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [workspaceMode,setWorkspaceMode]=useState<"guided"|"advanced">("guided");
+  const openWorkspaceSection=(id:string)=>{
+    setWorkspaceMode("advanced");
+    window.setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
+  };
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
   const [syncingPaidOrders, setSyncingPaidOrders] = useState(false);
@@ -1098,11 +1104,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => document.getElementById("supplier-orders")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          <button type="button" onClick={() => openWorkspaceSection("supplier-orders")}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">
             Ver pedidos <ArrowRight className="h-4 w-4"/>
           </button>
-          <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          <button type="button" onClick={() => openWorkspaceSection("supplier-new")}
             className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-bold">
             + Añadir proveedor
           </button>
@@ -1120,28 +1126,49 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </p>
     </section>
 
+    <DropshippingLaunchGuide suppliers={suppliers} products={products} fulfillments={fulfillments}
+      onNavigate={openWorkspaceSection} onRefresh={()=>{void load();}}/>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+      <p className="text-sm text-muted-foreground">{workspaceMode==="guided"?
+        "Vista sencilla: sigue los cinco pasos sin perderte entre herramientas avanzadas.":
+        "Vista avanzada: herramientas completas y operaciones de proveedores."}</p>
+      <button type="button" onClick={()=>setWorkspaceMode(mode=>mode==="guided"?"advanced":"guided")}
+        className="rounded-xl border border-border px-4 py-2 text-sm font-bold">
+        {workspaceMode==="guided"?"Mostrar herramientas avanzadas":"Volver a vista guiada"}
+      </button>
+    </div>
+    {workspaceMode==="advanced"&&<>
     <nav aria-label="Navegar por la central de dropshipping" className="rounded-2xl border border-border bg-card p-3">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <p className="px-2 pb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Las cinco áreas esenciales</p>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         {[
-          { id: "supplier-import", name: "Importar por URL", icon: Search, detail: "Tu importador actual" },
-          { id: "supplier-catalog", name: "Productos", icon: Layers3, detail: "Vincular y organizar" },
-          { id: "supplier-orders", name: "Pedidos", icon: ShoppingBag, detail: "Todos los proveedores" },
-          { id: "supplier-compare", name: "Comparar costes", icon: Truck, detail: "27 países UE" },
-          { id: "supplier-printful", name: "Printful API", icon: Link2, detail: "Cotizar portes UE" },
-          { id: "supplier-file-import", name: "Importar archivos", icon: FileSpreadsheet, detail: "CSV, JSON, XML" },
-          { id: "supplier-operations", name: "Operaciones", icon: ShieldCheck, detail: "Precios e incidencias" },
-          { id: "supplier-cj-automation", name: "CJ automatización", icon: Settings2, detail: "Estado y tracking" },
-          { id: "supplier-new", name: "Añadir proveedor", icon: Building2, detail: "Manual, CSV, API…" },
-          { id: "supplier-registered", name: "Conexiones", icon: Settings2, detail: "Revisar integraciones" },
-          { id: "supplier-dsers-csv", name: "Archivos CSV", icon: FileSpreadsheet, detail: "DSers y otros" },
-        ].map(entry => <button key={entry.id} type="button"
-          onClick={() => document.getElementById(entry.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="flex min-w-0 items-start gap-2 rounded-xl border border-transparent bg-muted/35 px-3 py-3 text-left transition-colors hover:border-primary/25 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+          { id: "supplier-registered", name: "1. Proveedores", icon: Building2, detail: "Conexiones" },
+          { id: "supplier-import", name: "2. Importar", icon: Search, detail: "Crear borradores" },
+          { id: "supplier-catalog", name: "3. Productos", icon: Layers3, detail: "Variantes y precios" },
+          { id: "supplier-orders", name: "4. Pedidos", icon: ShoppingBag, detail: "Ventas y envíos" },
+          { id: "supplier-cj-automation", name: "5. Automatización", icon: Bot, detail: "Estado y seguridad" },
+        ].map(entry=><button key={entry.id} type="button"
+          onClick={()=>openWorkspaceSection(entry.id)}
+          className="flex min-w-0 items-start gap-2 rounded-xl bg-muted/35 px-3 py-3 text-left hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
           <entry.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary"/>
           <span className="min-w-0"><span className="block text-xs font-bold">{entry.name}</span>
-            <span className="mt-1 block text-[11px] leading-tight text-muted-foreground">{entry.detail}</span></span>
+            <span className="mt-1 block text-[11px] text-muted-foreground">{entry.detail}</span></span>
         </button>)}
       </div>
+      <details className="mt-3 rounded-xl border border-border p-3">
+        <summary className="cursor-pointer text-xs font-bold">Más herramientas: comparar costes, Printful, DSers, CSV, incidencias…</summary>
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          {[
+            {id:"supplier-compare",name:"Comparar costes"},
+            {id:"supplier-printful",name:"Printful API"},
+            {id:"supplier-file-import",name:"Importar CSV/JSON/XML"},
+            {id:"supplier-operations",name:"Incidencias y costes"},
+            {id:"supplier-new",name:"Añadir proveedor"},
+            {id:"supplier-dsers-csv",name:"DSers CSV"},
+          ].map(item=><button key={item.id} type="button" onClick={()=>openWorkspaceSection(item.id)}
+            className="rounded-lg border border-border px-3 py-2 text-left text-xs font-semibold hover:bg-muted">{item.name}</button>)}
+        </div>
+      </details>
     </nav>
 
     <AdminSupplierCostComparison suppliers={suppliers}/>
@@ -1890,6 +1917,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         </div>
       </div>
     </div>}
+    </>}
   </div>;
 }
 
