@@ -4,6 +4,7 @@ import { ArrowRight, Clock3, Minus, Plus, ShoppingBag, Trash2 } from "lucide-rea
 import { toast } from "sonner";
 import { backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings } from "../../../backend/shippingPolicy.js";
+import { isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity";
 
 interface CartItem {
   id: number | string;
@@ -104,8 +105,13 @@ export function Cart() {
   const hasPhysicalItems = useMemo(() => cartItems.some((item) => !isServiceItem(item)), [cartItems]);
   const hasServices = useMemo(() => cartItems.some(isServiceItem), [cartItems]);
   const onlyServices = hasServices && !hasPhysicalItems;
+  const cjComposition = useMemo(() => validateCjCartComposition(cartItems), [cartItems]);
+  const containsCj = cjComposition.cjCount > 0;
+  const cjOnly = containsCj && cjComposition.valid;
   const subtotal = cartItems.reduce((sum, item) => sum + lineTotal(item), 0);
-  const shipping = hasPhysicalItems ? shippingCost : 0;
+  // A CJ shipping quote is NOT the Barcelona delivery fee. It must be
+  // established by the backend for the real postal address before payment.
+  const shipping = hasPhysicalItems && !containsCj ? shippingCost : 0;
   const cartSignature = JSON.stringify(cartItems.map((item) => ({
     id: item.id, selectedVariant: item.selectedVariant, quantity: item.quantity,
     serviceHours: item.serviceHours, serviceBooking: item.serviceBooking,
@@ -119,6 +125,10 @@ export function Cart() {
     const next = cartItems.map((item) => {
       if (itemKey(item) !== key) return item;
       if (isServiceItem(item)) return item;
+      if (isCjSupplierItem(item) && delta > 0) {
+        blocked = true;
+        return item;
+      }
       const quantity = Math.max(1, Number(item.quantity || 1) + delta);
       if (delta <= 0 || item.trackInventory === false) return { ...item, quantity };
 
@@ -133,7 +143,7 @@ export function Cart() {
       }
       return { ...item, quantity };
     });
-    if (blocked) toast.error("No hay más unidades disponibles de este artículo");
+    if (blocked) toast.error("No se pueden añadir más unidades: CJ admite una sola unidad por pedido, o se agotó el stock.");
     saveCart(next);
   };
 
@@ -189,6 +199,9 @@ export function Cart() {
 
   const goCheckout = () => {
     if (!cartItems.length) return toast.error("Tu carrito está vacío");
+    if (!cjComposition.valid) return toast.error(cjComposition.message);
+    if (containsCj && !["tarjeta","bizum"].includes(paymentMethod))
+      return toast.error("Por ahora los pedidos CJ deben pagarse con tarjeta o Bizum verificado antes de su preparación.");
     navigate("/checkout", {
       state: {
         paymentMethod,
@@ -304,14 +317,20 @@ export function Cart() {
                         </p>
                       </div>
                     ) : (
-                      <div className="inline-flex items-center rounded-full border border-[#ded9cd] bg-[#fbfaf6] p-1">
-                        <button type="button" onClick={() => updateQuantity(itemKey(item), -1)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white" aria-label="Reducir cantidad">
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="min-w-8 text-center text-sm font-black">{item.quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(itemKey(item), 1)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white" aria-label="Aumentar cantidad">
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
+                      <div>
+                        <div className="inline-flex items-center rounded-full border border-[#ded9cd] bg-[#fbfaf6] p-1">
+                          <button type="button" onClick={() => updateQuantity(itemKey(item), -1)} disabled={Number(item.quantity) <= 1}
+                            className="grid h-8 w-8 place-items-center rounded-full hover:bg-white disabled:opacity-35" aria-label="Reducir cantidad">
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="min-w-8 text-center text-sm font-black">{item.quantity}</span>
+                          <button type="button" onClick={() => updateQuantity(itemKey(item), 1)}
+                            disabled={isCjSupplierItem(item)}
+                            className="grid h-8 w-8 place-items-center rounded-full hover:bg-white disabled:opacity-35" aria-label="Aumentar cantidad">
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        {isCjSupplierItem(item) && <p className="mt-1 text-xs text-[#6c786f]">CJ: una unidad por pedido</p>}
                       </div>
                     )}
                     <span className="ml-auto font-black">€{lineTotal(item).toFixed(2)}</span>
@@ -357,8 +376,8 @@ export function Cart() {
           >
             <option value="tarjeta">Tarjeta</option>
             <option value="bizum">Bizum</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="efectivo">Efectivo</option>
+            {!containsCj && <option value="transferencia">Transferencia</option>}
+            {!containsCj && <option value="efectivo">Efectivo</option>}
           </select>
 
           <div className="mt-5">
@@ -382,21 +401,25 @@ export function Cart() {
             {hasPhysicalItems && (
               <>
                 <div className="flex justify-between gap-4">
-                  <span className="text-[#6c786f]">Envío desde</span>
-                  <span className="font-black">{shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
+                  <span className="text-[#6c786f]">{containsCj ? "Transporte CJ" : "Envío desde"}</span>
+                  <span className="font-black">{containsCj ? "Por calcular" : shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
                 </div>
                 <p className="rounded-2xl bg-[#f4f1e8] p-3 text-xs leading-5 text-[#6c786f]">
-                  El precio final del envío se calcula con tu dirección en el siguiente paso.
+                  {containsCj
+                    ? "El transporte de CJ todavía no está incluido. Su coste real se verificará con el código postal antes del cobro."
+                    : "El precio final del envío se calcula con tu dirección en el siguiente paso."}
                 </p>
               </>
             )}
             <div className="flex justify-between gap-4 border-t border-[#e3ded4] pt-4 text-lg">
-              <span className="font-black">{onlyServices ? "Total de la reserva" : "Total estimado"}</span>
+              <span className="font-black">{onlyServices ? "Total de la reserva" : containsCj ? "Subtotal sin transporte CJ" : "Total estimado"}</span>
               <span className="font-black text-[#315b42]">€{total.toFixed(2)}</span>
             </div>
           </div>
 
-          <button type="button" onClick={goCheckout} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#315b42] px-5 py-3.5 text-sm font-black text-white">
+          {containsCj && !cjComposition.valid && <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">{cjComposition.message}</p>}
+          <button type="button" onClick={goCheckout} disabled={!cjComposition.valid}
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#315b42] px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
             {onlyServices ? "Continuar con la reserva" : "Continuar"} <ArrowRight className="h-4 w-4" />
           </button>
         </aside>

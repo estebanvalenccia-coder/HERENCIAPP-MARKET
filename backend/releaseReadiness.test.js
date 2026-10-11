@@ -9,7 +9,8 @@ test("productos físicos usan entrega y servicios usan reserva sin envío", asyn
   const checkout = await read("src/app/pages/Checkout.tsx");
   const server = await read("backend/server.js");
 
-  assert.match(cart, /hasPhysicalItems\s*\?\s*shippingCost\s*:\s*0/);
+  assert.match(cart, /hasPhysicalItems\s*&&\s*!containsCj\s*\?\s*shippingCost\s*:\s*0/);
+  assert.match(cart, /transporte de CJ todavía no está incluido/);
   assert.match(cart, /No se aplican gastos de envío a los servicios/);
   assert.match(checkout, /onlyServices\s*\?\s*["']servicio["']\s*:\s*["']envio["']/);
   assert.match(checkout, /const shipping\s*=\s*hasPhysicalItems\s*\?\s*shippingCost\s*:\s*0/);

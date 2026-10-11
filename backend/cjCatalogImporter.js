@@ -346,12 +346,14 @@ export function interpretCjVariantStock(rows, vidInput, originInput = "CN") {
   const matched = rows.filter(row => String(row?.vid || "") === vid &&
     String(row?.countryCode || "").toUpperCase() === origin);
   if (!matched.length) return { available:false, quantity:0, verified:false };
-  const quantities = matched.map(row => Number(row?.storageNum ?? row?.cjInventoryNum ?? row?.totalInventoryNum));
-  if (quantities.some(n => !Number.isSafeInteger(n) || n < 0)) {
+  // Null or empty inventory values are unknown, NOT verified zero stock.
+  // Reuse the same strict aggregation as the multi-warehouse inspector.
+  const snapshot = interpretCjWarehouseStocks(rows,vid);
+  const warehouse = snapshot.warehouses.find(row => row.countryCode === origin);
+  if (!warehouse?.verified || !Number.isSafeInteger(warehouse.quantity)) {
     return { available:false, quantity:0, verified:false };
   }
-  const quantity = quantities.reduce((sum,n)=>sum+n,0);
-  return { available:quantity>=1, quantity, verified:true, vid, origin, source:"cj_api" };
+  return { available:warehouse.available, quantity:warehouse.quantity, verified:true, vid, origin, source:"cj_api" };
 }
 
 /** Warehouse-level availability for a single exact CJ VID (read-only).
