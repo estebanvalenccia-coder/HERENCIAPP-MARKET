@@ -182,6 +182,13 @@ export const defaultMarketExperience: MarketExperienceContent = {
         href: "/crear-ramo",
         ctaLabel: "Crear un ramo",
       },
+      {
+        title: "Instalación y cuidado de huertos urbanos",
+        subtitle: "Diseño, montaje, siembra y mantenimiento de huertos en balcones, patios y terrazas de Barcelona.",
+        imageUrl: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82",
+        href: "/servicios#huerto-urbano",
+        ctaLabel: "Solicitar información",
+      },
     ],
     featuredTitle: "Productos destacados",
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
@@ -276,11 +283,39 @@ function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
     const community: SiteLink = { label: "Comunidad", href: "/comunidad" };
     ensured = contactIndex >= 0 ? [...ensured.slice(0, contactIndex), community, ...ensured.slice(contactIndex)] : [...ensured, community];
   }
-  if (hasPlants) return ensured;
-  const plants: SiteLink = { label: "Plantas", href: "/productos?coleccion=plantas" };
-  const startIndex = ensured.findIndex((item) => String(item?.href || "") === "/");
-  if (startIndex >= 0) return [...ensured.slice(0, startIndex + 1), plants, ...ensured.slice(startIndex + 1)];
-  return [plants, ...ensured];
+  if (!hasPlants) {
+    const plants: SiteLink = { label: "Plantas", href: "/productos?coleccion=plantas" };
+    const startIndex = ensured.findIndex((item) => String(item?.href || "") === "/");
+    ensured = startIndex >= 0
+      ? [...ensured.slice(0, startIndex + 1), plants, ...ensured.slice(startIndex + 1)]
+      : [plants, ...ensured];
+  }
+
+  // Show Jardinería for existing stores even if their saved navigation predates this menu.
+  const hasGardening = ensured.some((item) => {
+    const label = String(item?.label || "").trim().toLowerCase();
+    const href = String(item?.href || "").toLowerCase();
+    return label === "jardinería" || label === "jardineria" || href.includes("coleccion=jardineria");
+  });
+  if (!hasGardening) {
+    const gardening: SiteLink = { label: "Jardinería", href: "/productos?coleccion=jardineria" };
+    const shopIndex = ensured.findIndex((item) => String(item?.href || "").split("?")[0] === "/productos");
+    const plantsIndex = ensured.findIndex((item) => String(item?.label || "").toLowerCase() === "plantas");
+    const after = shopIndex >= 0 ? shopIndex : plantsIndex;
+    ensured = after >= 0
+      ? [...ensured.slice(0, after + 1), gardening, ...ensured.slice(after + 1)]
+      : [...ensured, gardening];
+  }
+
+  return ensured;
+}
+
+function ensureUrbanGardenService(services: MarketServiceCard[]): MarketServiceCard[] {
+  if (services.some((service) => String(service.href || "").includes("#huerto-urbano") || /huerto urbano/i.test(service.title))) {
+    return services;
+  }
+  const urbanGarden = defaultMarketExperience.home.services.find((service) => service.href === "/servicios#huerto-urbano");
+  return urbanGarden ? [...services, { ...urbanGarden }] : services;
 }
 
 function isDisabledSalesAction(item: any) {
@@ -337,7 +372,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...homeIncoming,
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
-      services: mergeList(defaultMarketExperience.home.services, homeIncoming.services),
+      services: ensureUrbanGardenService(mergeList(defaultMarketExperience.home.services, homeIncoming.services)),
       trust: mergeList(defaultMarketExperience.home.trust, homeIncoming.trust),
     },
     dulce: mergeObject(defaultMarketExperience.dulce, dulceIncoming),

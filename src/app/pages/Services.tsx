@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { ArrowRight, MessageCircle, Phone, ShoppingCart, Sparkles } from "lucide-react";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
@@ -11,9 +11,10 @@ import {
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
-const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral"];
+const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral", "huerto-urbano"];
 
 export function Services() {
+  const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [sellableServices, setSellableServices] = useState<any[]>([]);
 
@@ -66,6 +67,16 @@ export function Services() {
   }, []);
 
   const market = getMarketExperience(site);
+
+  // React Router uses history navigation, so ensure the submenu opens the right service card.
+  useEffect(() => {
+    if (location.hash !== "#huerto-urbano") return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("huerto-urbano")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.hash, site]);
+
   const whatsapp = normalizeWhatsAppPhone(site.footer.whatsappPhone);
   const phone = normalizePhoneForHref(site.footer.callPhone);
 

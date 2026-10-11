@@ -810,6 +810,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
         <form onSubmit={handleSubmit} className="space-y-8">
           <section>
             <h3 className="mb-3 text-lg font-black">1. ¿Qué vas a vender?</h3>
+            <p className="mb-4 text-sm text-muted-foreground">Para kits, mesas de cultivo, semillas y accesorios elige la colección de productos correspondiente. Para instalación, montaje o mantenimiento de un huerto urbano elige <strong>Servicios por horas</strong> y su subcategoría de huerto urbano.</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {COMMERCE_COLLECTIONS.map((item) => (
                 <button
@@ -817,7 +818,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   type="button"
                   onClick={() => changeCollection(item.id)}
                   className={`rounded-2xl border p-4 text-left transition ${
-                    formData.collection === item.id
+                    formData.collection === item.id && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
                       ? "border-primary bg-primary/10 ring-2 ring-primary/15"
                       : "border-border bg-background hover:bg-muted/50"
                   }`}
@@ -827,13 +828,37 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     {item.id === "jardineria"
-                      ? "Herramientas, riego, fertilizantes y accesorios físicos."
+                      ? "Herramientas, riego, fertilizantes, kits y productos de huerto urbano."
                       : item.id === "servicios"
-                        ? "Jardinería, limpieza, asesoría, mantenimiento y otros servicios reservables."
+                        ? "Huerto urbano, jardinería, limpieza, asesoría y otros servicios por horas."
                         : item.description}
                   </p>
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => { changeCollection("jardineria"); patch({ category: "huerto-urbano" }); }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  formData.collection === "jardineria" && formData.category === "huerto-urbano"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/15"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <p className="font-black">🌱 Huerto urbano</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Kits de cultivo, mesas de huerto, semilleros y accesorios para cultivar en casa.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => { changeCollection("servicios"); patch({ category: "servicio-huerto-urbano" }); }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  formData.collection === "servicios" && formData.category === "servicio-huerto-urbano"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/15"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <p className="font-black">🌿 Servicios de huerto urbano</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Montaje, instalación, siembra, asesoría y mantenimiento por horas.</p>
+              </button>
             </div>
           </section>
 
@@ -1032,7 +1057,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   onBlur={() => void handleNameBlur()}
                   placeholder={
                     service
-                      ? "Ej: Mantenimiento mensual de jardín"
+                      ? "Ej: Instalación de huerto urbano en terraza"
                       : fashion
                         ? "Ej: Tote bag Herencia"
                         : food

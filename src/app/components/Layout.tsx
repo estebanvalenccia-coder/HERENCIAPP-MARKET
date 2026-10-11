@@ -221,6 +221,11 @@ export function Layout() {
                       key={item.href}
                       active={location.pathname === "/productos"}
                     />
+                  ) : isGardeningNavigationItem(item) ? (
+                    <GardeningNavMenu
+                      key={item.href}
+                      active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
+                    />
                   ) : (
                     <MarketNavLink
                       key={item.href}
@@ -321,6 +326,11 @@ export function Layout() {
                   <PlantsMobileNavMenu
                     key={item.href}
                     active={location.pathname === "/productos"}
+                  />
+                ) : isGardeningNavigationItem(item) ? (
+                  <GardeningMobileNavMenu
+                    key={item.href}
+                    active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
                   />
                 ) : (
                   <MarketNavLink
@@ -471,6 +481,103 @@ export function Layout() {
         </div>
       ) : null}
     </>
+  );
+}
+
+
+const GARDENING_SUBMENU = [
+  { label: "Artículos de jardinería", description: "Herramientas, riego y accesorios", href: "/productos?coleccion=jardineria" },
+  { label: "Huerto urbano", description: "Kits y productos para cultivar en casa", href: "/productos?coleccion=jardineria&categoria=huerto-urbano" },
+  { label: "Servicios de huerto urbano", description: "Instalación, siembra y mantenimiento", href: "/servicios#huerto-urbano" },
+];
+
+function isGardeningNavigationItem(item: { label?: string; href?: string }) {
+  const label = String(item?.label || "").trim().toLowerCase();
+  const href = String(item?.href || "").toLowerCase();
+  return label === "jardinería" || label === "jardineria" || /[?&]coleccion=jardineria(?:&|$)/.test(href);
+}
+
+function GardeningNavMenu({ active }: { active: boolean }) {
+  return (
+    <div className="group relative shrink-0">
+      <Link
+        to="/productos?coleccion=jardineria"
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-bold transition ${
+          active ? "bg-[#eef2eb] text-[#244a35]" : "text-[#526158] hover:bg-[#f3f0e9] hover:text-[#244a35]"
+        }`}
+        aria-haspopup="true"
+      >
+        Jardinería
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
+      </Link>
+      <div className="pointer-events-none absolute left-1/2 top-full z-[80] w-80 -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <div className="rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
+          <div className="px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#718076]">
+            Jardinería y huerto urbano
+          </div>
+          {GARDENING_SUBMENU.map((item, index) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={`block rounded-xl px-4 py-3 transition hover:bg-[#eef2eb] ${
+                index === 1 ? "bg-[#edf4ee]" : ""
+              }`}
+            >
+              <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+              <span className="mt-1 block text-xs text-[#718076]">{item.description}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GardeningMobileNavMenu({ active }: { active: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-bold transition ${
+          active ? "bg-[#eef2eb] text-[#244a35]" : "text-[#526158] hover:bg-[#f3f0e9] hover:text-[#244a35]"
+        }`}
+      >
+        Jardinería
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? (
+        <>
+          <button
+            type="button"
+            aria-label="Cerrar menú de jardinería"
+            className="fixed inset-0 z-[70] cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="menu"
+            className="fixed left-4 right-4 top-[170px] z-[80] max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.18)]"
+          >
+            <div className="px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#718076]">Jardinería y huerto urbano</div>
+            {GARDENING_SUBMENU.map((item) => (
+              <Link
+                role="menuitem"
+                key={item.href}
+                to={item.href}
+                onClick={() => setOpen(false)}
+                className="block rounded-xl px-4 py-3 transition hover:bg-[#eef2eb]"
+              >
+                <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                <span className="mt-1 block text-xs text-[#718076]">{item.description}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
   );
 }
 
