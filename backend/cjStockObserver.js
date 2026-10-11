@@ -78,7 +78,7 @@ export function createCjStockObserver({
       if (!targets.length) return {status:"no_candidates",inspected:0};
       const previous=Number(await read(CURSOR_KEY));
       const start=Number.isSafeInteger(previous)&&previous>=0?previous%targets.length:0;
-      let inspected=0, verified=0, limited=false;
+      let inspected=0, verified=0, limited=false, unavailable=0, invalid=0, outOfStock=0;
       for(let offset=0; offset<Math.min(batchSize,targets.length);offset++){
         const item=targets[(start+offset)%targets.length];
         try {
@@ -90,19 +90,23 @@ export function createCjStockObserver({
               verified:true,source:"cj_api",checkedAt:new Date(now()).toISOString(),
             }));
             verified++;
+            if(stock.quantity===0)outOfStock++;
+          } else {
+            invalid++;
           }
         }catch(e){
           // Never overwrite a previously verified observation with fake stock.
           if(["CJ_RATE_LIMITED","CJ_QUOTA_EXHAUSTED"].includes(String(e?.code||""))){
             limited=true; inspected++; break;
           }
+          unavailable++;
           logger.warn?.("[cj.stock-observer] one supplier lookup unavailable",String(e?.code||"UPSTREAM").slice(0,40));
         }
         inspected++;
       }
       // Resume from the first uninspected candidate, including after quota stop.
       await upsert(CURSOR_KEY,String((start+inspected)%targets.length));
-      return {status:limited?"rate_limited":"complete",inspected,verified,totalTargets:targets.length};
+      return {status:limited?"rate_limited":"complete",inspected,verified,unavailable,invalid,outOfStock,rateLimited:limited,totalTargets:targets.length};
     }finally{
       if(claimed){
         try{await mutate(LEASE_KEY,raw=>{
