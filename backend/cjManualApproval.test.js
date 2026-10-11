@@ -148,3 +148,29 @@ test("manual creation refuses a mismatched supplier SKU or delivery postal code"
   }))},nowMs:NOW}),/Cotización/);
   assert.throws(()=>validateManualCjCreate({...base,record:{...base.record,shippingAddress:{...base.record.shippingAddress,postalCode:"08033"}},nowMs:NOW}),/Cotización/);
 });
+
+test("an unknown CJ creation with a known remote ID can be reconciled, never recreated",()=>{
+  const original={id:"fulfill-1",provider:"cj",status:"cj_creation_unknown",
+    externalOrderId:"CJ-001",cjManualAuthorization:{approvedMaxUsd:25}};
+  const current={supplierFulfillments:[original],suppliers:[]};
+  const remoteUnpaid={status:"payment_required",provider:"cj",
+    providerCurrency:"USD",externalOrderId:"CJ-001",
+    providerActualPayment:18.25,providerOrderStatus:"UNPAID"};
+  const completed=applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],remoteUnpaid);
+  assert.equal(completed.record.status,"payment_required");
+  assert.equal(completed.record.externalOrderId,"CJ-001");
+  assert.throws(()=>applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],{
+    ...remoteUnpaid,externalOrderId:"CJ-999",
+  }),/referencia CJ/);
+  assert.throws(()=>applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],{
+    ...remoteUnpaid,status:"cj_creating",
+  }),/referencia CJ/);
+  assert.throws(()=>applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],{
+    ...remoteUnpaid,cjManualAuthorization:{approvedMaxUsd:9999},
+  }),/referencia CJ/);
+  assert.throws(()=>applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],{
+    ...remoteUnpaid,status:"ordered",providerOrderStatus:"UNPAID",
+  }),/referencia CJ/);
+  const remotePaid={...remoteUnpaid,status:"ordered",providerOrderStatus:"PAID"};
+  assert.equal(applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],remotePaid).record.status,"ordered");
+});

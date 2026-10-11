@@ -184,7 +184,27 @@ export function applyCjManualStage(current = {}, id, fromStatuses, patch = {}) {
     throw cjManualError("El pedido cambió de estado. Recarga Administración antes de continuar.");
   }
   if (old.externalOrderId && !["payment_required", "cj_paying", "cj_payment_unknown"].includes(String(old.status || ""))) {
-    throw cjManualError("Este pedido ya tiene una referencia CJ y no puede recrearse.");
+    // A known CJ order may have been created before the backend lost the
+    // response. Permit ONLY a verified status projection of that same ID;
+    // never allow another create, a changed ID or overwritten authorization.
+    const paidProof=new Set(["PAID","UNSHIPPED","PROCESSING","SHIPPED","DELIVERED","COMPLETED"]);
+    const unpaidProof=new Set(["CREATED","UNPAID","IN_CART"]);
+    const nextStatus=String(patch.status||"");
+    const remoteStatus=String(patch.providerOrderStatus||"").toUpperCase();
+    const stateProof=nextStatus==="payment_required"?
+      unpaidProof.has(remoteStatus):
+      ["ordered","shipped","delivered"].includes(nextStatus)&&paidProof.has(remoteStatus);
+    const safeFields=new Set(["status","provider","externalOrderId","cjShipmentOrderId",
+      "providerActualPayment","providerOrderStatus","providerCurrency",
+      "providerSyncedAt","blocker"]);
+    const verifiedReconciliation=old.status==="cj_creation_unknown" &&
+      stateProof && patch.provider==="cj" && patch.providerCurrency==="USD" &&
+      (!patch.externalOrderId || String(patch.externalOrderId)===String(old.externalOrderId)) &&
+      Number.isFinite(Number(patch.providerActualPayment)) &&
+      Number(patch.providerActualPayment)>0 &&
+      Object.keys(patch).every(key=>safeFields.has(key));
+    if(!verifiedReconciliation)
+      throw cjManualError("Este pedido ya tiene una referencia CJ y no puede recrearse.");
   }
   const row = { ...old, ...patch, updatedAt: new Date().toISOString() };
   const next = [...values];
