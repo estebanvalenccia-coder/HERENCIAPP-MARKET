@@ -3,7 +3,7 @@ import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } fro
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { resolveCjPurchasedVariant, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
-import {assessCjDistanceSaleCompliance} from "../src/app/lib/cjDistanceSaleCompliance.js";
+import {assessCjDistanceSaleCompliance} from "./cjDistanceSaleCompliance.js";
 
 function invalid(message) {
   const error = new Error(message);
