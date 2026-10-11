@@ -7241,6 +7241,7 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     const defaults = { giftCards: [], floristOrders: [], suppliers: [], purchases: [], staff: [], loyalty: {} };
     const current = { ...defaults, ...(parseStoredJson(await readStorageValue("posOperations"), defaults) || {}) };
     const existingSupplier = (current.suppliers || []).find((item) => String(item?.id || "") === String(req.body?.id || ""));
+    if (existingSupplier?.archivedAt) return res.status(409).json({ error: "El proveedor está archivado. Restáuralo desde Proveedores antes de editarlo o volver a activarlo." });
     const requestedType = String(req.body?.integrationType ?? existingSupplier?.integrationType ?? "manual").toLowerCase();
     const integrationType = normalizeSupplierIntegrationType(requestedType);
     if (integrationType !== requestedType) return res.status(400).json({ error: "Tipo de integración de proveedor no reconocido." });
