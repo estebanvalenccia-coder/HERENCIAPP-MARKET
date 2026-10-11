@@ -1118,6 +1118,45 @@ export const backendApi = {
     );
   },
 
+  async getCjAutopilotGuardrails() {
+    return request<{
+      ok:true;liveActivationAvailable:false;
+      policy:{configured:boolean;mode:"simulation";country:"ES";quantity:1;
+        perOrderMaxEur:number|null;dailyMaxEur:number|null;minMarginPercent:number|null;
+        allowedSupplierIds:string[];lastSavedAt:string|null;livePurchasesAllowed:false;
+        livePaymentsAllowed:false};
+      suppliers:Array<{id:string;name:string;sandbox:boolean}>;
+    }>("/api/admin/suppliers/cj/autopilot-guardrails");
+  },
+
+  async saveCjAutopilotGuardrails(payload:{
+    perOrderMaxEur:number;dailyMaxEur:number;minMarginPercent:number;
+    allowedSupplierIds:string[];country:"ES";quantity:1;
+  }) {
+    return request<{ok:true;liveActivationAvailable:false;
+      policy:{configured:true;mode:"simulation";perOrderMaxEur:number;
+        dailyMaxEur:number;minMarginPercent:number;allowedSupplierIds:string[];
+        lastSavedAt:string;livePurchasesAllowed:false};
+      message:string}>("/api/admin/suppliers/cj/autopilot-guardrails",{
+        method:"PUT",body:JSON.stringify(payload),
+      });
+  },
+
+  async simulateCjAutopilotPreflight(fulfillmentId:string) {
+    return request<{
+      provider:"cj";fulfillmentId:string;
+      eligibleForSupervisedTest:boolean;blockers:string[];
+      scope:"preflight_only";readOnly:true;
+      automaticPurchasesEnabled:false;automaticSupplierPaymentEnabled:false;
+      supplierOrderCreated:false;moneySpent:false;
+      currentSupplierCostUsd:number;currentCostEur:number;
+      estimatedMarginPercent:number;budgetPerOrderEur:number;
+      dailyBudgetEur:number;warning:string;
+    }>(`/api/admin/suppliers/cj/autopilot-preflight/${encodeURIComponent(fulfillmentId)}`,{
+      method:"POST",body:"{}",
+    });
+  },
+
   async getCjAutomationReadiness() {
     return request<{
       provider: "cj";configured:boolean;accountConnectionNotRetested:boolean;
