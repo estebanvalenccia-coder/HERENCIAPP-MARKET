@@ -7,6 +7,7 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
+import { isCjSupplierItem } from "../lib/cjFulfillmentIdentity";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -174,6 +175,7 @@ export function ProductDetail() {
     return Array.from(new Set(urls));
   }, [product, selected]);
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
+  const isCjProduct = isCjSupplierItem(product);
   const trackInventory = product?.trackInventory !== false;
   const stock = trackInventory
     ? Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)))
@@ -327,7 +329,11 @@ export function ProductDetail() {
     if (!product) return;
     if (cjPendingVariantQuote) return toast.error("Selecciona una variante CJ que tenga SKU y VID válidos.");
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
+    if (isCjProduct && quantity !== 1) return toast.error("Para CJ solo se permite una unidad por pedido.");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
+    if (Array.isArray(cart) && ((isCjProduct && cart.length > 0) || cart.some(isCjSupplierItem))) {
+      return toast.error("Los artículos CJ se compran de uno en uno y separados del reparto local. Finaliza primero el carrito actual.");
+    }
 
     if (serviceProduct) {
       const hours = Math.min(serviceMaxHours, Math.max(serviceMinHours, serviceHours));
@@ -526,6 +532,10 @@ export function ProductDetail() {
                 Si el servicio requiere más tiempo del reservado, las horas adicionales se abonarán posteriormente.
               </p>
             </div>
+          ) : isCjProduct ? (
+            <p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm font-medium">
+              CJdropshipping: una unidad por pedido. El stock, el transporte y el precio final se validan antes del cobro.
+            </p>
           ) : detailConfig.showQuantity !== false ? (
             <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           ) : null}
