@@ -485,9 +485,23 @@ export function Layout() {
 }
 
 
-const GARDENING_SUBMENU = [
-  { label: "Artículos de jardinería", description: "Herramientas, riego y accesorios", href: "/productos?coleccion=jardineria" },
-  { label: "Huerto urbano", description: "Kits y productos para cultivar en casa", href: "/productos?coleccion=jardineria&categoria=huerto-urbano" },
+const GARDENING_PRODUCT_SUBMENU = [
+  { label: "Ver todos los artículos", description: "Todo para el jardín y el huerto", href: "/productos?coleccion=jardineria" },
+  { label: "Huerto urbano", description: "Kits de cultivo, semilleros y mesas", href: "/productos?coleccion=jardineria&categoria=huerto-urbano" },
+  { label: "Herramientas de jardín", description: "Utensilios para plantar y cuidar", href: "/productos?coleccion=jardineria&categoria=herramientas" },
+  { label: "Riego y agua", description: "Regaderas y sistemas de riego", href: "/productos?coleccion=jardineria&categoria=riego" },
+  { label: "Fertilizantes y abonos", description: "Nutrición para tus plantas", href: "/productos?coleccion=jardineria&categoria=fertilizantes" },
+  { label: "Accesorios de jardinería", description: "Complementos para cultivar", href: "/productos?coleccion=jardineria&categoria=accesorios-jardin" },
+];
+
+const GARDENING_PROTECTION_SUBMENU = [
+  { label: "Fungicidas", description: "Tratamientos frente a hongos", href: "/productos?coleccion=jardineria&categoria=fungicidas" },
+  { label: "Acaricidas", description: "Tratamientos frente a ácaros", href: "/productos?coleccion=jardineria&categoria=acaricidas" },
+  { label: "Insecticidas", description: "Tratamientos frente a insectos", href: "/productos?coleccion=jardineria&categoria=insecticidas" },
+  { label: "Otros tratamientos fitosanitarios", description: "Otras opciones de protección", href: "/productos?coleccion=jardineria&categoria=tratamientos-fitosanitarios" },
+];
+
+const GARDENING_SERVICE_SUBMENU = [
   { label: "Servicios de huerto urbano", description: "Instalación, siembra y mantenimiento", href: "/servicios#huerto-urbano" },
 ];
 
@@ -510,23 +524,39 @@ function GardeningNavMenu({ active }: { active: boolean }) {
         Jardinería
         <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
       </Link>
-      <div className="pointer-events-none absolute left-1/2 top-full z-[80] w-80 -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-        <div className="rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
-          <div className="px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#718076]">
-            Jardinería y huerto urbano
+      <div className="pointer-events-none absolute left-1/2 top-full z-[80] w-[610px] max-w-[95vw] -translate-x-1/2 pt-3 opacity-0 transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <div className="rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-4 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
+          <div className="grid grid-cols-2 gap-4">
+            <section aria-label="Artículos de jardinería">
+              <p className="px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Artículos de jardinería</p>
+              {GARDENING_PRODUCT_SUBMENU.map((item) => (
+                <Link key={item.href} to={item.href} className="block rounded-xl px-3 py-2.5 transition hover:bg-[#eef2eb]">
+                  <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                  <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
+                </Link>
+              ))}
+            </section>
+            <div className="border-l border-[#eee8dd] pl-4">
+              <section aria-label="Protección vegetal">
+                <p className="px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Protección vegetal</p>
+                {GARDENING_PROTECTION_SUBMENU.map((item) => (
+                  <Link key={item.href} to={item.href} className="block rounded-xl px-3 py-2.5 transition hover:bg-[#eef2eb]">
+                    <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                    <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
+                  </Link>
+                ))}
+              </section>
+              <section aria-label="Servicios de jardinería" className="mt-3 border-t border-[#eee8dd] pt-2">
+                <p className="px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Servicios</p>
+                {GARDENING_SERVICE_SUBMENU.map((item) => (
+                  <Link key={item.href} to={item.href} className="block rounded-xl bg-[#edf4ee] px-3 py-2.5 transition hover:bg-[#dfece1]">
+                    <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                    <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
+                  </Link>
+                ))}
+              </section>
+            </div>
           </div>
-          {GARDENING_SUBMENU.map((item, index) => (
-            <Link
-              key={item.href}
-              to={item.href}
-              className={`block rounded-xl px-4 py-3 transition hover:bg-[#eef2eb] ${
-                index === 1 ? "bg-[#edf4ee]" : ""
-              }`}
-            >
-              <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
-              <span className="mt-1 block text-xs text-[#718076]">{item.description}</span>
-            </Link>
-          ))}
         </div>
       </div>
     </div>
@@ -557,21 +587,26 @@ function GardeningMobileNavMenu({ active }: { active: boolean }) {
             className="fixed inset-0 z-[70] cursor-default"
             onClick={() => setOpen(false)}
           />
-          <div
-            role="menu"
-            className="fixed left-4 right-4 top-[170px] z-[80] max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.18)]"
-          >
-            <div className="px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#718076]">Jardinería y huerto urbano</div>
-            {GARDENING_SUBMENU.map((item) => (
-              <Link
-                role="menuitem"
-                key={item.href}
-                to={item.href}
-                onClick={() => setOpen(false)}
-                className="block rounded-xl px-4 py-3 transition hover:bg-[#eef2eb]"
-              >
+          <div role="menu" className="fixed left-4 right-4 top-[170px] z-[80] max-h-[calc(100vh-190px)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.18)]">
+            <p className="px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Artículos de jardinería</p>
+            {GARDENING_PRODUCT_SUBMENU.map((item) => (
+              <Link role="menuitem" key={item.href} to={item.href} onClick={() => setOpen(false)} className="block rounded-xl px-4 py-2.5 hover:bg-[#eef2eb]">
                 <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
-                <span className="mt-1 block text-xs text-[#718076]">{item.description}</span>
+                <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
+              </Link>
+            ))}
+            <p className="mt-2 border-t border-[#eee8dd] px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Protección vegetal</p>
+            {GARDENING_PROTECTION_SUBMENU.map((item) => (
+              <Link role="menuitem" key={item.href} to={item.href} onClick={() => setOpen(false)} className="block rounded-xl px-4 py-2.5 hover:bg-[#eef2eb]">
+                <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
+              </Link>
+            ))}
+            <p className="mt-2 border-t border-[#eee8dd] px-4 pb-2 pt-3 text-[11px] font-black uppercase tracking-[0.16em] text-[#315b42]">Servicios</p>
+            {GARDENING_SERVICE_SUBMENU.map((item) => (
+              <Link role="menuitem" key={item.href} to={item.href} onClick={() => setOpen(false)} className="block rounded-xl bg-[#edf4ee] px-4 py-2.5 hover:bg-[#dfece1]">
+                <span className="block text-sm font-black text-[#244a35]">{item.label}</span>
+                <span className="mt-0.5 block text-xs text-[#718076]">{item.description}</span>
               </Link>
             ))}
           </div>
