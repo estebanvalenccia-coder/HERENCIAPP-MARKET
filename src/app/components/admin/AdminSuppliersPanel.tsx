@@ -2,6 +2,7 @@ import { SUPPLIER_PRESETS, CJ_PREVIEW_COUNTRIES } from "../../lib/supplierMarket
 import { AdminSupplierCostComparison } from "./AdminSupplierCostComparison";
 import { AdminProviderApiQuotes } from "./AdminProviderApiQuotes";
 import { AdminSupplierFileImport } from "./AdminSupplierFileImport";
+import { AdminSupplierCatalogUrlImport } from "./AdminSupplierCatalogUrlImport";
 import { AdminSupplierOperations } from "./AdminSupplierOperations";
 import { AdminCjAutomationStatus } from "./AdminCjAutomationStatus";
 import { DropshippingLaunchGuide } from "./DropshippingLaunchGuide";
@@ -1167,6 +1168,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             {id:"supplier-compare",name:"Comparar costes"},
             {id:"supplier-printful",name:"Printful API"},
             {id:"supplier-file-import",name:"Importar CSV/JSON/XML"},
+             {id:"supplier-url-catalog",name:"Importar catálogo por URL"},
             {id:"supplier-operations",name:"Incidencias y costes"},
             {id:"supplier-new",name:"Añadir proveedor"},
             {id:"supplier-dsers-csv",name:"DSers CSV"},
@@ -1179,6 +1181,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     <AdminSupplierCostComparison suppliers={suppliers}/>
     <AdminProviderApiQuotes/>
     <AdminSupplierFileImport suppliers={suppliers} onOpenProduct={onOpenProduct} onCompleted={load}/>
+    <AdminSupplierCatalogUrlImport onOpenProduct={onOpenProduct}/>
     <AdminSupplierOperations suppliers={suppliers} onOpenProduct={onOpenProduct}/>
     <AdminCjAutomationStatus/>
 
