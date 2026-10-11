@@ -40,7 +40,7 @@ test("a remote action can never be released without external reconciliation",()=
   assert.throws(()=>settle(raw,"order-1","committed"),/no ha confirmado/);
   assert.equal(settle(raw,"order-1","uncertain").status,"uncertain");
   const uncertain=settle(raw,"order-1","uncertain").ledger;
-  assert.throws(()=>settle(uncertain,"order-1","uncertain",{providerEvidence:false}).idempotent,false);
+  assert.equal(settle(uncertain,"order-1","uncertain",{providerEvidence:false}).idempotent,true);
   const finished=settle(uncertain,"order-1","committed",{providerEvidence:true});
   assert.equal(readCjBudgetLedger(finished.ledger,date).reservations[0].status,"committed");
   assert.throws(()=>settle(finished.ledger,"order-1","released",{remoteActionAttempted:false}),/liberar/);
