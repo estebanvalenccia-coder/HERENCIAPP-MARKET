@@ -20,6 +20,7 @@ import {
   Download,
   EyeOff,
   Eye,
+  X,
   Trash2,
   Unlink2,
   Link2,
@@ -104,6 +105,20 @@ function fulfillmentBadge(status = "") {
   return normalized || "pendiente";
 }
 
+// Personal display preferences only: never change public products, connections or order status.
+const HIDDEN_SUPPLIERS_KEY = "herencia:supplier-hub:hidden-suppliers:v1";
+const HIDDEN_FULFILLMENTS_KEY = "herencia:supplier-hub:hidden-fulfillments:v1";
+
+function readHiddenIds(key: string): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (productId: string) => void }) {
   const [operations, setOperations] = useState<any>({ suppliers: [], purchases: [], supplierFulfillments: [] });
   const [products, setProducts] = useState<any[]>([]);
@@ -152,6 +167,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [queueSupplierFilter, setQueueSupplierFilter] = useState("all");
   const [queueStatusFilter, setQueueStatusFilter] = useState("active");
+  const [hiddenSupplierIds, setHiddenSupplierIds] = useState<string[]>(() => readHiddenIds(HIDDEN_SUPPLIERS_KEY));
+  const [hiddenFulfillmentIds, setHiddenFulfillmentIds] = useState<string[]>(() => readHiddenIds(HIDDEN_FULFILLMENTS_KEY));
+  const [showHiddenSuppliers, setShowHiddenSuppliers] = useState(false);
+  const [showHiddenFulfillments, setShowHiddenFulfillments] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
   const [existingProductId, setExistingProductId] = useState("");
@@ -207,7 +226,28 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     void load();
   }, []);
 
+  useEffect(() => {
+    try { window.localStorage.setItem(HIDDEN_SUPPLIERS_KEY, JSON.stringify(hiddenSupplierIds)); } catch { /* Storage may be disabled. */ }
+  }, [hiddenSupplierIds]);
+  useEffect(() => {
+    try { window.localStorage.setItem(HIDDEN_FULFILLMENTS_KEY, JSON.stringify(hiddenFulfillmentIds)); } catch { /* Storage may be disabled. */ }
+  }, [hiddenFulfillmentIds]);
+  useEffect(() => {
+    if (!cjApprovalAction || !cjApprovalPreview || cjApprovalSubmitting) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCjApprovalAction(null);
+        setCjApprovalPreview(null);
+      }
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [cjApprovalAction, cjApprovalPreview, cjApprovalSubmitting]);
+
   const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
+  const hiddenSupplierCount = suppliers.filter((supplier: any) => hiddenSupplierIds.includes(String(supplier.id))).length;
+  const registeredSuppliers = suppliers.filter((supplier: any) =>
+    showHiddenSuppliers || !hiddenSupplierIds.includes(String(supplier.id)));
   const importedProducts = useMemo(() =>
     products.filter((product: any) => {
       const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : product;
@@ -1000,7 +1040,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     String(item.supplierId || item.supplierName || "unassigned"),
     { id: String(item.supplierId || item.supplierName || "unassigned"), name: String(item.supplierName || "Sin proveedor") },
   ])).values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const hiddenFulfillmentCount = fulfillments.filter((item: any) =>
+    hiddenFulfillmentIds.includes(String(item.id))).length;
   const displayedFulfillments = fulfillments.filter((item: any) => {
+    if (!showHiddenFulfillments && hiddenFulfillmentIds.includes(String(item.id))) return false;
     const supplierId = String(item.supplierId || item.supplierName || "unassigned");
     if (queueSupplierFilter !== "all" && queueSupplierFilter !== supplierId) return false;
     const status = String(item.status || "");
@@ -1545,10 +1588,19 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <h2 className="text-xl font-bold">Cola de pedidos a proveedores</h2>
           <p className="text-sm text-muted-foreground">Los pedidos pagados y gratuitos se preparan para revisión. Sincronizar actualiza presupuestos pendientes sin volver a comprar pedidos enviados.</p>
         </div>
-        <button disabled={syncingPaidOrders} onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
-          <RefreshCw className={"h-4 w-4" + (syncingPaidOrders ? " animate-spin" : "")}/>{syncingPaidOrders ? "Actualizando cola…" : "Sincronizar pedidos pagados"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {hiddenFulfillmentCount > 0 && <button type="button" aria-pressed={showHiddenFulfillments}
+            onClick={() => setShowHiddenFulfillments(value => !value)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold">
+            {showHiddenFulfillments ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+            {showHiddenFulfillments ? "Ocultar los cerrados" : `Ver ocultos (${hiddenFulfillmentCount})`}
+          </button>}
+          <button disabled={syncingPaidOrders} onClick={() => void syncPaidOrders()} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
+            <RefreshCw className={"h-4 w-4" + (syncingPaidOrders ? " animate-spin" : "")}/>{syncingPaidOrders ? "Actualizando cola…" : "Sincronizar pedidos pagados"}
+          </button>
+        </div>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">Cerrar una tarjeta solo la oculta de este navegador: no cancela ni elimina el pedido. Puedes recuperarla desde «Ver ocultos».</p>
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Proveedor
@@ -1581,11 +1633,13 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             const isCjFulfillment = item.provider === "cj" ||
               suppliers.some((supplier: any) => String(supplier.id) === String(item.supplierId) && supplier.integrationType === "cj");
             const estimate = item.items?.[0]?.cjPricingEstimate;
-            return <div key={item.id} className="rounded-2xl border border-border p-4">
+            const isHidden = hiddenFulfillmentIds.includes(String(item.id));
+            return <div key={item.id} className={`rounded-2xl border border-border p-4 ${isHidden ? "bg-muted/30" : ""}`}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-bold">Pedido #{String(item.orderId || "").slice(0, 8)}</p>
+                    {isHidden && <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">Oculto de mi vista</span>}
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{item.mode === "autopilot" ? "🤖 AUTOPILOT" : "🖱️ MANUAL"}</span>
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{fulfillmentBadge(item.status)}</span>
                   </div>
@@ -1600,6 +1654,14 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
                   {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button type="button" aria-label={isHidden ? "Restaurar pedido a mi vista" : "Cerrar tarjeta de pedido sin cancelarlo"}
+                    title={isHidden ? "Volver a mostrar el pedido" : "Quitar de mi vista sin borrar ni cancelar el pedido"}
+                    onClick={() => setHiddenFulfillmentIds(current =>
+                      isHidden ? current.filter(id => id !== String(item.id)) : [...new Set([...current, String(item.id)])])}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold">
+                    {isHidden ? <Eye className="h-4 w-4"/> : <X className="h-4 w-4"/>}
+                    {isHidden ? "Restaurar" : "Cerrar"}
+                  </button>
                   {sourceUrl && <button onClick={() => window.open(sourceUrl, "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold"><ExternalLink className="h-4 w-4"/>Proveedor</button>}
                   {item.mode === "manual" && !["ordered","shipped","delivered"].includes(String(item.status || "")) && <button disabled={processingId===String(item.id)} onClick={() => void executeFulfillment(item)} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><MousePointerClick className="h-4 w-4"/>Preparar compra</button>}
                   {isCjFulfillment && !["ordered","shipped","delivered","closed","cancelled","canceled"].includes(String(item.status || "")) &&
@@ -1636,12 +1698,23 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <h2 className="mt-1 text-xl font-bold">Proveedores y conexiones</h2>
           <p className="mt-1 text-sm text-muted-foreground">Cada proveedor tiene sus propios permisos y método de gestión. «Registrado» no significa que pueda recibir pedidos automáticos.</p>
         </div>
-        <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">+ Nuevo proveedor</button>
+        <div className="flex flex-wrap gap-2">
+          {hiddenSupplierCount > 0 && <button type="button" aria-pressed={showHiddenSuppliers}
+            onClick={() => setShowHiddenSuppliers(value => !value)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">
+            {showHiddenSuppliers ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+            {showHiddenSuppliers ? "Ocultar los ocultos" : `Ver ocultos (${hiddenSupplierCount})`}
+          </button>}
+          <button type="button" onClick={() => document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">+ Nuevo proveedor</button>
+        </div>
       </div>
+      <p className="text-xs text-muted-foreground">El ojo controla tu vista de esta lista. No desactiva la tienda pública, la integración ni los productos del proveedor.</p>
       <div className="mt-4 space-y-2">
-        {!suppliers.length ? <p className="text-sm text-muted-foreground">Aún no hay proveedores.</p> :
-          suppliers.map((supplier: any) => {
+        {!registeredSuppliers.length ? <p className="text-sm text-muted-foreground">
+          {suppliers.length ? "Todos los proveedores están ocultos. Pulsa «Ver ocultos» para recuperarlos." : "Aún no hay proveedores."}
+        </p> :
+          registeredSuppliers.map((supplier: any) => {
             const status = supplierConnectorStatuses.find(item => item.supplierId === String(supplier.id));
             const modeLabel = {
               cj: "CJ API",
@@ -1650,13 +1723,22 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               csv: "CSV",
               manual: "Manual",
             }[String(supplier.integrationType || "manual")] || "Manual";
-            return <div key={supplier.id} className="rounded-xl border border-border p-4">
+            const isHidden = hiddenSupplierIds.includes(String(supplier.id));
+            return <div key={supplier.id} className={`rounded-xl border border-border p-4 ${isHidden ? "bg-muted/30" : ""}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <button type="button" onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline">
-                  <p className="font-bold">{supplier.name} <span className="text-xs font-normal text-muted-foreground">· Editar</span></p>
+                  <p className="font-bold">{supplier.name} <span className="text-xs font-normal text-muted-foreground">· Editar</span>{isHidden && <span className="ml-2 text-xs font-normal text-muted-foreground"> · Oculto</span>}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio registrado"} · {supplier.category || "Sin categoría"}</p>
                 </button>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" aria-label={isHidden ? `Mostrar proveedor ${supplier.name}` : `Ocultar proveedor ${supplier.name} de mi vista`}
+                    title={isHidden ? "Mostrar este proveedor" : "Ocultar de mi vista sin desconectarlo"}
+                    onClick={() => setHiddenSupplierIds(current =>
+                      isHidden ? current.filter(id => id !== String(supplier.id)) : [...new Set([...current, String(supplier.id)])])}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold">
+                    {isHidden ? <Eye className="h-4 w-4"/> : <EyeOff className="h-4 w-4"/>}
+                    {isHidden ? "Mostrar" : "Ocultar"}
+                  </button>
                   <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{modeLabel}</span>
                   <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">
                     {supplier.fulfillmentMode === "autopilot" ? "Modo automatizado" : "Gestión manual"}
@@ -1689,8 +1771,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <h3 id="cj-manual-dialog-title" className="text-xl font-bold">
             {cjApprovalAction === "create" ? "Crear pedido CJ SIN pagar" : "Autorizar pago real al proveedor CJ"}
           </h3>
-          <button type="button" disabled={cjApprovalSubmitting} onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
-            className="rounded-lg border px-3 py-2 text-sm font-semibold">Cerrar</button>
+          <button type="button" disabled={cjApprovalSubmitting} aria-label="Cerrar revisión CJ sin autorizar ninguna operación"
+            onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold"><X className="h-4 w-4"/>Cerrar</button>
         </div>
         <p className="mb-3 text-sm text-muted-foreground">Pedido Herencia #{String(cjApprovalPreview.orderId).slice(0, 8)}. Son dos decisiones distintas: primero crear en CJ sin pagar, después autorizar el pago.</p>
         <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
