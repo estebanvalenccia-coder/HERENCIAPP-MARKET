@@ -19,7 +19,13 @@ export function eligibleCjLiveActions(ops={},mandate){
    if(record.status==="payment_required")
      return record.cjAutopilotMandateAt===mandate.createdAt &&
        Boolean(record.externalOrderId || record.cjShipmentOrderId);
-   return !record.externalOrderId && !record.cjShipmentOrderId;
+   // A new mandate must NEVER retroactively buy historical queued orders.
+   // Older orders remain supervised until the merchant approves them.
+   const queuedAt=Date.parse(String(record.createdAt||""));
+   const authorizedAt=Date.parse(String(mandate.createdAt||""));
+   return Number.isFinite(queuedAt)&&Number.isFinite(authorizedAt) &&
+     queuedAt>=authorizedAt &&
+     !record.externalOrderId && !record.cjShipmentOrderId;
  }).sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")) ||
      String(a.id).localeCompare(String(b.id)));
 }
