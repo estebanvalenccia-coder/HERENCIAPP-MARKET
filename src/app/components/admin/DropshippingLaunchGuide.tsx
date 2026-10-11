@@ -3,6 +3,7 @@ import {ArrowRight,CheckCircle2,ClipboardCheck,HelpCircle,
   LockKeyhole,RefreshCw,ShieldCheck,Store,TriangleAlert} from "lucide-react";
 import {backendApi} from "../../lib/backendStorage";
 import {buildDropshippingLaunchStatus} from "../../lib/dropshippingLaunchStatus.js";
+import {AdminCjDistanceSaleCompliance} from "./AdminCjDistanceSaleCompliance";
 
 type Readiness=Awaited<ReturnType<typeof backendApi.getCjAutomationReadiness>>;
 type Props={
@@ -103,6 +104,7 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
                 <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-900">
                   {p.issues.map((issue:string,i:number)=><li key={i}>{issue}</li>)}
                 </ul>
+                <AdminCjDistanceSaleCompliance product={products.find(item=>String(item?.id)===p.id)} onSaved={onRefresh}/>
               </div>
               <button type="button" onClick={()=>onOpenProduct(p.id)}
                 className="rounded-lg border border-border px-3 py-2 text-xs font-bold hover:bg-muted">
