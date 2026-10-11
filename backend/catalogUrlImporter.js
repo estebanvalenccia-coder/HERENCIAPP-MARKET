@@ -623,11 +623,69 @@ export async function analyzeProductUrl(urlValue) {
   };
 }
 
-export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {}) {
+/**
+ * Import one administrator-selected URL. A link may be the image itself or
+ * a public product page whose structured gallery identifies the correct photo.
+ * The remote bytes are never hotlinked into the storefront.
+ */
+export async function importImageFromPublicUrl(urlValue, { name = "imagen-producto" } = {}) {
+  const { uploadR2MediaBuffer, verifiedExistingR2Media } = await import("./r2Media.js");
+  const validated = await assertSafeExternalUrl(urlValue);
+  let previous = null;
+  try { previous = await verifiedExistingR2Media(validated.toString()); } catch {}
+  if (previous) return { ...previous, sourceUrl: validated.toString() };
+
+  const fetched = await safeFetch(validated.toString(), {
+    maxBytes: MAX_IMAGE_BYTES,
+    accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,text/html;q=0.8,*/*;q=0.2",
+  });
+  const mimeType = String(fetched.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  if (["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(mimeType)) {
+    const media = await uploadR2MediaBuffer({ buffer: fetched.buffer, mimeType, filename: name });
+    return { ...media, sourceUrl: validated.toString() };
+  }
+
+  if (mimeType !== "text/html" && mimeType !== "application/xhtml+xml") {
+    throw Object.assign(new Error("El enlace no devuelve una imagen ni una página de producto. Abre la foto y copia su dirección, o súbela desde tu equipo."), { statusCode: 422 });
+  }
+  if (fetched.buffer.length > MAX_HTML_BYTES) {
+    throw Object.assign(new Error("La página es demasiado grande para extraer su fotografía"), { statusCode: 413 });
+  }
+
+  const pageImages = productImageCandidatesFromHtml(fetched.buffer.toString("utf8"), fetched.url);
+  let mirrored;
+  try {
+    mirrored = await mirrorRemoteProductImages(
+      { name, images: pageImages },
+      { maxImages: 1, maxCandidates: 5 }
+    );
+  } catch (error) {
+    if (error?.statusCode === 400) throw error;
+    throw Object.assign(
+      new Error("Encontramos fotografías en esa página, pero el proveedor no permite descargarlas. Abre una fotografía, copia su dirección directa o súbela desde tu dispositivo."),
+      { statusCode: 422, cause: error }
+    );
+  }
+  return { ...mirrored[0], sourceUrl: validated.toString() };
+}
+
+export function productImageCandidatesFromHtml(html, pageUrl) {
+  if (supplierChallengeHtml(html)) {
+    throw Object.assign(new Error("La página solicita verificación humana; no podemos copiar automáticamente esa fotografía."), { statusCode: 422 });
+  }
+  const details = productDetailsFromHtml(html, pageUrl);
+  if (!details.name || !details.images?.length || isSupplierChallengeName(details.name)) {
+    throw Object.assign(new Error("La página no contiene fotografías de producto identificables. Utiliza una URL directa de imagen."), { statusCode: 422 });
+  }
+  return details.images.slice(0, 8);
+}
+
+export async function mirrorRemoteProductImages(product, { maxImages = 8, maxCandidates = 8 } = {}) {
   const { uploadR2MediaBuffer, verifiedExistingR2Media } = await import("./r2Media.js");
   const source = Array.isArray(product?.images) && product.images.length ? product.images : product?.image ? [product.image] : [];
-  const unique = [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, Math.max(1, Math.min(8, maxImages)));
+  const unique = [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, Math.max(1, Math.min(8, maxCandidates)));
   const media = [];
+  const failures = [];
 
   for (let index = 0; index < unique.length; index += 1) {
     try {
@@ -637,6 +695,7 @@ export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {})
       try { existing = await verifiedExistingR2Media(unique[index]); } catch {}
       if (existing) {
         media.push(existing);
+        if (media.length >= maxImages) break;
         continue;
       }
       const fetched = await safeFetch(unique[index], {
@@ -651,11 +710,20 @@ export async function mirrorRemoteProductImages(product, { maxImages = 8 } = {})
         filename: String(product?.name || "producto") + "-" + (index + 1),
       });
       media.push({ ...uploaded, sourceUrl: unique[index] });
-    } catch {}
+      if (media.length >= maxImages) break;
+    } catch (error) {
+      failures.push(error);
+    }
   }
 
   if (unique.length && !media.length) {
-    throw Object.assign(new Error("No se pudo copiar ninguna imagen del proveedor a Cloudflare R2"), { statusCode: 502 });
+    const blocked = failures.find((error) => Number(error?.statusCode) === 422);
+    const message = blocked
+      ? "El proveedor impide descargar esa fotografía (" + blocked.message + "). Utiliza una imagen pública directa o súbela desde tu dispositivo."
+      : failures.length
+        ? "No se pudo copiar la imagen (" + String(failures[0]?.message || "el proveedor no respondió") + "). Prueba otra URL o súbela desde tu dispositivo."
+        : "La URL no devuelve una imagen en formato JPG, PNG, WEBP, GIF o AVIF. Comprueba el enlace directo.";
+    throw Object.assign(new Error(message), { statusCode: blocked ? 422 : 502 });
   }
   return media;
 }
