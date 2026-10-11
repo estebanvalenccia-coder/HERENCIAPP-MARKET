@@ -400,6 +400,15 @@ export const backendApi = {
     });
   },
 
+  async getCjPublicAvailability(productId: string, selectedVariant = "") {
+    return request<{
+      ok:true;provider:"cj";productId:string;origin:"CN";vid:string;
+      selectedVariant:string;verified:boolean;fresh:boolean;available:boolean;
+      quantity:number|null;checkedAt:string|null;notReserved:true;
+      checkoutRevalidates:true;source:string;message:string;
+    }>(`/api/commerce/cj-availability?productId=${encodeURIComponent(productId)}&selectedVariant=${encodeURIComponent(selectedVariant)}`);
+  },
+
   async listCjProductVariants(productId: string) {
     return request<{
       ok: boolean;
