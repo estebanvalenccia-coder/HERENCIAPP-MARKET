@@ -95,7 +95,7 @@ export function readCjBudgetLedger(raw,date){
   if(!data.reservations.every(x=>x&&typeof x==="object" &&
       /^[A-Za-z0-9_-]{1,120}$/.test(String(x.fulfillmentId||"")) &&
       Number.isSafeInteger(x.amountCents) && x.amountCents>0 &&
-      ["reserved","committed","uncertain"].includes(x.status)))
+      ["reserved","committed","uncertain","released"].includes(x.status)))
     err("El registro de reservas de CJ está dañado; no se puede gastar saldo.");
   return {date:day,reservations:data.reservations};
 }
@@ -113,13 +113,64 @@ export function reserveCjDailyBudget(raw,{policy,fulfillmentId,amountEur,
   if(amount>maxOne)err("El pedido supera el presupuesto individual.");
   if(ledger.reservations.some(x=>x.fulfillmentId===id))
     err("Ese pedido ya tiene una reserva. Concílialo antes de volver a intentarlo.",409);
-  const spent=ledger.reservations.reduce((sum,x)=>sum+x.amountCents,0);
+  // Released reservations remain as immutable tombstones (never reusable)
+  // but do not consume funds. Uncertain reservations ALWAYS count.
+  const spent=ledger.reservations.reduce((sum,x)=>
+    sum+(x.status==="released"?0:x.amountCents),0);
   if(spent+amount>maxDaily)err("El gasto acumulado supera el límite diario CJ.");
   const reservations=[...ledger.reservations,{fulfillmentId:id,amountCents:amount,status:"reserved",at:date}];
   return {ledger:JSON.stringify({date:day,reservations}),
     amountCents:amount,dailyUsedCents:spent+amount,dailyRemainingCents:maxDaily-spent-amount,
     canSpendRealMoney:false};
 }
+/**
+ * Settle an existing reservation with compare-and-swap in the caller.
+ * Only a reserved allocation can be released, and only if NO remote action
+ * has even been attempted. A network timeout MUST transition to "uncertain".
+ * Paid orders are marked "committed" after positive provider evidence.
+ */
+export function settleCjBudgetReservation(raw,{
+  fulfillmentId,status,date=new Date().toISOString(),
+  remoteActionAttempted=true,providerEvidence=false,
+}={}){
+  if(!["committed","uncertain","released"].includes(status))
+    err("Estado financiero CJ no admitido.");
+  const ledger=readCjBudgetLedger(raw,date);
+  const id=norm(fulfillmentId);
+  const index=ledger.reservations.findIndex(x=>x.fulfillmentId===id);
+  if(index<0)err("No existe una reserva CJ para ese pedido.",409);
+  const current=ledger.reservations[index];
+  if(current.status===status)
+    return {ledger:JSON.stringify(ledger),status,idempotent:true};
+  if(status==="released" &&
+     (current.status!=="reserved" || remoteActionAttempted!==false))
+    err("No se puede liberar una reserva después de intentar comprar.",409);
+  if(status==="committed" && (
+      !providerEvidence || !["reserved","uncertain"].includes(current.status)))
+    err("CJ no ha confirmado el gasto o la reserva ya está cerrada.",409);
+  if(status==="uncertain" && current.status!=="reserved")
+    err("El gasto incierto no admite cambios sin conciliación.",409);
+  const reservations=ledger.reservations.map((entry,i)=>i===index?
+    {...entry,status,updatedAt:date}:entry);
+  return {ledger:JSON.stringify({...ledger,reservations}),status,idempotent:false};
+}
+
+/** Read-only financial totals. A failed or corrupted ledger is a HARD blocker. */
+export function summarizeCjBudgetLedger(raw,{policy,date=new Date().toISOString()}={}){
+  const ledger=readCjBudgetLedger(raw,date);
+  const totalCents=ledger.reservations.reduce((sum,row)=>
+    sum+(row.status==="released"?0:row.amountCents),0);
+  const uncertainCents=ledger.reservations.reduce((sum,row)=>
+    sum+(row.status==="uncertain"?row.amountCents:0),0);
+  const maxCents=Number.isFinite(policy?.dailyMaxEur)?
+    Math.round(policy.dailyMaxEur*100):null;
+  return {day:ledger.date,reservations:ledger.reservations.length,
+    exposureEur:totalCents/100,uncertainEur:uncertainCents/100,
+    remainingEur:maxCents===null?null:Math.max(0,(maxCents-totalCents)/100),
+    withinBudget:maxCents!==null && totalCents<=maxCents,
+    canSpendRealMoney:false};
+}
+
 /**
  * Conservatively reconcile exposure from CJ supplier orders already initiated
  * today. Pending, unknown, and successfully ordered obligations ALL count.
