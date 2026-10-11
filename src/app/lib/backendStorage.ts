@@ -1285,6 +1285,14 @@ export const backendApi = {
     });
   },
 
+  async getCjAccountHealth() {
+    return request<{ok:true;health:null|{
+      provider:"cj";status:"verified"|"partial"|"failed"|"stale";checkedAt:string;
+      accountRead:boolean;balanceRead:boolean;createsOrders:false;paysOrders:false;
+      canAutomatePurchases:false;failureCodes:Array<{check:string;code:string}>;
+    };ordersAuthorized:false;paymentsAuthorized:false}>("/api/admin/suppliers/cj/account-health");
+  },
+
   async testCjSupplierConnection() {
     return request<{
       configured: boolean;

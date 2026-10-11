@@ -13,6 +13,7 @@ import { updateSupplierHubVisibility } from "./supplierHubVisibility.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
+import {CJ_ACCOUNT_HEALTH_KEY,runCjAccountHealthProbe,parseCjAccountHealth} from "./cjConnectionHealth.js";
 import { createCjAmbiguousReconciler,projectCjAmbiguousReconciliation } from "./cjAmbiguousReconciler.js";
 import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
@@ -6569,6 +6570,17 @@ app.post("/api/admin/suppliers/cj/test", requireAdmin, async (_req, res) => {
   }
 });
 
+// Exposes the most recent automatically verified CJ read-only account probe to the admin.
+// This endpoint is safe, never authorizes supplier orders, and never contains account PII.
+app.get("/api/admin/suppliers/cj/account-health",requireAdmin,async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const health=parseCjAccountHealth(await readNeonStorageValue(CJ_ACCOUNT_HEALTH_KEY));
+    res.setHeader("Cache-Control","no-store");
+    return res.json({ok:true,health,ordersAuthorized:false,paymentsAuthorized:false});
+  }catch(_error){return res.status(503).json({error:"No se pudo consultar la comprobación de CJ."});}
+});
+
 // CJ orders are checked through the existing Herencia API key. This is a
 // strictly read-only, administrator-authenticated diagnostic: no create/pay/confirm.
 app.get("/api/admin/suppliers/cj/order-audit", requireAdmin, async (req, res) => {
@@ -11255,7 +11267,23 @@ supportV2Export = supportV2.exportCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
+  // The first account verification happens after startup; subsequent checks are limited
+  // to once every six hours even though other safe workers run every 15 minutes.
+  let cjAccountLastProbeAt=0;
   const runBackgroundChecks = async () => {
+    if(cjConfigured() && Date.now()-cjAccountLastProbeAt>=6*3600000){
+      cjAccountLastProbeAt=Date.now();
+      try{
+        const health=await runCjAccountHealthProbe({
+          request:path=>cjRequest(path),
+          write:upsertNeonStorageValue,
+        });
+        console.info("[cj.account-health]",health.status,
+          "account="+health.accountRead,"balance="+health.balanceRead);
+      }catch(_error){
+        console.warn("[cj.account-health] read-only probe unavailable");
+      }
+    }
     try { await evaluateDelayedOrders(); } catch (error) { console.warn("Background delayed orders:", error?.message || error); }
     try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
     try { await monitorCjAutopilotExceptions(); }

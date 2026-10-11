@@ -31,6 +31,7 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
   const [readiness,setReadiness]=useState<Readiness|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
+  const [cjAccountHealth,setCjAccountHealth]=useState<null|{status:string;checkedAt:string;accountRead:boolean;balanceRead:boolean}>(null);
   const [cjTesting,setCjTesting]=useState(false);
   const [cjTest,setCjTest]=useState<{ok:boolean;message:string}|null>(null);
   const testCj=async()=>{
@@ -46,7 +47,14 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
   };
   const refresh=useCallback(async()=>{
     setLoading(true);setError("");
-    try{setReadiness(await backendApi.getCjAutomationReadiness());}
+    try{
+      const [status,health]=await Promise.all([
+        backendApi.getCjAutomationReadiness(),
+        backendApi.getCjAccountHealth().catch(()=>({health:null})),
+      ]);
+      setReadiness(status);
+      setCjAccountHealth(health.health);
+    }
     catch(e:any){
       setReadiness(null);
       setError(String(e?.message||"No se pudo consultar el estado CJ de producción."));
@@ -88,6 +96,18 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
         "border-emerald-200 bg-emerald-50 text-emerald-900":"border-amber-300 bg-amber-50 text-amber-950"}`}>
       {cjTest.ok?"Conexión CJ verificada: ":"Conexión CJ fallida: "}{cjTest.message}
     </p>}
+    <p className="mt-3 rounded-xl border border-border bg-muted/20 p-3 text-xs" role="status">
+      Estado de conexión CJ de producción: {loading?"Comprobando…":
+        cjAccountHealth?.status==="verified"?"Cuenta y saldo consultados correctamente con la API real (solo lectura).":
+        cjAccountHealth?.status==="partial"?"Conexión parcial: alguna consulta de cuenta o saldo no está autorizada.":
+        cjAccountHealth?.status==="failed"?"La API CJ no responde correctamente a cuenta y saldo.":
+        cjAccountHealth?.status==="stale"?"La última prueba CJ ha caducado, aún no es un resultado vigente.":
+        "Sin prueba automática registrada. El servidor la ejecuta al iniciar y periódicamente."}
+      {cjAccountHealth?.checkedAt && <span className="ml-2 text-muted-foreground">
+        Última consulta: {new Date(cjAccountHealth.checkedAt).toLocaleString("es-ES")}.
+      </span>}
+      <span className="ml-2 text-muted-foreground">Esta comprobación no verifica compras ni permite pagos.</span>
+    </p>
     {error&&<div role="alert" className="mt-4 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
       <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0"/><span>Estado de CJ sin verificar: {error}. No actives compras reales basándote en esta pantalla.</span>
     </div>}
