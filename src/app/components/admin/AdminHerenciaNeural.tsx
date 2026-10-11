@@ -274,7 +274,11 @@ export function AdminHerenciaNeural(){
    const started=Date.now();
    while(Date.now()-started<300000){
     const job=await backendApi.neuralCodeJob(jobId);
-    if(job.status==="FAILED")throw new Error(job.error||job.result?.message||"Error de programación");
+    if(job.status==="FAILED"){
+      // Terminal failure: do not revive the same failed task on every refresh.
+      try{window.sessionStorage.removeItem("herencia_neural_code_job")}catch{}
+      throw new Error(job.error||job.result?.message||"Error de programación");
+    }
     if(!["RUNNING","PENDING"].includes(String(job.status))){
      window.sessionStorage.removeItem("herencia_neural_code_job");
      await showCodeResult(job.result||{kind:"result",message:"La tarea finalizó. Consulta el historial."});
@@ -286,8 +290,8 @@ export function AdminHerenciaNeural(){
    // Keep the persisted id so refresh/reopen resumes the same job.
    setCodeMessages(m=>[...m,{role:"neural",text:"La tarea continúa en Neural. Puedes volver a abrir el panel para consultar su progreso.",kind:"code_job"}]);
   }catch(e:any){
-   if(/no encontrada|not found|404/i.test(String(e.message)))window.sessionStorage.removeItem("herencia_neural_code_job");
-   setCodeMessages(m=>[...m,{role:"neural",text:"Error consultando la tarea: "+String(e.message),kind:"error"}]);
+   if(/no encontrada|not found|404/i.test(String(e.message))){try{window.sessionStorage.removeItem("herencia_neural_code_job")}catch{}}
+   setCodeMessages(m=>[...m,{role:"neural",text:"La programación no se completó: "+String(e.message)+". No hay ningún cambio listo para publicar.",kind:"error"}]);
    await refresh();
   }finally{codeWatchRef.current=null;setCodeStage(null)}
  },[refresh,showCodeResult]);
