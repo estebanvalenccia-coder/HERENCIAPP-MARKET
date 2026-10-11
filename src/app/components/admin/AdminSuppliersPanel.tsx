@@ -1782,7 +1782,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             const archived = Boolean(supplier.archivedAt);
             return <div key={supplier.id} className={`rounded-xl border border-border p-4 ${isHidden ? "bg-muted/30" : ""}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <button type="button" onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline">
+                <button type="button" disabled={archived} onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline disabled:cursor-default disabled:opacity-70">
                   <p className="font-bold">{supplier.name} <span className="text-xs font-normal text-muted-foreground">· Editar</span>{isHidden && <span className="ml-2 text-xs font-normal text-muted-foreground"> · Oculto</span>}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio registrado"} · {supplier.category || "Sin categoría"}</p>
                 </button>
