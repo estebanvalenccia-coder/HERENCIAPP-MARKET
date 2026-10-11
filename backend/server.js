@@ -5182,6 +5182,19 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
 
+  // SECURITY: the historical 'execute' path skips the atomic external-action
+  // ledger and two-stage authorization. It must NEVER create or pay real CJ
+  // orders even when all Railway switches are true. Only the dedicated manual
+  // endpoints or the mandate-backed worker may execute financial actions.
+  if (supplier?.cjSandbox === false) {
+    return {
+      fulfillment: {...record,provider:"cj",status:"approval_required",
+        blocker:"La ejecución CJ antigua está deshabilitada. Utiliza el flujo transaccional y autorizado de CJ.",
+        updatedAt:now},
+      executed:false,manual:false,
+    };
+  }
+
   // Real CJ order creation has a separate explicit kill switch. Even with a paid
   // customer order and a live API key, regular Autopilot must not submit it.
   if (!force || String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED || "").toLowerCase() !== "true") {
