@@ -107,7 +107,6 @@ function fulfillmentBadge(status = "") {
 }
 
 // Personal display preferences only: never change public products, connections or order status.
-const HIDDEN_SUPPLIERS_KEY = "herencia:supplier-hub:hidden-suppliers:v1";
 const HIDDEN_FULFILLMENTS_KEY = "herencia:supplier-hub:hidden-fulfillments:v1";
 
 function readHiddenIds(key: string): string[] {
@@ -168,7 +167,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [onlyCjImports, setOnlyCjImports] = useState(false);
   const [queueSupplierFilter, setQueueSupplierFilter] = useState("all");
   const [queueStatusFilter, setQueueStatusFilter] = useState("active");
-  const [hiddenSupplierIds, setHiddenSupplierIds] = useState<string[]>(() => readHiddenIds(HIDDEN_SUPPLIERS_KEY));
+  const [showExcludedPresets,setShowExcludedPresets] = useState(false);
+  const [supplierManageBusy,setSupplierManageBusy] = useState("");
   const [hiddenFulfillmentIds, setHiddenFulfillmentIds] = useState<string[]>(() => readHiddenIds(HIDDEN_FULFILLMENTS_KEY));
   const [showHiddenSuppliers, setShowHiddenSuppliers] = useState(false);
   const [showHiddenFulfillments, setShowHiddenFulfillments] = useState(false);
@@ -228,9 +228,6 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   }, []);
 
   useEffect(() => {
-    try { window.localStorage.setItem(HIDDEN_SUPPLIERS_KEY, JSON.stringify(hiddenSupplierIds)); } catch { /* Storage may be disabled. */ }
-  }, [hiddenSupplierIds]);
-  useEffect(() => {
     try { window.localStorage.setItem(HIDDEN_FULFILLMENTS_KEY, JSON.stringify(hiddenFulfillmentIds)); } catch { /* Storage may be disabled. */ }
   }, [hiddenFulfillmentIds]);
   useEffect(() => {
@@ -246,9 +243,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   }, [cjApprovalAction, cjApprovalPreview, cjApprovalSubmitting]);
 
   const suppliers = Array.isArray(operations.suppliers) ? operations.suppliers : [];
-  const hiddenSupplierCount = suppliers.filter((supplier: any) => hiddenSupplierIds.includes(String(supplier.id))).length;
-  const registeredSuppliers = suppliers.filter((supplier: any) =>
-    showHiddenSuppliers || !hiddenSupplierIds.includes(String(supplier.id)));
+  const hiddenSupplierCount = suppliers.filter((supplier:any) => supplier.hiddenInSupplierHub===true || Boolean(supplier.archivedAt)).length;
+  const registeredSuppliers = suppliers.filter((supplier:any) => showHiddenSuppliers || (!supplier.hiddenInSupplierHub && !supplier.archivedAt));
+  const supplierPresetPreferences:Record<string,string> = operations.supplierPresetPreferences || {};
+  const visibleSupplierPresets = SUPPLIER_PRESETS.filter(p => !supplierPresetPreferences[p.id]);
+  const excludedSupplierPresets = SUPPLIER_PRESETS.filter(p => Boolean(supplierPresetPreferences[p.id]));
   const importedProducts = useMemo(() =>
     products.filter((product: any) => {
       const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : product;
@@ -366,6 +365,18 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     } finally {
       setLinkingExisting(false);
     }
+  };
+
+  const manageSupplier=async(scope:"preset"|"registered",id:string,action:"hide"|"show"|"remove"|"restore"|"archive")=>{
+    if(supplierManageBusy)return;
+    if(action==="archive"&&!window.confirm("¿Archivar proveedor? Se bloquearán nuevas compras, pero se conservará todo su historial."))return;
+    setSupplierManageBusy(scope+":"+id);
+    try{
+      const result=await backendApi.manageSupplierVisibility({scope,id,action});
+      setOperations(result.operations||operations);
+      toast.success(action==="archive"?"Proveedor archivado de forma segura.":"Preferencia de proveedores guardada.");
+    }catch(error:any){toast.error(error?.message||"No se pudo actualizar el proveedor.");}
+    finally{setSupplierManageBusy("");}
   };
 
   const saveSupplier = async () => {
@@ -1281,13 +1292,41 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               }}
               className="w-full rounded-xl border border-border bg-background p-3">
               <option value="">Selecciona una plantilla (opcional)</option>
-              {SUPPLIER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {visibleSupplierPresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <p className="mt-2 text-xs text-muted-foreground">
               Una plantilla solo rellena los datos del proveedor. No concede permisos API,
               no importa productos automáticamente ni autoriza compras reales.
               Temu y los proveedores sin API autorizada permanecen en modo manual.
             </p>
+            <div className="mt-4 space-y-2 rounded-xl border border-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold">Personalizar proveedores sugeridos</p>
+                <button type="button" onClick={()=>setShowExcludedPresets(v=>!v)}
+                  className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-bold">
+                  {showExcludedPresets?"Ocultar retiradas":`Ver ocultas/quitadas (${excludedSupplierPresets.length})`}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Ocultar o quitar plantillas solo modifica tus sugerencias. No altera pedidos, conexiones ni pagos.</p>
+              {(showExcludedPresets?SUPPLIER_PRESETS:visibleSupplierPresets).map(p=>{
+                const state=supplierPresetPreferences[p.id];
+                return <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+                  <span className="text-xs font-semibold">{p.name}{state?` · ${state==="removed"?"Quitada":"Oculta"}`:""}</span>
+                  <div className="flex gap-1.5">
+                    {state?<button type="button" disabled={Boolean(supplierManageBusy)}
+                      onClick={()=>void manageSupplier("preset",p.id,"restore")}
+                      className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold">Restaurar</button>:<>
+                      <button type="button" disabled={Boolean(supplierManageBusy)}
+                        onClick={()=>void manageSupplier("preset",p.id,"hide")}
+                        className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold">Ocultar</button>
+                      <button type="button" disabled={Boolean(supplierManageBusy)}
+                        onClick={()=>void manageSupplier("preset",p.id,"remove")}
+                        className="rounded-lg border border-border px-2 py-1.5 text-xs font-bold">Quitar</button>
+                    </>}
+                  </div>
+                </div>;
+              })}
+            </div>
           </div>
         )}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1725,7 +1764,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold">+ Nuevo proveedor</button>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">El ojo controla tu vista de esta lista. No desactiva la tienda pública, la integración ni los productos del proveedor.</p>
+      <p className="text-xs text-muted-foreground">Ocultar solo cambia la visibilidad administrativa y se guarda para todos tus dispositivos. Quitar/Archivar desactiva nuevas compras sin borrar el historial ni los productos públicos. Restaurar al panel no vuelve a activar las compras.</p>
       <div className="mt-4 space-y-2">
         {!registeredSuppliers.length ? <p className="text-sm text-muted-foreground">
           {suppliers.length ? "Todos los proveedores están ocultos. Pulsa «Ver ocultos» para recuperarlos." : "Aún no hay proveedores."}
@@ -1739,22 +1778,33 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               csv: "CSV",
               manual: "Manual",
             }[String(supplier.integrationType || "manual")] || "Manual";
-            const isHidden = hiddenSupplierIds.includes(String(supplier.id));
+            const isHidden = supplier.hiddenInSupplierHub === true || Boolean(supplier.archivedAt);
+            const archived = Boolean(supplier.archivedAt);
             return <div key={supplier.id} className={`rounded-xl border border-border p-4 ${isHidden ? "bg-muted/30" : ""}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <button type="button" onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline">
+                <button type="button" disabled={archived} onClick={() => editSupplier(supplier)} className="min-w-0 flex-1 text-left hover:underline disabled:cursor-default disabled:opacity-70">
                   <p className="font-bold">{supplier.name} <span className="text-xs font-normal text-muted-foreground">· Editar</span>{isHidden && <span className="ml-2 text-xs font-normal text-muted-foreground"> · Oculto</span>}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{supplier.sourceHost || "Sin dominio registrado"} · {supplier.category || "Sin categoría"}</p>
                 </button>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" aria-label={isHidden ? `Mostrar proveedor ${supplier.name}` : `Ocultar proveedor ${supplier.name} de mi vista`}
-                    title={isHidden ? "Mostrar este proveedor" : "Ocultar de mi vista sin desconectarlo"}
-                    onClick={() => setHiddenSupplierIds(current =>
-                      isHidden ? current.filter(id => id !== String(supplier.id)) : [...new Set([...current, String(supplier.id)])])}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold">
-                    {isHidden ? <Eye className="h-4 w-4"/> : <EyeOff className="h-4 w-4"/>}
-                    {isHidden ? "Mostrar" : "Ocultar"}
-                  </button>
+                  {archived?
+                    <button type="button" disabled={Boolean(supplierManageBusy)}
+                      onClick={()=>void manageSupplier("registered",String(supplier.id),"restore")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold">
+                      <Eye className="h-4 w-4"/>Restaurar al panel
+                    </button>:
+                    <button type="button" disabled={Boolean(supplierManageBusy)}
+                      onClick={()=>void manageSupplier("registered",String(supplier.id),isHidden?"show":"hide")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold">
+                      {isHidden?<Eye className="h-4 w-4"/>:<EyeOff className="h-4 w-4"/>}
+                      {isHidden?"Mostrar":"Ocultar"}
+                    </button>}
+                  {!archived&&<button type="button" disabled={Boolean(supplierManageBusy)}
+                    title="Archiva y bloquea nuevas compras sin borrar pedidos históricos"
+                    onClick={()=>void manageSupplier("registered",String(supplier.id),"archive")}
+                    className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs font-bold text-destructive">
+                    <Trash2 className="h-4 w-4"/>Quitar / Archivar
+                  </button>}
                   <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{modeLabel}</span>
                   <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">
                     {supplier.fulfillmentMode === "autopilot" ? "Modo automatizado" : "Gestión manual"}
