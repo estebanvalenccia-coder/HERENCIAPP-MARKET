@@ -43,6 +43,9 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   const meta = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
   const supplier = suppliers.find((entry)=>String(entry.id)===String(meta.supplierId || ""));
   if (!supplier || supplier.active === false || supplier.integrationType !== "cj") invalid("La conexión del proveedor CJ no está disponible.");
+  // A registered CJ API key is not proof of a production fulfillment account.
+  // Never charge a customer while the mapped CJ supplier is still in Sandbox.
+  if (supplier.cjSandbox !== false) invalid("Este artículo CJ no está disponible para la venta: el proveedor sigue en modo de pruebas (Sandbox). No se realizará ningún cobro.");
   // Resolve from the server-side persisted variants, never the cart's VID/SKU.
   const identity = resolveCjPurchasedVariant(product, item.selectedVariant);
   const vid = identity.vid;
