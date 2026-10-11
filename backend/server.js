@@ -6450,12 +6450,18 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       activationBlockers.push("La creación de pedidos reales CJ no está habilitada en Railway.");
     if(String(process.env.CJ_LIVE_PAYMENT_ENABLED).toLowerCase()!=="true")
       activationBlockers.push("Los pagos reales al proveedor CJ no están habilitados en Railway.");
-    activationBlockers.push("Falta autorizar formalmente el gasto desatendido y conectar un ejecutor de compras con su mandato y conciliación de saldo.");
-
+    const liveMandate=validateCjLiveMandate(
+      await readNeonStorageValue(CJ_LIVE_MANDATE_KEY),
+      {policy,suppliers:operations.suppliers||[]});
+    if(!liveMandate)
+      activationBlockers.push("Falta un mandato de gasto CJ firmado por el administrador con límites y caducidad.");
+    if(!cjLiveAutopilotEnabled())
+      activationBlockers.push("El ejecutor de compras CJ requiere CJ_LIVE_AUTOPILOT_ENABLED=true.");
+    const authorized=activationBlockers.length===0 && Boolean(liveMandate);
     res.setHeader("Cache-Control","no-store");
     return res.json({
       provider:"cj",configured:cjConfigured(),
-      activationBlockers,readyForUnattendedBuying:false,
+      activationBlockers,readyForUnattendedBuying:authorized,
       operationsReport,executionPlan,budgetSafety,
       operationsTotal:records.length,
       operationsSampleLimited:records.length>12,
@@ -6464,8 +6470,9 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       trackingBatchMax:3,trackingIntervalMinutes:15,counts,
       canCreateWithManualApproval:String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED).toLowerCase()==="true",
       canPayWithManualApproval:cjManualReadyForPayment(),
-      unattendedOrderCreationEnabled:false,unattendedSupplierPaymentEnabled:false,
-      whyNotAutomated:"Faltan presupuesto diario autorizado, verificación Stripe y prueba integral de compra sin duplicados.",
+      unattendedOrderCreationEnabled:authorized,unattendedSupplierPaymentEnabled:authorized,
+      whyNotAutomated:authorized?"Autopilot autorizado para pedidos CJ elegibles; cada acción revalida Stripe, almacén, precio, transporte, margen y presupuesto.":activationBlockers.join(" "),
+      liveMandateExpiresAt:liveMandate?.expiresAt||null,
       previews,readOnly:true,
     });
   }catch(error){
