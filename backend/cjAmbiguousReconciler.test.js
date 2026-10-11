@@ -102,7 +102,7 @@ test("lease blocks parallel workers, and payment uncertainty remains unchanged",
 test("real server wires reconciliation to read-only CJ GET and atomic state CAS",()=>{
  const server=readFileSync(new URL("./server.js",import.meta.url),"utf8");
  const begin=server.indexOf("const cjAmbiguousReconciler=createCjAmbiguousReconciler");
- const end=server.indexOf("// Admin may inspect this before",begin);
+ const end=server.indexOf("// Live procurement uses",begin);
  assert.ok(begin>0 && end>begin);
  const block=server.slice(begin,end);
  assert.match(block,/\/shopping\/order\/getOrderDetail/);
