@@ -1016,6 +1016,12 @@ export const backendApi = {
     });
   },
 
+  async manageSupplierVisibility(payload: { scope: "preset" | "registered"; id: string; action: "hide" | "show" | "remove" | "restore" | "archive" }) {
+    return request<{ok:boolean;operations:any;message:string}>("/api/admin/suppliers/manage-visibility",{
+      method:"POST",body:JSON.stringify(payload),
+    });
+  },
+
   async savePosSupplier(payload: any) {
     return request<{ supplier: any; operations: any }>("/api/pos/suppliers", {
       method: "POST",
