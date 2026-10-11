@@ -8,6 +8,8 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjtrackingreadonlylease:",
   "cjautopilotguardrails:",
   "cjautopilotbudget:",
+  "cjautopilotreconciliationlease:v1",
+  "cjautopilotreconciliationcursor:v1",
   "cjautopilotpreflightcache:v1:",
   "cjautopilotpreflightlease:v1",
   "cjautopilotpreflightcursor:v1",
