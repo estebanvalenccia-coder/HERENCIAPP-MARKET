@@ -1198,6 +1198,16 @@ export const backendApi = {
       unattendedOrderCreationEnabled:false;unattendedSupplierPaymentEnabled:false;
       whyNotAutomated:string;readOnly:true;
       operationsTotal:number;operationsSampleLimited:boolean;
+      executionPlan:{
+        results:Array<{id:string;stage:string;reason:string;createSupplierOrder:false;
+          paySupplier:false;automaticPurchaseAuthorized:false;actionRequiresAdmin:boolean}>;
+        totals:Record<string,number>;
+        hasAutomaticPurchases:false;hasAutomaticSupplierPayments:false;
+      };
+      budgetSafety:{day:string;reservations:number;exposureEur:number;uncertainEur:number;
+        remainingEur:number|null;withinBudget:boolean;canSpendRealMoney:false;
+        conservativeTotalEur:number;spendableEstimateEur:number|null;
+        fullyVerified:boolean;note:string};
       operationsReport:{
         provider:"cj";readOnly:true;automaticPurchasesEnabled:false;
         automaticPaymentsEnabled:false;policyConfigured:boolean;checkedAt:string;
