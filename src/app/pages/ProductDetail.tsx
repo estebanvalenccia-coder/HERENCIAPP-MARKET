@@ -8,6 +8,7 @@ import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/s
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
 import { isCjSupplierItem, assessCjPublicProductStatus } from "../lib/cjFulfillmentIdentity";
+import {assessCjDistanceSaleCompliance} from "../lib/cjDistanceSaleCompliance";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -194,6 +195,7 @@ export function ProductDetail() {
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
   const isCjProduct = isCjSupplierItem(product);
   const cjSellability = assessCjPublicProductStatus(product);
+  const cjLegal=assessCjDistanceSaleCompliance(product);
   const trackInventory = product?.trackInventory !== false;
   const stock = trackInventory
     ? Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)))
@@ -524,6 +526,17 @@ export function ProductDetail() {
             Este artículo está pendiente de configuración de envío: {cjSellability.blockers[0]}
             No se puede añadir al carrito hasta que Herencia lo verifique.
           </p>}
+          {isCjProduct && !cjLegal.ready && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="font-semibold">Artículo pendiente de información de seguridad y gestión de importación.</p>
+            <p className="mt-1">No puede añadirse al carrito hasta que la tienda documente fabricante, responsable UE cuando proceda y costes aduaneros.</p>
+          </div>}
+          {isCjProduct && cjLegal.ready && <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p className="font-semibold text-foreground">Información de seguridad del producto</p>
+            <p>Fabricante: {String(product.metadata?.gpsrManufacturerName||"")} · {String(product.metadata?.gpsrManufacturerPostalAddress||"")}</p>
+            <p>Contacto: {String(product.metadata?.gpsrManufacturerEmail||"")}</p>
+            {product.metadata?.gpsrEuResponsibleName && <p>Responsable UE: {String(product.metadata.gpsrEuResponsibleName)} · {String(product.metadata.gpsrEuResponsiblePostalAddress||"")} · {String(product.metadata.gpsrEuResponsibleEmail||"")}</p>}
+            {product.metadata?.gpsrSafetyWarningsEs && <p>Advertencias: {String(product.metadata.gpsrSafetyWarningsEs)}</p>}
+          </div>}
           {isCjProduct && cjSellability.availableToAdd &&
             <p role="status" className={"rounded-xl border p-3 text-sm " +
               (cjAvailability?.fresh && cjAvailability?.available ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
@@ -574,7 +587,7 @@ export function ProductDetail() {
           ) : detailConfig.showQuantity !== false ? (
             <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           ) : null}
-          <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || cjPendingVariantQuote ||
+          <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
             (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available)) ||
             (trackInventory && stock<=0)} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{
