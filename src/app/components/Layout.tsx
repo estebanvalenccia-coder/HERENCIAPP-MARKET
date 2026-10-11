@@ -230,6 +230,7 @@ export function Layout() {
                     />
                   )
                 )}
+                <MarketNavLink href="/consejos-jardineria" label="Consejos de Jardinería" active={isPathActive(location.pathname, "/consejos-jardineria")} />
                 {herenciaEnabled ? (
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
@@ -332,7 +333,8 @@ export function Layout() {
                   />
                 )
               )}
-              {herenciaEnabled ? (
+                <MarketNavLink href="/consejos-jardineria" label="Consejos de Jardinería" active={isPathActive(location.pathname, "/consejos-jardineria")} mobile />
+                {herenciaEnabled ? (
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
                   label={site.navigation.herencia.label || "Herenc(IA)"}
