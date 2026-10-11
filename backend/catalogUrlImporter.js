@@ -479,7 +479,42 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 export function guessCatalogTaxonomy(urlValue = "", label = "") {
-  const text = (String(urlValue) + " " + String(label)).toLowerCase();
+  // A provider host such as semillasbatlle.com must not make every product a seed.
+  // Classify from the product path/query and its actual label instead.
+  let productLocation = String(urlValue || "");
+  try {
+    const parsed = new URL(productLocation);
+    productLocation = `${parsed.pathname} ${parsed.search}`;
+  } catch {
+    // Relative product paths are also accepted.
+  }
+  const text = (productLocation + " " + String(label)).toLowerCase();
+
+  // Recognize garden-care products before broad seed/substrate keywords, because
+  // a kit can contain seeds and a foliar product can mention soil in its description.
+  const gardenCategory = /fungicid|anti[ -]?hongos?/.test(text)
+    ? "fungicidas"
+    : /acaricid|anti[ -]?[aá]caros?/.test(text)
+      ? "acaricidas"
+      : /insecticid/.test(text)
+        ? "insecticidas"
+        : /fitosanitari|protecci[oó]n vegetal/.test(text)
+          ? "tratamientos-fitosanitarios"
+          : /huerto[ -]?urbano|primer[ -]?huerto|kits?[ -]?(?:de[ -]?)?(?:cultivo|huerto)|semillero|mesa[s]?[ -]?de[ -]?cultivo/.test(text)
+            ? "huerto-urbano"
+            : /fertiliz/.test(text)
+              ? "fertilizantes"
+              : null;
+  if (gardenCategory) {
+    return {
+      category: gardenCategory,
+      collection: "jardineria",
+      type: "garden",
+      department: "Jardinería",
+      area: "Artículos de jardinería",
+      family: "Jardinería",
+    };
+  }
 
   if (/semilla|seed/.test(text)) {
     const isHuerto = /hort[ií]cola|hortaliza|tomate|pimiento|zanahoria|pepino|mel[oó]n|sand[ií]a|lechuga|cebolla|calabac[ií]n|berenjena|r[aá]bano|remolacha|jud[ií]a|guisante|ma[ií]z/.test(text);
