@@ -17,12 +17,14 @@ import { createCjAmbiguousReconciler,projectCjAmbiguousReconciliation } from "./
 import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
 import { summarizeCjAutopilotPlans } from "./cjAutopilotExecutionPlan.js";
-import {CJ_LIVE_MANDATE_KEY,buildCjLiveMandate,validateCjLiveMandate} from "./cjLiveAutopilotMandate.js";
+import {CJ_LIVE_MANDATE_KEY,buildCjLiveMandate,validateCjLiveMandate,cjLiveMandatePermits} from "./cjLiveAutopilotMandate.js";
+import {createCjLiveAutopilotRunner} from "./cjLiveAutopilotRunner.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
  CJ_POLICY_KEY, CJ_BUDGET_LEDGER_PREFIX,cjBudgetDay,
  readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
  assessCjAutopilotDryRun,summarizeCjDailyExposure,summarizeCjBudgetLedger,
+ reserveCjDailyBudget,settleCjBudgetReservation,readCjBudgetLedger,
 } from "./cjAutopilotPolicy.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
@@ -5098,7 +5100,10 @@ async function cjRequest(pathname, { method = "GET", query = null, body = null, 
   });
   const payload = await response.json().catch(() => ({}));
 
-  if ((response.status === 401 || payload?.code === 1600002) && retryAuth) {
+  // Supplier POST operations may already have succeeded before an auth
+  // response was lost. NEVER replay a financial create/payment automatically.
+  if (method.toUpperCase() === "GET" &&
+      (response.status === 401 || payload?.code === 1600002) && retryAuth) {
     cjTokenCache = { accessToken: "", refreshToken: "", expiresAt: 0 };
     await cjGetAccessToken({ force: true });
     return cjRequest(pathname, { method, query, body, retryAuth: false });
