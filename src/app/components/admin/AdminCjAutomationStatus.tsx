@@ -182,6 +182,13 @@ export function AdminCjAutomationStatus(){
       <p className="mt-1"><strong>Sincronización de seguimiento:</strong> {data?.trackingReadOnlyEnabled
         ?"Activa, de solo lectura":"Desactivada"}</p>
       <p className="mt-1"><strong>Compras totalmente automáticas:</strong> desactivadas; requieren reglas de gasto aprobadas y pruebas reales.</p>
+      {data?.activationBlockers?.length ? <div role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
+        <strong>Qué impide activar CJ Autopilot ahora</strong>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          {data.activationBlockers.map((reason,index)=><li key={index}>{reason}</li>)}
+        </ul>
+        <p className="mt-2 text-xs">Ningún cambio de proveedor, variable o presupuesto por sí solo autoriza cargos.</p>
+      </div> : null}
       <p className="mt-1"><strong>Pago automático a CJ:</strong> desactivado; el pago actual exige una segunda autorización.</p>
       <p className="mt-2 text-xs text-muted-foreground">
         Una clave detectada no garantiza una conexión válida en este momento.
