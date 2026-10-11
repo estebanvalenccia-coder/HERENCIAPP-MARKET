@@ -6949,8 +6949,11 @@ async function assertCjLiveMandate(record,expectedCreatedAt){
   const policy=readCjAutopilotPolicy(policyRaw);
   const mandate=validateCjLiveMandate(mandateRaw,{policy,suppliers:ops.suppliers||[]});
   const supplier=(ops.suppliers||[]).find(s=>String(s.id)===String(record.supplierId));
+  const inFlight=["cj_creating","cj_paying"].includes(String(record.status)) &&
+    record.cjAutopilotMandateAt===expectedCreatedAt;
+  const checkRecord=inFlight?{...record,status:"approval_required"}:record;
   if(!mandate || mandate.createdAt!==expectedCreatedAt ||
-     !cjLiveMandatePermits({mandate,record,supplier,amountEur:record.estimatedCost}) ||
+     !cjLiveMandatePermits({mandate,record:checkRecord,supplier,amountEur:record.estimatedCost}) ||
      !cjConfigured() || !cjLiveAutopilotEnabled() ||
      !cjManualReadyForPayment() ||
      String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED).toLowerCase()!=="true")
