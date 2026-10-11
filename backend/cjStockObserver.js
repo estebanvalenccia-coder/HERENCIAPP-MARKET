@@ -93,6 +93,14 @@ export function createCjStockObserver({
             if(stock.quantity===0)outOfStock++;
           } else {
             invalid++;
+            // Do not publish false stock. A valid response without exact
+            // CN warehouse evidence is a supplier-data issue, not 0 units.
+            logger.warn?.("[cj.stock-observer] stock not confirmed for exact VID in CN",{
+              productId:item.productId,
+              reason:stock?.verified===false?"UNVERIFIED_CN_STOCK":
+                stock?.vid!==item.vid?"VID_MISMATCH":
+                stock?.origin!=="CN"?"WAREHOUSE_MISMATCH":"INVALID_STOCK_RESPONSE",
+            });
           }
         }catch(e){
           // Never overwrite a previously verified observation with fake stock.
