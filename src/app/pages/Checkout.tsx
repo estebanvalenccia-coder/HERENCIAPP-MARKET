@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
-import { enrichCartWithCatalog, isCjSupplierItem } from "../lib/cjFulfillmentIdentity.js";
+import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
 
 const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
 const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", {
@@ -102,6 +102,7 @@ export function Checkout() {
   const hasCjItems = useMemo(() => shippingCartItems.some(isCjSupplierItem), [shippingCartItems]);
   const cjOnly = useMemo(() => shippingCartItems.length > 0 && shippingCartItems.every(isCjSupplierItem), [shippingCartItems]);
   const mixedCjCart = hasCjItems && !cjOnly;
+  const cjComposition = useMemo(() => validateCjCartComposition(shippingCartItems), [shippingCartItems]);
   const shippingCatalogPending = hasPhysicalItems && shippingCatalog === null;
   const deliveryMethod = onlyServices ? "servicio" : "envio";
 
@@ -307,8 +308,12 @@ export function Checkout() {
       toast.error(shippingCatalogError || "Espera a que verifiquemos el envío antes de continuar.");
       return false;
     }
-    if (mixedCjCart) {
-      toast.error("El envío directo de CJ y los productos de reparto local deben comprarse en pedidos separados.");
+    if (!cjComposition.valid) {
+      toast.error(cjComposition.message);
+      return false;
+    }
+    if (hasCjItems && !isStripePayment && !(coupon && total === 0)) {
+      toast.error("Los pedidos CJ necesitan tarjeta o Bizum verificado antes de crear el pedido al proveedor.");
       return false;
     }
     if (!cartItems.length) {
@@ -606,6 +611,9 @@ export function Checkout() {
                   )}
                 </>
               )}
+              {cjOnly && <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                El subtotal mostrado no incluye el transporte de CJ. El servidor cotizará tu código postal y mostrará el importe definitivo antes de confirmar el pago.
+              </p>}
               <div className="flex justify-between pt-2 text-lg font-bold">
                 <span>{onlyServices ? "Total de la reserva" : "Total"}</span>
                 <span>€{total.toFixed(2)}</span>
