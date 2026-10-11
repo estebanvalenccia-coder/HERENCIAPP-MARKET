@@ -25,7 +25,7 @@ export function readCjPreflightCache(raw,{nowMs=Date.now()}={}){
     !["eligible","blocked","unavailable"].includes(payload.status)||
     !Number.isFinite(Date.parse(payload.checkedAt||"")))return null;
   const age=nowMs-Date.parse(payload.checkedAt);
-  return {checkedAt:payload.checkedAt,status:payload.status,
+  return {checkedAt:payload.checkedAt,status:payload.status,sourceStatus:payload.sourceStatus,
     eligible:payload.status==="eligible",fresh:age>=0&&age<30*60_000,
     // Do not expose real-time supplier costs or Stripe details in the cache.
     message:payload.message||""};
