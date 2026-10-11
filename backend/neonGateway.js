@@ -27,6 +27,8 @@ import { summarizeCjVariantAudit } from "./cjBulkVariantAudit.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
+import { resolveCjPurchasedVariant } from "./cjVariantIdentity.js";
+import { cjObservationKey, isCjStockProduct, readCjObservation, createCjStockObserver } from "./cjStockObserver.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
@@ -1092,6 +1094,26 @@ const server=http.createServer(async(req,res)=>{try{
     return json(res,200,{collections,source:"neon"});
   }
 
+  // Public availability is a cached *observation*, not a reservation or
+  // authorization to buy. This endpoint never calls CJ and cannot exhaust its API.
+  if(path==="/api/commerce/cj-availability"&&req.method==="GET"){
+    const url=new URL(req.url,"http://localhost");
+    const productId=String(url.searchParams.get("productId")||"").trim();
+    const selectedVariant=String(url.searchParams.get("selectedVariant")||"");
+    if(!productId || productId.length>100 || selectedVariant.length>220)
+      return json(res,422,{error:"Selección de variante CJ no válida"});
+    const product=await getNeonCommerceProduct(productId);
+    if(!product || !isCjStockProduct(product))
+      return json(res,404,{error:"El artículo CJ no está disponible"});
+    let identity;
+    try{identity=resolveCjPurchasedVariant(product,selectedVariant);}
+    catch{return json(res,422,{error:"La variante solicitada no está vinculada a CJ"});}
+    const snapshot=await readNeonStorageValue(cjObservationKey(productId,identity.vid));
+    return json(res,200,{ok:true,productId,selectedVariant:identity.name,
+      ...readCjObservation(snapshot,{productId,vid:identity.vid}),
+      message:"Inventario consultado a CJ en segundo plano. El checkout verifica de nuevo precio, stock y transporte."});
+  }
+
   if(path==="/api/commerce/products"&&req.method==="GET"){
     const url=new URL(req.url,"http://localhost");
     const collection=String(url.searchParams.get("collection")||"");
@@ -1182,7 +1204,33 @@ const server=http.createServer(async(req,res)=>{try{
   return await proxy(req,res);
 }catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}const status=Number(error?.statusCode||500);return json(res,status,{error:status>=500?"Hybrid gateway error":"Solicitud no válida",message:error?.message||String(error)});}});
 
+// Stock observation updates supplier snapshots only; no storefront stock,
+ // orders or prices are modified. Small batches protect the shared CJ quota.
+const cjStockObserver=createCjStockObserver({
+  listProducts:()=>listNeonCommerceProducts({includeArchived:false}),
+  read:readNeonStorageValue,
+  upsert:upsertNeonStorageValue,
+  mutate:mutateNeonStorageValue,
+  queryStock:queryCjVariantStock,
+});
+const observerEnabled=Boolean(process.env.CJ_API_KEY) &&
+  String(process.env.CJ_STOCK_OBSERVER_ENABLED||"true").toLowerCase()!=="false";
+let cjStockObserverStartup=null, cjStockObserverInterval=null;
+function runCjStockObserver(){
+  cjStockObserver.sweep()
+    .then(result=>{
+      if(!["no_candidates","another_worker","already_running"].includes(result.status))
+        console.log("[cj.stock-observer]",result.status,"inspected="+result.inspected,"verified="+result.verified);
+    })
+    .catch(error=>console.warn("[cj.stock-observer] unavailable",String(error?.code||"READ_FAILED").slice(0,50)));
+}
 server.listen(publicPort,"0.0.0.0",async()=>{
+  if(observerEnabled){
+    cjStockObserverStartup=setTimeout(runCjStockObserver,20_000);
+    cjStockObserverStartup.unref?.();
+    cjStockObserverInterval=setInterval(runCjStockObserver,20*60_000);
+    cjStockObserverInterval.unref?.();
+  }
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
   if(hasR2){
     const status=await checkR2Connection({verifyWrite:true});
@@ -1192,4 +1240,8 @@ server.listen(publicPort,"0.0.0.0",async()=>{
     console.warn("[r2] not configured");
   }
 });
-process.on("SIGTERM",()=>{child.kill("SIGTERM");server.close(()=>process.exit(0));});
+process.on("SIGTERM",()=>{
+  if(cjStockObserverStartup)clearTimeout(cjStockObserverStartup);
+  if(cjStockObserverInterval)clearInterval(cjStockObserverInterval);
+  child.kill("SIGTERM");server.close(()=>process.exit(0));
+});
