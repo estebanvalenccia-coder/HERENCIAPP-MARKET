@@ -2,14 +2,17 @@
 // Never relax live checkout restrictions using this helper.
 import { CJ_PREVIEW_COUNTRIES } from "./supplierMarketplace.js";
 
-export function validateCjEuFreightPreview({ destination = "ES", zip = "" } = {}) {
+export function validateCjEuFreightPreview({ destination = "ES", zip = "", origin = "CN" } = {}) {
   const country = String(destination || "").trim().toUpperCase();
   const postalCode = String(zip || "").trim().toUpperCase();
+  const warehouseCountry = String(origin || "").trim().toUpperCase();
   const error = (message) => {
     const failure = new Error(message);
     failure.statusCode = 422;
     throw failure;
   };
+  if (!/^[A-Z]{2}$/.test(warehouseCountry))
+    error("El país de origen del almacén CJ no es válido.");
   if (!CJ_PREVIEW_COUNTRIES.includes(country))
     error("El país no está habilitado para consultas CJ. Selecciona un destino de la lista.");
   // All allowed countries permit a country-only informational preview.
@@ -20,7 +23,7 @@ export function validateCjEuFreightPreview({ destination = "ES", zip = "" } = {}
     error("El código postal de España debe tener cinco cifras.");
   return {
     destination: country, zip: postalCode,
-    origin: "CN", quantity: 1,
+    origin: warehouseCountry, quantity: 1,
     precision: postalCode ? "postal_estimate" : "country_estimate",
     checkoutEnabled: false,
     manualReviewRequired: true,
