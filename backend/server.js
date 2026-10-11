@@ -6304,7 +6304,7 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       });
     }
     const operationsReport=summarizeCjAutopilotOperations({
-      records:records.slice(0,12),suppliers,orders:queuedOrders,policy,
+      records:records.slice(0,12),exposureRecords:records,suppliers,orders:queuedOrders,policy,
     });
     res.setHeader("Cache-Control","no-store");
     return res.json({
