@@ -6345,7 +6345,9 @@ app.post("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (req,res)=>{
         if(!supplier)continue;
         const customer=await getOrderPrimary(row.orderId);
         if(!customer)continue;
-        await verifyCjCustomerFunding(customer,classifyCjOrderFunding(customer));
+        const funding=classifyCjOrderFunding(customer);
+        if(funding.storeFunded||funding.freeCoupon)continue;
+        await verifyCjCustomerFunding(customer,funding);
         const detail=await cjRequest("/shopping/order/getOrderDetail",{
           query:{orderId:String(row.externalOrderId)},
         });
