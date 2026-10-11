@@ -5,10 +5,21 @@
  */
 export const CJ_ACCOUNT_HEALTH_KEY="cjAccountConnectionHealth:v1";
 const safeCode=value=>String(value??"").replace(/[^A-Za-z0-9_-]/g,"").slice(0,35)||"UNAVAILABLE";
-export async function runCjAccountHealthProbe({request,write,now=()=>new Date().toISOString()}={}){
+export async function runCjAccountHealthProbe({
+  request,write,now=()=>new Date().toISOString(),
+  pause=()=>new Promise(resolve=>setTimeout(resolve,1300)),
+}={}){
   if(typeof request!=="function"||typeof write!=="function")throw new Error("CJ probe requires dependencies");
+  // CJ limits Free/new accounts to one request per second. Running both GETs
+  // concurrently produces provider code 1600200; space them without retrying
+  // failures, and do not call any order-creation or payment endpoints.
   const endpoints=["/setting/get","/shopping/pay/getBalance"];
-  const replies=await Promise.allSettled(endpoints.map(endpoint=>request(endpoint)));
+  const replies=[];
+  for(const endpoint of endpoints){
+    if(replies.length>0)await pause();
+    try{replies.push({status:"fulfilled",value:await request(endpoint)});}
+    catch(reason){replies.push({status:"rejected",reason});}
+  }
   const accountRead=replies[0].status==="fulfilled"&&replies[0].value?.result!==false;
   const balanceRead=replies[1].status==="fulfilled"&&replies[1].value?.result!==false;
   const status=accountRead&&balanceRead?"verified":accountRead||balanceRead?"partial":"failed";
