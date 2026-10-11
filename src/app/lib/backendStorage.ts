@@ -413,6 +413,20 @@ export const backendApi = {
     }>(`/api/admin/catalog/cj-variants?productId=${encodeURIComponent(productId)}`);
   },
 
+  async auditCjProductVariants(productId: string, offset = 0) {
+    return request<{
+      ok:true;productId:string;checkedAt:string;provider:"cj";readOnly:true;
+      totalVariants:number;inspected:number;offset:number;nextOffset:number|null;
+      batchMax:4;truncated:boolean;publicVariantCount:number;quotaPaused:boolean;
+      providerWarning?:string;warning:string;
+      variants:Array<{vid:string;sku:string;option:string;supplierPriceUsd:number|null;
+        publicMapped:boolean;publicPriceEur:number|null;
+        stock:{verified:boolean;available:boolean;quantity:number|null};issues:string[]}>;
+    }>("/api/admin/catalog/cj-variant-audit",{
+      method:"POST",body:JSON.stringify({productId,offset}),
+    });
+  },
+
   async checkCjVariantReadiness(productId: string, vid: string) {
     return request<{
       ok: true; productId: string; provider: "cj"; source: "cj_api";
