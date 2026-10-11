@@ -45,3 +45,41 @@ test("back-end authorization is presented only when explicitly confirmed",()=>{
  assert.equal(state.steps[4].state,"configured");
  assert.equal(state.automaticPurchasesVerified,true);
 });
+
+test("archived CJ imports do not count as available to launch",()=>{
+ const state=buildDropshippingLaunchStatus({
+   suppliers:[live],
+   products:[{id:"old",name:"Archived CJ import",status:"archived",
+     metadata:{fulfillmentType:"dropship",sourceHost:"cjdropshipping.com",supplierId:"cj-1"}}],
+   readiness:{configured:true,readyForUnattendedBuying:false},
+ });
+ assert.equal(state.linkedCount,0);
+ assert.equal(state.steps[1].state,"action_required");
+ assert.equal(state.activeCjProducts,0);
+});
+test("published CJ item with Sandbox and missing shipping is called out, never shown ready",()=>{
+ const state=buildDropshippingLaunchStatus({
+   suppliers:[{...live,cjSandbox:true}],
+   products:[{id:"garden",name:"Bolsa de jardinería",status:"active",price:14,stock:1,
+     metadata:{fulfillmentType:"dropship",sourceHost:"cjdropshipping.com",
+       supplierId:"cj-1",supplierSku:"CJFU224821801AZ",
+       supplierVariantId:"1869634031584169984",cjPreferredLogisticName:""}}],
+   readiness:{configured:true,readyForUnattendedBuying:false},
+ });
+ assert.equal(state.catalogReview.length,1);
+ assert.equal(state.activeCjProducts,1);
+ assert.ok(state.catalogReview[0].issues.some(x=>x.includes("Sandbox")));
+ assert.ok(state.catalogReview[0].issues.some(x=>x.includes("transporte")));
+ assert.equal(state.steps[0].state,"action_required");
+});
+test("a positive local stock and configured shipping do not certify CJ live availability",()=>{
+ const state=buildDropshippingLaunchStatus({
+   suppliers:[live],
+   products:[{id:"g",name:"CJ item",status:"active",price:40,stock:3,
+     metadata:{fulfillmentType:"dropship",sourceHost:"cjdropshipping.com",supplierId:"cj-1",
+       supplierSku:"sku",supplierVariantId:"12345678",cjPreferredLogisticName:"CJPacket"}}],
+   readiness:{configured:true,readyForUnattendedBuying:false},
+ });
+ assert.ok(state.catalogReview[0].issues.some(x=>x.includes("tiempo real")));
+ assert.equal(state.steps[4].state,"blocked");
+});
