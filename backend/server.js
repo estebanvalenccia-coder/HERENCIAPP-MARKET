@@ -6328,9 +6328,41 @@ app.post("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (req,res)=>{
   try{
     const operations=await readSupplierOperations();
     const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
-    const supervisedProof=(operations.supplierFulfillments||[]).some(r=>
-      r.cjManualAuthorization?.approvedByAdminAt && r.paidAt &&
-      r.externalOrderId && ["ordered","shipped","delivered"].includes(String(r.status)));
+    // A local "paid" field is not sufficient proof. Re-check CJ and the
+    // matching customer's live Stripe capture before approving unattended
+    // spending. Never issue a supplier create/pay call during activation.
+    let supervisedProof=false;
+    const candidates=(operations.supplierFulfillments||[]).filter(r=>
+      r.cjManualAuthorization?.approvedByAdminAt &&
+      r.cjManualAuthorization?.automatic!==true &&
+      r.paidAt && r.externalOrderId &&
+      ["ordered","shipped","delivered"].includes(String(r.status))).slice(0,3);
+    for(const row of candidates){
+      try{
+        const supplier=(operations.suppliers||[]).find(s=>
+          String(s.id)===String(row.supplierId) && s.active!==false &&
+          s.cjSandbox===false && supplierIntegrationType(s)==="cj");
+        if(!supplier)continue;
+        const customer=await getOrderPrimary(row.orderId);
+        if(!customer)continue;
+        await verifyCjCustomerFunding(customer,classifyCjOrderFunding(customer));
+        const detail=await cjRequest("/shopping/order/getOrderDetail",{
+          query:{orderId:String(row.externalOrderId)},
+        });
+        const remote=detail?.data||{};
+        const cost=Number(remote.actualPayment??remote.orderAmount);
+        if(String(remote.orderId||"")===String(row.externalOrderId) &&
+          ["PAID","UNSHIPPED","PROCESSING","COMPLETED","SHIPPED","DELIVERED"]
+            .includes(String(remote.orderStatus||"").toUpperCase()) &&
+          Number.isFinite(cost)&&cost>0 &&
+          cost<=Number(supplier.cjMaxPaymentUsd) &&
+          Math.abs(cost-Number(row.providerActualPayment))<0.01){
+          supervisedProof=true;break;
+        }
+      }catch{
+        // Any unknown result fails closed. Review the order in CJ manually.
+      }
+    }
     const encoded=buildCjLiveMandate(req.body,{
       policy,suppliers:operations.suppliers||[],supervisedProof,
       env:{
