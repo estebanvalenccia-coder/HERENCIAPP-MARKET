@@ -13,6 +13,7 @@ import { updateSupplierHubVisibility } from "./supplierHubVisibility.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
+import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
@@ -6203,14 +6204,11 @@ app.put("/api/admin/suppliers/cj/autopilot-guardrails",requireAdmin,async (req,r
 // A realistic but read-only PRE-PURCHASE check. Validates Stripe live capture,
 // exact CJ SKU, CN warehouse inventory, shipping to the real postal code,
 // costs and current budget policy; cannot reserve a supplier action.
-app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopilotPreflightLimiter,async (req,res)=>{
-  if(!requirePrimaryDatabase(res))return;
-  try{
+async function runCjAutopilotLivePreflight(fulfillmentId){
     const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
-    if(!policy.configured)return res.status(409).json({
-      error:"Primero guarda los límites por pedido, día y margen en modo simulación."
-    });
-    const {record,supplier,order}=await loadCjManualOrder(req.params.id);
+    if(!policy.configured)throw cjManualError(
+      "Primero guarda los límites por pedido, día y margen en modo simulación.");
+    const {record,supplier,order}=await loadCjManualOrder(fulfillmentId);
     if(!policy.allowedSupplierIds.includes(String(supplier.id)))
       throw cjManualError("CJ no está incluido en los proveedores autorizados en la simulación.");
     const info=validateManualCjCreate({record,supplier,order});
@@ -6246,7 +6244,7 @@ app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopi
       policy,record,supplier,order,stripeIntent,quote:observed,
       stock:fresh.stock,usdEurRate:fx.rate,dailyExposure,
     });
-    return res.json({...result,
+    return {...result,
       provider:"cj",fulfillmentId:String(record.id),
       currentSupplierCostUsd:fresh.liveTotalUsd,
       currentCostEur:observed.costEur,
@@ -6257,13 +6255,31 @@ app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopi
       fxProvider:fx.provider,fxCheckedAt:fx.checkedAt,
       liveSupplierOrderCreated:false,moneySpent:false,
       warning:"La prueba valida datos actuales, pero no reserva stock ni activa compras o pagos automáticos."
-    });
+    };
+}
+
+// Both manual UI checks and the background observer share this exact verifier.
+app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopilotPreflightLimiter,async (req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const result=await runCjAutopilotLivePreflight(req.params.id);
+    return res.json(result);
   }catch(error){
     return res.status(error.statusCode||503).json({
       error:String(error?.message||"No se pudo completar la simulación CJ").slice(0,230),
       supplierOrderCreated:false,moneySpent:false
     });
   }
+});
+
+const cjAutoPreflightScheduler=createCjPreflightScheduler({
+  load:async()=>({
+    policy:readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY)),
+    records:(await readSupplierOperations()).supplierFulfillments,
+  }),
+  read:readNeonStorageValue,write:upsertNeonStorageValue,
+  mutate:mutateNeonStorageValue,
+  check:runCjAutopilotLivePreflight,
 });
 
 // CJ automation health is a status/preflight, NOT a purchase approval.
@@ -6292,7 +6308,11 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       const supplier=suppliers.find(s=>String(s.id)===String(record.supplierId));
       const order=await getOrderPrimary(record.orderId).catch(()=>null);
       if(order)queuedOrders.push(order);
+      const cached=readCjPreflightCache(
+        await readNeonStorageValue(cjPreflightKey(record.id)),
+      );
       previews.push({
+        lastLivePreflight:cached && cached.sourceStatus===String(record.status) ? cached : null,
         fulfillmentId:record.id,orderId:record.orderId,status:record.status,
         ...explainCjAutomationReadiness({
           record,supplier,order,env:{
@@ -10802,6 +10822,12 @@ app.listen(port, () => {
     try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
     try { await monitorCjAutopilotExceptions(); }
     catch(error){console.warn("[cj.autopilot] read-only exception scan failed",String(error?.code||"READ_FAILED").slice(0,60));}
+    if(cjConfigured() && process.env.CJ_READ_ONLY_PREFLIGHT_ENABLED!=="false"){
+      try{
+        const result=await cjAutoPreflightScheduler.sweep();
+        if(result.checked)console.info("[cj.autopilot.preflight]",result.status,"checked=1");
+      }catch(error){console.warn("[cj.autopilot.preflight] check unavailable",String(error?.code||"CHECK_FAILED").slice(0,50));}
+    }
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
     if(cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false"){
