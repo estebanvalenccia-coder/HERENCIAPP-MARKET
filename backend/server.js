@@ -13,6 +13,7 @@ import { updateSupplierHubVisibility } from "./supplierHubVisibility.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
+import { createCjAmbiguousReconciler,projectCjAmbiguousReconciliation } from "./cjAmbiguousReconciler.js";
 import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
 import { summarizeCjAutopilotPlans } from "./cjAutopilotExecutionPlan.js";
@@ -6815,6 +6816,31 @@ async function verifyCjCustomerFunding(order, funding) {
   return intent;
 }
 
+// The read-only reconciler uses the SAME atomic supplier record transition as
+// manual CJ approvals, and rechecks the external order under its lock. It can
+// never create/pay orders or release an uncertain payment for a second debit.
+const cjAmbiguousReconciler=createCjAmbiguousReconciler({
+  load:readSupplierOperations,
+  fetchRemote:async(orderId)=>{
+    const response=await cjRequest("/shopping/order/getOrderDetail",{
+      query:{orderId},
+    });
+    return response?.data||null;
+  },
+  mutate:mutateNeonStorageValue,
+  apply:async(record,patch,{remote})=>mutateCjManualRecord(
+    record.id,[String(record.status)],patch,(current,supplier)=>{
+      if(String(current.externalOrderId)!==String(record.externalOrderId))
+        throw cjManualError("El identificador de CJ cambió durante la conciliación.");
+      const verified=projectCjAmbiguousReconciliation(current,supplier,remote);
+      if(!verified.verified || !verified.patch ||
+         verified.patch.status!==patch.status ||
+         verified.patch.providerActualPayment!==patch.providerActualPayment)
+        throw cjManualError("El estado CJ cambió mientras se conciliaba el pedido.");
+    }
+  ),
+});
+
 // Admin may inspect this before any real supplier action.
 app.get("/api/admin/supplier-fulfillments/:id/cj-manual-preview", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
@@ -10856,6 +10882,17 @@ app.listen(port, () => {
         const result=await cjAutoPreflightScheduler.sweep();
         if(result.checked)console.info("[cj.autopilot.preflight]",result.status,"checked=1");
       }catch(error){console.warn("[cj.autopilot.preflight] check unavailable",String(error?.code||"CHECK_FAILED").slice(0,50));}
+    }
+    // Read-only exception recovery: at most one existing CJ order per cycle,
+    // and never creates or pays it. Ambiguous payments remain blocked until
+    // CJ positively reports payment received and amounts/IDs are verified.
+    if(cjConfigured() && process.env.CJ_READ_ONLY_RECONCILIATION_ENABLED!=="false"){
+      try{
+        const result=await cjAmbiguousReconciler.sweep();
+        if(result.changed)console.info("[cj.reconciliation] verified existing order");
+      }catch(error){
+        console.warn("[cj.reconciliation] review needed",String(error?.code||"UNAVAILABLE").slice(0,50));
+      }
     }
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
