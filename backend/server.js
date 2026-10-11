@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
+import { updateSupplierHubVisibility } from "./supplierHubVisibility.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
@@ -7288,6 +7289,28 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     res.json({ supplier, operations: sanitizePosOperations(current) });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin-only, transactional UI visibility controls. "Archive" is a safe,
+// reversible retirement, never deletion of a supplier with historical orders.
+app.post("/api/admin/suppliers/manage-visibility", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  if (!hasNeon()) return res.status(503).json({error:"Se requiere Neon para guardar estos cambios con seguridad."});
+  try {
+    const request={scope:req.body?.scope,id:req.body?.id,action:req.body?.action};
+    const saved=await mutateNeonStorageValue("posOperations",raw=>{
+      const ops=parseStoredJson(raw,{suppliers:[],purchases:[],supplierFulfillments:[]});
+      return JSON.stringify(updateSupplierHubVisibility(ops,request).operations);
+    });
+    const updated=parseStoredJson(saved.value,{});
+    return res.json({ok:true,operations:sanitizePosOperations(updated),
+      scope:request.scope,id:request.id,action:request.action,
+      message:request.action==="archive"
+        ?"Proveedor archivado: no podrá recibir nuevas compras y se conserva su historial."
+        :"Preferencia guardada sin modificar compras, pedidos o pagos."});
+  } catch(error) {
+    return res.status(Number(error?.statusCode||500)).json({error:String(error?.message||"No se pudo actualizar el proveedor.").slice(0,260)});
   }
 });
 
