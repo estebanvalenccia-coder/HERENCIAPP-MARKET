@@ -21,21 +21,21 @@ test("only one CJ unit can enter checkout; local and services remain unrestricte
 
 test("unknown CJ stock cannot be published as a verified zero or available count",()=>{
   for (const row of [
-    {vid:"V",countryCode:"CN",storageNum:null},
-    {vid:"V",countryCode:"CN",storageNum:""},
-    {vid:"V",countryCode:"CN",storageNum:"bad"},
-    {vid:"V",countryCode:"CN",storageNum:-1},
-    {vid:"V",countryCode:"CN",storageNum:1.5},
+    {vid:"V",countryCode:"CN",cjInventoryNum:null},
+    {vid:"V",countryCode:"CN",cjInventoryNum:""},
+    {vid:"V",countryCode:"CN",cjInventoryNum:"bad"},
+    {vid:"V",countryCode:"CN",cjInventoryNum:-1},
+    {vid:"V",countryCode:"CN",cjInventoryNum:1.5},
   ]){
     const x=interpretCjVariantStock([row],"V","CN");
     assert.equal(x.verified,false);
     assert.equal(x.available,false);
   }
-  assert.equal(interpretCjVariantStock([{vid:"V",countryCode:"US",storageNum:200}],"V","CN").verified,false);
-  assert.deepEqual(interpretCjVariantStock([{vid:"V",countryCode:"CN",storageNum:0}],"V","CN"),{
+  assert.equal(interpretCjVariantStock([{vid:"V",countryCode:"US",cjInventoryNum:200}],"V","CN").verified,false);
+  assert.deepEqual(interpretCjVariantStock([{vid:"V",countryCode:"CN",cjInventoryNum:0}],"V","CN"),{
     verified:true,quantity:0,available:false,vid:"V",origin:"CN",source:"cj_api"
   });
-  assert.equal(interpretCjVariantStock([{vid:"V",countryCode:"CN",storageNum:3}],"V","CN").available,true);
+  assert.equal(interpretCjVariantStock([{vid:"V",countryCode:"CN",cjInventoryNum:3}],"V","CN").available,true);
 });
 
 test("cart and checkout both reject CJ multi-unit while Stripe still re-quotes backend",()=>{

@@ -8,11 +8,11 @@ const vid="1531107375489495040";
 
 test("warehouse stock includes only the exact CJ VID and origin; never invents inventory",()=>{
   const observed=interpretCjWarehouseStocks([
-    {vid,countryCode:"CN",storageNum:0},
-    {vid,countryCode:"US",storageNum:3},
-    {vid,countryCode:"us",storageNum:"4"},
-    {vid:"OTHER",countryCode:"DE",storageNum:999},
-    {vid,countryCode:"DE",storageNum:0},
+    {vid,countryCode:"CN",cjInventoryNum:0},
+    {vid,countryCode:"US",cjInventoryNum:3},
+    {vid,countryCode:"us",cjInventoryNum:"4"},
+    {vid:"OTHER",countryCode:"DE",cjInventoryNum:999},
+    {vid,countryCode:"DE",cjInventoryNum:0},
   ],vid);
   assert.equal(observed.verified,true);
   assert.deepEqual(observed.warehouses.find(x=>x.countryCode==="US"),{
@@ -26,11 +26,11 @@ test("warehouse stock includes only the exact CJ VID and origin; never invents i
 
 test("missing, non-numeric, negative or conflicting warehouse stock is unverified",()=>{
   const r=interpretCjWarehouseStocks([
-    {vid,countryCode:"DE",storageNum:""},
-    {vid,countryCode:"US",storageNum:5},
-    {vid,countryCode:"US",storageNum:-4},
-    {vid,countryCode:"XX",storageNum:"NaN"},
-    {vid,countryCode:"CA",storageNum:null},
+    {vid,countryCode:"DE",cjInventoryNum:""},
+    {vid,countryCode:"US",cjInventoryNum:5},
+    {vid,countryCode:"US",cjInventoryNum:-4},
+    {vid,countryCode:"XX",cjInventoryNum:"NaN"},
+    {vid,countryCode:"CA",cjInventoryNum:null},
   ],vid);
   for(const country of ["DE","US","XX","CA"]){
     const entry=r.warehouses.find(w=>w.countryCode===country);
