@@ -50,6 +50,49 @@ completo sin comprometer dinero o duplicar pedidos del proveedor.
 - Un fallo de proveedor no habilita reintentos de crear/pagar. El worker no
   devuelve ni crea pedidos, y nunca se conecta a rutas de `payBalance`.
 
+## Nueva fase: límites configurables y simulación verificable
+
+En **Administración → Dropshipping → CJ automatización** puedes guardar (sin
+valor predeterminado) un límite máximo en EUR por pedido, un máximo diario EUR,
+margen neto mínimo del 10–70 % y proveedores CJ reales autorizados. Se guardan
+bajo la clave privada `cjAutopilotGuardrails:v1`, accesible únicamente por
+rutas administrativas. El formulario rechaza intentos de habilitar compras,
+pagos, otro país o más de una unidad. Los valores siguen siendo una **propuesta
+de reglas** en modo simulación, no una autorización financiera de producción.
+
+La comprobación de un pedido ya preparado hace lecturas reales y limitadas de:
+- Stripe `paymentIntents.retrieve`, únicamente si el cobro del cliente
+  corresponde al PaymentIntent, está en modo producción, es EUR y figura
+  `succeeded`, con importe suficiente.
+- CJ: identidad exacta SKU/VID, stock de almacén CN, precio de variante y
+  logística española por código postal, con las mismas validaciones que el
+  paso manual de creación.
+- Tipo de cambio actualizado, coste de compra y flete actualizado, estimación
+  de comisión Stripe (1,5 % + 0,25 €), margen neto supuesto con IVA español
+  del 21 %, restricciones por proveedor y presupuesto diario.
+
+Para limitar el riesgo fiscal, las simulaciones excluyen automáticamente
+Canarias, Ceuta y Melilla. La lectura sólo es válida para una unidad con
+envío confirmado a España y no reserva existencias CJ. Las tarifas reales,
+comisiones e impuestos deben auditarse antes de activar pagos desatendidos.
+
+**El presupuesto diario en esta versión es una simulación conservadora** que
+suma los pedidos CJ ya creados, pendientes o de resultado incierto desde la
+cola interna en horario UTC. Una operación con costes desconocidos bloquea
+la aprobación. Se ha implementado y probado una reserva transaccional de
+presupuesto preparada para integrarla en las compras automáticas futuras,
+pero **no se le ha conectado ninguna función que gaste dinero**.
+
+Las rutas `autopilot-guardrails` y `autopilot-preflight/:id` necesitan una
+sesión de administrador, y las comprobaciones en vivo tienen limitación de
+peticiones para proteger la cuota de CJ.
+
+**No habilita auto-`createOrderV2` ni auto-`cjPayOrder`**. Para llegar a
+esa última fase deben existir límites de gasto **elegidos expresamente por
+el comerciante**, un mecanismo real de autorización, ensayos de conciliación
+ante timeout, reservas transaccionales antes del débito, pruebas de pagos
+Stripe/CJ sin duplicados y un pedido real supervisado.
+
 ## Para permitir compras desatendidas más adelante
 
 Se requiere una decisión expresa sobre los presupuestos **por pedido y por

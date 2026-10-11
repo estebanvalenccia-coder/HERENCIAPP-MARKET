@@ -6,6 +6,8 @@
 const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjmanualexternalaction:",
   "cjtrackingreadonlylease:",
+  "cjautopilotguardrails:",
+  "cjautopilotbudget:",
   "supplierwebhookdispatch:",
 ]);
 export function isPrivateSupplierStorageKey(key){
