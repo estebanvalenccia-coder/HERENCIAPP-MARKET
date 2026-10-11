@@ -155,7 +155,7 @@ test("all CJ autopilot policy endpoints enforce auth, never perform supplier cre
  assert.match(section,/verifyCjManualLiveCosts/);
  assert.match(section,/getUsdToEurRate/);
  assert.match(section,/summarizeCjDailyExposure/);
- assert.match(section,/mode.*simulaci/);
+ assert.match(section,/modo simulación/);
  assert.doesNotMatch(section,/createOrderV2|cjPayOrder|stripe\\.refund|paymentIntents\\.create|payBalance/);
 });
 test("generic storage API blocks private policy and ledger keys",()=>{
