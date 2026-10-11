@@ -11,6 +11,7 @@ type Props={
   fulfillments:any[];
   onNavigate:(target:string)=>void;
   onRefresh:()=>void;
+  onOpenProduct:(productId:string)=>void;
 };
 const tone:Record<string,string>={
   configured:"border-emerald-200 bg-emerald-50 text-emerald-900",
@@ -25,7 +26,7 @@ const label:Record<string,string>={
 };
 
 /** Visibility and guidance only: never submits an order, payment or mandate. */
-export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavigate,onRefresh}:Props){
+export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavigate,onRefresh,onOpenProduct}:Props){
   const [readiness,setReadiness]=useState<Readiness|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -86,6 +87,35 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
         </div>
       </li>)}
     </ol>
+    <div className="mt-5 rounded-2xl border border-border bg-muted/20 p-4">
+      <h3 className="font-bold">Estado de los productos CJ registrados</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {state.activeCjProducts} publicados · {state.linkedCount} vinculados no archivados.
+        Los archivados no cuentan como productos preparados para vender.
+      </p>
+      {state.catalogReview.filter(p=>p.status==="active").length===0?
+        <p className="mt-3 text-sm text-muted-foreground">No hay productos CJ publicados que revisar. Importa y prepara un borrador antes de vender.</p>:
+        <div className="mt-3 space-y-2">
+          {state.catalogReview.filter(p=>p.status==="active").slice(0,6).map(p=>
+            <div key={p.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-amber-200 bg-background p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{p.name}</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-900">
+                  {p.issues.map((issue:string,i:number)=><li key={i}>{issue}</li>)}
+                </ul>
+              </div>
+              <button type="button" onClick={()=>onOpenProduct(p.id)}
+                className="rounded-lg border border-border px-3 py-2 text-xs font-bold hover:bg-muted">
+                Revisar ficha
+              </button>
+            </div>)}
+          {state.activeCjProducts>6&&<p className="text-xs text-muted-foreground">Mostrando 6 productos. Consulta Productos para revisar los demás.</p>}
+        </div>}
+      <p className="mt-3 text-xs text-muted-foreground">
+        Este resumen no ejecuta pruebas de cobro. El checkout vuelve a consultar al proveedor
+        y bloquea un producto si CJ sigue en Sandbox, falta el transporte o no puede verificar costes o stock.
+      </p>
+    </div>
     <div className="mt-5 grid gap-4 lg:grid-cols-2">
       <div className="rounded-2xl border border-border bg-muted/25 p-4">
         <h3 className="flex items-center gap-2 font-bold"><ClipboardCheck className="h-5 w-5 text-primary"/>Siguiente acción</h3>
