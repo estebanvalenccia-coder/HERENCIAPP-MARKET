@@ -20,7 +20,7 @@ import {
   deleteR2Media,
   checkR2Connection,
 } from "./r2Media.js";
-import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
+import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, importImageFromPublicUrl, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
 import { previewCjProductUrl, queryCjProductVariants, queryCjVariantStock, queryCjVariantWarehouses, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { assessCjCatalogReadiness } from "./cjCatalogReadiness.js";
 import { summarizeCjVariantAudit } from "./cjBulkVariantAudit.js";
@@ -524,6 +524,15 @@ const server=http.createServer(async(req,res)=>{try{
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     if(!hasR2)return json(res,503,{error:"Cloudflare R2 debe estar configurado para guardar las imágenes"});
     const body=await bodyJson(req);
+    // The product editor can accept either a direct image or a public product page.
+    // Always mirror the selected photo to R2 before returning it to the gallery.
+    if(typeof body?.imageUrl==="string"){
+      const url=body.imageUrl.trim();
+      if(!url)return json(res,400,{error:"Pega la URL de una imagen o de una página de producto"});
+      const name=String(body?.name||"producto").trim().slice(0,220)||"producto";
+      const media=await importImageFromPublicUrl(url,{name});
+      return json(res,201,{ok:true,copiedImages:1,media:[media],source:"cloudflare_r2"});
+    }
     const input=body?.product&&typeof body.product==="object"?body.product:{};
     const name=String(input?.name||"producto").trim().slice(0,220)||"producto";
     const images=Array.isArray(input?.images)?input.images:input?.image?[input.image]:[];
