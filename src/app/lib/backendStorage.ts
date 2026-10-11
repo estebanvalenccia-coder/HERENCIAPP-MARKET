@@ -424,6 +424,8 @@ export const backendApi = {
       savedVidMatches: boolean; savedSkuMatches: boolean; publicVariantMapped: boolean;
       productDataValid: boolean; issues: string[];
       shippingVerified: false; checkoutEnabled: false; automaticOrdersEnabled: false; automaticStockWrite: false;
+      warehouses: Array<{countryCode:string;verified:boolean;available:boolean;quantity:number|null}>;
+      warehousesWarning?: string;
       fxDate: string | null; stockWarning?: string; fxWarning?: string; message: string;
     }>("/api/admin/catalog/cj-readiness", {
       method: "POST", body: JSON.stringify({productId,vid}),
@@ -471,7 +473,7 @@ export const backendApi = {
     });
   },
 
-  async quoteCjProductFreight(productId: string, vid: string, zip = "", destination = "ES") {
+  async quoteCjProductFreight(productId: string, vid: string, zip = "", destination = "ES", origin = "CN") {
     return request<{
       ok: boolean; productId: string;
       variant: { vid: string; sku: string; name: string; option: string; priceUsd: number | null };
@@ -486,7 +488,7 @@ export const backendApi = {
       warning: string;
     }>("/api/admin/catalog/cj-freight", {
       method: "POST",
-      body: JSON.stringify({ productId, vid, zip, destination }),
+      body: JSON.stringify({ productId, vid, zip, destination, origin }),
     });
   },
 

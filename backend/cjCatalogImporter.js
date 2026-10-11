@@ -354,6 +354,48 @@ export function interpretCjVariantStock(rows, vidInput, originInput = "CN") {
   return { available:quantity>=1, quantity, verified:true, vid, origin, source:"cj_api" };
 }
 
+/** Warehouse-level availability for a single exact CJ VID (read-only).
+ * These rows are warehouse observations, NOT stock reservations and NOT proof
+ * that a particular shipping route is offered by CJ.
+ */
+export function interpretCjWarehouseStocks(rows, vidInput) {
+  const vid = String(vidInput || "").trim();
+  if (!Array.isArray(rows) || !vid) return {verified:false,warehouses:[],source:"cj_api"};
+  const warehouses = new Map();
+  for (const row of rows) {
+    if (String(row?.vid || "") !== vid) continue;
+    const countryCode = String(row?.countryCode || "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(countryCode)) continue;
+    const raw = row?.storageNum ?? row?.cjInventoryNum ?? row?.totalInventoryNum;
+    const quantity = raw === null || raw === undefined || raw === "" || typeof raw === "boolean"
+      ? NaN : Number(raw);
+    const previous = warehouses.get(countryCode);
+    if (!Number.isSafeInteger(quantity) || quantity < 0 ||
+        (previous && !previous.verified) ||
+        (previous && !Number.isSafeInteger(previous.quantity + quantity))) {
+      warehouses.set(countryCode,{countryCode,verified:false,quantity:null,available:false});
+      continue;
+    }
+    const total = (previous?.quantity || 0) + quantity;
+    warehouses.set(countryCode,{countryCode,verified:true,quantity:total,available:total > 0});
+  }
+  const result = [...warehouses.values()].sort((a,b)=>
+    Number(b.available)-Number(a.available) || a.countryCode.localeCompare(b.countryCode));
+  return {verified:result.some(row=>row.verified),warehouses:result,source:"cj_api"};
+}
+
+export async function queryCjVariantWarehouses({vid} = {}) {
+  const safeVid = String(vid || "").trim();
+  if (!/^[a-z0-9-]{8,100}$/i.test(safeVid)) {
+    const error = new Error("VID CJ inválido para consultar almacenes"); error.statusCode=422; throw error;
+  }
+  const accessToken = await token();
+  const rows = await cjFetch("/product/stock/queryByVid?vid=" + encodeURIComponent(safeVid), {
+    headers:{"CJ-Access-Token":accessToken},
+  });
+  return {vid:safeVid,...interpretCjWarehouseStocks(rows,safeVid)};
+}
+
 export async function queryCjVariantStock({vid, origin = "CN"} = {}) {
   const safeVid=String(vid || "").trim();
   if (!/^[a-z0-9-]{8,100}$/i.test(safeVid)) {
