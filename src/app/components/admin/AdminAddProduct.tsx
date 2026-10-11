@@ -818,7 +818,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   type="button"
                   onClick={() => changeCollection(item.id)}
                   className={`rounded-2xl border p-4 text-left transition ${
-                    formData.collection === item.id
+                    formData.collection === item.id && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
                       ? "border-primary bg-primary/10 ring-2 ring-primary/15"
                       : "border-border bg-background hover:bg-muted/50"
                   }`}
@@ -835,6 +835,30 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </p>
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => { changeCollection("jardineria"); patch({ category: "huerto-urbano" }); }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  formData.collection === "jardineria" && formData.category === "huerto-urbano"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/15"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <p className="font-black">🌱 Huerto urbano</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Kits de cultivo, mesas de huerto, semilleros y accesorios para cultivar en casa.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => { changeCollection("servicios"); patch({ category: "servicio-huerto-urbano" }); }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  formData.collection === "servicios" && formData.category === "servicio-huerto-urbano"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/15"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <p className="font-black">🌿 Servicios de huerto urbano</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Montaje, instalación, siembra, asesoría y mantenimiento por horas.</p>
+              </button>
             </div>
           </section>
 
