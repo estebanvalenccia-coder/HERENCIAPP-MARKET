@@ -253,19 +253,73 @@ export function AdminHerenciaNeural(){
  const toggleAutonomy=async()=>{try{const next=autonomy?await backendApi.neuralEmergencyStop():await backendApi.neuralResume();toast.success(next.autonomy==="ACTIVE"?"Autonomía reactivada":"Autonomía detenida");await refresh()}catch(e:any){toast.error(e.message||"No se pudo cambiar la autonomía")}};
  const cycle=async(key:string)=>{const order:Mode[]=["AUTO","ASK","BLOCK"],current=(permissions[key]||"BLOCK") as Mode,next=order[(order.indexOf(current)+1)%3];try{await backendApi.neuralSetPermission(key,next);toast.success(`${labels[key]||key}: ${next}`);await refresh()}catch(e:any){toast.error(e.message)}};
  const send=async()=>{const q=message.trim();if(!q||chatStage)return;setMessages(m=>[...m,{role:"user",text:q}]);setMessage("");setChatStage("Entendiendo tu mensaje…");try{const r=await backendApi.neuralChat(q,"admin:command-center");setMessages(m=>[...m,{role:"neural",text:r.message||"He procesado tu mensaje.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id)setTasks(prev=>[r.task,...prev.filter((t:any)=>t.id!==r.task.id)]);else await refresh()}catch(e:any){setMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setChatStage(null)}};
- const sendCode=async()=>{const q=codePrompt.trim();if(!q||codeStage)return;const existing=approvals.find(validCodeApproval);if(existing){setActiveCodeApproval(existing);setTab("code");toast.info("Ya tienes un cambio esperando aprobación. Apruébalo o descártalo antes de crear otro.");window.setTimeout(()=>document.getElementById("neural-code-approvals")?.scrollIntoView({behavior:"smooth",block:"center"}),80);return;}setCodeMessages(m=>[...m,{role:"user",text:q}]);setCodePrompt("");setCodeStage("Preparando cambio de código…");try{let r=await backendApi.neuralCode(q,"admin:neural-code");
-if(r?.jobId){
-  setCodeStage("Neural está programando; esperando el resultado…");
-  const started=Date.now();
-  while(Date.now()-started<300000){
-    await new Promise(resolve=>window.setTimeout(resolve,2500));
-    const job=await backendApi.neuralCodeJob(r.jobId);
-    if(job.status==="FAILED")throw new Error(job.error||"Error de programación");
-    if(job.status==="COMPLETED"){r=job.result;break;}
+ const codeWatchRef=useRef<string|null>(null);
+ const showCodeResult=useCallback(async(r:any)=>{
+  setCodeMessages(m=>[...m,{role:"neural",text:r?.message||"Cambio preparado.",activity:Array.isArray(r?.activity)?r.activity:[],kind:r?.kind}]);
+  if(r?.kind==="approval"&&r?.task?.id){
+   const normalized={...r.task,status:r.status||r.task.status||"WAITING_APPROVAL",requiresApproval:true};
+   if(!validCodeApproval(normalized)){
+    toast.error("La propuesta no contiene un plan válido.");
+    await refresh();return;
+   }
+   setActiveCodeApproval(normalized);
+   setTasks(prev=>[normalized,...prev.filter((t:any)=>t.id!==normalized.id)]);
+  }else await refresh();
+ },[refresh]);
+ const watchCodeJob=useCallback(async(jobId:string)=>{
+  if(codeWatchRef.current)return;
+  codeWatchRef.current=jobId;
+  setCodeStage("Neural está preparando el código en segundo plano…");
+  try{
+   const started=Date.now();
+   while(Date.now()-started<300000){
+    const job=await backendApi.neuralCodeJob(jobId);
+    if(job.status==="FAILED")throw new Error(job.error||job.result?.message||"Error de programación");
+    if(!["RUNNING","PENDING"].includes(String(job.status))){
+     window.sessionStorage.removeItem("herencia_neural_code_job");
+     await showCodeResult(job.result||{kind:"result",message:"La tarea finalizó. Consulta el historial."});
+     return;
+    }
+    setCodeStage("Neural Code: "+String(job.stage||"programando")+"…");
+    await new Promise(resolve=>window.setTimeout(resolve,3000));
+   }
+   // Keep the persisted id so refresh/reopen resumes the same job.
+   setCodeMessages(m=>[...m,{role:"neural",text:"La tarea continúa en Neural. Puedes volver a abrir el panel para consultar su progreso.",kind:"code_job"}]);
+  }catch(e:any){
+   if(/no encontrada|not found|404/i.test(String(e.message)))window.sessionStorage.removeItem("herencia_neural_code_job");
+   setCodeMessages(m=>[...m,{role:"neural",text:"Error consultando la tarea: "+String(e.message),kind:"error"}]);
+   await refresh();
+  }finally{codeWatchRef.current=null;setCodeStage(null)}
+ },[refresh,showCodeResult]);
+ useEffect(()=>{
+  let id:string|null=null;
+  try{id=window.sessionStorage.getItem("herencia_neural_code_job")}catch{}
+  if(id)void watchCodeJob(id);
+ },[watchCodeJob]);
+ const sendCode=async()=>{
+  const q=codePrompt.trim();
+  if(!q||codeStage)return;
+  const existing=approvals.find(validCodeApproval);
+  if(existing){
+   setActiveCodeApproval(existing);setTab("code");
+   toast.info("Ya tienes un cambio esperando aprobación. Apruébalo o descártalo antes de crear otro.");
+   return;
   }
-  if(r?.jobId)throw new Error("La tarea sigue ejecutándose. Consulta Tareas recientes y vuelve a cargar el panel.");
-}
-setCodeMessages(m=>[...m,{role:"neural",text:r.message||"Cambio preparado.",activity:Array.isArray(r.activity)?r.activity:[],kind:r.kind}]);if(r?.kind==="approval"&&r?.task?.id){const normalized={...r.task,status:r.status||r.task.status||"WAITING_APPROVAL",requiresApproval:true};if(!validCodeApproval(normalized)){toast.error("Neural devolvió una propuesta sin plan válido. No se puede aprobar.");await refresh();return;}setActiveCodeApproval(normalized);setTasks(prev=>[normalized,...prev.filter((t:any)=>t.id!==normalized.id)]);}else await refresh()}catch(e:any){setCodeMessages(m=>[...m,{role:"neural",text:`Error: ${e.message}`}])}finally{setCodeStage(null)}};
+  setCodeMessages(m=>[...m,{role:"user",text:q}]);
+  setCodePrompt("");
+  setCodeStage("Enviando solicitud a Neural…");
+  try{
+   const r=await backendApi.neuralCode(q,"admin:neural-code");
+   if(r?.jobId){
+    window.sessionStorage.setItem("herencia_neural_code_job",r.jobId);
+    setCodeStage(null);
+    void watchCodeJob(r.jobId);
+   }else await showCodeResult(r);
+  }catch(e:any){
+   setCodeMessages(m=>[...m,{role:"neural",text:"Error: "+String(e.message),kind:"error"}]);
+   setCodeStage(null);
+  }
+ };
  const approveCode=async()=>{
   const task=activeCodeApproval;
   if(!task?.id||approvingCode||approvingTaskIds.current.has(task.id))return;
