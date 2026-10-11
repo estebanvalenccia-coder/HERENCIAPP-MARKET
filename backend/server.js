@@ -6938,6 +6938,248 @@ const cjAmbiguousReconciler=createCjAmbiguousReconciler({
   ),
 });
 
+// Live procurement uses the same conservative primitives as the manual
+// routes, but only after a merchant-signed mandate, current customer Stripe
+// capture and exact CJ costs. One action per 15 minute sweep; no retries.
+async function assertCjLiveMandate(record,expectedCreatedAt){
+  const [ops,policyRaw,mandateRaw]=await Promise.all([
+    readSupplierOperations(),readNeonStorageValue(CJ_POLICY_KEY),
+    readNeonStorageValue(CJ_LIVE_MANDATE_KEY),
+  ]);
+  const policy=readCjAutopilotPolicy(policyRaw);
+  const mandate=validateCjLiveMandate(mandateRaw,{policy,suppliers:ops.suppliers||[]});
+  const supplier=(ops.suppliers||[]).find(s=>String(s.id)===String(record.supplierId));
+  if(!mandate || mandate.createdAt!==expectedCreatedAt ||
+     !cjLiveMandatePermits({mandate,record,supplier,amountEur:record.estimatedCost}) ||
+     !cjConfigured() || !cjLiveAutopilotEnabled() ||
+     !cjManualReadyForPayment() ||
+     String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED).toLowerCase()!=="true")
+    throw cjManualError("Mandato CJ caducado, modificado o suspendido; no comprar.");
+  return {policy,mandate,supplier};
+}
+async function settleCjLiveBudget(record,date,status,options={}){
+  const key=CJ_BUDGET_LEDGER_PREFIX+String(date);
+  await mutateNeonStorageValue(key,raw=>
+    settleCjBudgetReservation(raw,{fulfillmentId:String(record.id),date,
+      status,...options}).ledger);
+}
+async function createCjAutopilotUnpaid(record,mandate,checks){
+  const {record:live,supplier,order}=await loadCjManualOrder(record.id);
+  if(live.status!==record.status||!["approval_required","autopilot_ready"].includes(live.status))
+    throw cjManualError("El pedido CJ cambió y necesita otra comprobación.");
+  await assertCjLiveMandate(live,mandate.createdAt);
+  const preview=validateManualCjCreate({record:live,supplier,order});
+  if(preview.funding.storeFunded)
+    throw cjManualError("Autopilot no financia cupones, pedidos gratuitos ni descuentos.");
+  const verifiedCost=Number(checks.currentCostEur);
+  const approvedEur=Math.ceil(Math.max(verifiedCost,preview.estimatedCostEur)*100)/100;
+  const approvedUsd=Number(preview.estimatedPaymentUsd);
+  if(!Number.isFinite(verifiedCost)||verifiedCost<=0 ||
+     !(approvedUsd>0) || approvedUsd>Number(supplier.cjMaxPaymentUsd) ||
+     approvedEur>mandate.perOrderMaxEur ||
+     !(Number(checks.currentSupplierCostUsd)>0) ||
+     Number(checks.currentSupplierCostUsd)>approvedUsd)
+    throw cjManualError("Coste CJ verificado supera el presupuesto o cambió; no comprar.");
+  // A second live Stripe check runs immediately before budgeting.
+  await verifyCjCustomerFunding(order,preview.funding);
+  const date=cjBudgetDay(),ledgerKey=CJ_BUDGET_LEDGER_PREFIX+date;
+  const currentOps=await readSupplierOperations();
+  const exposure=summarizeCjDailyExposure(currentOps.supplierFulfillments,{
+    date:new Date().toISOString(),excludeFulfillmentId:record.id});
+  if(!exposure.verifiedCompletely)
+    throw cjManualError("Existen gastos CJ inciertos sin coste verificable.");
+  const {policy:currentPolicy}=await assertCjLiveMandate(live,mandate.createdAt);
+  // Include already committed manual supplier orders conservatively, even if
+  // the live ledger is separate. Each automated reservation is atomic in Neon.
+  await mutateNeonStorageValue(ledgerKey,raw=>{
+    const reservation=reserveCjDailyBudget(raw,{
+      policy:currentPolicy,fulfillmentId:live.id,amountEur:approvedEur,
+      date:new Date().toISOString(),
+    });
+    if((reservation.dailyUsedCents+Math.ceil(exposure.usedEur*100))>
+      Math.round(currentPolicy.dailyMaxEur*100))
+      throw cjManualError("Cash Guard: el gasto y las reservas CJ superan el límite diario.");
+    return reservation.ledger;
+  });
+  let claimed=false,operationId="",externalKey="";
+  try{
+    const fingerprint=cjManualSnapshot(live,order,supplier);
+    operationId=crypto.randomUUID();
+    const prepared=await mutateCjManualRecord(live.id,[live.status],{
+      status:"cj_creating",provider:"cj",cjOperationId:operationId,
+      cjOrderNumber:cjManualOrderNumber(live),cjAutopilotMandateAt:mandate.createdAt,
+      cjAutopilotBudgetDate:date,
+      blocker:"Autopilot creó una reserva de gasto. No duplicar esta compra CJ.",
+      cjManualAuthorization:{
+        approvedByAdminAt:mandate.createdAt,automatic:true,
+        approvedCostEur:approvedEur,approvedMaxUsd:approvedUsd,
+        funding:preview.funding.funding,
+        customerTotalEur:preview.funding.total,
+        couponDiscountEur:preview.funding.discount,
+        merchantPays:false,
+      },
+    },(current,active)=>{
+      if(cjManualSnapshot(current,order,active)!==fingerprint ||
+         String(current.status)!==String(live.status))
+        throw cjManualError("La compra CJ cambió tras la reserva del presupuesto.");
+      validateManualCjCreate({record:current,supplier:active,order});
+    });
+    claimed=true;
+    externalKey=await claimCjExternalAction("create",live.id,operationId);
+    await assertCjLiveMandate(prepared,mandate.createdAt);
+    const line=prepared.items[0],address=prepared.shippingAddress;
+    const response=await cjRequest("/shopping/order/createOrderV2",{
+      method:"POST",body:{
+        orderNumber:prepared.cjOrderNumber,
+        shippingZip:String(address.postalCode).slice(0,20),
+        shippingCountryCode:"ES",shippingCountry:String(address.country).slice(0,50),
+        shippingProvince:String(address.province||address.city).slice(0,50),
+        shippingCity:String(address.city).slice(0,50),
+        shippingPhone:String(address.phone).slice(0,20),
+        shippingCustomerName:String(address.name).slice(0,50),
+        shippingAddress:String(address.address).slice(0,500),
+        shippingAddress2:String(address.address2||"").slice(0,500),
+        email:String(prepared.customerEmail||"").slice(0,50),
+        remark:"Pedido Herencia Market · Autopilot",
+        payType:3,isSandbox:0,logisticName:preview.logisticName,
+        fromCountryCode:String(supplier.cjFromCountryCode||"CN").slice(0,2),
+        platform:"api",orderFlow:1,
+        products:[{vid:String(line.supplierVariantId).slice(0,50),
+          ...(line.supplierSku?{sku:String(line.supplierSku).slice(0,50)}:{}),
+          quantity:1,storeLineItemId:String(line.productId).slice(0,125)}],
+      },
+    });
+    const data=response?.data||{};
+    const cjId=String(data.orderId||"").trim();
+    const shipment=String(data.shipmentOrderId||"").trim();
+    const actual=Number(data.actualPayment??data.orderAmount);
+    if(!cjId&&!shipment)
+      throw cjManualError("CJ no confirmó un identificador externo. No repetir.");
+    const validAmount=Number.isFinite(actual)&&actual>0 &&
+      actual<=approvedUsd && actual<=Number(supplier.cjMaxPaymentUsd) &&
+      !(Array.isArray(data.interceptOrderReasons)&&data.interceptOrderReasons.length);
+    await mutateCjManualRecord(live.id,["cj_creating"],{
+      status:validAmount?"payment_required":"cj_creation_unknown",
+      externalOrderId:cjId,cjShipmentOrderId:shipment,
+      providerActualPayment:Number.isFinite(actual)&&actual>0?Math.round(actual*100)/100:0,
+      providerCurrency:"USD",providerOrderStatus:String(data.orderStatus||"CREATED").slice(0,40),
+      providerRequestId:String(response?.requestId||"").slice(0,100),
+      cjCreatedAt:new Date().toISOString(),
+      blocker:validAmount?"CJ creado sin pagar; Autopilot verificará la orden antes de debitar.":
+        "CJ creó una orden de coste o estado incierto; pago bloqueado.",
+    },current=>{
+      if(String(current.cjOperationId)!==operationId)
+        throw cjManualError("La operación CJ cambió tras la respuesta externa.");
+    });
+    await recordCjExternalActionResult(externalKey,operationId,
+      validAmount?"created_unpaid":"creation_unknown",cjId).catch(()=>null);
+    if(!validAmount){
+      await settleCjLiveBudget(live,date,"uncertain").catch(()=>null);
+      throw cjManualError("CJ no confirmó un importe aceptable. Pago bloqueado.");
+    }
+  }catch(error){
+    if(claimed){
+      await mutateCjManualRecord(live.id,["cj_creating"],{
+        status:"cj_creation_unknown",blocker:"Posible creación externa CJ. Conciliar antes de reintentar.",
+      }).catch(()=>null);
+      await settleCjLiveBudget(live,date,"uncertain").catch(()=>null);
+    }else{
+      await settleCjLiveBudget(live,date,"released",{
+        remoteActionAttempted:false}).catch(()=>null);
+    }
+    throw error;
+  }
+}
+async function payCjAutopilotExisting(record,mandate){
+  const {record:live,supplier,order}=await loadCjManualOrder(record.id);
+  if(live.status!=="payment_required"||
+    live.cjAutopilotMandateAt!==mandate.createdAt ||
+    !live.cjAutopilotBudgetDate)
+    throw cjManualError("Pedido CJ sin autorización previa de compra automática.");
+  await assertCjLiveMandate(live,mandate.createdAt);
+  const approved=Number(live.cjManualAuthorization?.approvedMaxUsd);
+  const preview=validateManualCjPayment({record:live,supplier,approvedUsd:approved});
+  if(live.cjManualAuthorization?.automatic!==true ||
+    live.cjManualAuthorization?.merchantPays ||
+    !(preview.amountUsd>0)||preview.amountUsd>approved)
+    throw cjManualError("La creación CJ no acredita un pago automático autorizado.");
+  const budgetDate=String(live.cjAutopilotBudgetDate);
+  const cash=readCjBudgetLedger(await readNeonStorageValue(
+    CJ_BUDGET_LEDGER_PREFIX+budgetDate),budgetDate);
+  if(!cash.reservations.some(x=>x.fulfillmentId===String(live.id)&&x.status==="reserved" &&
+    x.amountCents>=Math.round(Number(live.cjManualAuthorization.approvedCostEur)*100)))
+    throw cjManualError("Cash Guard no confirma la reserva económica de esta compra.");
+  await verifyCjCustomerFunding(order,classifyCjOrderFunding(order));
+  if(!live.externalOrderId)
+    throw cjManualError("CJ no devolvió una referencia de orden válida para pagar.");
+  const response=await cjRequest("/shopping/order/getOrderDetail",{
+    query:{orderId:String(live.externalOrderId)},
+  });
+  const remote=response?.data||{};
+  const remoteAmount=Number(remote.actualPayment??remote.orderAmount);
+  const remoteState=String(remote.orderStatus||"").toUpperCase();
+  if(String(remote.orderId||"")!==String(live.externalOrderId) ||
+    !["UNPAID","CREATED","IN_CART"].includes(remoteState) ||
+    !Number.isFinite(remoteAmount)||remoteAmount<=0 ||
+    Math.abs(remoteAmount-preview.amountUsd)>0.009 ||
+    remoteAmount>Number(supplier.cjMaxPaymentUsd))
+    throw cjManualError("CJ no confirma un pedido impagado con importe e identidad exactos.");
+  await assertCjLiveMandate(live,mandate.createdAt);
+  const operationId=crypto.randomUUID();
+  const claimed=await mutateCjManualRecord(live.id,["payment_required"],{
+    status:"cj_paying",cjOperationId:operationId,
+    blocker:"Pago CJ automático en proceso. No repetir ni reintentar.",
+  },(current,active)=>{
+    if(String(current.cjAutopilotMandateAt)!==mandate.createdAt ||
+       String(current.externalOrderId)!==String(live.externalOrderId) ||
+       Number(current.providerActualPayment)!==preview.amountUsd)
+      throw cjManualError("La orden de pago CJ cambió mientras se verificaba.");
+    validateManualCjPayment({record:current,supplier:active,approvedUsd:approved});
+  });
+  let ledgerKey="";
+  try{
+    ledgerKey=await claimCjExternalAction("pay",live.id,operationId);
+    await assertCjLiveMandate(claimed,mandate.createdAt);
+    await cjPayOrder({
+      orderId:claimed.externalOrderId,
+      shipmentOrderId:claimed.cjShipmentOrderId||"",
+    });
+    await mutateCjManualRecord(live.id,["cj_paying"],{
+      status:"ordered",paidAt:new Date().toISOString(),
+      orderedAt:live.cjCreatedAt||new Date().toISOString(),
+      blocker:"",lastError:"",providerOrderStatus:"PAID",
+    },current=>{
+      if(String(current.cjOperationId)!==operationId)
+        throw cjManualError("El cargo CJ ha cambiado; conciliación requerida.");
+    });
+    await settleCjLiveBudget(live,budgetDate,"committed",{
+      providerEvidence:true}).catch(()=>null);
+    await recordCjExternalActionResult(ledgerKey,operationId,"paid",
+      claimed.externalOrderId).catch(()=>null);
+  }catch(error){
+    await mutateCjManualRecord(live.id,["cj_paying"],{
+      status:"cj_payment_unknown",
+      blocker:"El pago CJ pudo completarse. Conciliar antes de cualquier reintento.",
+    }).catch(()=>null);
+    await settleCjLiveBudget(live,budgetDate,"uncertain").catch(()=>null);
+    throw error;
+  }
+}
+const cjLiveAutopilotRunner=createCjLiveAutopilotRunner({
+  readOperations:readSupplierOperations,
+  readPolicy:async()=>readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY)),
+  readMandate:()=>readNeonStorageValue(CJ_LIVE_MANDATE_KEY),
+  mutate:mutateNeonStorageValue,
+  preflight:runCjAutopilotLivePreflight,
+  createUnpaid:createCjAutopilotUnpaid,
+  payExisting:payCjAutopilotExisting,
+  env:()=>({
+    CJ_LIVE_AUTOPILOT_ENABLED:String(process.env.CJ_LIVE_AUTOPILOT_ENABLED||""),
+    CJ_LIVE_ORDER_CREATION_ENABLED:String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED||""),
+    CJ_LIVE_PAYMENT_ENABLED:String(process.env.CJ_LIVE_PAYMENT_ENABLED||""),
+  }),
+});
+
 // Admin may inspect this before any real supplier action.
 app.get("/api/admin/supplier-fulfillments/:id/cj-manual-preview", requireAdmin, async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
@@ -10990,6 +11232,16 @@ app.listen(port, () => {
       }catch(error){
         console.warn("[cj.reconciliation] review needed",String(error?.code||"UNAVAILABLE").slice(0,50));
       }
+    }
+    // This worker is inert until a 30-day merchant mandate, a successfully
+    // supervised REAL CJ order and all three Railway flags are present.
+    // On activation, one supplier action max per sweep, atomic claims and
+    // no automatic retry after ambiguous external responses.
+    try{
+      const result=await cjLiveAutopilotRunner.sweep();
+      if(result.processed)console.info("[cj.autopilot.live]",result.status,"processed=1");
+    }catch(error){
+      console.warn("[cj.autopilot.live] requires attention",String(error?.code||"FAILED").slice(0,50));
     }
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
