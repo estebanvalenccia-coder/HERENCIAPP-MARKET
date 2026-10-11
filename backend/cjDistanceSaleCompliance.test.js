@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {assessCjDistanceSaleCompliance} from "../src/app/lib/cjDistanceSaleCompliance.js";
+import {assessCjDistanceSaleCompliance as assessBackendCompliance} from "./cjDistanceSaleCompliance.js";
+import {readFileSync} from "node:fs";
 const base={name:"Artículo CJ",sku:"SKU",metadata:{
  sourceHost:"cjdropshipping.com",fulfillmentType:"dropship",
  gpsrManufacturerName:"Fábrica real",gpsrManufacturerPostalAddress:"Calle 1, Shanghai, China",
@@ -32,4 +34,15 @@ test("additional import cost is explicit and included, not silently assumed zero
  assert.equal(assessCjDistanceSaleCompliance({...base,metadata:{...base.metadata,cjImportCostsReviewed:false}}).ready,false);
  assert.equal(assessCjDistanceSaleCompliance({...base,metadata:{...base.metadata,gpsrNoWarningsApplicable:false}}).ready,false);
  assert.equal(assessCjDistanceSaleCompliance({metadata:{}}).ready,true);
+});
+
+test("isolated Railway backend bundles compliance logic without frontend files",()=>{
+ const source=readFileSync(new URL("./cjCheckoutSafety.js",import.meta.url),"utf8");
+ assert.match(source,/from "\.\/cjDistanceSaleCompliance\.js"/);
+ assert.doesNotMatch(source,/from "\.\.\/src\//);
+});
+test("admin and isolated backend evaluate the same CJ legal requirements",()=>{
+ const bad={name:"Sin documentación",metadata:{fulfillmentType:"dropship",sourceHost:"cjdropshipping.com"}};
+ for(const row of [bad,base,{...base,metadata:{...base.metadata,gpsrManufacturerName:""}},{...base,metadata:{...base.metadata,cjImportCostsReviewed:false}}])
+   assert.deepEqual(assessBackendCompliance(row),assessCjDistanceSaleCompliance(row));
 });
