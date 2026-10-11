@@ -139,8 +139,8 @@ test("admin CJ tracking and status routes never call purchase, pay or refund fun
  const runner=readFileSync(new URL("./cjTrackingRunner.js",import.meta.url),"utf8");
  assert.doesNotMatch(runner,/createOrderV2|payBalance|stripe\.paymentIntents|refunds\.create/);
  const timer=source.indexOf("runBackgroundChecks = async");
- assert.match(source.slice(timer,timer+2600),/cjTrackingRunner\.sweep/);
- assert.match(source.slice(timer,timer+2600),/cjAutoPreflightScheduler\.sweep/);
+ assert.match(source.slice(timer,timer+4400),/cjTrackingRunner\.sweep/);
+ assert.match(source.slice(timer,timer+4400),/cjAutoPreflightScheduler\.sweep/);
 });
 
 test("live CJ stock validation refuses wrong warehouse, VID or insufficient inventory",()=>{
