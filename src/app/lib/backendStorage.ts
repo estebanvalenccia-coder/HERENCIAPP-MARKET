@@ -183,7 +183,10 @@ async function readErrorResponse(response: Response) {
 
   try {
     const json = JSON.parse(text);
-    return json?.error || json?.message || text || `Error HTTP ${response.status}`;
+    // For expected 4xx validation failures show the actionable backend message,
+    // not the generic error label. Never expose internal 5xx details to clients.
+    const details = typeof json?.message === "string" ? json.message.trim() : "";
+    return (response.status >= 400 && response.status < 500 && details) || json?.error || text || `Error HTTP ${response.status}`;
   } catch {
     return text || `Error HTTP ${response.status}`;
   }
@@ -208,7 +211,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    backendAvailable = false;
+    // A rejected image URL (422) does not mean the backend is offline.
+    backendAvailable = response.status < 500;
     lastBackendError = await readErrorResponse(response);
     if (response.status === 401 && path.startsWith("/api/neural")) {
       window.dispatchEvent(new CustomEvent("herencia:admin-session-expired"));

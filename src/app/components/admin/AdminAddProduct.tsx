@@ -129,6 +129,7 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState<FormState>(initialForm);
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState("");
+  const [imageUrlError, setImageUrlError] = useState("");
   const [addingImageUrl, setAddingImageUrl] = useState(false);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
@@ -467,6 +468,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
   async function handleAddImageUrl() {
     if (addingImageUrl) return;
     const value = imageUrlInput.trim();
+    setImageUrlError("");
     if (!value) return toast.error("Pega la URL de una imagen");
     if (selectedImages.length >= 8) return toast.error("Puedes añadir un máximo de 8 imágenes");
 
@@ -513,7 +515,9 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
       setImageUrlInput("");
       toast.success("Imagen importada y guardada en la biblioteca multimedia");
     } catch (error: any) {
-      toast.error(error?.message || "No se pudo importar la imagen. Prueba un enlace directo y público a JPG, PNG, WEBP, GIF o AVIF.");
+      const message = error?.message || "No se pudo importar la imagen. Prueba un enlace directo y público a JPG, PNG, WEBP, GIF o AVIF.";
+      setImageUrlError(message);
+      toast.error(message);
     } finally {
       setAddingImageUrl(false);
     }
@@ -985,7 +989,10 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   <input
                     type="url"
                     value={imageUrlInput}
-                    onChange={(event) => setImageUrlInput(event.target.value)}
+                    onChange={(event) => {
+                      setImageUrlInput(event.target.value);
+                      setImageUrlError("");
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -1006,6 +1013,11 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                     {addingImageUrl ? "Importando…" : "+ Añadir URL"}
                   </button>
                 </div>
+                {imageUrlError && (
+                  <p role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    {imageUrlError} Si el proveedor protege sus fotografías, abre la imagen en su web y copia su URL directa, o utiliza «Subir fotos».
+                  </p>
+                )}
               </div>
             </div>
 
