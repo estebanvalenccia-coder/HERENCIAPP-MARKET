@@ -8,7 +8,28 @@ const cj={id:"cj-product",name:"Garden irrigation controller",price:20,metadata:
   cjPreferredLogisticName:"CJPacket Liquid Line",
   sourceProductUrl:"https://cjdropshipping.com/product-p-1531107375489495040.html",
 }};
-const supplier={id:"cj-supplier",name:"CJdropshipping",integrationType:"cj",active:true};
+const supplier={id:"cj-supplier",name:"CJdropshipping",integrationType:"cj",active:true,cjSandbox:false};
+test("CJ supplier in Sandbox blocks checkout before contacting CJ or preparing Stripe",async()=>{
+  let calls=0;
+  const deps={
+    verifyVariant:async()=>{calls++;throw Error("Should not call CJ");},
+    quoteShipping:async()=>{calls++;throw Error("Should not quote");},
+    getRate:async()=>{calls++;throw Error("Should not fetch FX");},
+    getStock:async()=>{calls++;throw Error("Should not fetch stock");},
+  };
+  await assert.rejects(evaluateCjCheckout({
+    lines:[{id:"cj-product",quantity:1,price:20}],catalog:[cj],
+    suppliers:[{...supplier,cjSandbox:true}],shippingAddress:{country:"ES",postalCode:"08032"},
+    deps,
+  }),/modo de pruebas.*No se realizará ningún cobro/);
+  await assert.rejects(evaluateCjCheckout({
+    lines:[{id:"cj-product",quantity:1,price:20}],catalog:[cj],
+    suppliers:[{id:"cj-supplier",integrationType:"cj",active:true}],
+    shippingAddress:{country:"ES",postalCode:"08032"},deps,
+  }),/Sandbox/);
+  assert.equal(calls,0);
+});
+
 test("ordinary Herencia goods keep their original local shipping checkout", async () => {
   const r=await evaluateCjCheckout({lines:[{id:"flower",quantity:1,price:10}],catalog:[{id:"flower",name:"Plant"}]});
   assert.equal(r.cjOnly,false);
