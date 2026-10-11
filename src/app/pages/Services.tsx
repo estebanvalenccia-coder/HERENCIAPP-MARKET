@@ -11,7 +11,7 @@ import {
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 
-const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral"];
+const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral", "huerto-urbano"];
 
 export function Services() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
