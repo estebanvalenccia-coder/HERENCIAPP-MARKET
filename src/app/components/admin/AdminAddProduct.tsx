@@ -490,10 +490,10 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
       setAddingImageUrl(true);
       // Copy to our own R2 media library before showing or publishing the image.
       // Direct hotlinks often break because the supplier blocks third-party previews.
-      const result = await backendApi.saveCatalogUrlProductMedia({
-        name: formData.name.trim() || "imagen-producto",
-        images: [sourceUrl],
-      });
+      const result = await backendApi.importSiteMediaFromUrl(
+        sourceUrl,
+        formData.name.trim() || "imagen-producto"
+      );
       const storedUrl = String(result.media?.[0]?.url || "").trim();
       if (!storedUrl) throw new Error("La imagen no se pudo guardar en la biblioteca multimedia");
       setSelectedImages((current) => {
@@ -977,9 +977,9 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               )}
 
               <div className="mt-3 rounded-2xl border border-border bg-background p-3">
-                <p className="text-sm font-black">Añadir imagen por URL</p>
+                <p className="text-sm font-black">Añadir imagen por URL o enlace de producto</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pega un enlace directo a una imagen pública. Herencia la copiará a la biblioteca multimedia para que no dependa de la web de origen.
+                  Pega la URL directa de una foto o el enlace de un producto público. Herencia intentará extraer su imagen y guardarla en la biblioteca multimedia.
                 </p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -993,7 +993,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                       }
                     }}
                     disabled={selectedImages.length >= 8 || addingImageUrl}
-                    placeholder="https://ejemplo.com/imagen.webp"
+                    placeholder="https://ejemplo.com/producto-o-foto"
                     className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm disabled:opacity-50"
                   />
                   <button
