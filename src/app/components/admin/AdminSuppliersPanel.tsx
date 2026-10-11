@@ -139,6 +139,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [loading, setLoading] = useState(true);
   const [workspaceMode,setWorkspaceMode]=useState<"guided"|"advanced">("guided");
   const openWorkspaceSection=(id:string)=>{
+    if(id==="supplier-catalog"){
+      setShowImportedProducts(true);
+      setImportTab("connected");
+      setOnlyCjImports(true);
+    }
     setWorkspaceMode("advanced");
     window.setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
   };
