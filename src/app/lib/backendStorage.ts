@@ -1188,6 +1188,31 @@ export const backendApi = {
     });
   },
 
+  async getCjLiveMandate() {
+    return request<{
+      active:boolean;expiresAt:string|null;allowedSupplierIds:string[];
+      perOrderMaxEur:number|null;dailyMaxEur:number|null;realMoneyCanBeSpent:boolean;
+    }>("/api/admin/suppliers/cj/live-mandate");
+  },
+
+  async activateCjLiveMandate(payload:{
+    confirmation:string;acknowledgeRealSupplierDebits:boolean;
+    perOrderMaxEur:number;dailyMaxEur:number;minMarginPercent:number;
+    allowedSupplierIds:string[];
+  }) {
+    return request<{active:true;expiresAt:string;message:string}>(
+      "/api/admin/suppliers/cj/live-mandate",{
+        method:"POST",body:JSON.stringify(payload),
+      });
+  },
+
+  async revokeCjLiveMandate() {
+    return request<{active:false;message:string}>(
+      "/api/admin/suppliers/cj/live-mandate",{
+        method:"DELETE",
+      });
+  },
+
   async getCjAutomationReadiness() {
     return request<{
       provider: "cj";configured:boolean;accountConnectionNotRetested:boolean;
@@ -1195,9 +1220,10 @@ export const backendApi = {
       counts:{queued:number;trackingEligible:number;needsManualReview:number;
         creationUnknown:number;paymentUnknown:number};
       canCreateWithManualApproval:boolean;canPayWithManualApproval:boolean;
-      unattendedOrderCreationEnabled:false;unattendedSupplierPaymentEnabled:false;
+      unattendedOrderCreationEnabled:boolean;unattendedSupplierPaymentEnabled:boolean;
       whyNotAutomated:string;readOnly:true;
-      activationBlockers:string[];readyForUnattendedBuying:false;
+      activationBlockers:string[];readyForUnattendedBuying:boolean;
+      liveMandateExpiresAt:string|null;
       operationsTotal:number;operationsSampleLimited:boolean;
       executionPlan:{
         results:Array<{id:string;stage:string;reason:string;createSupplierOrder:false;

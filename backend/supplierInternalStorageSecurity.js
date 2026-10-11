@@ -7,6 +7,8 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjmanualexternalaction:",
   "cjtrackingreadonlylease:",
   "cjautopilotguardrails:",
+  "cjautopilotlivemandate:v1",
+  "cjautopilotliverunnerlease:v1",
   "cjautopilotbudget:",
   "cjautopilotreconciliationlease:v1",
   "cjautopilotreconciliationcursor:v1",
