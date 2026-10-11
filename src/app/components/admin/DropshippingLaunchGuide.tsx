@@ -31,6 +31,19 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
   const [readiness,setReadiness]=useState<Readiness|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
+  const [cjTesting,setCjTesting]=useState(false);
+  const [cjTest,setCjTest]=useState<{ok:boolean;message:string}|null>(null);
+  const testCj=async()=>{
+    setCjTesting(true);setCjTest(null);
+    try{
+      // Authenticated admin-only request: account settings + balance, NO orders or purchases.
+      const result=await backendApi.testCjSupplierConnection();
+      if(result.configured!==true)throw new Error("La API CJ no confirma la conexión.");
+      setCjTest({ok:true,message:"CJ responde a las consultas de cuenta y saldo. La creación de pedidos y el pago siguen sin probar."});
+    }catch(err:any){
+      setCjTest({ok:false,message:String(err?.message||"No se ha podido autenticar CJ. Verifica la clave y permisos en Railway.")});
+    }finally{setCjTesting(false);}
+  };
   const refresh=useCallback(async()=>{
     setLoading(true);setError("");
     try{setReadiness(await backendApi.getCjAutomationReadiness());}
@@ -57,12 +70,24 @@ export function DropshippingLaunchGuide({suppliers,products,fulfillments,onNavig
           que el proveedor acepte pedidos ni que un pago o envío real funcione.
         </p>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={()=>void testCj()} disabled={cjTesting}
+        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+        <ShieldCheck className="h-4 w-4"/>
+        {cjTesting?"Comprobando CJ…":"Probar conexión CJ real"}
+      </button>
       <button type="button" onClick={onReload} disabled={loading}
         className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
         <RefreshCw className={`h-4 w-4 ${loading?"animate-spin":""}`}/>
         {loading?"Comprobando…":"Actualizar diagnóstico"}
       </button>
+      </div>
     </div>
+    {cjTest&&<p role={cjTest.ok?"status":"alert"}
+      className={`mt-3 rounded-xl border p-3 text-sm font-semibold ${cjTest.ok?
+        "border-emerald-200 bg-emerald-50 text-emerald-900":"border-amber-300 bg-amber-50 text-amber-950"}`}>
+      {cjTest.ok?"Conexión CJ verificada: ":"Conexión CJ fallida: "}{cjTest.message}
+    </p>}
     {error&&<div role="alert" className="mt-4 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
       <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0"/><span>Estado de CJ sin verificar: {error}. No actives compras reales basándote en esta pantalla.</span>
     </div>}
