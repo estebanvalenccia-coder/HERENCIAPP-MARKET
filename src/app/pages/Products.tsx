@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Filter, Heart, Search, ShoppingCart, SlidersHorizontal, X } from "lucide-react";
 import { motion } from "motion/react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
@@ -48,17 +48,37 @@ function resolveProductImage(product: any) {
   ).trim();
 }
 
+const LEGACY_CATEGORY_COLLECTIONS: Record<string, string> = {
+  accesorios: "jardineria",
+  semillas: "semillas",
+  sustratos: "sustratos",
+  decoracion: "decoracion",
+};
+
+function readCatalogFilters(search: string) {
+  const params = new URLSearchParams(search);
+  const requestedCollection = String(params.get("coleccion") || params.get("collection") || "").toLowerCase().trim();
+  const requestedCategory = String(params.get("categoria") || "").toLowerCase().trim();
+  const categoryCollection = COMMERCE_COLLECTIONS.find((collection) =>
+    collection.categories.some((category) => category.id === requestedCategory)
+  )?.id || "";
+  const collection = requestedCollection || LEGACY_CATEGORY_COLLECTIONS[requestedCategory] || categoryCollection || "todos";
+  const category = categoryCollection === collection ? requestedCategory : "todos";
+  return { collection, category, searchQuery: params.get("buscar") || "" };
+}
+
 export function Products() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [displayProducts, setDisplayProducts] = useState<any[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
   );
-  const [selectedCollection, setSelectedCollection] = useState("todos");
-  const [selectedCategory, setSelectedCategory] = useState("todos");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCollection, setSelectedCollection] = useState(() => readCatalogFilters(location.search).collection);
+  const [selectedCategory, setSelectedCategory] = useState(() => readCatalogFilters(location.search).category);
+  const [searchQuery, setSearchQuery] = useState(() => readCatalogFilters(location.search).searchQuery);
   const [showFilters, setShowFilters] = useState(false);
   const [sort, setSort] = useState("relevance");
   const [availability, setAvailability] = useState("all");
@@ -85,13 +105,10 @@ export function Products() {
         : "h-64";
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const collection = params.get("coleccion") || params.get("collection");
-    const category = params.get("categoria");
-    const search = params.get("buscar");
-    if (collection) setSelectedCollection(collection);
-    if (category) setSelectedCategory(category);
-    if (search !== null) setSearchQuery(search);
+    const filters = readCatalogFilters(location.search);
+    setSelectedCollection(filters.collection);
+    setSelectedCategory(filters.category);
+    setSearchQuery(filters.searchQuery);
   }, [location.search]);
 
   useEffect(() => {
@@ -183,21 +200,12 @@ export function Products() {
   const plantFilters = selectedBaseDefinition ? isPlantLikeCollection(selectedBaseDefinition.id) : false;
 
   useEffect(() => {
-    if (selectedCollection === "todos") {
-      setSelectedCategory("todos");
-      setEnvironment("all");
-      setLight("all");
-      setPetSafe(false);
-      return;
-    }
-    const valid = categoryOptions.some((item) => item.id === selectedCategory);
-    if (!valid) setSelectedCategory("todos");
-    if (!plantFilters) {
+    if (selectedCollection === "todos" || !plantFilters) {
       setEnvironment("all");
       setLight("all");
       setPetSafe(false);
     }
-  }, [selectedCollection]);
+  }, [selectedCollection, plantFilters]);
 
   const catalogMax = useMemo(() => {
     const highest = Math.max(0, ...displayProducts.map((product) => effectivePrice(product)));
@@ -340,7 +348,27 @@ export function Products() {
     window.dispatchEvent(new Event("storage"));
   }
 
+  function selectCollection(collectionId: string) {
+    const params = new URLSearchParams(location.search);
+    params.delete("collection");
+    params.delete("categoria");
+    if (collectionId === "todos") params.delete("coleccion");
+    else params.set("coleccion", collectionId);
+    const query = params.toString();
+    navigate(`/productos${query ? `?${query}` : ""}`);
+  }
+
+  function selectCategory(categoryId: string) {
+    const params = new URLSearchParams(location.search);
+    params.delete("collection");
+    params.set("coleccion", selectedCollection);
+    if (categoryId === "todos") params.delete("categoria");
+    else params.set("categoria", categoryId);
+    navigate(`/productos?${params.toString()}`);
+  }
+
   function resetFilters() {
+    selectCollection("todos");
     setSelectedCollection("todos");
     setSelectedCategory("todos");
     setAvailability("all");
@@ -356,8 +384,8 @@ export function Products() {
       <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <p className="mb-2 text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
-          <h1 className="mb-3 text-4xl font-medium text-[#173126] md:text-5xl">{site.productsPage.title}</h1>
-          <p className="max-w-2xl leading-7 text-[#66736b]">{site.productsPage.subtitle}</p>
+          <h1 className="mb-3 text-4xl font-medium text-[#173126] md:text-5xl">{selectedCollection === "jardineria" ? "Artículos de jardinería" : site.productsPage.title}</h1>
+          <p className="max-w-2xl leading-7 text-[#66736b]">{selectedCollection === "jardineria" ? "Huerto urbano, herramientas, riego, fertilizantes y productos para el cuidado de las plantas." : site.productsPage.subtitle}</p>
         </div>
       </div>
 
@@ -415,13 +443,13 @@ export function Products() {
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Colecciones</p>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => setSelectedCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
+                <button onClick={() => selectCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
                 {collectionOptions
                   .filter((item) => String(item.status || "active") === "active")
                   .map((item) => {
                     const id = String(item.id);
                     return (
-                      <button key={id} onClick={() => setSelectedCollection(id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
+                      <button key={id} onClick={() => selectCollection(id)} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === id ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>
                         {String(item.name || id)}
                       </button>
                     );
@@ -434,9 +462,9 @@ export function Products() {
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Subcategorías</p>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => setSelectedCategory("todos")} className={`rounded-lg px-3 py-2 text-sm font-bold ${selectedCategory === "todos" ? "bg-[#e6eee8] text-[#173126]" : "border border-border"}`}>Todas</button>
+                <button onClick={() => selectCategory("todos")} className={`rounded-lg px-3 py-2 text-sm font-bold ${selectedCategory === "todos" ? "bg-[#e6eee8] text-[#173126]" : "border border-border"}`}>Todas</button>
                 {categoryOptions.map((item) => (
-                  <button key={item.id} onClick={() => setSelectedCategory(item.id)} className={`rounded-lg px-3 py-2 text-sm font-bold ${selectedCategory === item.id ? "bg-[#e6eee8] text-[#173126]" : "border border-border"}`}>
+                  <button key={item.id} onClick={() => selectCategory(item.id)} className={`rounded-lg px-3 py-2 text-sm font-bold ${selectedCategory === item.id ? "bg-[#e6eee8] text-[#173126]" : "border border-border"}`}>
                     {item.name}
                   </button>
                 ))}
