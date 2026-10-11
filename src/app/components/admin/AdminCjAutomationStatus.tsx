@@ -103,6 +103,24 @@ export function AdminCjAutomationStatus(){
         {data?.operationsReport?.decisions?.length ?? 0} pedidos de la cola en esta vista.
         {data?.operationsSampleLimited ? " Existen más pedidos: consulta la cola completa." : ""}
       </p>
+      <div className="mt-3 rounded-lg border border-border bg-background p-3">
+        <p className="font-semibold">Planificación de operaciones CJ</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Solo indica cuál es el siguiente paso seguro. Nunca compra ni autoriza un pago.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-lg border px-3 py-2">
+            Preparados para prueba supervisada: {data?.executionPlan?.totals?.ready_for_supervised_creation ?? 0}
+          </span>
+          <span className="rounded-lg border px-3 py-2">
+            Pendientes de pago con aprobación: {data?.executionPlan?.totals?.payment_requires_authorization ?? 0}
+          </span>
+          <span className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+            Creación o pago por conciliar: {((data?.executionPlan?.totals?.creation_unknown_reconcile ?? 0) +
+              (data?.executionPlan?.totals?.payment_unknown_reconcile ?? 0))}
+          </span>
+        </div>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
         <span className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-900">
           Requieren conciliación: {data?.operationsReport?.counts?.reconciliation ?? "—"}
@@ -114,6 +132,18 @@ export function AdminCjAutomationStatus(){
           Candidatos para comprobación: {data?.operationsReport?.counts?.livePreflightCandidates ?? "—"}
         </span>
       </div>
+      {data?.budgetSafety && <div className="mt-3 rounded-lg border border-border bg-background p-3">
+        <strong>Cash Guard · verificación de reservas</strong>
+        <p className="mt-1 text-xs">
+          Compromisos y reservas (estimación conservadora): {data.budgetSafety.conservativeTotalEur.toFixed(2)} € ·
+          Fondos libres según límites: {data.budgetSafety.spendableEstimateEur===null
+            ? "no verificables" : data.budgetSafety.spendableEstimateEur.toFixed(2)+" €"}
+        </p>
+        {data.budgetSafety.uncertainEur>0 && <p className="mt-1 text-xs font-semibold text-red-700">
+          Hay {data.budgetSafety.uncertainEur.toFixed(2)} € de operaciones inciertas. No se deben repetir.
+        </p>}
+        <p className="mt-1 text-xs text-muted-foreground">{data.budgetSafety.note}</p>
+      </div>}
       {data?.operationsReport?.budget && <div className="mt-3 rounded-lg border border-border bg-background p-3">
         <strong>Cash Guard · presupuesto de simulación</strong>
         <p className="mt-1 text-xs">
