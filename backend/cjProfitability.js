@@ -7,13 +7,14 @@ export function estimateCjProfitability({
   salePriceEur, productUsd, shippingUsd, postageUsd, usdEurRate,
   vatRate = 21, minMarginPercent = 30,
   processingRatePercent = 1.5, processingFixedEur = 0.25,
-  currencyBufferPercent = 3,
+  currencyBufferPercent = 3, additionalImportCostEur = 0,
 } = {}) {
   const price = normalized(salePriceEur);
   const product = normalized(productUsd);
   const shipping = normalized(postageUsd) ?? normalized(shippingUsd);
   const rate = normalized(usdEurRate);
-  if (price == null || product == null || shipping == null || rate == null || rate <= 0) {
+  const importCosts=normalized(additionalImportCostEur);
+  if (price == null || product == null || shipping == null || importCosts == null || rate == null || rate <= 0) {
     return { available: false, reason: "Falta un precio o tipo de cambio verificable. No habilitar compras automáticas." };
   }
   const vat = Math.max(0, Math.min(40, Number(vatRate) || 0)) / 100;
@@ -22,7 +23,7 @@ export function estimateCjProfitability({
   const fixed = Math.max(0, Number(processingFixedEur) || 0);
   const buffer = Math.max(0, Math.min(20, Number(currencyBufferPercent) || 0)) / 100;
   const providerUsd = product + shipping;
-  const providerEur = providerUsd * rate * (1 + buffer);
+  const providerEur = providerUsd * rate * (1 + buffer) + importCosts;
   const netRevenueEur = price / (1 + vat);
   const paymentFeeEur = price * processing + fixed;
   const profitEur = netRevenueEur - providerEur - paymentFeeEur;
@@ -32,6 +33,7 @@ export function estimateCjProfitability({
   return {
     available: true, currency: "EUR", salePriceEur: money(price),
     supplierPriceUsd: money(product), postageUsd: money(shipping), supplierTotalUsd: money(providerUsd),
+    additionalImportCostEur:money(importCosts),
     usdEurRate: rate, costEur: money(providerEur), netRevenueEur: money(netRevenueEur),
     estimatedPaymentFeeEur: money(paymentFeeEur), estimatedProfitEur: money(profitEur),
     estimatedMarginPercent: money(marginPercent),

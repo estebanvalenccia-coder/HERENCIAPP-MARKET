@@ -7,6 +7,11 @@ const cj={id:"cj-product",name:"Garden irrigation controller",price:20,metadata:
   supplierVariantId:"1531107375489495040",supplierSku:"CJJZGJYL00285-Green EU Plug",
   cjPreferredLogisticName:"CJPacket Liquid Line",
   sourceProductUrl:"https://cjdropshipping.com/product-p-1531107375489495040.html",
+  gpsrManufacturerName:"Fabricante CJ",gpsrManufacturerPostalAddress:"Shanghai, China",
+  gpsrManufacturerEmail:"supplier@example.com",gpsrManufacturerCountryCode:"CN",
+  gpsrEuResponsibleName:"Responsable UE",gpsrEuResponsiblePostalAddress:"Madrid, España",
+  gpsrEuResponsibleEmail:"responsable@example.es",gpsrNoWarningsApplicable:true,
+  gpsrSafetyReviewed:true,cjImportArrangement:"DDP",cjImportCostsReviewed:true,cjAdditionalImportCostEur:3,
 }};
 const supplier={id:"cj-supplier",name:"CJdropshipping",integrationType:"cj",active:true,cjSandbox:false};
 test("CJ supplier in Sandbox blocks checkout before contacting CJ or preparing Stripe",async()=>{
@@ -28,6 +33,19 @@ test("CJ supplier in Sandbox blocks checkout before contacting CJ or preparing S
     shippingAddress:{country:"ES",postalCode:"08032"},deps,
   }),/Sandbox/);
   assert.equal(calls,0);
+});
+
+test("CJ checkout rejects missing legal identity or customs verification before API calls",async()=>{
+ let called=0;
+ const deps={verifyVariant:async()=>{called++;throw Error("CJ called");},
+ quoteShipping:async()=>{called++;throw Error("Shipping called");},
+ getRate:async()=>{called++;throw Error("FX called");},getStock:async()=>{called++;throw Error("Stock called");}};
+ for(const metadata of [{...cj.metadata,gpsrManufacturerName:""}, {...cj.metadata,cjImportCostsReviewed:false}]){
+  await assert.rejects(evaluateCjCheckout({lines:[{id:"cj-product",price:20,quantity:1}],
+    catalog:[{...cj,metadata}],suppliers:[supplier],
+    shippingAddress:{country:"ES",postalCode:"08032"},deps}),/seguridad y aduanas.*No se realizará ningún cobro/);
+ }
+ assert.equal(called,0);
 });
 
 test("ordinary Herencia goods keep their original local shipping checkout", async () => {

@@ -1,4 +1,5 @@
 import {assessCjPublicProductStatus,isCjSupplierItem} from "./cjFulfillmentIdentity.js";
+import {assessCjDistanceSaleCompliance} from "./cjDistanceSaleCompliance.js";
 /**
  * Read-only, conservative onboarding indicators. Records in Neon describe what
  * has been configured, NOT proof that a supplier accepts live orders or that a
@@ -33,12 +34,13 @@ export function buildDropshippingLaunchStatus({
       issues.push(status==="archived"?"Producto archivado; no está a la venta.":"Producto en borrador o sin publicar.");
     const sellability=assessCjPublicProductStatus(p);
     if(sellability.cj) issues.push(...sellability.blockers);
+    if(sellability.cj)issues.push(...assessCjDistanceSaleCompliance(p).blockers);
     if(!Number.isFinite(Number(p?.price))||Number(p.price)<=0)
       issues.push("Falta un precio de venta válido.");
     if(!Number.isSafeInteger(Number(p?.stock))||Number(p.stock)<=0)
       issues.push("No hay unidades disponibles según el catálogo local.");
     // Neither positive local stock nor a previously saved quote proves live CJ stock.
-    if(status==="active"&&issues.length===0)
+    if(status==="active")
       issues.push("Pendiente de verificar stock, coste, IVA y portes CJ en tiempo real antes de cobrar.");
     return {id:String(p?.id||""),name:String(p?.name||"Producto sin nombre"),status,
       issues,needsReview:issues.length>0};
