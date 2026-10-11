@@ -11,6 +11,7 @@ import {
   isSupplierChallengeName,
   supportsManualCatalogFallback,
   analyzeCatalogUrl,
+  productImageCandidatesFromHtml,
 } from "./catalogUrlImporter.js";
 
 test("detecta productos enlazados en una categoría de proveedor", () => {
@@ -220,4 +221,36 @@ test("la galería embebida no acepta logos externos ni imágenes en otros domini
   const valid = extractMarketplaceGalleryImages(html, "https://www.aliexpress.com/item/1005000000000.html");
   assert.deepEqual(valid, ["https://ae01.alicdn.com/kf/garden.jpg"]);
   assert.deepEqual(extractMarketplaceGalleryImages(html, "https://semillasbatlle.com/producto/base"), []);
+});
+
+test("acepta una página de producto Batlle y extrae su imagen principal sin logos", () => {
+  const html = [
+    '<html><head><meta property="og:title" content="Semillas de Calendula Batlle">',
+    '<meta property="og:image" content="/wp-content/uploads/calendula-sobre.webp">',
+    '</head><body><h1>Semillas de Caléndula</h1>',
+    '<div class="woocommerce-product-gallery__image">',
+    '<a href="/wp-content/uploads/calendula-grande.jpg"><img src="/wp-content/uploads/calendula-mini.jpg" data-large_image="/wp-content/uploads/calendula-grande.jpg"></a>',
+    '</div><section class="related products">',
+    '<img src="/wp-content/uploads/otra-semilla.jpg"></section></body></html>',
+  ].join("");
+  const images = productImageCandidatesFromHtml(html, "https://semillasbatlle.com/productosbatlle/semillas/calendula/");
+  assert.deepEqual(images, [
+    "https://semillasbatlle.com/wp-content/uploads/calendula-sobre.webp",
+    "https://semillasbatlle.com/wp-content/uploads/calendula-grande.jpg",
+  ]);
+});
+
+test("una URL de página sin producto ni foto no se acepta como imagen", () => {
+  assert.throws(
+    () => productImageCandidatesFromHtml("<html><h1>Bienvenido</h1></html>", "https://proveedor.example/inicio"),
+    /no contiene fotografías de producto/i
+  );
+});
+
+test("rechaza páginas con verificación humana en el importador de imágenes", () => {
+  const html = "<html><title>Just a moment</title><h1>Human verification</h1></html>";
+  assert.throws(
+    () => productImageCandidatesFromHtml(html, "https://proveedor.example/producto/123"),
+    /verificación humana/i
+  );
 });
