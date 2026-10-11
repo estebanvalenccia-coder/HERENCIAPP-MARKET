@@ -1736,7 +1736,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
                     onClick={() => setHiddenSupplierIds(current =>
                       isHidden ? current.filter(id => id !== String(supplier.id)) : [...new Set([...current, String(supplier.id)])])}
                     className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold">
-                    {isHidden ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                    {isHidden ? <Eye className="h-4 w-4"/> : <EyeOff className="h-4 w-4"/>}
                     {isHidden ? "Mostrar" : "Ocultar"}
                   </button>
                   <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold">{modeLabel}</span>
