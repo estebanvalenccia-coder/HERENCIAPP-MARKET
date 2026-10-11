@@ -17,6 +17,7 @@ import { createCjAmbiguousReconciler,projectCjAmbiguousReconciliation } from "./
 import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
 import { summarizeCjAutopilotPlans } from "./cjAutopilotExecutionPlan.js";
+import {CJ_LIVE_MANDATE_KEY,buildCjLiveMandate,validateCjLiveMandate} from "./cjLiveAutopilotMandate.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
  CJ_POLICY_KEY, CJ_BUDGET_LEDGER_PREFIX,cjBudgetDay,
@@ -6283,6 +6284,61 @@ const cjAutoPreflightScheduler=createCjPreflightScheduler({
   read:readNeonStorageValue,write:upsertNeonStorageValue,
   mutate:mutateNeonStorageValue,
   check:runCjAutopilotLivePreflight,
+});
+
+// Separate owner-approved financial mandate. No policy or environment flag
+// alone permits an unattended purchase; this endpoint never contacts CJ.
+app.get("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const [ops,policyRaw,mandateRaw]=await Promise.all([
+      readSupplierOperations(),readNeonStorageValue(CJ_POLICY_KEY),
+      readNeonStorageValue(CJ_LIVE_MANDATE_KEY),
+    ]);
+    const policy=readCjAutopilotPolicy(policyRaw);
+    const mandate=validateCjLiveMandate(mandateRaw,{policy,suppliers:ops.suppliers||[]});
+    res.setHeader("Cache-Control","no-store");
+    res.json({active:Boolean(mandate),expiresAt:mandate?.expiresAt||null,
+      allowedSupplierIds:mandate?.allowedSupplierIds||[],
+      perOrderMaxEur:mandate?.perOrderMaxEur??null,
+      dailyMaxEur:mandate?.dailyMaxEur??null,
+      realMoneyCanBeSpent:Boolean(mandate)});
+  }catch{return res.status(503).json({error:"No se pudo comprobar la autorización financiera CJ."});}
+});
+app.post("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const operations=await readSupplierOperations();
+    const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
+    const supervisedProof=(operations.supplierFulfillments||[]).some(r=>
+      r.cjManualAuthorization?.approvedByAdminAt && r.paidAt &&
+      r.externalOrderId && ["ordered","shipped","delivered"].includes(String(r.status)));
+    const encoded=buildCjLiveMandate(req.body,{
+      policy,suppliers:operations.suppliers||[],supervisedProof,
+      env:{
+        CJ_LIVE_AUTOPILOT_ENABLED:String(process.env.CJ_LIVE_AUTOPILOT_ENABLED||""),
+        CJ_LIVE_ORDER_CREATION_ENABLED:String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED||""),
+        CJ_LIVE_PAYMENT_ENABLED:String(process.env.CJ_LIVE_PAYMENT_ENABLED||""),
+      },
+    });
+    await mutateNeonStorageValue(CJ_LIVE_MANDATE_KEY,()=>encoded);
+    const approved=JSON.parse(encoded);
+    return res.json({active:true,expiresAt:approved.expiresAt,
+      perOrderMaxEur:approved.perOrderMaxEur,dailyMaxEur:approved.dailyMaxEur,
+      message:"Mandato firmado por el administrador. Cada compra seguirá requiriendo validación de Stripe/CJ, reserva transaccional y comprobación de límites."});
+  }catch(error){return res.status(error.statusCode||503).json({
+    error:String(error?.message||"No se pudo autorizar el gasto automático").slice(0,240),
+  });}
+});
+// Kill switch can ALWAYS revoke a previous authorization, independent of CJ.
+app.delete("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    await mutateNeonStorageValue(CJ_LIVE_MANDATE_KEY,()=>JSON.stringify({
+      enabled:false,revokedAt:new Date().toISOString(),
+    }));
+    return res.json({active:false,message:"Compras automáticas revocadas. Los pedidos que ya salieron a CJ deben conciliarse."});
+  }catch{return res.status(503).json({error:"No se pudo revocar el mandato CJ."});}
 });
 
 // CJ automation health is a status/preflight, NOT a purchase approval.
