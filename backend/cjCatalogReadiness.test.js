@@ -52,5 +52,6 @@ test("admin-only audit route never creates orders or saves public stock and pric
  assert.match(code,/queryCjVariantStock/);
  assert.match(code,/queryCjProductVariants/);
  assert.match(code,/assessCjCatalogReadiness/);
- assert.doesNotMatch(code,/createOrderV2|cjPayOrder|saveNeonCommerceProduct|upsertNeonStorageValue|paymentIntents/);
+ assert.match(code,/upsertNeonStorageValue\(cjObservationKey\(productId,vid\)/);
+ assert.doesNotMatch(code,/createOrderV2|cjPayOrder|saveNeonCommerceProduct|paymentIntents/);
 });
