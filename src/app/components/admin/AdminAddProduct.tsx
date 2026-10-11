@@ -84,6 +84,7 @@ type SelectedImage = {
   id: string;
   file?: File;
   remoteUrl?: string;
+  sourceUrl?: string;
   preview: string;
 };
 
@@ -107,10 +108,28 @@ function readImagePreview(file: File) {
   });
 }
 
+function GalleryImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [src]);
+
+  if (failed) {
+    return (
+      <div role="status" className="flex h-full w-full flex-col items-center justify-center gap-2 bg-amber-50 p-3 text-center text-xs text-amber-900">
+        <span className="font-bold">No se puede mostrar esta imagen.</span>
+        <span>Elimínala y vuelve a importarla desde una URL pública.</span>
+      </div>
+    );
+  }
+
+  return <img src={src} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />;
+}
+
 export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [formData, setFormData] = useState<FormState>(initialForm);
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState("");
+  const [addingImageUrl, setAddingImageUrl] = useState(false);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
     COMMERCE_COLLECTIONS.map((item) => ({ id: item.id, name: item.name, status: "active" }))
@@ -445,7 +464,8 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
     }
   }
 
-  function handleAddImageUrl() {
+  async function handleAddImageUrl() {
+    if (addingImageUrl) return;
     const value = imageUrlInput.trim();
     if (!value) return toast.error("Pega la URL de una imagen");
     if (selectedImages.length >= 8) return toast.error("Puedes añadir un máximo de 8 imágenes");
@@ -457,23 +477,46 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
       return toast.error("La URL de la imagen no es válida");
     }
 
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return toast.error("La URL debe empezar por http:// o https://");
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      return toast.error("Utiliza una URL pública de imagen http:// o https://, sin credenciales");
     }
 
-    if (selectedImages.some((image) => image.remoteUrl === parsed.toString())) {
+    const sourceUrl = parsed.toString();
+    if (selectedImages.some((image) => image.sourceUrl === sourceUrl || image.remoteUrl === sourceUrl)) {
       return toast.error("Esa imagen ya está añadida");
     }
 
-    setSelectedImages((current) => [
-      ...current,
-      {
-        id: `url-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        remoteUrl: parsed.toString(),
-        preview: parsed.toString(),
-      },
-    ].slice(0, 8));
-    setImageUrlInput("");
+    try {
+      setAddingImageUrl(true);
+      // Copy to our own R2 media library before showing or publishing the image.
+      // Direct hotlinks often break because the supplier blocks third-party previews.
+      const result = await backendApi.saveCatalogUrlProductMedia({
+        name: formData.name.trim() || "imagen-producto",
+        images: [sourceUrl],
+      });
+      const storedUrl = String(result.media?.[0]?.url || "").trim();
+      if (!storedUrl) throw new Error("La imagen no se pudo guardar en la biblioteca multimedia");
+      setSelectedImages((current) => {
+        if (current.length >= 8 || current.some((image) => image.sourceUrl === sourceUrl || image.remoteUrl === storedUrl)) {
+          return current;
+        }
+        return [
+          ...current,
+          {
+            id: `url-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            sourceUrl,
+            remoteUrl: storedUrl,
+            preview: storedUrl,
+          },
+        ];
+      });
+      setImageUrlInput("");
+      toast.success("Imagen importada y guardada en la biblioteca multimedia");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo importar la imagen. Prueba un enlace directo y público a JPG, PNG, WEBP, GIF o AVIF.");
+    } finally {
+      setAddingImageUrl(false);
+    }
   }
 
   function addImagesFromLibrary(urls: string[]) {
@@ -874,7 +917,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               {selectedImages.length > 0 ? (
                 <div className="space-y-3">
                   <div className="relative h-72 overflow-hidden rounded-2xl border border-border bg-muted">
-                    <img src={selectedImages[0].preview} alt="Imagen principal" className="h-full w-full object-cover" />
+                    <GalleryImage src={selectedImages[0].preview} alt="Imagen principal" />
                     <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs font-black text-white">Principal</span>
                   </div>
 
@@ -882,7 +925,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                     {selectedImages.map((image, index) => (
                       <div key={image.id} className="overflow-hidden rounded-2xl border border-border bg-background">
                         <div className="relative aspect-square bg-muted">
-                          <img src={image.preview} alt={`Foto ${index + 1}`} className="h-full w-full object-cover" />
+                          <GalleryImage src={image.preview} alt={`Foto ${index + 1}`} />
                           <button type="button" onClick={() => removeImage(index)} className="absolute right-2 top-2 rounded-full bg-black/65 p-1.5 text-white">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -936,7 +979,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               <div className="mt-3 rounded-2xl border border-border bg-background p-3">
                 <p className="text-sm font-black">Añadir imagen por URL</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Puedes pegar una URL pública de imagen. Se guardará directamente junto con las fotos subidas.
+                  Pega un enlace directo a una imagen pública. Herencia la copiará a la biblioteca multimedia para que no dependa de la web de origen.
                 </p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -949,17 +992,18 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                         handleAddImageUrl();
                       }
                     }}
-                    disabled={selectedImages.length >= 8}
+                    disabled={selectedImages.length >= 8 || addingImageUrl}
                     placeholder="https://ejemplo.com/imagen.webp"
                     className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm disabled:opacity-50"
                   />
                   <button
                     type="button"
                     onClick={handleAddImageUrl}
-                    disabled={selectedImages.length >= 8}
+                    disabled={selectedImages.length >= 8 || addingImageUrl}
+                    aria-busy={addingImageUrl}
                     className="rounded-xl border border-border px-4 py-2.5 text-sm font-black hover:bg-muted disabled:opacity-50"
                   >
-                    + Añadir URL
+                    {addingImageUrl ? "Importando…" : "+ Añadir URL"}
                   </button>
                 </div>
               </div>
