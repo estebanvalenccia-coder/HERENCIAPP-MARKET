@@ -15,10 +15,12 @@ import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explai
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
 import {createCjPreflightScheduler,cjPreflightKey,readCjPreflightCache} from "./cjAutopilotPreflightScheduler.js";
 import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
+import { summarizeCjAutopilotPlans } from "./cjAutopilotExecutionPlan.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
- CJ_POLICY_KEY, readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
- assessCjAutopilotDryRun,summarizeCjDailyExposure,
+ CJ_POLICY_KEY, CJ_BUDGET_LEDGER_PREFIX,cjBudgetDay,
+ readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
+ assessCjAutopilotDryRun,summarizeCjDailyExposure,summarizeCjBudgetLedger,
 } from "./cjAutopilotPolicy.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
@@ -6303,6 +6305,7 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
     ].includes(String(r.status))).length;
     const previews=[];
     const queuedOrders=[];
+    const cachedPreflights=Object.create(null);
     const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
     for(const record of records.slice(0,12)){
       const supplier=suppliers.find(s=>String(s.id)===String(record.supplierId));
@@ -6311,6 +6314,14 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       const cached=readCjPreflightCache(
         await readNeonStorageValue(cjPreflightKey(record.id)),
       );
+      // This cache is a supervised-workflow HINT, never permission to buy.
+      // A real financial action must rerun the full Stripe + CJ live checks.
+      if(cached?.fresh===true && cached?.eligible===true &&
+        cached.sourceStatus===String(record.status)){
+        cachedPreflights[String(record.id)]={
+          eligibleForSupervisedTest:true,blockers:[],readOnly:true,
+        };
+      }
       previews.push({
         lastLivePreflight:cached && cached.sourceStatus===String(record.status) ? cached : null,
         fulfillmentId:record.id,orderId:record.orderId,status:record.status,
@@ -6326,10 +6337,28 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
     const operationsReport=summarizeCjAutopilotOperations({
       records:records.slice(0,12),exposureRecords:records,suppliers,orders:queuedOrders,policy,
     });
+    const executionPlan=summarizeCjAutopilotPlans(records.slice(0,12),cachedPreflights,policy);
+    const today=cjBudgetDay();
+    const budgetLedger=summarizeCjBudgetLedger(
+      await readNeonStorageValue(CJ_BUDGET_LEDGER_PREFIX+today),{policy,date:today}
+    );
+    // Conservative: a pending budget reservation might overlap an existing
+    // supplier operation. Double-count rather than underestimate exposure.
+    const knownExposure=operationsReport.budget?.spentOrCommittedEur??0;
+    const allExposuresValid=operationsReport.budget?.exposureVerified===true;
+    const budgetSafety={
+      ...budgetLedger,
+      conservativeTotalEur:Math.round((knownExposure+budgetLedger.exposureEur)*100)/100,
+      spendableEstimateEur:allExposuresValid && policy.configured
+        ?Math.max(0,Math.round((policy.dailyMaxEur-knownExposure-budgetLedger.exposureEur)*100)/100)
+        :null,
+      fullyVerified:allExposuresValid && policy.configured,
+      note:"La estimación considera todos los compromisos y reservas (puede contarlos dos veces por seguridad). Nunca autoriza un pago.",
+    };
     res.setHeader("Cache-Control","no-store");
     return res.json({
       provider:"cj",configured:cjConfigured(),
-      operationsReport,
+      operationsReport,executionPlan,budgetSafety,
       operationsTotal:records.length,
       operationsSampleLimited:records.length>12,
       accountConnectionNotRetested:true,
