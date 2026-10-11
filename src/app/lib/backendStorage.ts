@@ -1818,7 +1818,7 @@ export const backendApi = {
   async neuralCode(text: string, conversationId = "admin:code") {
     return request<any>("/api/neural/code", {
       method: "POST",
-      body: JSON.stringify({ text, conversationId }),
+      body: JSON.stringify({ text, conversationId, clientVersion: 2 }),
     });
   },
   async neuralCodeJob(jobId: string) {
