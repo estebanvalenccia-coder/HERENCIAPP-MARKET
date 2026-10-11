@@ -10,6 +10,27 @@ export function isCjSupplierItem(item) {
     (sourceHost === "cjdropshipping.com" || fromUrl === "cjdropshipping.com");
 }
 
+// Fail closed before exposing an obviously unsellable CJ product to checkout.
+// This is a catalogue readiness HINT; final supplier quotes and stock are
+// checked independently by the backend for the exact destination.
+export function assessCjPublicProductStatus(product) {
+  if (!isCjSupplierItem(product))
+    return {cj:false,availableToAdd:true,blockers:[],warnings:[]};
+  const meta=product?.metadata && typeof product.metadata==="object" ? product.metadata : {};
+  const variants=Array.isArray(product?.variants) ? product.variants : [];
+  const blockers=[],warnings=[];
+  if (!String(meta.supplierId||"").trim()) blockers.push("Falta vincular el proveedor CJ.");
+  if (!String(meta.cjPreferredLogisticName||"").trim())
+    blockers.push("Todavía no hay un método de transporte CJ validado para España.");
+  if (!variants.length && (!String(meta.supplierVariantId||meta.cjVid||"").trim() ||
+    !String(meta.supplierSku||meta.cjSku||"").trim()))
+    blockers.push("Faltan identificadores VID y SKU reales de la variante CJ.");
+  if (!variants.length) warnings.push("Solo hay una referencia CJ vinculada; las combinaciones de color y tamaño no están importadas al catálogo público.");
+  if (String(meta.fulfillmentMode||"")==="autopilot")
+    warnings.push("El modo Autopilot no implica que la compra desatendida esté habilitada.");
+  return {cj:true,availableToAdd:blockers.length===0,blockers,warnings};
+}
+
 // Checkout is currently certified for exactly ONE CJ line/quantity and no
 // local goods in the same basket. Used by cart, checkout and unit tests;
 // the backend independently revalidates the authoritative catalog and payment.

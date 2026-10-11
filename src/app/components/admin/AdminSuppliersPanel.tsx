@@ -38,6 +38,7 @@ import { backendApi } from "../../lib/backendStorage";
 import { SupplierImportImages } from "./SupplierImportImages";
 import { createDsersProductCsv, isAliExpressProduct } from "../../lib/dsersCsv";
 import { extractCjProductId } from "../../../../backend/cjProductIds.js";
+import { assessCjPublicProductStatus } from "../../lib/cjFulfillmentIdentity.js";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -305,18 +306,26 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     if (String(product.status || "") === "archived") return toast.error("No se puede vincular un producto de la papelera");
     let parsed: URL;
     try { parsed = new URL(existingProductUrl.trim()); }
-    catch { return toast.error("Pega la URL real del producto en CJdropshipping"); }
-    if (parsed.protocol !== "https:") return toast.error("La URL del proveedor debe ser HTTPS");
+    catch { return toast.error("Pega una URL HTTPS válida del proveedor registrado"); }
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password)
+      return toast.error("La URL del proveedor debe ser HTTPS y no contener credenciales");
     const sourceHost = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    const supplier = suppliers.find((entry: any) =>
-      String(entry.sourceHost || "").toLowerCase().replace(/^www\./, "") === sourceHost
-    );
+    const normalizedHost=normalizedSupplierDomain(sourceHost);
+    const supplier = suppliers.find((entry: any) => {
+      const registeredHost=normalizedSupplierDomain(String(entry.sourceHost||""));
+      return Boolean(registeredHost) && (registeredHost===normalizedHost ||
+        normalizedHost.endsWith("."+registeredHost));
+    });
     if (!supplier) return toast.error("No hay un proveedor registrado para este dominio. Revisa la URL.");
-    const cjPid = extractCjProductId(parsed);
+    const cjPid = supplier.integrationType === "cj" ? extractCjProductId(parsed) : "";
     if (supplier.integrationType === "cj" && !cjPid) {
       return toast.error("La URL CJ debe contener su identificador de producto (-p-...html)");
     }
     const metadata = product.metadata && typeof product.metadata === "object" ? product.metadata : {};
+    const previousHost=normalizedSupplierDomain(String(metadata.sourceHost||""));
+    const changedSupplier=String(metadata.supplierId||"")!==String(supplier.id) || previousHost!==normalizedHost ||
+      (cjPid && String(metadata.supplierProductId||"")!==String(cjPid));
+    const resetCj=changedSupplier || supplier.integrationType!=="cj";
     setLinkingExisting(true);
     try {
       const saved = await backendApi.updateCommerceProduct(product.id, {
@@ -325,16 +334,23 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           importedFromUrl: true,
           fulfillmentType: "dropship",
           supplierId: supplier.id,
-          fulfillmentMode: supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+          fulfillmentMode: supplier.integrationType === "cj" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
           sourceProductUrl: parsed.toString(),
-          sourceCatalogUrl: metadata.sourceCatalogUrl || parsed.toString(),
+          sourceCatalogUrl: changedSupplier ? parsed.toString() : metadata.sourceCatalogUrl || parsed.toString(),
           sourceHost,
-          ...(cjPid ? { supplierProductId: cjPid } : {}),
-          supplierCost: Math.max(0, Number(metadata.supplierCost || 0)),
-          supplierCurrency: metadata.supplierCurrency || (cjPid ? "USD" : "EUR"),
+          supplierProductId: cjPid || "",
+          supplierVariantId: resetCj ? "" : String(metadata.supplierVariantId||""),
+          supplierSku: resetCj ? "" : String(metadata.supplierSku||""),
+          cjVid: resetCj ? "" : String(metadata.cjVid||""),
+          cjSku: resetCj ? "" : String(metadata.cjSku||""),
+          cjPreferredLogisticName: resetCj ? "" : String(metadata.cjPreferredLogisticName||""),
+          cjProfitabilityQuote: resetCj ? null : metadata.cjProfitabilityQuote||null,
+          supplierCost: resetCj ? 0 : Math.max(0, Number(metadata.supplierCost || 0)),
+          supplierCurrency: changedSupplier ? (cjPid ? "USD" : "") : String(metadata.supplierCurrency||""),
           supplierAssignedAt: new Date().toISOString(),
         },
-        trackInventory: false,
+        // Keep existing public stock and inventory policy: linking a URL is
+        // not evidence that the supplier has units available.
       });
       const updated = saved.product;
       if (!updated || !updated.metadata?.sourceProductUrl) {
@@ -1409,7 +1425,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
 
     <section className="rounded-2xl border border-border bg-card p-6">
       <h2 className="text-xl font-bold">Vincular un producto que ya existe</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Recupera la conexión con CJdropshipping sin duplicar el artículo ni cambiar su precio, fotografías o estado publicado.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Vincula un artículo con CJ, AliExpress u otro proveedor registrado sin duplicarlo ni alterar precio, fotos, stock o publicación. Los proveedores sin conector autorizado quedan en modo manual.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="space-y-2">
           <label className="text-sm font-semibold">Buscar artículo del catálogo</label>
@@ -1425,8 +1441,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-semibold">URL original del producto en CJdropshipping</label>
-          <input type="url" value={existingProductUrl} onChange={(event) => setExistingProductUrl(event.target.value)} placeholder="https://www.cjdropshipping.com/product/..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
+          <label className="text-sm font-semibold">URL original del producto del proveedor registrado</label>
+          <input type="url" value={existingProductUrl} onChange={(event) => setExistingProductUrl(event.target.value)} placeholder="https://www.aliexpress.com/item/... o https://www.cjdropshipping.com/product/..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"/>
           <p className="text-xs text-muted-foreground">Solo vincula productos de proveedores ya registrados. El precio de CJ, los envíos y las variantes se revisan después.</p>
         </div>
       </div>
@@ -1885,6 +1901,7 @@ function ImportedProductRow({
   const selectedConnector = connectorStatuses.find(item => item.supplierId === String(supplierId));
   const isCjSupplier = selectedSupplier?.integrationType === "cj";
   const isCjProduct = sourceHost.toLowerCase().endsWith("cjdropshipping.com");
+  const cjSellability = assessCjPublicProductStatus(product);
   const selectedCjVariant = cjVariants.find((variant) => variant.vid === supplierVariantId);
   const availableCjWarehouses = (cjHealth?.vid === supplierVariantId ? cjHealth.warehouses : []) || [];
   const alternateCjWarehouses = availableCjWarehouses.filter(
@@ -2025,6 +2042,15 @@ function ImportedProductRow({
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
     {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && !selectedConnector?.automaticOrders && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación manual. DSers por CSV no crea ni paga pedidos automáticamente desde Herencia; requiere un conector autorizado.</p>}
+    {cjSellability.cj && (cjSellability.blockers.length > 0 || cjSellability.warnings.length > 0) &&
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 xl:col-span-6">
+        <strong>Revisión obligatoria antes de vender:</strong>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          {[...cjSellability.blockers,...cjSellability.warnings].map((issue,i)=><li key={i}>{issue}</li>)}
+          {!Array.isArray(product.variants) || product.variants.length === 0
+            ? <li>En «Editar en catálogo» utiliza «Importar variantes reales CJ» y revisa cada precio EUR antes de publicar.</li> : null}
+        </ul>
+      </div>}
     {(isCjSupplier || isCjProduct) && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm xl:col-span-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
