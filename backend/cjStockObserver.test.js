@@ -54,6 +54,24 @@ test("observer is lease-protected, writes only ephemeral snapshots, never change
  assert.equal(locked.status,"another_worker");
 });
 
+test("unverified CN warehouse does not become fake zero stock and produces a diagnostic",async()=>{
+ const kv=new Map(),warnings=[];
+ const worker=createCjStockObserver({
+  listProducts:async()=>[product],
+  read:async k=>kv.get(k)||null,
+  upsert:async(k,v)=>kv.set(k,v),
+  mutate:async(k,fn)=>kv.set(k,await fn(kv.get(k)||null)),
+  queryStock:async()=>({available:false,quantity:0,verified:false}),
+  now:()=>NOW,logger:{warn:(message,detail)=>warnings.push({message,detail})},
+ });
+ const result=await worker.sweep();
+ assert.equal(result.invalid,1);
+ assert.equal(result.outOfStock,0);
+ assert.equal(result.verified,0);
+ assert.equal(kv.has(cjObservationKey(PID,VID)),false);
+ assert.equal(warnings[0].detail.reason,"UNVERIFIED_CN_STOCK");
+});
+
 test("quota stop never fabricates stock and returns a bounded batch",async()=>{
  const kv=new Map();
  const worker=createCjStockObserver({
