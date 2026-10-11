@@ -662,6 +662,20 @@ export const backendApi = {
     return result;
   },
 
+  async importSiteMediaFromUrl(imageUrl: string, name = "imagen-producto") {
+    const result = await request<{
+      ok: boolean;
+      copiedImages: number;
+      media: Array<{ name: string; path: string; url: string; size?: number; createdAt?: string; sourceUrl?: string }>;
+      source?: string;
+    }>("/api/admin/catalog/import-url/media", {
+      method: "POST",
+      body: JSON.stringify({ imageUrl, name }),
+    });
+    window.dispatchEvent(new Event("media-library-changed"));
+    return result;
+  },
+
   async saveCatalogUrlProductMedia(product: any) {
     const result = await request<{
       ok: boolean;
