@@ -19,6 +19,8 @@ const row={id:"order1234",orderId:"paid12",supplierId:"cj-1",provider:"cj",
 test("real CJ money authorization needs exact nonexpired mandate and ready vendor",()=>{
  assert.equal(mandate.valid,true);
  assert.equal(eligibleCjLiveActions({suppliers:[supplier],supplierFulfillments:[row]},mandate).length,1);
+ assert.equal(eligibleCjLiveActions({suppliers:[supplier],
+   supplierFulfillments:[{...row,createdAt:"2026-10-10T00:00:00Z"}]},mandate).length,0);
  assert.equal(eligibleCjLiveActions({suppliers:[{...supplier,cjSandbox:true}],supplierFulfillments:[row]},mandate).length,0);
  assert.equal(eligibleCjLiveActions({suppliers:[supplier],supplierFulfillments:[{...row,estimatedCost:30}]},mandate).length,0);
  assert.equal(eligibleCjLiveActions({suppliers:[supplier],supplierFulfillments:[{...row,status:"cj_payment_unknown"}]},mandate).length,0);
