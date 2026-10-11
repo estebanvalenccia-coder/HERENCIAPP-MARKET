@@ -230,6 +230,17 @@ export function AdminCjAutomationStatus(){
       <div className="mt-3 max-h-80 space-y-3 overflow-auto">
         {data?.previews.map(item=><div key={item.fulfillmentId} className="rounded-xl border border-border p-3">
           <p className="text-sm font-bold">Pedido {item.orderId} · {item.status}</p>
+          {item.lastLivePreflight && <div className="mt-2 rounded-lg border border-border bg-muted/20 p-2 text-xs">
+            <p className="font-semibold">
+              Comprobación automática: {item.lastLivePreflight.status==="eligible"
+                ? "Verificaciones favorables, requiere autorización"
+                : item.lastLivePreflight.status==="blocked" ? "Bloqueado" : "No verificable"}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              {item.lastLivePreflight.message} · {item.lastLivePreflight.fresh
+                ? "Comprobación reciente" : "Comprobación caducada"}
+            </p>
+          </div>}
           <button type="button" disabled={Boolean(busy)||!guardrails?.policy.configured}
             onClick={()=>void simulate(item.fulfillmentId)}
             className="mt-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
