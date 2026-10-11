@@ -49,16 +49,20 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
   {
     id: "jardineria",
     name: "Jardinería",
-    description: "Herramientas, riego, fertilizantes, accesorios y huertos urbanos.",
+    description: "Huertos urbanos, herramientas, riego, fertilizantes, abonos y protección vegetal.",
     productType: "garden",
     inventoryDefault: true,
     categories: [
       { id: "herramientas", name: "Herramientas" },
       { id: "kits-huerto-urbano", name: "Kits de huerto urbano" },
       { id: "riego", name: "Riego" },
-      { id: "fertilizantes", name: "Fertilizantes" },
+      { id: "fertilizantes", name: "Fertilizantes y abonos" },
       { id: "accesorios-jardin", name: "Accesorios" },
       { id: "huerto-urbano", name: "Huerto urbano y kits de cultivo" },
+      { id: "fungicidas", name: "Fungicidas" },
+      { id: "acaricidas", name: "Acaricidas" },
+      { id: "insecticidas", name: "Insecticidas" },
+      { id: "tratamientos-fitosanitarios", name: "Otros tratamientos fitosanitarios" },
     ],
   },
   {

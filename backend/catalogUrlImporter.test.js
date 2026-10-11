@@ -72,6 +72,22 @@ test("usa subcategorías válidas para semillas, sustratos y jardinería", () =>
   );
 });
 
+test("clasifica artículos del huerto urbano y protección vegetal sin confundirlos con semillas", () => {
+  const taxonomy = (url, name) => guessCatalogTaxonomy(url, name);
+  assert.deepEqual(
+    [taxonomy("https://semillasbatlle.com/producto/mi-primer-huerto/", "Mi Primer Huerto").collection,
+      taxonomy("https://semillasbatlle.com/producto/mi-primer-huerto/", "Mi Primer Huerto").category],
+    ["jardineria", "huerto-urbano"]
+  );
+  assert.equal(taxonomy("https://proveedor.es/jardineria/fertilizante-liquido", "Fertilizante líquido").category, "fertilizantes");
+  assert.equal(taxonomy("https://proveedor.es/productos/fungicida", "Fungicida para plantas").category, "fungicidas");
+  assert.equal(taxonomy("https://proveedor.es/productos/acaricida", "Acaricida para ácaros").category, "acaricidas");
+  assert.equal(taxonomy("https://proveedor.es/productos/insecticida", "Insecticida para plantas").category, "insecticidas");
+  assert.equal(taxonomy("https://proveedor.es/huerto/kit-de-cultivo", "Kit de cultivo").category, "huerto-urbano");
+  assert.equal(taxonomy("https://semillasbatlle.com/semillas/zanahoria", "Semillas de zanahoria").category, "semillas-huerto");
+  assert.equal(taxonomy("https://proveedor.es/sustratos/humus", "Humus de lombriz").category, "abonos");
+});
+
 test("bloquea destinos locales para evitar SSRF", async () => {
   await assert.rejects(() => assertSafeExternalUrl("http://127.0.0.1/admin"), /redes privadas/i);
   await assert.rejects(() => assertSafeExternalUrl("http://localhost/internal"), /no está permitido/i);
