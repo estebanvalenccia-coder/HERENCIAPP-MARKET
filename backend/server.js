@@ -13,6 +13,7 @@ import { updateSupplierHubVisibility } from "./supplierHubVisibility.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
+import { summarizeCjAutopilotOperations, triageCjAutopilotRecord } from "./cjAutopilotOperations.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
  CJ_POLICY_KEY, readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
@@ -6285,9 +6286,12 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       "cost_required","address_required"
     ].includes(String(r.status))).length;
     const previews=[];
+    const queuedOrders=[];
+    const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
     for(const record of records.slice(0,12)){
       const supplier=suppliers.find(s=>String(s.id)===String(record.supplierId));
       const order=await getOrderPrimary(record.orderId).catch(()=>null);
+      if(order)queuedOrders.push(order);
       previews.push({
         fulfillmentId:record.id,orderId:record.orderId,status:record.status,
         ...explainCjAutomationReadiness({
@@ -6299,9 +6303,15 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
         }),
       });
     }
+    const operationsReport=summarizeCjAutopilotOperations({
+      records:records.slice(0,12),suppliers,orders:queuedOrders,policy,
+    });
     res.setHeader("Cache-Control","no-store");
     return res.json({
       provider:"cj",configured:cjConfigured(),
+      operationsReport,
+      operationsTotal:records.length,
+      operationsSampleLimited:records.length>12,
       accountConnectionNotRetested:true,
       trackingReadOnlyEnabled:cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false",
       trackingBatchMax:3,trackingIntervalMinutes:15,counts,
@@ -6315,6 +6325,28 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
     return res.status(503).json({error:"No se pudo calcular la preparación CJ sin operar con dinero."});
   }
 });
+
+// Automatically detect critical ambiguous CJ actions. No supplier calls or
+// spending: alerts are deduplicated by the existing notification subsystem.
+async function monitorCjAutopilotExceptions(){
+  const ops=await readSupplierOperations();
+  const rows=(Array.isArray(ops.supplierFulfillments)?ops.supplierFulfillments:[])
+    .filter(item=>item && ["cj_creation_unknown","cj_payment_unknown","cj_creating","cj_paying"].includes(String(item.status)));
+  let raised=0;
+  for(const record of rows.slice(0,12)){
+    if(raised>=3)break;
+    const result=triageCjAutopilotRecord(record,null,null);
+    if(result.severity!=="critical"||result.action!=="reconcile_remote")continue;
+    await addAutomationNotification({
+      type:"cj_reconciliation_required",title:"Pedido CJ pendiente de conciliación",
+      message:"Pedido "+String(record.orderId||"").slice(0,24)+": "+result.nextStep,
+      entityType:"order",entityId:String(record.orderId||""),
+      dedupeKey:"cj-reconcile:"+String(record.id||"").slice(0,120),
+    });
+    raised++;
+  }
+  return {inspected:Math.min(rows.length,12),alerts:raised};
+}
 
 // Manual on-demand run of the SAME rate-limited, read-only tracking worker.
 app.post("/api/admin/suppliers/cj/tracking-sweep", requireAdmin, async (_req,res)=>{
@@ -10768,6 +10800,8 @@ app.listen(port, () => {
   const runBackgroundChecks = async () => {
     try { await evaluateDelayedOrders(); } catch (error) { console.warn("Background delayed orders:", error?.message || error); }
     try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
+    try { await monitorCjAutopilotExceptions(); }
+    catch(error){console.warn("[cj.autopilot] read-only exception scan failed",String(error?.code||"READ_FAILED").slice(0,60));}
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
     if(cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false"){
