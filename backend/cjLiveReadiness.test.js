@@ -15,7 +15,8 @@ test("activation status explains real supplier, budget, supervised test and env 
  assert.match(part,/cjManualAuthorization\?\.approvedByAdminAt/);
  assert.match(part,/CJ_LIVE_ORDER_CREATION_ENABLED/);
  assert.match(part,/CJ_LIVE_PAYMENT_ENABLED/);
- assert.match(part,/readyForUnattendedBuying:false/);
+ assert.match(part,/readyForUnattendedBuying:authorized/);
+ assert.match(part,/validateCjLiveMandate/);
  assert.doesNotMatch(part,/createOrderV2|cjPayOrder\(|\/shopping\/pay\/|paymentIntents\.create/);
  const admin=readFileSync(new URL("../src/app/components/admin/AdminCjAutomationStatus.tsx",import.meta.url),"utf8");
  assert.match(admin,/data\.activationBlockers\.map/);
