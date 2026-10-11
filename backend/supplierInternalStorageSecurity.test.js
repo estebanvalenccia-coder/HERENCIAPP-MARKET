@@ -8,6 +8,9 @@ test("CJ non-repeatable purchase/payment and tracking keys cannot be addressed g
   "cjManualExternalAction:create:fulfill-123",
   "cjManualExternalAction:pay:fulfill-123",
   "cjTrackingReadOnlyLease:fulfill-123",
+  "cjStockObservation:v1:product:vid",
+  "cjStockObserverLease:v1",
+  "cjStockObserverCursor:v1",
   "supplierWebhookDispatch:order-123",
   "  CJMANUALEXTERNALACTION:PAY:123  ",
  ];
