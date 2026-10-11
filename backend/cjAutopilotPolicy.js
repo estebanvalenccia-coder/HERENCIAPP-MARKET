@@ -120,9 +120,47 @@ export function reserveCjDailyBudget(raw,{policy,fulfillmentId,amountEur,
     amountCents:amount,dailyUsedCents:spent+amount,dailyRemainingCents:maxDaily-spent-amount,
     canSpendRealMoney:false};
 }
+/**
+ * Conservatively reconcile exposure from CJ supplier orders already initiated
+ * today. Pending, unknown, and successfully ordered obligations ALL count.
+ * Unpriced obligations cause a fail-closed unknown budget, not a free slot.
+ * This is a preview; the future money-spending path must use an atomic ledger.
+ */
+export function summarizeCjDailyExposure(records=[],{
+  date=new Date().toISOString(),excludeFulfillmentId=""
+}={}){
+  const day=cjBudgetDay(date);
+  if(!Array.isArray(records)||records.length>3000)err("Cola de pedidos CJ incompleta.");
+  let usedCents=0,unknownCount=0,obligationCount=0;
+  const billable=new Set([
+    "cj_creating","cj_creation_unknown","payment_required",
+    "cj_paying","cj_payment_unknown","ordered","shipped","delivered","disputed",
+  ]);
+  for(const row of records){
+    if(!row || !billable.has(String(row.status||"")) ||
+       String(row.id)===String(excludeFulfillmentId||""))continue;
+    if(row.provider!=="cj"&&!row.cjManualAuthorization)continue;
+    const at=row.cjCreatedAt||row.cjManualAuthorization?.approvedByAdminAt||
+      row.orderedAt||row.paidAt||row.updatedAt;
+    if(!at||!Number.isFinite(Date.parse(String(at)))){unknownCount++;continue;}
+    if(cjBudgetDay(at)!==day)continue;
+    obligationCount++;
+    const amount=row.cjManualAuthorization?.approvedCostEur;
+    const cost=amount===undefined?row.estimatedCost:amount;
+    if(!(typeof cost==="number"&&Number.isFinite(cost)&&cost>0&&cost<100000)){
+      unknownCount++;continue;
+    }
+    usedCents+=Math.ceil(cost*100);
+  }
+  return {
+    day,usedEur:usedCents/100,unknownCount,obligationCount,
+    verifiedCompletely:unknownCount===0,spendFromLocalLedgerOnly:true,
+  };
+}
+
 export function assessCjAutopilotDryRun({
   policy,record,supplier,order,stripeIntent,quote,stock,usdEurRate,
-  nowMs=Date.now()
+  nowMs=Date.now(),dailyExposure=null
 }={}){
   const blockers=[],push=s=>{if(!blockers.includes(s))blockers.push(s);};
   if(!policy?.configured||policy.mode!=="simulation"||
@@ -168,6 +206,12 @@ export function assessCjAutopilotDryRun({
   if(!stock || stock.verified!==true||stock.vid!==norm(item.supplierVariantId)||
      stock.origin!=="CN"||stock.available!==true||!(stock.quantity>=1))
     push("CJ no confirma existencias para el VID exacto en almacén CN.");
+  if(!dailyExposure||dailyExposure.verifiedCompletely!==true ||
+     !Number.isFinite(dailyExposure.usedEur))
+    push("No se ha podido verificar el gasto CJ de hoy.");
+  else if(Number.isFinite(policy?.dailyMaxEur) &&
+     dailyExposure.usedEur+Number(quote?.costEur||0)>policy.dailyMaxEur)
+    push("El pedido superaría el presupuesto CJ diario disponible.");
   const estimatedCost=Number(quote?.costEur);
   if(!Number.isFinite(estimatedCost)||estimatedCost<=0 ||
      (Number.isFinite(policy?.perOrderMaxEur)&&estimatedCost>policy.perOrderMaxEur)||
