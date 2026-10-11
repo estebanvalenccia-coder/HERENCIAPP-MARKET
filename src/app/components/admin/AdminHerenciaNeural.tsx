@@ -296,6 +296,17 @@ export function AdminHerenciaNeural(){
   try{id=window.sessionStorage.getItem("herencia_neural_code_job")}catch{}
   if(id)void watchCodeJob(id);
  },[watchCodeJob]);
+ const recoveredCodeTaskIds=useRef(new Set<string>());
+ // Older already-open admin pages could accept a 202 without saving its jobId.
+ // After a refresh, recover that running work from Neural's persisted task list.
+ useEffect(()=>{
+  if(codeWatchRef.current)return;
+  const pending=tasks.find((item:any)=>item?.intent==="code_change"&&item?.payload?.sourceMode==="neural_code"&&item?.status==="RUNNING"&&item?.id);
+  if(!pending||recoveredCodeTaskIds.current.has(String(pending.id)))return;
+  recoveredCodeTaskIds.current.add(String(pending.id));
+  try{window.sessionStorage.setItem("herencia_neural_code_job",String(pending.id))}catch{}
+  void watchCodeJob(String(pending.id));
+ },[tasks,watchCodeJob]);
  const sendCode=async()=>{
   const q=codePrompt.trim();
   if(!q||codeStage)return;
