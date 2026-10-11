@@ -368,7 +368,10 @@ export function interpretCjWarehouseStocks(rows, vidInput) {
     if (String(row?.vid || "") !== vid) continue;
     const countryCode = String(row?.countryCode || "").trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(countryCode)) continue;
-    const raw = row?.storageNum ?? row?.cjInventoryNum ?? row?.totalInventoryNum;
+    // CJ API: cjInventoryNum is physical CJ warehouse inventory.
+    // storageNum is DEPRECATED and totalInventoryNum can include unverified
+    // factory stock. Never advertise factory-only quantities as ready stock.
+    const raw = row?.cjInventoryNum;
     const quantity = raw === null || raw === undefined || raw === "" || typeof raw === "boolean"
       ? NaN : Number(raw);
     const previous = warehouses.get(countryCode);
