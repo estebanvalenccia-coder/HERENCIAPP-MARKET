@@ -1236,7 +1236,7 @@ function runCjStockObserver(){
   cjStockObserver.sweep()
     .then(result=>{
       if(!["no_candidates","another_worker","already_running"].includes(result.status))
-        console.log("[cj.stock-observer]",result.status,"inspected="+result.inspected,"verified="+result.verified);
+        console.log("[cj.stock-observer]",result.status,"inspected="+result.inspected,"verified="+result.verified,"outOfStock="+(result.outOfStock||0),"invalid="+(result.invalid||0),"unavailable="+(result.unavailable||0));
     })
     .catch(error=>console.warn("[cj.stock-observer] unavailable",String(error?.code||"READ_FAILED").slice(0,50)));
 }
