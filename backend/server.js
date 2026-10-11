@@ -6356,9 +6356,32 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       fullyVerified:allExposuresValid && policy.configured,
       note:"La estimación considera todos los compromisos y reservas (puede contarlos dos veces por seguridad). Nunca autoriza un pago.",
     };
+    const activationBlockers=[];
+    if(!cjConfigured())
+      activationBlockers.push("No hay conexión CJ API configurada.");
+    const liveSuppliers=suppliers.filter(s=>s.active!==false && s.cjSandbox===false);
+    if(!liveSuppliers.length)
+      activationBlockers.push("El proveedor CJ sigue en modo pruebas (Sandbox). Las compras reales están bloqueadas.");
+    if(!policy.configured)
+      activationBlockers.push("No se ha guardado un presupuesto Autopilot por pedido, diario y margen.");
+    else if(!liveSuppliers.some(s=>policy.allowedSupplierIds.includes(String(s.id))))
+      activationBlockers.push("La política de límites no incluye un CJ real activo.");
+    const supervisedProof=records.some(row=>
+      row.cjManualAuthorization?.approvedByAdminAt &&
+      row.paidAt && row.externalOrderId &&
+      ["ordered","shipped","delivered"].includes(String(row.status)));
+    if(!supervisedProof)
+      activationBlockers.push("No hay un pedido CJ real supervisado y pagado que valide el recorrido completo.");
+    if(String(process.env.CJ_LIVE_ORDER_CREATION_ENABLED).toLowerCase()!=="true")
+      activationBlockers.push("La creación de pedidos reales CJ no está habilitada en Railway.");
+    if(String(process.env.CJ_LIVE_PAYMENT_ENABLED).toLowerCase()!=="true")
+      activationBlockers.push("Los pagos reales al proveedor CJ no están habilitados en Railway.");
+    activationBlockers.push("Falta autorizar formalmente el gasto desatendido y conectar un ejecutor de compras con su mandato y conciliación de saldo.");
+
     res.setHeader("Cache-Control","no-store");
     return res.json({
       provider:"cj",configured:cjConfigured(),
+      activationBlockers,readyForUnattendedBuying:false,
       operationsReport,executionPlan,budgetSafety,
       operationsTotal:records.length,
       operationsSampleLimited:records.length>12,
