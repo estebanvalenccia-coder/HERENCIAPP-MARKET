@@ -1215,6 +1215,7 @@ export const backendApi = {
         truncated:boolean;message:string;
       };
       previews:Array<{fulfillmentId:string;orderId:string;status:string;
+        lastLivePreflight:null|{status:string;sourceStatus:string;checkedAt:string;fresh:boolean;eligible:boolean;message:string};
         autoPurchaseEnabled:false;autoPaymentEnabled:false;
         blockers:string[];readyForUnattendedBuying:false}>;
     }>("/api/admin/suppliers/cj/automation-readiness");
