@@ -1877,6 +1877,9 @@ function ImportedProductRow({
   const [cjLookupComplete, setCjLookupComplete] = useState(false);
   const [cjHealth, setCjHealth] = useState<Awaited<ReturnType<typeof backendApi.checkCjVariantReadiness>> | null>(null);
   const [cjHealthLoading, setCjHealthLoading] = useState(false);
+  const [cjAudit, setCjAudit] = useState<Awaited<ReturnType<typeof backendApi.auditCjProductVariants>> | null>(null);
+  const [cjAuditBusy, setCjAuditBusy] = useState(false);
+  const [cjAuditError, setCjAuditError] = useState("");
   const [cjHealthError, setCjHealthError] = useState("");
   const [quoteDestination, setQuoteDestination] = useState("ES");
   const [quoteOrigin, setQuoteOrigin] = useState("CN");
@@ -1984,6 +1987,16 @@ function ImportedProductRow({
     }
   };
 
+  const auditCjVariants = async (offset = 0) => {
+    setCjAuditBusy(true);setCjAuditError("");
+    try {
+      const report=await backendApi.auditCjProductVariants(String(product.id),offset);
+      setCjAudit(report);
+      if(report.quotaPaused) toast.warning("CJ ha limitado las consultas. Las existencias restantes siguen sin verificar.");
+    }catch(error:any){setCjAuditError(String(error?.message||"No se pudo auditar las variantes CJ"));}
+    finally{setCjAuditBusy(false);}
+  };
+
   const lookupCjVariants = async () => {
     setCjHealth(null);
     setCjHealthError("");
@@ -2062,6 +2075,12 @@ function ImportedProductRow({
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
             <RefreshCw className={"h-4 w-4" + (cjLoading ? " animate-spin" : "")}/>
             {cjLoading ? "Consultando CJ…" : "Consultar variantes CJ"}
+          </button>
+          <button type="button" disabled={cjAuditBusy} onClick={() => void auditCjVariants(0)}
+            title="Audita precio USD, correspondencia SKU/VID y stock CN real en lotes de 4, sin publicar cambios"
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-400 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
+            <ShieldCheck className="h-4 w-4"/>
+            {cjAuditBusy ? "Auditando variantes…" : "Auditar variantes y stock CJ"}
           </button>
           <button type="button" disabled={cjHealthLoading || !supplierVariantId.trim()}
             onClick={() => void inspectCjStockAndCost()}
@@ -2174,6 +2193,27 @@ function ImportedProductRow({
           </option>)}
         </select>
         <span className="text-xs text-muted-foreground">{cjVariants.length} variantes consultadas</span>
+      </div>}
+      {cjAuditError && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{cjAuditError}</p>}
+      {cjAudit && <div className="space-y-2 rounded-xl border border-border bg-background p-3 text-xs">
+        <p className="font-bold">Auditoría de variantes CJ · lote {cjAudit.offset+1}–{cjAudit.offset+cjAudit.inspected} de {cjAudit.totalVariants}</p>
+        <p className="text-muted-foreground">Variantes del catálogo público: {cjAudit.publicVariantCount}. Stock: almacén CN, no incluye otros almacenes.</p>
+        {cjAudit.truncated && <p className="font-semibold text-amber-900">CJ tiene más de 200 variantes; el listado recibido es parcial. No publiques combinaciones que falten.</p>}
+        {cjAudit.providerWarning && <p className="font-semibold text-amber-900">{cjAudit.providerWarning}</p>}
+        <div className="grid gap-2">
+          {cjAudit.variants.map(row=><div key={row.vid} className="rounded-lg border border-border p-2">
+            <p className="font-semibold">{row.option || row.sku} · {row.sku || "SKU no confirmado"}</p>
+            <p>Proveedor: {row.supplierPriceUsd==null?"precio USD no confirmado":"$"+row.supplierPriceUsd.toFixed(2)+" USD"} · Público: {row.publicMapped ? row.publicPriceEur==null?"precio EUR pendiente":money(row.publicPriceEur):"no vinculada"}</p>
+            <p>Stock CN: {row.stock.verified ? row.stock.quantity + " unidades verificadas" : "desconocido"}</p>
+            {row.issues.length>0 && <p className="font-medium text-amber-900">{row.issues.join(" · ")}</p>}
+          </div>)}
+        </div>
+        {cjAudit.nextOffset!==null && !cjAudit.quotaPaused && <button type="button" disabled={cjAuditBusy}
+          onClick={()=>void auditCjVariants(cjAudit.nextOffset!)}
+          className="rounded-lg border border-border px-3 py-2 font-bold disabled:opacity-50">
+          {cjAuditBusy?"Consultando CJ…":"Siguientes cuatro variantes"}
+        </button>}
+        <p className="text-muted-foreground">{cjAudit.warning}</p>
       </div>}
       {cjHealthError && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{cjHealthError}</p>}
       {cjHealth && <div className="space-y-2 rounded-xl border border-border bg-background p-3 text-xs">
