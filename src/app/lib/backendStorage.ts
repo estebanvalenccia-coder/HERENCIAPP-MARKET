@@ -1197,6 +1197,23 @@ export const backendApi = {
       canCreateWithManualApproval:boolean;canPayWithManualApproval:boolean;
       unattendedOrderCreationEnabled:false;unattendedSupplierPaymentEnabled:false;
       whyNotAutomated:string;readOnly:true;
+      operationsTotal:number;operationsSampleLimited:boolean;
+      operationsReport:{
+        provider:"cj";readOnly:true;automaticPurchasesEnabled:false;
+        automaticPaymentsEnabled:false;policyConfigured:boolean;checkedAt:string;
+        counts:{total:number;critical:number;warning:number;info:number;complete:number;
+          reconciliation:number;livePreflightCandidates:number;awaitingSupplierPayment:number};
+        budget:null|{perOrderMaxEur:number;dailyMaxEur:number;minMarginPercent:number;
+          spentOrCommittedEur:number;remainingEur:number|null;
+          exposureVerified:boolean;unknownObligations:number};
+        decisions:Array<{fulfillmentId:string;orderId:string;supplierId:string;status:string;
+          severity:"critical"|"warning"|"info"|"complete";stage:string;action:string;
+          title:string;explanation:string;nextStep:string;
+          eligibleForLivePreflight:boolean;autoPurchaseAuthorized:false;
+          safeToRetryCreation:false;safeToRetryPayment:false;
+          spendingEnabled:false;financialSideEffect:false}>;
+        truncated:boolean;message:string;
+      };
       previews:Array<{fulfillmentId:string;orderId:string;status:string;
         autoPurchaseEnabled:false;autoPaymentEnabled:false;
         blockers:string[];readyForUnattendedBuying:false}>;

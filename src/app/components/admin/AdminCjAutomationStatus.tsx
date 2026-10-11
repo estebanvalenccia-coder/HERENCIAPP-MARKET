@@ -97,6 +97,57 @@ export function AdminCjAutomationStatus(){
       </div>)}
     </div>
     <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 text-sm">
+      <h3 className="font-bold">Decisiones de Autopilot · cola CJ</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Clasificación automática de pedidos, sin compras ni pagos. Solo se analizan los primeros
+        {data?.operationsReport.decisions.length ?? 0} pedidos de la cola en esta vista.
+        {data?.operationsSampleLimited ? " Existen más pedidos: consulta la cola completa." : ""}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+        <span className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+          Requieren conciliación: {data?.operationsReport.counts.reconciliation ?? "—"}
+        </span>
+        <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+          Revisión: {data?.operationsReport.counts.warning ?? "—"}
+        </span>
+        <span className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900">
+          Candidatos para comprobación: {data?.operationsReport.counts.livePreflightCandidates ?? "—"}
+        </span>
+      </div>
+      {data?.operationsReport.budget && <div className="mt-3 rounded-lg border border-border bg-background p-3">
+        <strong>Cash Guard · presupuesto de simulación</strong>
+        <p className="mt-1 text-xs">
+          Máximo por pedido: {data.operationsReport.budget.perOrderMaxEur.toFixed(2)} € ·
+          Comprometido según cola: {data.operationsReport.budget.spentOrCommittedEur.toFixed(2)} € ·
+          Disponible: {data.operationsReport.budget.remainingEur==null
+            ? "sin verificar, bloquear compras"
+            : data.operationsReport.budget.remainingEur.toFixed(2)+" €"}
+        </p>
+        {!data.operationsReport.budget.exposureVerified &&
+          <p className="mt-1 text-xs font-semibold text-amber-800">
+            Costes desconocidos: {data.operationsReport.budget.unknownObligations}. No autorizar gastos.
+          </p>}
+      </div>}
+      {!data?.operationsReport.decisions.length &&
+        <p className="mt-3 text-xs text-muted-foreground">No hay pedidos CJ que clasificar.</p>}
+      <div className="mt-3 max-h-80 space-y-2 overflow-auto">
+        {data?.operationsReport.decisions.map(row=><div key={row.fulfillmentId}
+          className="rounded-lg border border-border bg-background p-3">
+          <p className="text-xs font-bold">
+            Pedido {row.orderId} · {row.severity==="critical"?"URGENTE":row.severity==="complete"?"Gestionado":"Revisión"}
+          </p>
+          <p className="mt-1 text-sm font-semibold">{row.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{row.nextStep}</p>
+          {row.stage==="reconciliation"&&<p className="mt-1 text-xs font-bold text-red-700">
+            No repetir creación ni pago: consulta primero la operación en CJ.
+          </p>}
+        </div>)}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Los pedidos candidatos necesitan verificación en vivo de Stripe y CJ y autorización financiera independiente.
+      </p>
+    </div>
+    <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 text-sm">
       <p><strong>Conexión CJ:</strong> {data?.configured?"Clave detectada en Railway":"No comprobada o no configurada"}</p>
       <p className="mt-1"><strong>Sincronización de seguimiento:</strong> {data?.trackingReadOnlyEnabled
         ?"Activa, de solo lectura":"Desactivada"}</p>
