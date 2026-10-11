@@ -1197,6 +1197,7 @@ export const backendApi = {
       canCreateWithManualApproval:boolean;canPayWithManualApproval:boolean;
       unattendedOrderCreationEnabled:false;unattendedSupplierPaymentEnabled:false;
       whyNotAutomated:string;readOnly:true;
+      activationBlockers:string[];readyForUnattendedBuying:false;
       operationsTotal:number;operationsSampleLimited:boolean;
       executionPlan:{
         results:Array<{id:string;stage:string;reason:string;createSupplierOrder:false;
