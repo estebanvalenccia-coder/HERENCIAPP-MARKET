@@ -859,7 +859,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
         <form onSubmit={handleSubmit} className="space-y-8">
           <section>
             <h3 className="mb-3 text-lg font-black">1. ¿Qué vas a vender?</h3>
-            <p className="mb-4 text-sm text-muted-foreground">Para kits, mesas de cultivo, semillas y accesorios elige la colección de productos correspondiente. Para instalación, montaje o mantenimiento de un huerto urbano elige <strong>Servicios por horas</strong> y su subcategoría de huerto urbano.</p>
+            <p className="mb-4 text-sm text-muted-foreground">Para huerto urbano, fertilizantes, fungicidas, acaricidas y otros artículos elige Jardinería (productos) y su subcategoría. Para instalación, montaje o mantenimiento de un huerto urbano elige <strong>Servicios por horas</strong> y su subcategoría de huerto urbano.</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {COMMERCE_COLLECTIONS.map((item) => (
                 <button
@@ -877,7 +877,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     {item.id === "jardineria"
-                      ? "Herramientas, riego, fertilizantes, kits y productos de huerto urbano."
+                      ? "Huerto urbano, herramientas, riego, fertilizantes y protección vegetal (fungicidas, acaricidas e insecticidas)."
                       : item.id === "servicios"
                         ? "Huerto urbano, jardinería, limpieza, asesoría y otros servicios por horas."
                         : item.description}
@@ -894,7 +894,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 }`}
               >
                 <p className="font-black">🌱 Huerto urbano</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">Kits de cultivo, mesas de huerto, semilleros y accesorios para cultivar en casa.</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Kits de cultivo, mesas de huerto, semilleros y accesorios de jardinería para cultivar en casa.</p>
               </button>
               <button
                 type="button"
