@@ -6312,9 +6312,7 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
         await readNeonStorageValue(cjPreflightKey(record.id)),
       );
       previews.push({
-        lastLivePreflight:cached && String(record.status)===String(
-          JSON.parse(await readNeonStorageValue(cjPreflightKey(record.id))||"{}").sourceStatus
-        ) ? cached : null,
+        lastLivePreflight:cached && cached.sourceStatus===String(record.status) ? cached : null,
         fulfillmentId:record.id,orderId:record.orderId,status:record.status,
         ...explainCjAutomationReadiness({
           record,supplier,order,env:{
