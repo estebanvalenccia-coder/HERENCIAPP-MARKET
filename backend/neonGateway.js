@@ -353,7 +353,16 @@ const server=http.createServer(async(req,res)=>{try{
     for(const item of page){
       if(quotaPaused||!item.vid||!item.sku)continue;
       try{
-        stocks.set(item.vid,await queryCjVariantStock({vid:item.vid,origin:"CN"}));
+        const observation=await queryCjVariantStock({vid:item.vid,origin:"CN"});
+        stocks.set(item.vid,observation);
+        if(product.status==="active" && observation.verified===true &&
+          Number.isSafeInteger(observation.quantity) && observation.quantity>=0){
+          // Reuse a fresh administrator-verified observation; never touch store inventory.
+          await upsertNeonStorageValue(cjObservationKey(productId,item.vid),JSON.stringify({
+            productId,vid:item.vid,origin:"CN",quantity:observation.quantity,
+            verified:true,source:"cj_api",checkedAt:new Date().toISOString(),
+          })).catch(()=>{});
+        }
       }catch(error){
         // A shared CJ API limit must end the batch; retries must be requested
         // later. Do not manufacture units from unavailable provider data.
@@ -398,6 +407,13 @@ const server=http.createServer(async(req,res)=>{try{
       getUsdToEurRate(),
     ]);
     const stock=stockResult.status==="fulfilled"?stockResult.value:null;
+    if(product.status==="active" && stock?.verified===true && stock.vid===vid &&
+      stock.origin==="CN" && Number.isSafeInteger(stock.quantity)&&stock.quantity>=0){
+      await upsertNeonStorageValue(cjObservationKey(productId,vid),JSON.stringify({
+        productId,vid,origin:"CN",quantity:stock.quantity,
+        verified:true,source:"cj_api",checkedAt:new Date().toISOString(),
+      })).catch(()=>{});
+    }
     const warehouses=warehouseResult.status==="fulfilled"?warehouseResult.value.warehouses:[];
     const fx=fxResult.status==="fulfilled"?fxResult.value:null;
     const report=assessCjCatalogReadiness({product,metadata,variant,stock,fx,origin:"CN"});
