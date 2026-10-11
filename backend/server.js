@@ -6159,6 +6159,11 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
   }
 });
 
+const cjAutopilotPreflightLimiter=createRateLimiter({
+  windowMs:5*60*1000,max:8,
+  message:"Demasiadas simulaciones CJ. Inténtalo más tarde."
+});
+
 // Guardrails can be proposed and stored for DRY-RUN only; saving a policy
 // cannot enable supplier orders or payments, regardless of request contents.
 app.get("/api/admin/suppliers/cj/autopilot-guardrails",requireAdmin,async (_req,res)=>{
@@ -6196,7 +6201,7 @@ app.put("/api/admin/suppliers/cj/autopilot-guardrails",requireAdmin,async (req,r
 // A realistic but read-only PRE-PURCHASE check. Validates Stripe live capture,
 // exact CJ SKU, CN warehouse inventory, shipping to the real postal code,
 // costs and current budget policy; cannot reserve a supplier action.
-app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,async (req,res)=>{
+app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopilotPreflightLimiter,async (req,res)=>{
   if(!requirePrimaryDatabase(res))return;
   try{
     const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
