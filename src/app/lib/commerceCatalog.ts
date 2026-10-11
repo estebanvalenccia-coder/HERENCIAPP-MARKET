@@ -49,7 +49,7 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
   {
     id: "jardineria",
     name: "Jardinería",
-    description: "Herramientas, riego, fertilizantes y accesorios.",
+    description: "Herramientas, riego, fertilizantes, accesorios y huertos urbanos.",
     productType: "garden",
     inventoryDefault: true,
     categories: [
@@ -57,6 +57,7 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
       { id: "riego", name: "Riego" },
       { id: "fertilizantes", name: "Fertilizantes" },
       { id: "accesorios-jardin", name: "Accesorios" },
+      { id: "huerto-urbano", name: "Huerto urbano y kits de cultivo" },
     ],
   },
   {
@@ -122,6 +123,7 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
     inventoryDefault: false,
     categories: [
       { id: "servicio-jardineria", name: "Jardinería" },
+      { id: "servicio-huerto-urbano", name: "Servicios de huerto urbano" },
       { id: "mantenimiento", name: "Mantenimiento" },
       { id: "decoracion-eventos", name: "Decoración de espacios y eventos" },
       { id: "limpieza", name: "Limpieza" },
