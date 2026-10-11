@@ -6272,6 +6272,16 @@ app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,cjAutopi
   }
 });
 
+const cjAutoPreflightScheduler=createCjPreflightScheduler({
+  load:async()=>({
+    policy:readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY)),
+    records:(await readSupplierOperations()).supplierFulfillments,
+  }),
+  read:readNeonStorageValue,write:upsertNeonStorageValue,
+  mutate:mutateNeonStorageValue,
+  check:runCjAutopilotLivePreflight,
+});
+
 // CJ automation health is a status/preflight, NOT a purchase approval.
 app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_req,res)=>{
   if(!requirePrimaryDatabase(res))return;
@@ -6298,7 +6308,13 @@ app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_re
       const supplier=suppliers.find(s=>String(s.id)===String(record.supplierId));
       const order=await getOrderPrimary(record.orderId).catch(()=>null);
       if(order)queuedOrders.push(order);
+      const cached=readCjPreflightCache(
+        await readNeonStorageValue(cjPreflightKey(record.id)),
+      );
       previews.push({
+        lastLivePreflight:cached && String(record.status)===String(
+          JSON.parse(await readNeonStorageValue(cjPreflightKey(record.id))||"{}").sourceStatus
+        ) ? cached : null,
         fulfillmentId:record.id,orderId:record.orderId,status:record.status,
         ...explainCjAutomationReadiness({
           record,supplier,order,env:{
@@ -10808,6 +10824,12 @@ app.listen(port, () => {
     try { await processCustomerReminders(); } catch (error) { console.warn("Background reminders:", error?.message || error); }
     try { await monitorCjAutopilotExceptions(); }
     catch(error){console.warn("[cj.autopilot] read-only exception scan failed",String(error?.code||"READ_FAILED").slice(0,60));}
+    if(cjConfigured() && process.env.CJ_READ_ONLY_PREFLIGHT_ENABLED!=="false"){
+      try{
+        const result=await cjAutoPreflightScheduler.sweep();
+        if(result.checked)console.info("[cj.autopilot.preflight]",result.status,"checked=1");
+      }catch(error){console.warn("[cj.autopilot.preflight] check unavailable",String(error?.code||"CHECK_FAILED").slice(0,50));}
+    }
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
     if(cjConfigured() && process.env.CJ_READ_ONLY_TRACKING_ENABLED!=="false"){
