@@ -126,7 +126,7 @@ export function triageCjAutopilotRecord(record,supplier,order,{
 }
 
 export function summarizeCjAutopilotOperations({
-  records=[],suppliers=[],orders=[],policy=null,nowMs=Date.now(),maxItems=60,
+  records=[],exposureRecords=records,suppliers=[],orders=[],policy=null,nowMs=Date.now(),maxItems=60,
 }={}){
   if(!Array.isArray(records)||records.length>3000)throw new Error("Cola CJ demasiado grande para revisión");
   const supplierById=new Map((Array.isArray(suppliers)?suppliers:[]).map(s=>[String(s.id),s]));
@@ -146,7 +146,10 @@ export function summarizeCjAutopilotOperations({
     if(row.eligibleForLivePreflight)counts.livePreflightCandidates++;
     if(row.stage==="supplier_payment")counts.awaitingSupplierPayment++;
   }
-  const exposure=summarizeCjDailyExposure(cjRecords,{date:new Date(nowMs).toISOString()});
+  const allCjRecords=(Array.isArray(exposureRecords)?exposureRecords:[]).filter(r=>r && (
+    r.provider==="cj" || supplierById.get(String(r.supplierId))?.integrationType==="cj"
+  ));
+  const exposure=summarizeCjDailyExposure(allCjRecords,{date:new Date(nowMs).toISOString()});
   const budget=policy?.configured?{
     perOrderMaxEur:policy.perOrderMaxEur,dailyMaxEur:policy.dailyMaxEur,
     minMarginPercent:policy.minMarginPercent,
