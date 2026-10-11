@@ -7,6 +7,7 @@
  */
 import crypto from "node:crypto";
 export const CJ_RECON_LEASE_KEY="cjAutopilotReconciliationLease:v1";
+export const CJ_RECON_CURSOR_KEY="cjAutopilotReconciliationCursor:v1";
 const candidates=new Set(["cj_creation_unknown","cj_payment_unknown","payment_required"]);
 const paidStatus=new Map([
   ["PAID","ordered"],["UNSHIPPED","ordered"],["PROCESSING","ordered"],
@@ -20,7 +21,7 @@ export function pickCjReconciliationCandidates(records=[],suppliers=[],{limit=1}
   const cj=new Map((Array.isArray(suppliers)?suppliers:[])
     .filter(s=>s?.integrationType==="cj")
     .map(s=>[String(s.id),s]));
-  const count=Math.max(0,Math.min(1,Math.floor(Number(limit)||0)));
+  const count=Math.max(0,Math.min(100,Math.floor(Number(limit)||0)));
   return (Array.isArray(records)?records:[]).filter(r=>
     r && candidates.has(String(r.status||"")) &&
     (r.provider==="cj" || cj.has(String(r.supplierId))) &&
@@ -38,7 +39,9 @@ export function projectCjAmbiguousReconciliation(record,supplier,remote){
     !candidates.has(String(record.status||"")))
     return reject("invalid_local_order");
   if(!record.externalOrderId || !remote ||
-     String(remote.orderId||"")!==String(record.externalOrderId))
+     String(remote.orderId||"")!==String(record.externalOrderId) ||
+     (record.cjShipmentOrderId && remote.shipmentOrderId &&
+       String(remote.shipmentOrderId)!==String(record.cjShipmentOrderId)))
     return reject("external_order_identity_mismatch");
   const status=String(remote.orderStatus||"").toUpperCase();
   const paid=paidStatus.get(status);
@@ -86,9 +89,16 @@ export function createCjAmbiguousReconciler({
       if(!claimed)return {status:"another_worker",checked:0,changed:0};
       const operations=await load();
       const items=pickCjReconciliationCandidates(
-        operations?.supplierFulfillments,operations?.suppliers,{limit:1});
+        operations?.supplierFulfillments,operations?.suppliers,{limit:100});
       if(!items.length)return {status:"no_candidates",checked:0,changed:0};
-      const record=items[0];
+      // A persisted cursor prevents the same stuck order from starving others.
+      let previous=0;
+      await mutate(CJ_RECON_CURSOR_KEY,raw=>{
+        const numeric=Number(raw);
+        previous=Number.isSafeInteger(numeric)&&numeric>=0?numeric%items.length:0;
+        return String((previous+1)%items.length);
+      });
+      const record=items[previous];
       const supplier=(operations?.suppliers||[]).find(s=>String(s.id)===String(record.supplierId));
       let remote;
       try{remote=await fetchRemote(String(record.externalOrderId));}
@@ -99,7 +109,7 @@ export function createCjAmbiguousReconciler({
       const decision=projectCjAmbiguousReconciliation(record,supplier,remote);
       if(!decision.patch)return {status:decision.reason,checked:1,changed:0};
       // Apply must perform CAS on status, identity and previous authorization.
-      await apply(record,decision.patch);
+      await apply(record,decision.patch,{remote});
       return {status:decision.reason,checked:1,changed:1};
     }finally{
       if(claimed){
