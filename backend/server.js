@@ -12,6 +12,11 @@ import { evaluateCjCheckout } from "./cjCheckoutSafety.js";
 import { resolveCjPurchasedVariant, verifiedCjQuoteMatches, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
 import { isCjTrackingCandidate,pickCjTrackingCandidates,projectCjTracking,explainCjAutomationReadiness } from "./cjTrackingAutomation.js";
 import { createCjTrackingRunner } from "./cjTrackingRunner.js";
+import { getUsdToEurRate } from "./cjProfitability.js";
+import {
+ CJ_POLICY_KEY, readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
+ assessCjAutopilotDryRun,
+} from "./cjAutopilotPolicy.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
@@ -6154,6 +6159,101 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
   }
 });
 
+// Guardrails can be proposed and stored for DRY-RUN only; saving a policy
+// cannot enable supplier orders or payments, regardless of request contents.
+app.get("/api/admin/suppliers/cj/autopilot-guardrails",requireAdmin,async (_req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const data=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
+    const operations=await readSupplierOperations();
+    const suppliers=(operations.suppliers||[])
+      .filter(s=>supplierIntegrationType(s)==="cj"&&s.active!==false)
+      .map(s=>({id:String(s.id),name:String(s.name||"CJdropshipping"),
+        sandbox:s.cjSandbox!==false}));
+    res.setHeader("Cache-Control","no-store");
+    return res.json({ok:true,policy:data,suppliers,liveActivationAvailable:false});
+  }catch(error){
+    return res.status(503).json({error:"No fue posible consultar los límites CJ."});
+  }
+});
+
+app.put("/api/admin/suppliers/cj/autopilot-guardrails",requireAdmin,async (req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const ops=await readSupplierOperations();
+    const ids=(ops.suppliers||[]).filter(s=>supplierIntegrationType(s)==="cj"&&
+      s.active!==false&&s.cjSandbox===false).map(s=>String(s.id));
+    const encoded=saveCjAutopilotPolicyDraft(req.body,ids);
+    await mutateNeonStorageValue(CJ_POLICY_KEY,()=>encoded);
+    return res.json({ok:true,policy:readCjAutopilotPolicy(encoded),
+      liveActivationAvailable:false,
+      message:"Límites guardados en modo simulación. No se ha autorizado ningún pedido ni pago a CJ."});
+  }catch(error){return res.status(error.statusCode||503).json({
+    error:String(error.message||"Límites CJ no válidos").slice(0,240)
+  });}
+});
+
+// A realistic but read-only PRE-PURCHASE check. Validates Stripe live capture,
+// exact CJ SKU, CN warehouse inventory, shipping to the real postal code,
+// costs and current budget policy; cannot reserve a supplier action.
+app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,async (req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const policy=readCjAutopilotPolicy(await readNeonStorageValue(CJ_POLICY_KEY));
+    if(!policy.configured)return res.status(409).json({
+      error:"Primero guarda los límites por pedido, día y margen en modo simulación."
+    });
+    const {record,supplier,order}=await loadCjManualOrder(req.params.id);
+    if(!policy.allowedSupplierIds.includes(String(supplier.id)))
+      throw cjManualError("CJ no está incluido en los proveedores autorizados en la simulación.");
+    const info=validateManualCjCreate({record,supplier,order});
+    if(info.funding.storeFunded)
+      throw cjManualError("Las promociones y cupones financiados por Herencia requieren revisión manual.");
+    if(/^(?:35|38|51|52)/.test(String(record.shippingAddress?.postalCode||"")))
+      throw cjManualError("Islas Canarias, Ceuta y Melilla requieren revisión fiscal y aduanera manual.");
+    if(info.estimatedCostEur>policy.perOrderMaxEur)
+      throw cjManualError("Este pedido supera tu límite configurado por operación.");
+    // Stripe live capture is checked via existing backend credentials; only an
+    // affirmative result permits following read-only supplier checks.
+    const stripeIntent=await verifyCjCustomerFunding(order,info.funding);
+    const fresh=await verifyCjManualLiveCosts(
+      record,supplier,info.estimatedPaymentUsd,info.estimatedPaymentUsd);
+    const fx=await getUsdToEurRate();
+    const observed={...record.items?.[0]?.cjPricingEstimate,
+      supplierTotalUsd:fresh.liveTotalUsd,
+      // Profit is recalculated conservatively from refreshed USD cost and FX.
+      costEur:Math.round(fresh.liveTotalUsd*Number(fx.rate)*1.03*100)/100,
+    };
+    const actualSaleEur=Number(record.items?.[0]?.salePrice);
+    const netSales=actualSaleEur/1.21;
+    const feeEur=actualSaleEur*0.015+0.25;
+    observed.estimatedMarginPercent=netSales>0?
+      (netSales-observed.costEur-feeEur)/netSales*100:-100;
+    observed.feasible=observed.estimatedMarginPercent>=policy.minMarginPercent;
+    // Preserve the original proof timestamp and SKU/VID/ZIP for identity.
+    const result=assessCjAutopilotDryRun({
+      policy,record,supplier,order,stripeIntent,quote:observed,
+      stock:fresh.stock,usdEurRate:fx.rate,
+    });
+    return res.json({...result,
+      provider:"cj",fulfillmentId:String(record.id),
+      currentSupplierCostUsd:fresh.liveTotalUsd,
+      currentCostEur:observed.costEur,
+      estimatedMarginPercent:Math.round(observed.estimatedMarginPercent*100)/100,
+      budgetPerOrderEur:policy.perOrderMaxEur,
+      dailyBudgetEur:policy.dailyMaxEur,
+      fxProvider:fx.provider,fxCheckedAt:fx.checkedAt,
+      liveSupplierOrderCreated:false,moneySpent:false,
+      warning:"La prueba valida datos actuales, pero no reserva stock ni activa compras o pagos automáticos."
+    });
+  }catch(error){
+    return res.status(error.statusCode||503).json({
+      error:String(error?.message||"No se pudo completar la simulación CJ").slice(0,230),
+      supplierOrderCreated:false,moneySpent:false
+    });
+  }
+});
+
 // CJ automation health is a status/preflight, NOT a purchase approval.
 app.get("/api/admin/suppliers/cj/automation-readiness", requireAdmin, async (_req,res)=>{
   if(!requirePrimaryDatabase(res))return;
@@ -6600,7 +6700,8 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
       Math.abs(liveTotalUsd - savedUsd) > Math.max(0.50, savedUsd * 0.02)) {
     throw cjManualError("CJ ha cambiado el coste o transporte para el código postal. Recalcula la cotización y autoriza el nuevo importe.");
   }
-  return { liveTotalUsd, verifiedZip: zip, logisticName: method.name };
+  return { liveTotalUsd, verifiedZip: zip, logisticName: method.name,
+    stock, productUsd, postageUsd };
 }
 
 async function verifyCjCustomerFunding(order, funding) {
@@ -6619,6 +6720,7 @@ async function verifyCjCustomerFunding(order, funding) {
       Math.round(Number(intent.amount_received || 0)) < Math.round(funding.total * 100)) {
     throw cjManualError("Stripe no acredita el importe real cobrado al cliente.");
   }
+  return intent;
 }
 
 // Admin may inspect this before any real supplier action.
