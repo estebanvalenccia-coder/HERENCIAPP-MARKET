@@ -43,7 +43,8 @@ test("admin variant audit is authenticated, bounded, sequential and never purcha
  assert.match(body,/await queryCjVariantStock\(\{vid:item\.vid,origin:"CN"\}\)/);
  assert.match(body,/CJ_RATE_LIMITED/);
  assert.match(body,/summarizeCjVariantAudit/);
- assert.doesNotMatch(body,/createOrderV2|payBalance|paymentIntents|saveNeonCommerceProduct|upsertNeonStorageValue|patchNeonOrder/);
+ assert.match(body,/upsertNeonStorageValue\(cjObservationKey\(productId,item\.vid\)/);
+ assert.doesNotMatch(body,/createOrderV2|payBalance|paymentIntents|saveNeonCommerceProduct|patchNeonOrder/);
  const ui=readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx",import.meta.url),"utf8");
  assert.match(ui,/Auditar variantes y stock CJ/);
  assert.match(ui,/Siguientes cuatro variantes/);
