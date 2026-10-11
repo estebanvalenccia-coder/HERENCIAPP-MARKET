@@ -5,6 +5,7 @@ type Readiness = Awaited<ReturnType<typeof backendApi.getCjAutomationReadiness>>
 type Sweep = Awaited<ReturnType<typeof backendApi.synchronizeCjTrackingSafely>>;
 type Guardrails = Awaited<ReturnType<typeof backendApi.getCjAutopilotGuardrails>>;
 type Simulation = Awaited<ReturnType<typeof backendApi.simulateCjAutopilotPreflight>>;
+type LiveMandate = Awaited<ReturnType<typeof backendApi.getCjLiveMandate>>;
 
 /**
  * Admin-only operational visibility. No frontend controls can create a CJ
@@ -22,20 +23,26 @@ export function AdminCjAutomationStatus(){
   const [allowedSupplierIds,setAllowedSupplierIds]=useState<string[]>([]);
   const [acknowledgeSimulation,setAcknowledgeSimulation]=useState(false);
   const [simulations,setSimulations]=useState<Record<string,Simulation>>({});
+  const [liveMandate,setLiveMandate]=useState<LiveMandate|null>(null);
+  const [confirmation,setConfirmation]=useState("");
+  const [spendingConsent,setSpendingConsent]=useState(false);
   const reload=async()=>{
-    const [value,limits]=await Promise.all([
+    const [value,limits,mandate]=await Promise.all([
       backendApi.getCjAutomationReadiness(),
       backendApi.getCjAutopilotGuardrails(),
+      backendApi.getCjLiveMandate(),
     ]);
     setData(value);
     setGuardrails(limits);
+    setLiveMandate(mandate);
   };
   useEffect(()=>{
     let mounted=true;
-    Promise.all([backendApi.getCjAutomationReadiness(),backendApi.getCjAutopilotGuardrails()])
-      .then(([v,g])=>{
+    Promise.all([backendApi.getCjAutomationReadiness(),backendApi.getCjAutopilotGuardrails(),
+      backendApi.getCjLiveMandate()])
+      .then(([v,g,m])=>{
         if(!mounted)return;
-        setData(v);setGuardrails(g);
+        setData(v);setGuardrails(g);setLiveMandate(m);
         if(g.policy.configured){
           setPerOrder(String(g.policy.perOrderMaxEur??""));
           setPerDay(String(g.policy.dailyMaxEur??""));
@@ -66,6 +73,33 @@ export function AdminCjAutomationStatus(){
       setAcknowledgeSimulation(false);
       await reload();
     }catch(e:any){setError(String(e?.message||"No se pudieron guardar los límites."));}
+    finally{setBusy("");}
+  };
+  const activateLive=async()=>{
+    if(busy||!spendingConsent||confirmation!=="AUTORIZO COMPRAS AUTOMATICAS CJ"||
+      !guardrails?.policy.configured)return;
+    setBusy("activate");setError("");
+    try{
+      await backendApi.activateCjLiveMandate({
+        confirmation,acknowledgeRealSupplierDebits:true,
+        perOrderMaxEur:guardrails.policy.perOrderMaxEur!,
+        dailyMaxEur:guardrails.policy.dailyMaxEur!,
+        minMarginPercent:guardrails.policy.minMarginPercent!,
+        allowedSupplierIds,
+      });
+      setConfirmation("");setSpendingConsent(false);
+      await reload();
+    }catch(e:any){setError(String(e?.message||"No se pudo autorizar CJ real."));}
+    finally{setBusy("");}
+  };
+  const revokeLive=async()=>{
+    if(busy)return;
+    setBusy("revoke");setError("");
+    try{
+      await backendApi.revokeCjLiveMandate();
+      setConfirmation("");setSpendingConsent(false);
+      await reload();
+    }catch(e:any){setError(String(e?.message||"No se pudo desactivar Autopilot."));}
     finally{setBusy("");}
   };
   const simulate=async(fulfillmentId:string)=>{
@@ -181,7 +215,9 @@ export function AdminCjAutomationStatus(){
       <p><strong>Conexión CJ:</strong> {data?.configured?"Clave detectada en Railway":"No comprobada o no configurada"}</p>
       <p className="mt-1"><strong>Sincronización de seguimiento:</strong> {data?.trackingReadOnlyEnabled
         ?"Activa, de solo lectura":"Desactivada"}</p>
-      <p className="mt-1"><strong>Compras totalmente automáticas:</strong> desactivadas; requieren reglas de gasto aprobadas y pruebas reales.</p>
+      <p className="mt-1"><strong>Compras totalmente automáticas:</strong> {data?.readyForUnattendedBuying
+        ?"Autorizadas para pedidos CJ que pasen todas las validaciones reales."
+        :"Pendientes de mandato, controles y pruebas reales."}</p>
       {data?.activationBlockers?.length ? <div role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">
         <strong>Qué impide activar CJ Autopilot ahora</strong>
         <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -189,7 +225,9 @@ export function AdminCjAutomationStatus(){
         </ul>
         <p className="mt-2 text-xs">Ningún cambio de proveedor, variable o presupuesto por sí solo autoriza cargos.</p>
       </div> : null}
-      <p className="mt-1"><strong>Pago automático a CJ:</strong> desactivado; el pago actual exige una segunda autorización.</p>
+      <p className="mt-1"><strong>Pago automático a CJ:</strong> {data?.unattendedSupplierPaymentEnabled
+        ?"Permitido dentro del mandato; cada orden se verifica y paga una sola vez."
+        :"No autorizado. Se requiere un mandato de gasto válido."}</p>
       <p className="mt-2 text-xs text-muted-foreground">
         Una clave detectada no garantiza una conexión válida en este momento.
         Las operaciones ambiguas deben conciliarse antes de repetir cualquier paso.
@@ -254,7 +292,54 @@ export function AdminCjAutomationStatus(){
       </button>
       <p className="mt-2 text-xs text-muted-foreground">
         Estado: {guardrails?.policy.configured?"Presupuesto de simulación guardado":"Sin presupuesto definido"} ·
-        País: España · Unidades: 1 · Compras y pagos automáticos: desactivados.
+        País: España · Unidades: 1 · Compras y pagos automáticos: {liveMandate?.active?"con autorización vigente":"no autorizados"}.
+      </p>
+    </div>
+    <div className="mt-5 border-t border-border pt-4">
+      <h3 className="text-lg font-bold">Activación REAL de CJ Autopilot</h3>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Las compras reales solo se permiten después de guardar el presupuesto,
+        configurar CJ sin Sandbox, confirmar los tres interruptores de Railway
+        y completar una primera compra supervisada de forma satisfactoria.
+        Cada mandato caduca a los 30 días y puede revocarse en cualquier momento.
+      </p>
+      <div className="mt-3 rounded-lg border border-border bg-background p-3 text-sm">
+        <p><strong>Mandato:</strong> {liveMandate?.active?"ACTIVO":"Sin activar"}</p>
+        {liveMandate?.active&&<p className="mt-1 text-xs">Expira: {liveMandate.expiresAt
+          ?new Date(liveMandate.expiresAt).toLocaleString("es-ES"):"fecha no disponible"}</p>}
+        {liveMandate?.active&&<p className="mt-1 text-xs">
+          Máximo por pedido: {liveMandate.perOrderMaxEur} € · Límite diario: {liveMandate.dailyMaxEur} €
+        </p>}
+      </div>
+      {!liveMandate?.active&&<>
+        <label className="mt-3 block text-xs font-semibold">
+          Para autorizar compras reales, escribe: AUTORIZO COMPRAS AUTOMATICAS CJ
+          <input type="text" value={confirmation} onChange={e=>setConfirmation(e.target.value)}
+            autoComplete="off" placeholder="AUTORIZO COMPRAS AUTOMATICAS CJ"
+            className="mt-1 block w-full rounded-lg border border-border bg-background p-2.5"/>
+        </label>
+        <label className="mt-3 flex items-start gap-2 text-xs">
+          <input type="checkbox" checked={spendingConsent}
+            onChange={e=>setSpendingConsent(e.target.checked)}/>
+          Autorizo expresamente cargos reales a CJ dentro de los límites por pedido
+          y día guardados arriba. Entiendo que esto utilizará saldo real del proveedor.
+        </label>
+        <button type="button" onClick={()=>void activateLive()}
+          disabled={Boolean(busy)||!guardrails?.policy.configured||!spendingConsent||
+            confirmation!=="AUTORIZO COMPRAS AUTOMATICAS CJ"}
+          className="mt-3 rounded-xl border border-primary px-4 py-2.5 text-sm font-bold disabled:opacity-50">
+          {busy==="activate"?"Comprobando condiciones…":"Autorizar CJ Autopilot real"}
+        </button>
+      </>}
+      {liveMandate?.active&&<button type="button" onClick={()=>void revokeLive()}
+        disabled={Boolean(busy)}
+        className="mt-3 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-900 disabled:opacity-50">
+        {busy==="revoke"?"Revocando…":"Parar compras automáticas CJ"}
+      </button>}
+      <p className="mt-2 text-xs text-muted-foreground">
+        Nunca se cobrarán pedidos sin stock, transporte, precio, Stripe confirmado,
+        presupuesto disponible y mandato vigente. Si CJ no responde, Autopilot
+        bloqueará y conciliará la operación antes de repetir cualquier acción.
       </p>
     </div>
     <div className="mt-5 border-t border-border pt-4">
