@@ -54,6 +54,7 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
     inventoryDefault: true,
     categories: [
       { id: "herramientas", name: "Herramientas" },
+      { id: "kits-huerto-urbano", name: "Kits de huerto urbano" },
       { id: "riego", name: "Riego" },
       { id: "fertilizantes", name: "Fertilizantes" },
       { id: "accesorios-jardin", name: "Accesorios" },

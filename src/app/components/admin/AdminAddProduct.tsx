@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
@@ -138,6 +138,9 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [publishDestination, setPublishDestination] = useState<"main" | "colombia" | "both">("main");
   const [generatingPlantInfo, setGeneratingPlantInfo] = useState(false);
+  const [generatingCommerceCopy, setGeneratingCommerceCopy] = useState(false);
+  const [commerceCopyError, setCommerceCopyError] = useState("");
+  const commerceCopyPending = useRef(false);
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [visualError, setVisualError] = useState("");
   const [visualProgress, setVisualProgress] = useState("");
@@ -245,6 +248,44 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
     });
   }
 
+  async function generateCommerceCopy({ automatic = false }: { automatic?: boolean } = {}) {
+    const name = formData.name.trim();
+    const initialDescription = formData.description;
+    if (!name || commerceCopyPending.current || (automatic && initialDescription.trim())) return;
+    if (!automatic && initialDescription.trim() &&
+        !window.confirm("¿Sustituir la descripción actual por una propuesta de Groq?")) return;
+    const collectionId = formData.collection;
+    const categoryId = formData.category;
+    const categoryName = collection.categories.find((item) => item.id === categoryId)?.name || "";
+    commerceCopyPending.current = true;
+    setGeneratingCommerceCopy(true);
+    setCommerceCopyError("");
+    try {
+      const result = await backendApi.generateCommerceDescription({
+        name,
+        category: [collection.name, categoryName].filter(Boolean).join(" · "),
+        facts: initialDescription.trim(),
+        variants: variants.map((variant) => variant.name.trim()).filter(Boolean).slice(0, 18),
+      });
+      const description = String(result?.description || "").trim();
+      if (!description) throw new Error("Groq no devolvió una descripción.");
+      // Never overwrite text typed while the request was running.
+      setFormData((current) => {
+        if (current.name.trim() !== name || current.collection !== collectionId ||
+            current.category !== categoryId || current.description !== initialDescription) return current;
+        return { ...current, description,
+          seoDescription: current.seoDescription.trim() || description.slice(0, 170) };
+      });
+      toast.success("Groq propuso una descripción. Revísala antes de publicar.");
+    } catch (error: any) {
+      const message = error?.message || "Groq no pudo generar la descripción.";
+      setCommerceCopyError(message);
+      if (!automatic) toast.error(message);
+    } finally {
+      commerceCopyPending.current = false;
+      setGeneratingCommerceCopy(false);
+    }
+  }
   async function generatePlantInfoFromName() {
     const plantName = formData.name.trim();
     if (!plantLike || !plantName || formData.description.trim() || generatingPlantInfo) return;
@@ -255,7 +296,12 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
         collection: formData.collection,
         category: formData.category,
       }, { force: true });
-      patch({
+      const collectionId = formData.collection;
+      const categoryId = formData.category;
+      setFormData((current) => {
+        if (current.name.trim() !== plantName || current.collection !== collectionId ||
+            current.category !== categoryId || current.description.trim()) return current;
+        return { ...current,
         description: String(aiPatch.description || "").trim(),
         scientificName: String(aiPatch.scientificName || "").trim(),
         difficulty: String(aiPatch.difficulty || formData.difficulty || "Fácil").trim(),
@@ -268,9 +314,10 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
         fertilizer: String(aiPatch.plantProfile?.care?.fertilizer || "").trim(),
         plantTips: String(aiPatch.plantProfile?.tips || "").trim(),
         plantBenefits: Array.isArray(aiPatch.plantProfile?.benefits) ? aiPatch.plantProfile.benefits.join(" · ") : "",
-        seoDescription: String(aiPatch.description || "").trim(),
+        seoDescription: current.seoDescription.trim() || String(aiPatch.description || "").trim().slice(0, 170),
+        };
       });
-      toast.success("Ficha de cuidados generada con Groq");
+      toast.success("Ficha de cuidados propuesta por Groq");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo generar la ficha con Groq");
     } finally {
@@ -279,7 +326,8 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
   }
 
   async function handleNameBlur() {
-    await generatePlantInfoFromName();
+    if (plantLike) await generatePlantInfoFromName();
+    else await generateCommerceCopy({ automatic: true });
   }
 
   async function handleVisualReferenceUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -605,6 +653,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!formData.name.trim()) return toast.error("Escribe el nombre del artículo");
+    if (generatingCommerceCopy || generatingPlantInfo) return toast.error("Espera a que termine la descripción de Groq antes de guardar.");
     if (!normalPrice || normalPrice <= 0) return toast.error("Escribe un precio válido");
     if (formData.onSale) {
       const sale = Number(formData.salePrice || 0);
@@ -1053,7 +1102,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 Nombre *
                 <input
                   value={formData.name}
-                  onChange={(event) => patch({ name: event.target.value })}
+                  onChange={(event) => { patch({ name: event.target.value }); setCommerceCopyError(""); }}
                   onBlur={() => void handleNameBlur()}
                   placeholder={
                     service
@@ -1068,18 +1117,31 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 />
               </label>
 
-              {plantLike && generatingPlantInfo && <p className="text-xs font-semibold text-primary">Groq está preparando descripción y cuidados…</p>}
+              {plantLike && generatingPlantInfo && <p role="status" className="text-xs font-semibold text-primary">Groq está preparando descripción y cuidados…</p>}
 
-              <label className="block text-sm font-bold">
-                Descripción
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label htmlFor="new-product-description" className="text-sm font-bold">Descripción</label>
+                  <button
+                    type="button"
+                    onClick={() => void generateCommerceCopy()}
+                    disabled={!formData.name.trim() || generatingCommerceCopy || generatingPlantInfo}
+                    className="rounded-lg border border-primary/40 px-3 py-2 text-xs font-bold text-primary disabled:opacity-50"
+                  >
+                    {generatingCommerceCopy ? "Generando con Groq…" : "Generar descripción con Groq"}
+                  </button>
+                </div>
                 <textarea
+                  id="new-product-description"
                   value={formData.description}
-                  onChange={(event) => patch({ description: event.target.value })}
+                  onChange={(event) => { patch({ description: event.target.value }); setCommerceCopyError(""); }}
                   rows={4}
                   placeholder="Explica qué es, qué incluye y por qué comprarlo."
-                  className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-4 py-3"
+                  className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3"
                 />
-              </label>
+                <p className="text-xs text-muted-foreground">Al salir del nombre, Groq propone una descripción si está vacía. Revísala antes de publicar.</p>
+                {commerceCopyError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{commerceCopyError}</p>}
+              </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-bold">
@@ -1108,6 +1170,17 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </select>
                 </label>
               </div>
+
+              {formData.collection === "jardineria" && formData.category === "herramientas" &&
+                /huerto\s+urbano|kit\s+de\s+cultivo|cultiva\s+tomates/i.test(formData.name) && (
+                <button
+                  type="button"
+                  onClick={() => patch({ category: "kits-huerto-urbano" })}
+                  className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-left text-xs font-semibold text-primary"
+                >
+                  Este artículo parece un kit de huerto urbano. Cambiar subcategoría a «Kits de huerto urbano».
+                </button>
+              )}
 
               <div>
                 <p className="mb-2 text-sm font-bold">También mostrar en otras colecciones</p>
@@ -1611,7 +1684,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               </button>
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || generatingCommerceCopy || generatingPlantInfo}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-black text-primary-foreground disabled:opacity-60"
               >
                 <PackagePlus className="h-5 w-5" />
