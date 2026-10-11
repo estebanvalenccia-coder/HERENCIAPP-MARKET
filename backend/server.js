@@ -15,7 +15,7 @@ import { createCjTrackingRunner } from "./cjTrackingRunner.js";
 import { getUsdToEurRate } from "./cjProfitability.js";
 import {
  CJ_POLICY_KEY, readCjAutopilotPolicy,saveCjAutopilotPolicyDraft,
- assessCjAutopilotDryRun,
+ assessCjAutopilotDryRun,summarizeCjDailyExposure,
 } from "./cjAutopilotPolicy.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
@@ -6231,9 +6231,13 @@ app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,async (r
       (netSales-observed.costEur-feeEur)/netSales*100:-100;
     observed.feasible=observed.estimatedMarginPercent>=policy.minMarginPercent;
     // Preserve the original proof timestamp and SKU/VID/ZIP for identity.
+    const operations=await readSupplierOperations();
+    const dailyExposure=summarizeCjDailyExposure(operations.supplierFulfillments,{
+      excludeFulfillmentId:record.id,
+    });
     const result=assessCjAutopilotDryRun({
       policy,record,supplier,order,stripeIntent,quote:observed,
-      stock:fresh.stock,usdEurRate:fx.rate,
+      stock:fresh.stock,usdEurRate:fx.rate,dailyExposure,
     });
     return res.json({...result,
       provider:"cj",fulfillmentId:String(record.id),
@@ -6242,6 +6246,7 @@ app.post("/api/admin/suppliers/cj/autopilot-preflight/:id",requireAdmin,async (r
       estimatedMarginPercent:Math.round(observed.estimatedMarginPercent*100)/100,
       budgetPerOrderEur:policy.perOrderMaxEur,
       dailyBudgetEur:policy.dailyMaxEur,
+      dailyExposure,dailyAvailableEur:Math.max(0,Math.round((policy.dailyMaxEur-dailyExposure.usedEur)*100)/100),
       fxProvider:fx.provider,fxCheckedAt:fx.checkedAt,
       liveSupplierOrderCreated:false,moneySpent:false,
       warning:"La prueba valida datos actuales, pero no reserva stock ni activa compras o pagos automáticos."
