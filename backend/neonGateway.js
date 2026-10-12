@@ -9,7 +9,7 @@ import {
   listNeonOrders, getNeonOrder, patchNeonOrder, mutateNeonStorageValue,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
-  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, bindVerifiedCjDraftVariant, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, bindVerifiedCjDraftVariant, saveVerifiedCjVariantRetailPrice, completeVerifiedCjVariantPriceRequest, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
 } from "./neonDb.js";
 import {
   hasR2,
@@ -31,6 +31,7 @@ import { resolveCjPurchasedVariant } from "./cjVariantIdentity.js";
 import { cjObservationKey, isCjStockProduct, readCjObservation, createCjStockObserver } from "./cjStockObserver.js";
 import {cjFactoryObservationKey,readCjFactoryObservation} from "./cjFactorySupply.js";
 import {createCjDraftAutoLink} from "./cjDraftAutoLink.js";
+import {createCjVariantAutoPricing} from "./cjVariantAutoPricing.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
@@ -1368,9 +1369,24 @@ const cjDraftLinker=createCjDraftAutoLink({
   queryVariants:queryCjProductVariants,
   saveBinding:bindVerifiedCjDraftVariant,
 });
+const cjVariantPricer=createCjVariantAutoPricing({
+  listProducts:()=>listNeonCommerceProducts({includeArchived:false}),
+  queryVariants:queryCjProductVariants,
+  quoteFreight:quoteCjVariantShipping,
+  getFx:getUsdToEurRate,
+  savePrice:saveVerifiedCjVariantRetailPrice,
+  completeRequest:completeVerifiedCjVariantPriceRequest,
+});
 const observerEnabled=Boolean(process.env.CJ_API_KEY) &&
   String(process.env.CJ_STOCK_OBSERVER_ENABLED||"true").toLowerCase()!=="false";
 let cjStockObserverStartup=null, cjStockObserverInterval=null;
+function runCjVariantPricing(){
+  cjVariantPricer.sweep().then(result=>{
+    if(result.products>0)console.log("[cj.variant-pricing]",
+      "products="+result.products,"priced="+result.priced,"blocked="+result.blocked);
+  }).catch(error=>console.warn("[cj.variant-pricing] unavailable",
+    String(error?.code||"READ_FAILED").slice(0,40)));
+}
 function runCjDraftLinker(){
   cjDraftLinker.sweep().then(result=>{
     if(result.processed>0)console.log('[cj.draft-autolink]',
@@ -1387,11 +1403,15 @@ function runCjStockObserver(){
 }
 server.listen(publicPort,"0.0.0.0",async()=>{
   if(observerEnabled){
+    const pricingStartup=setTimeout(runCjVariantPricing,25_000);
+    pricingStartup.unref?.();
     const linkingStartup=setTimeout(runCjDraftLinker,20_000);
     linkingStartup.unref?.();
     cjStockObserverStartup=setTimeout(runCjStockObserver,30_000);
     cjStockObserverStartup.unref?.();
     cjStockObserverInterval=setInterval(runCjStockObserver,20*60_000);
+    const pricingInterval=setInterval(runCjVariantPricing,20*60_000);
+    pricingInterval.unref?.();
     const linkingInterval=setInterval(runCjDraftLinker,20*60_000);
     linkingInterval.unref?.();
     cjStockObserverInterval.unref?.();
