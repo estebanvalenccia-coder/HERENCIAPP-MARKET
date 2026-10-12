@@ -441,6 +441,13 @@ export const backendApi = {
     return result;
   },
 
+  async reviewCjProducts(){
+    return request<{ok:true;total:number;ready:number;pending:number;blocked:number;
+      liveProviderStockChecked:false;liveShippingChecked:false;
+      results:Array<{productId:string;name:string;state:"ready"|"pending"|"blocked";pending:string[];confirmed:string[];warnings:string[]}>
+    }>("/api/admin/suppliers/cj/review-products");
+  },
+
   async listCjProductVariants(productId: string) {
     return request<{
       ok: boolean;
