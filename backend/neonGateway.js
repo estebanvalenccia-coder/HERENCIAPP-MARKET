@@ -29,6 +29,7 @@ import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 import { resolveCjPurchasedVariant } from "./cjVariantIdentity.js";
 import { cjObservationKey, isCjStockProduct, readCjObservation, createCjStockObserver } from "./cjStockObserver.js";
+import {cjFactoryObservationKey,readCjFactoryObservation} from "./cjFactorySupply.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
@@ -1242,10 +1243,22 @@ const server=http.createServer(async(req,res)=>{try{
     let identity;
     try{identity=resolveCjPurchasedVariant(product,selectedVariant);}
     catch{return json(res,422,{error:"La variante solicitada no está vinculada a CJ"});}
-    const snapshot=await readNeonStorageValue(cjObservationKey(productId,identity.vid));
+    const [snapshot,factorySnapshot]=await Promise.all([
+      readNeonStorageValue(cjObservationKey(productId,identity.vid)),
+      readNeonStorageValue(cjFactoryObservationKey(productId,identity.vid)),
+    ]);
+    const warehouse=readCjObservation(snapshot,{productId,vid:identity.vid});
+    const factory=readCjFactoryObservation(factorySnapshot,{productId,vid:identity.vid});
+    const availability=warehouse.fresh && warehouse.available
+      ? {...warehouse,mode:"warehouse"}
+      : factory.fresh && factory.available
+        ? factory
+        : warehouse.fresh ? {...warehouse,mode:"warehouse"} : factory.fresh ? factory : {...warehouse,mode:"warehouse"};
     return json(res,200,{ok:true,productId,selectedVariant:identity.name,
-      ...readCjObservation(snapshot,{productId,vid:identity.vid}),
-      message:"Inventario consultado a CJ en segundo plano. El checkout verifica de nuevo precio, stock y transporte."});
+      ...availability,
+      message:availability.mode==="factory"
+        ? "CJ confirmó abastecimiento en fábrica, sin inventario propio de Herencia. El checkout verificará de nuevo suministro, plazo, precio y transporte."
+        : "Inventario consultado a CJ en segundo plano. El checkout verifica de nuevo precio, suministro y transporte."});
   }
 
   if(path==="/api/commerce/products"&&req.method==="GET"){
@@ -1346,6 +1359,7 @@ const cjStockObserver=createCjStockObserver({
   upsert:upsertNeonStorageValue,
   mutate:mutateNeonStorageValue,
   queryStock:queryCjVariantStock,
+  querySupply:queryCjFactorySupply,
 });
 const observerEnabled=Boolean(process.env.CJ_API_KEY) &&
   String(process.env.CJ_STOCK_OBSERVER_ENABLED||"true").toLowerCase()!=="false";
@@ -1354,7 +1368,7 @@ function runCjStockObserver(){
   cjStockObserver.sweep()
     .then(result=>{
       if(!["no_candidates","another_worker","already_running"].includes(result.status))
-        console.log("[cj.stock-observer]",result.status,"inspected="+result.inspected,"verified="+result.verified,"outOfStock="+(result.outOfStock||0),"invalid="+(result.invalid||0),"unavailable="+(result.unavailable||0));
+        console.log("[cj.stock-observer]",result.status,"inspected="+result.inspected,"verified="+result.verified,"factoryVerified="+(result.factoryVerified||0),"outOfStock="+(result.outOfStock||0),"invalid="+(result.invalid||0),"unavailable="+(result.unavailable||0));
     })
     .catch(error=>console.warn("[cj.stock-observer] unavailable",String(error?.code||"READ_FAILED").slice(0,50)));
 }
