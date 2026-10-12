@@ -416,6 +416,15 @@ export const backendApi = {
   async listPrintfulStores() {
     return request<{ok:boolean;stores:Array<{id:string;name:string;type:string}>}>("/api/admin/printful/stores");
   },
+  async createPrintfulOrderDraft(orderId:string){
+    return request<{ok:boolean;status:string;externalOrderId?:string;printfulStatus?:string;reason?:string;autoPayment:false}>("/api/admin/suppliers/printful/draft",{
+      method:"POST",body:JSON.stringify({orderId})
+    });
+  },
+  async checkPrintfulOrderStatus(orderId:string){
+    return request<{ok:boolean;found:boolean;externalOrderId?:string;printfulStatus?:string;shipments?:Array<{trackingNumber:string;trackingUrl:string;status:string}>}>("/api/admin/suppliers/printful/order-status?orderId="+encodeURIComponent(orderId));
+  },
+
   async listPrintfulSyncProducts(storeId="") {
     return request<{ok:boolean;products:Array<{id:string;name:string;variants:number;thumbnail:string}>}>("/api/admin/printful/sync-products"+(storeId?"?storeId="+encodeURIComponent(storeId):""));
   },

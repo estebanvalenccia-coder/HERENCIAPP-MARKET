@@ -35,6 +35,7 @@ import {
   validateManualCjCreate, validateManualCjPayment, validateCjLiveWarehouseStock, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
+import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft } from "./printfulOrderFulfillment.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
   normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
@@ -1337,6 +1338,19 @@ app.post(
         // Stripe confirms payment, not permission to spend money with a supplier.
         // Paid orders are queued for admin review; nothing is sent to CJ or any
         // supplier connector from a payment webhook.
+        // Independent Printful fulfillment: prepare only a draft, never authorize a charge here.
+        // A missing product, address or provider permission creates an admin incident instead.
+        try {
+          await syncPrintfulDraftForOrder(String(inventoryOrder.id));
+        } catch (printfulError) {
+          console.warn("[printful] draft requires attention",String(printfulError?.message||"").slice(0,180));
+          await addAutomationNotification({
+            type:"printful_draft_attention",title:"Pedido Printful pendiente de revisión",
+            message:"Pedido #"+String(inventoryOrder.id).slice(0,8)+": "+String(printfulError?.message||"No se pudo preparar el borrador"),
+            entityType:"order",entityId:String(inventoryOrder.id),
+            dedupeKey:"printful-draft:"+String(inventoryOrder.id)
+          }).catch(()=>null);
+        }
         console.info("[supplier-fulfillment] queued after Stripe confirmation", {
           orderId: String(inventoryOrder.id),
           prepared: supplierFulfillments.length,
@@ -6172,6 +6186,75 @@ app.post("/api/supplier-autopilot/webhook", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo procesar el webhook del proveedor" });
   }
+});
+
+// A Printful draft is created automatically for a confirmed Printful-only order.
+// Sending drafts is not a Printful payment; confirmation (which can charge the merchant)
+// deliberately remains separate until costs and spend authorization are verified.
+async function syncPrintfulDraftForOrder(orderId){
+  const order=await getOrderPrimary(orderId);
+  if(!order)throw Object.assign(new Error("Pedido Herencia no encontrado"),{statusCode:404});
+  const items=Array.isArray(order.items)?order.items:[];
+  const products=await loadAuthoritativeProducts({includeArchived:true});
+  const providerItems=items.filter(item=>products.some(p=>String(p.id)===String(item.id)&&p.metadata?.provider==="printful"));
+  if(!providerItems.length)return {skipped:true,reason:"not_printful"};
+  const payload=preparePrintfulDraft(order,products);
+  const key="printfulOrderDraft:v1:"+String(order.id);
+  const current=JSON.parse((await readStorageValue(key))||"{}");
+  if(current.status==="created"||current.status==="reconciled")return current;
+  // Always query by deterministic external ID before any first attempt.
+  const existing=await lookupPrintfulOrder(String(order.id));
+  if(existing){
+    const saved={status:"reconciled",orderId:String(order.id),externalOrderId:existing.id,
+      printfulStatus:existing.status,shipments:existing.shipments,updatedAt:new Date().toISOString()};
+    await upsertStorageValue(key,JSON.stringify(saved));return saved;
+  }
+  // Unknown prior outcomes require manual reconciliation: never POST again.
+  if(current.status==="creating"||current.status==="unknown")
+    throw Object.assign(new Error("Posible pedido Printful previo; no se duplicará. Reconciliar en Printful."),{statusCode:409});
+  let claimed=false;
+  if(!hasNeon())throw Object.assign(new Error("Neon es obligatorio para crear pedidos Printful sin duplicados"),{statusCode:503});
+  await mutateNeonStorageValue(key,raw=>{
+    let old={};try{old=JSON.parse(raw||"{}");}catch{}
+    if(old.status)return raw;
+    claimed=true;
+    return JSON.stringify({status:"creating",orderId:String(order.id),claimedAt:new Date().toISOString()});
+  });
+  if(!claimed)throw Object.assign(new Error("Pedido Printful en proceso o pendiente de conciliación"),{statusCode:409});
+  try{
+    const created=await createPrintfulDraft(payload);
+    const saved={status:"created",orderId:String(order.id),externalOrderId:created.id,
+      printfulStatus:created.status,shipments:created.shipments,updatedAt:new Date().toISOString()};
+    await upsertStorageValue(key,JSON.stringify(saved));
+    return saved;
+  }catch(error){
+    await upsertStorageValue(key,JSON.stringify({status:"unknown",orderId:String(order.id),
+      updatedAt:new Date().toISOString(),reason:"requires_reconciliation"})).catch(()=>{});
+    throw error;
+  }
+}
+app.post("/api/admin/suppliers/printful/draft",requireAdmin,async(req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const orderId=String(req.body?.orderId||"").trim();
+    if(!/^[a-z0-9-]{8,100}$/i.test(orderId))return res.status(422).json({error:"ID de pedido Herencia inválido"});
+    const result=await syncPrintfulDraftForOrder(orderId);
+    return res.json({ok:true,...result,autoPayment:false});
+  }catch(error){return res.status(error.statusCode||500).json({error:error.message});}
+});
+app.get("/api/admin/suppliers/printful/order-status",requireAdmin,async(req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  const orderId=String(req.query.orderId||"").trim();
+  if(!/^[a-z0-9-]{8,100}$/i.test(orderId))return res.status(422).json({error:"ID de pedido inválido"});
+  try{
+    const provider=await lookupPrintfulOrder(orderId);
+    if(!provider)return res.json({ok:true,found:false});
+    const key="printfulOrderDraft:v1:"+orderId;
+    const result={status:"reconciled",orderId,externalOrderId:provider.id,
+      printfulStatus:provider.status,shipments:provider.shipments,updatedAt:new Date().toISOString()};
+    await upsertStorageValue(key,JSON.stringify(result));
+    return res.json({ok:true,found:true,...result});
+  }catch(error){return res.status(error.statusCode||500).json({error:error.message});}
 });
 
 app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
