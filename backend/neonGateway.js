@@ -21,7 +21,7 @@ import {
   checkR2Connection,
 } from "./r2Media.js";
 import { analyzeCatalogUrl, analyzeProductUrl, mirrorRemoteProductImages, importImageFromPublicUrl, guessCatalogTaxonomy, isSupplierChallengeName } from "./catalogUrlImporter.js";
-import { previewCjProductUrl, queryCjProductVariants, queryCjVariantStock, queryCjVariantWarehouses, quoteCjVariantShipping } from "./cjCatalogImporter.js";
+import { previewCjProductUrl, queryCjProductVariants, queryCjVariantStock, queryCjVariantWarehouses, queryCjFactorySupply, quoteCjVariantShipping } from "./cjCatalogImporter.js";
 import { assessCjCatalogReadiness } from "./cjCatalogReadiness.js";
 import { summarizeCjVariantAudit } from "./cjBulkVariantAudit.js";
 import { extractCjProductId } from "./cjProductIds.js";
@@ -403,9 +403,10 @@ const server=http.createServer(async(req,res)=>{try{
     const response=await queryCjProductVariants(pid);
     const variant=response.variants.find(row=>String(row.vid)===vid);
     if(!variant)return json(res,422,{error:"VID no pertenece al producto CJ vinculado"});
-    const [stockResult,warehouseResult,fxResult]=await Promise.allSettled([
+    const [stockResult,warehouseResult,supplyResult,fxResult]=await Promise.allSettled([
       queryCjVariantStock({vid,origin:"CN"}),
       queryCjVariantWarehouses({vid}),
+      queryCjFactorySupply({pid,vid,origin:"CN"}),
       getUsdToEurRate(),
     ]);
     const stock=stockResult.status==="fulfilled"?stockResult.value:null;
@@ -418,13 +419,15 @@ const server=http.createServer(async(req,res)=>{try{
     }
     const warehouses=warehouseResult.status==="fulfilled"?warehouseResult.value.warehouses:[];
     const fx=fxResult.status==="fulfilled"?fxResult.value:null;
-    const report=assessCjCatalogReadiness({product,metadata,variant,stock,fx,origin:"CN"});
+    const supply=supplyResult.status==="fulfilled"?supplyResult.value:null;
+    const report=assessCjCatalogReadiness({product,metadata,variant,stock,supply,fx,origin:"CN"});
     return json(res,200,{ok:true,productId,variant:{
       vid:variant.vid,sku:variant.sku,name:variant.name,option:variant.option,
     },...report,warehouses,fxDate:fx?.date||null,
       checkedAt:new Date().toISOString(),
       ...(warehouseResult.status==="rejected"?{warehousesWarning:"CJ no permitió consultar sus almacenes en este momento."}:{}),
       ...(stockResult.status==="rejected"?{stockWarning:"No se pudo consultar el stock de CJ. No se considera disponible."}:{}),
+      ...(supplyResult.status==="rejected"?{supplyWarning:"CJ no permitió comprobar el abastecimiento directo de fábrica para este VID."}:{}),
       ...(fxResult.status==="rejected"?{fxWarning:"No se pudo obtener el cambio de divisa actual."}:{}),
     });
   }
