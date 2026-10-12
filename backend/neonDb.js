@@ -128,9 +128,9 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
       productId: String(item?.productId ?? item?.id ?? "").trim(),
       variantName: String(item?.variantName ?? item?.selectedVariant ?? "").trim(),
       quantity: Math.max(0, Math.floor(Number(item?.quantity ?? item?.qty ?? 0))),
-      trackInventory: item?.trackInventory !== false,
     }))
-    .filter((item) => item.productId && item.quantity > 0 && item.trackInventory);
+    // Inventory tracking is determined by the persisted product, never by the cart.
+    .filter((item) => item.productId && item.quantity > 0);
 
   if (!requested.length) {
     return { active: false, mode: "neon_atomic_reservation", reason: "no_tracked_items", reservedItems: 0 };
@@ -141,12 +141,12 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [NEON_RESERVATION_LOCK]);
 
-    const [productsResult, reservationsResult] = await Promise.all([
-      client.query("select value from app_storage where key=$1 limit 1 for update", ["adminProducts"]),
-      client.query("select value from app_storage where key=$1 limit 1 for update", [NEON_RESERVATIONS_KEY]),
-    ]);
-
-    const products = parseArrayJson(productsResult.rows?.[0]?.value);
+    // Reserve against the authoritative commerce tables. The legacy adminProducts
+    // snapshot may lag behind products created through /api/admin/commerce/products.
+    const reservationsResult = await client.query(
+      "select value from app_storage where key=$1 limit 1 for update",
+      [NEON_RESERVATIONS_KEY]
+    );
     const now = Date.now();
     const active = parseArrayJson(reservationsResult.rows?.[0]?.value)
       .filter((row) =>
@@ -164,19 +164,27 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
       }
     }
 
+    const trackedItems = [];
     for (const item of requested) {
-      const product = products.find((row) => String(row?.id ?? "") === item.productId);
-      if (!product || product.active === false || product.deletedAt) {
+      const productResult = await client.query(
+        "select id, name, status, stock, track_inventory from commerce_products where id=$1 limit 1",
+        [item.productId]
+      );
+      const product = productResult.rows?.[0];
+      if (!product || product.status !== "active") {
         const error = new Error(`Producto no disponible: ${item.productId}`);
         error.statusCode = 409;
         throw error;
       }
-      if (product.trackInventory === false) continue;
+      if (product.track_inventory === false) continue;
 
-      const variant = item.variantName
-        ? (Array.isArray(product.variants) ? product.variants : [])
-            .find((row) => String(row?.name || row) === item.variantName)
+      const variantResult = item.variantName
+        ? await client.query(
+            "select name, stock from commerce_product_variants where product_id=$1 and name=$2 limit 1",
+            [item.productId, item.variantName]
+          )
         : null;
+      const variant = variantResult?.rows?.[0];
       if (item.variantName && !variant) {
         const error = new Error(`Variante no disponible: ${product.name || item.productId}`);
         error.statusCode = 409;
@@ -194,6 +202,11 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
         throw error;
       }
       reservedByKey.set(key, alreadyReserved + item.quantity);
+      trackedItems.push(item);
+    }
+    if (!trackedItems.length) {
+      await client.query("commit");
+      return { active: false, mode: "neon_atomic_reservation", reason: "no_tracked_items", reservedItems: 0 };
     }
 
     const safeTtl = Math.max(1, Math.min(60, Math.floor(Number(ttlMinutes) || 15)));
@@ -203,7 +216,7 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
       status: "active",
       createdAt: new Date(now).toISOString(),
       expiresAt,
-      items: requested.map(({ productId, variantName, quantity }) => ({ productId, variantName, quantity })),
+      items: trackedItems.map(({ productId, variantName, quantity }) => ({ productId, variantName, quantity })),
     });
 
     await client.query(
@@ -213,7 +226,7 @@ export async function reserveNeonCommerceStock(cartToken, items = [], ttlMinutes
       [NEON_RESERVATIONS_KEY, JSON.stringify(active)]
     );
     await client.query("commit");
-    return { active: true, mode: "neon_atomic_reservation", expiresAt, reservedItems: requested.length };
+    return { active: true, mode: "neon_atomic_reservation", expiresAt, reservedItems: trackedItems.length };
   } catch (error) {
     await client.query("rollback").catch(() => null);
     throw error;
