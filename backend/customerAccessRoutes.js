@@ -11,7 +11,7 @@ import {
 const originalListen = express.application.listen;
 const RESET_KEY = "customerPasswordResetTokens";
 const ACCOUNTS_KEY = "customerAccounts";
-const PAID_STATUSES = ["paid", "confirmed", "preparing", "ready", "delivered", "completed"];
+const PAID_STATUSES = ["paid", "confirmed", "preparing", "ready", "shipped", "delivered", "completed"];
 
 function normalizeEmail(value) { return String(value || "").trim().toLowerCase(); }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value)); }
