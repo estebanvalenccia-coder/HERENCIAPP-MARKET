@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { productBelongsToCollection } from "../lib/commerceCatalog";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
@@ -20,7 +21,8 @@ function money(value: unknown) {
   }).format(Number(value || 0));
 }
 
-function addToCart(product: any) {
+function addToCart(product: any, navigate: (path:string)=>void) {
+  if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
   try {
     const variants = Array.isArray(product?.variants) ? product.variants : [];
     const variant = variants.length
@@ -52,6 +54,7 @@ function addToCart(product: any) {
 }
 
 function CollectionPage({ kind }: { kind: Kind }) {
+  const navigate=useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [catalog, setCatalog] = useState<any[]>([]);
 
@@ -158,10 +161,10 @@ function CollectionPage({ kind }: { kind: Kind }) {
                     <span className="text-lg font-black text-[#315b42]">{money(product.onSale && product.salePrice ? product.salePrice : product.price)}</span>
                     <button
                       type="button"
-                      onClick={() => addToCart(product)}
+                      onClick={() => addToCart(product,navigate)}
                       className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-4 py-2.5 text-sm font-black text-white"
                     >
-                      <ShoppingCart className="h-4 w-4" /> Añadir
+                      <ShoppingCart className="h-4 w-4" /> {needsExplicitVariantSelection(product) ? "Elegir opciones" : "Añadir"}
                     </button>
                   </div>
                 </div>
