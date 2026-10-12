@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { interpretCjWarehouseStocks } from "./cjCatalogImporter.js";
+import { interpretCjWarehouseStocks, interpretCjVariantStock } from "./cjCatalogImporter.js";
 import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 
 const vid="1531107375489495040";
@@ -60,4 +60,13 @@ test("a selected origin is a read-only preview and never changes checkout",()=>{
   assert.match(checkout,/origin:"CN"/);
   const panel=readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx",import.meta.url),"utf8");
   assert.match(panel,/quoteOrigin === "CN" && freightQuote\?\.origin === "CN"/);
+});
+
+test("CJ stock diagnostics distinguish missing warehouse, invalid reply and missing inventory without inventing zero",()=>{
+  assert.equal(interpretCjVariantStock(null,vid,"CN").reason,"INVALID_STOCK_RESPONSE");
+  assert.equal(interpretCjVariantStock([{vid,countryCode:"US",cjInventoryNum:3}],vid,"CN").reason,"WAREHOUSE_NOT_REPORTED");
+  assert.equal(interpretCjVariantStock([{vid,countryCode:"CN",cjInventoryNum:null}],vid,"CN").reason,"WAREHOUSE_INVENTORY_UNVERIFIED");
+  const valid=interpretCjVariantStock([{vid,countryCode:"CN",cjInventoryNum:2}],vid,"CN");
+  assert.equal(valid.verified,true);
+  assert.equal(valid.quantity,2);
 });
