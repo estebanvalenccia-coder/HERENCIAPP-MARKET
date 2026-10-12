@@ -1131,6 +1131,7 @@ export async function saveVerifiedCjVariantRetailPrice(quote={}) {
     fxDate:quote.fxDate,checkedAt:quote.checkedAt,
     estimatedMarginPercent:quote.estimatedMarginPercent,
     minMarginPercent:quote.minMarginPercent,vatRate:quote.vatRate,
+    provisionalImportAllowanceEur:quote.additionalImportCostEur,
     disclaimer:"Cotización postal orientativa; no autoriza compras ni garantiza el envío final."
   };
   const result=await neonPool.query(
