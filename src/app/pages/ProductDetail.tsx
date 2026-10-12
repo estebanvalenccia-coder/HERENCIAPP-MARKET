@@ -8,6 +8,7 @@ import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/s
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
 import { isCjSupplierItem, assessCjPublicProductStatus } from "../lib/cjFulfillmentIdentity";
+import { isPrintfulProduct } from "../lib/printfulVariantSelection.js";
 import {assessCjDistanceSaleCompliance} from "../lib/cjDistanceSaleCompliance";
 
 export function ProductDetail() {
@@ -23,6 +24,7 @@ export function ProductDetail() {
   const [serviceHours, setServiceHours] = useState(1);
   const [favorite, setFavorite] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState("");
+  const [printfulChosenOptions, setPrintfulChosenOptions] = useState<Record<number,string>>({});
   const [selectedImage, setSelectedImage] = useState("");
   const [dedication, setDedication] = useState("");
   const [waitlistEmail, setWaitlistEmail] = useState("");
@@ -64,9 +66,10 @@ export function ProductDetail() {
 
         const found = detail.product || rows.find((item: any) => String(item.id) === String(id));
         setProduct(found || null);
+        setPrintfulChosenOptions({});
         if (found) {
           setSelectedVariant(
-            Array.isArray(found.variants) && found.variants.length
+            !isPrintfulProduct(found) && Array.isArray(found.variants) && found.variants.length
               ? String(found.variants[0]?.name || found.variants[0])
               : ""
           );
@@ -81,6 +84,8 @@ export function ProductDetail() {
           setAllProducts(rows);
           const found = rows.find((item: any) => String(item.id) === String(id));
           setProduct(found || null);
+          setPrintfulChosenOptions({});
+          setSelectedVariant(!isPrintfulProduct(found) && Array.isArray(found?.variants) && found.variants.length ? String(found.variants[0]?.name || found.variants[0]) : "");
         } catch {
           setAllProducts([]);
           setProduct(null);
@@ -160,12 +165,31 @@ export function ProductDetail() {
   },[product?.id,product?.updatedAt,selectedVariant]);
 
   const variants = useMemo(() => Array.isArray(product?.variants) ? product.variants : [], [product]);
+  const isPrintful = isPrintfulProduct(product);
   const selected = variants.find((v: any) => String(v?.name || v) === selectedVariant);
   const optionLabels = Array.isArray(product?.metadata?.variantOptionLabels) ? product.metadata.variantOptionLabels : [];
   const variantOptionGroups = useMemo(() => deriveVariantOptionGroups(variants, optionLabels), [variants, product?.metadata?.variantOptionLabels]);
-  const selectedOptionValues = Array.isArray(selected?.optionValues) && selected.optionValues.length
-    ? selected.optionValues : splitSupplierOptions(selected?.name || selectedVariant);
+  const selectedOptionValues = isPrintful
+    ? variantOptionGroups.map((_:any,i:number)=>printfulChosenOptions[i]||"")
+    : Array.isArray(selected?.optionValues) && selected.optionValues.length
+      ? selected.optionValues : splitSupplierOptions(selected?.name || selectedVariant);
   const changeVariantOption = (index: number, value: string) => {
+    if (isPrintful) {
+      let choices={...printfulChosenOptions,[index]:value};
+      const getOptions=(v:any)=>Array.isArray(v?.optionValues)&&v.optionValues.length?v.optionValues:splitSupplierOptions(v?.name||v);
+      // Changing the color/size cannot silently keep an incompatible choice.
+      if (!variants.some((v:any)=>Object.entries(choices).every(([i,x])=>getOptions(v)[Number(i)]===x))) {
+        choices={[index]:value};
+      }
+      setPrintfulChosenOptions(choices);
+      const exact=variantOptionGroups.every((_:any,i:number)=>Boolean(choices[i]))
+        ? variants.find((v:any)=>variantOptionGroups.every((_:any,i:number)=>getOptions(v)[i]===choices[i]))
+        : null;
+      setSelectedVariant(exact?String(exact.name||""):"");
+      if (exact?.image) setSelectedImage(String(exact.image));
+      setQuantity(1);
+      return;
+    }
     const next = chooseExistingVariant(variants, selectedVariant, index, value);
     if (!next) return;
     setSelectedVariant(String(next.name || next));
@@ -356,12 +380,14 @@ export function ProductDetail() {
     if (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available))
       return toast.error("Este artículo no está disponible temporalmente. Inténtalo más tarde.");
     if (cjPendingVariantQuote) return toast.error("Esta opción no está disponible temporalmente.");
-    if (product.metadata?.provider === "printful") {
+    if (isPrintful) {
+      if (!selectedVariant || !selected) return toast.error("Selecciona talla y color antes de añadir la camiseta.");
       if (!selected?.printfulSyncVariantId || !selected?.printfulCatalogVariantId)
         return toast.error("Elige una variante realmente sincronizada con Printful.");
       if (selected?.printfulAvailability !== "active")
         return toast.error("Printful no confirma que esta variante esté disponible.");
     }
+    if (isPrintful && (!Number.isFinite(effectivePrice) || effectivePrice<=0)) return toast.error("Esta camiseta todavía no tiene un precio de venta válido.");
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
     if (isCjProduct && quantity !== 1) return toast.error("Solo se permite una unidad por pedido de este artículo.");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
@@ -400,9 +426,14 @@ export function ProductDetail() {
     if (trackInventory && Number(existingItem?.quantity || 0) + quantity > stock) {
       return toast.error(`Solo quedan ${stock} unidades disponibles`);
     }
-    if (existingItem) existingItem.quantity += quantity;
+    if (existingItem) {
+      existingItem.quantity += quantity;
+      if (isPrintful) Object.assign(existingItem,{price:effectivePrice,selectedVariant,variants:product.variants,
+        printfulVariantChosen:true,printfulSyncVariantId:String(selected?.printfulSyncVariantId||""),
+        printfulCatalogVariantId:String(selected?.printfulCatalogVariantId||"")});
+    }
     else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined,
-      ...(product.metadata?.provider==="printful"?{printfulSyncVariantId:String(selected?.printfulSyncVariantId||""),printfulCatalogVariantId:String(selected?.printfulCatalogVariantId||"")}:{}),
+      ...(isPrintful?{printfulVariantChosen:true,printfulSyncVariantId:String(selected?.printfulSyncVariantId||""),printfulCatalogVariantId:String(selected?.printfulCatalogVariantId||"")}:{}),
       personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
@@ -509,7 +540,7 @@ export function ProductDetail() {
           </div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
-          {detailConfig.showVariants !== false && variants.length > 0 && (variantOptionGroups.length > 0 ? (
+          {(detailConfig.showVariants !== false || isPrintful) && variants.length > 0 && (variantOptionGroups.length > 0 ? (
             <div className="space-y-4">
               {variantOptionGroups.map((group,index)=>(
                 <div key={index}>
@@ -528,12 +559,13 @@ export function ProductDetail() {
                   </div>
                 </div>
               ))}
-              <p className="text-xs text-muted-foreground">Solo puedes elegir combinaciones disponibles. Los gastos y plazos de entrega se mostrarán antes del pago.</p>
+              <p className="text-xs text-muted-foreground">{isPrintful ? "Elige expresamente el color y la talla antes de añadir al carrito." : "Solo puedes elegir combinaciones disponibles. Los gastos y plazos de entrega se mostrarán antes del pago."}</p>
             </div>
           ) : <div><label className="mb-2 block text-sm font-medium">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant:any)=>{
             const name=String(variant?.name||variant);
-            return <button key={name} type="button" onClick={()=>{setSelectedVariant(name);if(variant?.image)setSelectedImage(String(variant.image));}} className={`rounded-xl border px-4 py-2 ${selectedVariant===name?"border-primary bg-primary/10 text-primary":"border-border"}`}>{name}</button>;
+            return <button key={name} type="button" onClick={()=>{setSelectedVariant(name);setPrintfulChosenOptions({});if(variant?.image)setSelectedImage(String(variant.image));}} className={`rounded-xl border px-4 py-2 ${selectedVariant===name?"border-primary bg-primary/10 text-primary":"border-border"}`}>{name}</button>;
           })}</div></div>)}
+          {isPrintful && !selectedVariant && <p role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm font-semibold">Selecciona talla y color para continuar con tu compra.</p>}
           {cjUnavailable && <p role="status" className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
             Temporalmente no disponible. Vuelve a consultarlo más adelante.
           </p>}
@@ -586,7 +618,7 @@ export function ProductDetail() {
           ) : null}
           <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
             (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available)) ||
-            (trackInventory && stock<=0)} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{cjUnavailable ? "Temporalmente no disponible" : trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
+            (trackInventory && stock<=0) || (isPrintful && (!selectedVariant || !(effectivePrice>0)))} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{cjUnavailable ? "Temporalmente no disponible" : trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{
             isCjProduct
               ? (cjUnavailable || (trackInventory && stock<=0) ? "Temporalmente no disponible" : "Disponible")

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   ArrowRight,
   HeartHandshake,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
@@ -54,6 +55,7 @@ function money(value: unknown) {
 }
 
 export function Home() {
+  const navigate=useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
@@ -152,6 +154,7 @@ export function Home() {
   }, [catalog]);
 
   const addToCart = (product: any) => {
+    if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
     try {
       const variants = Array.isArray(product?.variants) ? product.variants : [];
       const variant = variants.length
@@ -471,7 +474,7 @@ export function Home() {
                     onClick={() => addToCart(product)}
                     className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#315b42] px-3 py-2 text-xs font-black text-white transition hover:bg-[#234832]"
                   >
-                    <ShoppingCart className="h-3.5 w-3.5" /> Añadir
+                    <ShoppingCart className="h-3.5 w-3.5" /> {needsExplicitVariantSelection(product) ? "Elegir talla y color" : "Añadir"}
                   </button>
                 </div>
               </article>
