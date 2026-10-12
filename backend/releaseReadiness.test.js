@@ -13,7 +13,8 @@ test("productos físicos usan entrega y servicios usan reserva sin envío", asyn
   assert.match(cart, /transporte de CJ todavía no está incluido/);
   assert.match(cart, /No se aplican gastos de envío a los servicios/);
   assert.match(checkout, /onlyServices\s*\?\s*["']servicio["']\s*:\s*["']envio["']/);
-  assert.match(checkout, /const shipping\s*=\s*hasPhysicalItems\s*\?\s*shippingCost\s*:\s*0/);
+  assert.match(checkout, /const fullCouponDiscount\s*=\s*Boolean\(coupon\s*&&\s*subtotal\s*>\s*0\s*&&\s*discount\s*>=\s*subtotal\s*-\s*0\.001\)/);
+  assert.match(checkout, /const shipping\s*=\s*hasPhysicalItems\s*&&\s*!fullCouponDiscount\s*\?\s*shippingCost\s*:\s*0/);
   assert.match(server, /solo ofrece entrega a domicilio/);
 });
 
