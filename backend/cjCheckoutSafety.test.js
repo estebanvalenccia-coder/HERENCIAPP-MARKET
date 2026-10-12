@@ -173,3 +173,38 @@ test("factory inventory 9000 without verification cannot create a CJ payment pat
    catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps}),
    /no confirmó existencias verificadas/);
 });
+
+test("CJ checkout automatically selects cheapest verified, margin-positive carrier for exact postcode",async()=>{
+ const vid=cj.metadata.supplierVariantId;
+ const noPreference={...cj,metadata:{...cj.metadata,cjPreferredLogisticName:""}};
+ const deps={
+   verifyVariant:async()=>({vid,sku:cj.metadata.supplierSku,priceUsd:5}),
+   quoteShipping:async()=>({vid,origin:"CN",destination:"ES",zip:"08032",methods:[
+     {name:"Expensive",totalPostageUsd:5,shippingUsd:5},
+     {name:"Incomplete",totalPostageUsd:null,shippingUsd:1},
+     {name:"Economy",totalPostageUsd:2,shippingUsd:2}]}),
+   getRate:async()=>({rate:0.9}),
+   getStock:async()=>({verified:true,available:true,quantity:8,vid,origin:"CN"}),
+ };
+ const result=await evaluateCjCheckout({lines:[{id:cj.id,quantity:1,price:20}],
+   catalog:[noPreference],suppliers:[supplier],
+   shippingAddress:{country:"ES",postalCode:"08032"},deps});
+ assert.equal(result.cjOnly,true);
+ assert.equal(result.verifiedQuote.methodName,"Economy");
+ assert.equal(result.shippingQuote.logisticName,"Economy");
+});
+test("CJ checkout never charges using unpriced or unprofitable shipping options",async()=>{
+ const vid=cj.metadata.supplierVariantId;
+ const deps={
+   verifyVariant:async()=>({vid,sku:cj.metadata.supplierSku,priceUsd:5}),
+   quoteShipping:async()=>({vid,origin:"CN",destination:"ES",zip:"08032",methods:[
+     {name:"Unknown final postage",totalPostageUsd:null,shippingUsd:2},
+     {name:"Unaffordable",totalPostageUsd:100,shippingUsd:100}]}),
+   getRate:async()=>({rate:0.9}),
+   getStock:async()=>({verified:true,available:true,quantity:8,vid,origin:"CN"}),
+ };
+ await assert.rejects(evaluateCjCheckout({lines:[{id:cj.id,quantity:1,price:20}],
+   catalog:[{...cj,metadata:{...cj.metadata,cjPreferredLogisticName:""}}],
+   suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps
+ }),/transporte con coste completo y margen permitido/);
+});
