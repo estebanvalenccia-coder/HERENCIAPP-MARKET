@@ -13,6 +13,7 @@ test("supports 27 EU countries and supplier presets without asserting access",()
   assert.equal(EU_COUNTRIES.length,27);
   assert.equal(new Set(EU_COUNTRIES).size,27);
   assert.equal(SUPPLIER_PRESETS.find(s=>s.id==="temu").api,"dropshipping_unverified");
+  assert.deepEqual(SUPPLIER_PRESETS.find(s=>s.id==="banggood"), {id:"banggood",name:"Banggood",host:"banggood.com",type:"api",api:"authorization_required"});
 });
 test("picks lowest total delivered cost, not lowest item price; never buys",()=>{
   const r=compareSupplierOffers(req,[base,{...base,supplierId:"b",productCost:3,shippingCost:2,deliveryDays:4,authorizedOrderApi:true}],{nowMs:now});
