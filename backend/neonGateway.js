@@ -1359,6 +1359,7 @@ const cjStockObserver=createCjStockObserver({
   upsert:upsertNeonStorageValue,
   mutate:mutateNeonStorageValue,
   queryStock:queryCjVariantStock,
+  queryWarehouses:queryCjVariantWarehouses,
   querySupply:queryCjFactorySupply,
 });
 const observerEnabled=Boolean(process.env.CJ_API_KEY) &&
