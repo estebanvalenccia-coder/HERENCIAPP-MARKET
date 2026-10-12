@@ -35,6 +35,7 @@ test("create remains draft: no confirm query parameter or money charging endpoin
  assert.equal(r.id,"987");
  assert.equal(seen.req.method,"POST");assert.equal(seen.url,"https://api.printful.com/orders");
  assert.deepEqual(JSON.parse(seen.req.body).items,payload.items);
+ assert.equal(JSON.parse(seen.req.body).external_id,payload.external_id,"draft creation must retain the idempotency reference");
 });
 test("401 429 and transport uncertainty fail without declaring a supplier order",async()=>{
  const env={PRINTFUL_API_TOKEN:"secret"};
@@ -56,6 +57,10 @@ test("Printful supplier estimate includes authoritative currency, shipping and t
  assert.equal(quote.breakdown.shipping,5.49);
  assert.equal(calls[0].url,"https://api.printful.com/orders/estimate-costs");
  assert.equal(calls[0].req.headers["X-PF-Store-Id"],"42");
+ const quotePayload=JSON.parse(calls[0].req.body);
+ assert.equal(Object.hasOwn(quotePayload,"external_id"),false,"estimates must not submit an order external ID");
+ assert.equal(quotePayload.recipient.country_code,"ES");
+ assert.deepEqual(quotePayload.items,payload.items);
 });
 test("Printful estimates reject missing money, currency and temporary API failures",async()=>{
  assert.throws(()=>normalizePrintfulEstimate({result:{costs:{total:21}}}),/moneda/);
@@ -108,4 +113,15 @@ test("provider errors about stores and shipping can be classified without custom
  const shipping=summarizePrintfulRejection({error:{reason:"BadRequest",message:"Recipient ZIP 08032 invalid for shipping"}},400,payload);
  assert.equal(shipping.category,"shipping");
  assert.doesNotMatch(shipping.detail,/08032/);
+});
+
+test("real failed quote Invalid External ID gets an identifier diagnosis, never a purchase",async()=>{
+ const payload=preparePrintfulDraft(order,[product]);
+ const env={PRINTFUL_API_TOKEN:"secret",PRINTFUL_STORE_ID:"42"};
+ const d=summarizePrintfulRejection({code:400,error:{reason:"BadRequest",message:"Invalid External ID specified"}},400,payload);
+ assert.equal(d.category,"identifier");
+ await assert.rejects(estimatePrintfulOrder(payload,{env,fetchImpl:async(_url,req)=>{
+   assert.equal(Object.hasOwn(JSON.parse(req.body),"external_id"),false);
+   return {ok:false,status:400,json:async()=>({code:400,error:{reason:"BadRequest",message:"Invalid External ID specified"}})};
+ }}),e=>e.providerDiagnosis?.detail==="Invalid External ID specified");
 });
