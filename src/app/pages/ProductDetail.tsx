@@ -196,6 +196,11 @@ export function ProductDetail() {
   const isCjProduct = isCjSupplierItem(product);
   const cjSellability = assessCjPublicProductStatus(product);
   const cjLegal=assessCjDistanceSaleCompliance(product);
+  // The public storefront must never expose provider diagnostics or compliance checklists.
+  const cjUnavailable = isCjProduct && (
+    !cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
+    !cjAvailability?.fresh || !cjAvailability?.available
+  );
   const trackInventory = product?.trackInventory !== false;
   const stock = trackInventory
     ? Math.max(0, Math.floor(Number(selected?.stock ?? product?.stock ?? 0)))
@@ -284,11 +289,11 @@ export function ProductDetail() {
       image: galleryImages,
       sku: selected?.sku || product.sku || undefined,
       brand: product.vendor ? {"@type":"Brand",name:product.vendor} : undefined,
-      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!trackInventory||stock>0)?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
+      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!cjUnavailable&&(!trackInventory||stock>0))?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
     });
     document.head.appendChild(script);
     return () => document.getElementById(id)?.remove();
-  }, [product, selectedVariant, effectivePrice, stock, trackInventory, galleryImages]);
+  }, [product, selectedVariant, effectivePrice, stock, trackInventory, galleryImages, cjUnavailable]);
 
   const toggleFavorite = async () => {
     let list: string[] = [];
@@ -347,10 +352,10 @@ export function ProductDetail() {
 
   const addToCart = () => {
     if (!product) return;
-    if (!cjSellability.availableToAdd) return toast.error(cjSellability.blockers[0]);
+    if (!cjSellability.availableToAdd || !cjLegal.ready) return toast.error("Este artículo no está disponible temporalmente.");
     if (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available))
-      return toast.error("CJ no ha confirmado existencias recientes de esta variante. Inténtalo de nuevo más tarde.");
-    if (cjPendingVariantQuote) return toast.error("Selecciona una variante CJ que tenga SKU y VID válidos.");
+      return toast.error("Este artículo no está disponible temporalmente. Inténtalo más tarde.");
+    if (cjPendingVariantQuote) return toast.error("Esta opción no está disponible temporalmente.");
     if (product.metadata?.provider === "printful") {
       if (!selected?.printfulSyncVariantId || !selected?.printfulCatalogVariantId)
         return toast.error("Elige una variante realmente sincronizada con Printful.");
@@ -358,10 +363,10 @@ export function ProductDetail() {
         return toast.error("Printful no confirma que esta variante esté disponible.");
     }
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
-    if (isCjProduct && quantity !== 1) return toast.error("Para CJ solo se permite una unidad por pedido.");
+    if (isCjProduct && quantity !== 1) return toast.error("Solo se permite una unidad por pedido de este artículo.");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
     if (Array.isArray(cart) && ((isCjProduct && cart.length > 0) || cart.some(isCjSupplierItem))) {
-      return toast.error("Los artículos CJ se compran de uno en uno y separados del reparto local. Finaliza primero el carrito actual.");
+      return toast.error("Este artículo debe comprarse en un pedido separado. Finaliza primero tu carrito actual.");
     }
 
     if (serviceProduct) {
@@ -523,21 +528,15 @@ export function ProductDetail() {
                   </div>
                 </div>
               ))}
-              <p className="text-xs text-muted-foreground">Solo se pueden elegir combinaciones existentes. El transporte y los costes CJ se verifican antes del cobro.</p>
+              <p className="text-xs text-muted-foreground">Solo puedes elegir combinaciones disponibles. Los gastos y plazos de entrega se mostrarán antes del pago.</p>
             </div>
           ) : <div><label className="mb-2 block text-sm font-medium">Elige una variante</label><div className="flex flex-wrap gap-2">{variants.map((variant:any)=>{
             const name=String(variant?.name||variant);
             return <button key={name} type="button" onClick={()=>{setSelectedVariant(name);if(variant?.image)setSelectedImage(String(variant.image));}} className={`rounded-xl border px-4 py-2 ${selectedVariant===name?"border-primary bg-primary/10 text-primary":"border-border"}`}>{name}</button>;
           })}</div></div>)}
-          {cjSellability.cj && cjSellability.blockers.length > 0 && <p role="alert"
-            className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
-            Este artículo está pendiente de configuración de envío: {cjSellability.blockers[0]}
-            No se puede añadir al carrito hasta que Herencia lo verifique.
+          {cjUnavailable && <p role="status" className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Temporalmente no disponible. Vuelve a consultarlo más adelante.
           </p>}
-          {isCjProduct && !cjLegal.ready && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            <p className="font-semibold">Artículo pendiente de información de seguridad y gestión de importación.</p>
-            <p className="mt-1">No puede añadirse al carrito hasta que la tienda documente fabricante, responsable UE cuando proceda y costes aduaneros.</p>
-          </div>}
           {isCjProduct && cjLegal.ready && <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p className="font-semibold text-foreground">Información de seguridad del producto</p>
             <p>Fabricante: {String(product.metadata?.gpsrManufacturerName||"")} · {String(product.metadata?.gpsrManufacturerPostalAddress||"")}</p>
@@ -545,18 +544,6 @@ export function ProductDetail() {
             {product.metadata?.gpsrEuResponsibleName && <p>Responsable UE: {String(product.metadata.gpsrEuResponsibleName)} · {String(product.metadata.gpsrEuResponsiblePostalAddress||"")} · {String(product.metadata.gpsrEuResponsibleEmail||"")}</p>}
             {product.metadata?.gpsrSafetyWarningsEs && <p>Advertencias: {String(product.metadata.gpsrSafetyWarningsEs)}</p>}
           </div>}
-          {isCjProduct && cjSellability.availableToAdd &&
-            <p role="status" className={"rounded-xl border p-3 text-sm " +
-              (cjAvailability?.fresh && cjAvailability?.available ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
-              {cjAvailabilityLoading ? "Consultando la última disponibilidad verificada de CJ…" :
-               cjAvailability?.fresh ? cjAvailability.available
-                 ? cjAvailability.mode === "factory"
-                   ? "CJ confirmó el abastecimiento de " + cjAvailability.quantity + " unidades en fábrica. Herencia no mantiene inventario propio. La preparación puede tardar más; se verificará de nuevo antes del pago."
-                   : "CJ confirmó " + cjAvailability.quantity + " unidades en el almacén " + (cjAvailability.origin === "DE" ? "de Alemania (DE)" : cjAvailability.origin) + ". Existencias no reservadas; se verificarán al pagar."
-                 : cjAvailability.mode === "factory" ? "CJ no confirma unidades disponibles actualmente en fábrica." : "CJ no confirma unidades disponibles en el almacén " + (cjAvailability.origin||"CN") + "; el suministro sigue pendiente de verificación."
-               : "La disponibilidad de CJ no está verificada recientemente. El producto no se puede añadir hasta que se actualice la consulta."}
-            </p>}
-          {cjPendingVariantQuote && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Esta opción no tiene un SKU/VID CJ válido. Revisa el producto en Administración.</p>}
           {detailConfig.showDedication !== false && (product.allowDedication || product.personalizable || product.personalizable === undefined) && <div><label className="block text-sm font-medium mb-2">Dedicatoria (opcional)</label><textarea value={dedication} onChange={(e) => setDedication(e.target.value.slice(0, 280))} placeholder="Escribe el mensaje que acompañará al pedido…" className="w-full min-h-24 rounded-xl border border-border bg-background p-3" /><p className="text-xs text-muted-foreground text-right">{dedication.length}/280</p></div>}
           {serviceProduct ? (
             <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
@@ -592,17 +579,17 @@ export function ProductDetail() {
             </div>
           ) : isCjProduct ? (
             <p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm font-medium">
-              CJdropshipping: una unidad por pedido. El stock, el transporte y el precio final se validan antes del cobro.
+              Para este artículo se admite una unidad por pedido. Los gastos de envío se calcularán antes del pago.
             </p>
           ) : detailConfig.showQuantity !== false ? (
             <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           ) : null}
           <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
             (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available)) ||
-            (trackInventory && stock<=0)} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
+            (trackInventory && stock<=0)} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{cjUnavailable ? "Temporalmente no disponible" : trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{
             isCjProduct
-              ? (cjAvailability?.fresh ? (cjAvailability.available ? "CJ: disponibilidad verificada (sin reserva)" : "CJ: temporalmente agotado") : "CJ: disponibilidad pendiente de verificación")
+              ? (cjUnavailable || (trackInventory && stock<=0) ? "Temporalmente no disponible" : "Disponible")
               : trackInventory ? (stock > 0 ? `Disponible · ${stock} en stock` : "Temporalmente agotado")
               : serviceProduct ? "Disponible para contratación" : "Disponible"
           }</div>}
