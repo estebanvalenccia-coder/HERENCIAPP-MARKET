@@ -29,6 +29,8 @@ test("frontend and admin expose actionable shipping and variant blockers, preser
  assert.match(admin,/supplierVariantId: resetCj \? ""/);
  assert.match(admin,/sourceCatalogUrl: changedSupplier/);
  assert.doesNotMatch(admin.slice(admin.indexOf("const linkExistingProduct = async"),admin.indexOf("const saveSupplier = async")),/trackInventory:\s*false/);
- assert.match(server,/const choice=priced\.find/);
+ assert.match(server,/const pricedMethods =/);
+ assert.match(server,/if \(!chosen\)/);
+ assert.match(server,/admissible\(origin,stock\)/);
  assert.match(server,/No se realizará ningún cobro/);
 });
