@@ -235,7 +235,7 @@ export function validateCjLiveSupplyEvidence(stock,supply,{vid,origin="CN"}={}){
          stock.quantity>0
         ? {vid:String(vid),origin:requested,quantity:stock.quantity,verified:true}
         : (()=>{throw cjManualError("CJ no confirmó stock verificable en el almacén de origen.");})());
-    return {...warehouse,mode:"warehouse"};
+    return {...warehouse,mode:"warehouse",source:"cj_api"};
   }catch(_error){
     const selected=String(vid||"").trim();
     const location=String(origin||"").trim().toUpperCase();
