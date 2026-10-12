@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
-  validateManualCjCreate, validateManualCjPayment, applyCjManualStage,
+  validateManualCjCreate, validateManualCjPayment, validateCjLiveSupplyEvidence, applyCjManualStage,
 } from "./cjManualApproval.js";
 
 const NOW = Date.parse("2026-10-09T12:00:00.000Z");
@@ -173,4 +173,22 @@ test("an unknown CJ creation with a known remote ID can be reconciled, never rec
   }),/referencia CJ/);
   const remotePaid={...remoteUnpaid,status:"ordered",providerOrderStatus:"PAID"};
   assert.equal(applyCjManualStage(current,"fulfill-1",["cj_creation_unknown"],remotePaid).record.status,"ordered");
+});
+
+test("real CJ procurement permits verified factory fulfillment when CJ physical warehouse is empty",()=>{
+ const vid="CJ-VARIANT-1",stock={verified:true,available:false,quantity:0,vid,origin:"CN"};
+ const factory={source:"cj_api",mode:"factory",verified:true,available:true,quantity:7,vid,origin:"CN"};
+ const ok=validateCjLiveSupplyEvidence(stock,factory,{vid,origin:"CN"});
+ assert.equal(ok.mode,"factory_verified");
+ assert.equal(ok.quantity,7);
+ assert.equal(ok.notReserved,true);
+ for(const invalidFactory of [
+   {...factory,verified:false},
+   {...factory,source:"estimate"},
+   {...factory,vid:"WRONG"},
+   {...factory,origin:"US"},
+   {...factory,quantity:0},
+ ]){
+   assert.throws(()=>validateCjLiveSupplyEvidence(stock,invalidFactory,{vid,origin:"CN"}),/abastecimiento verificado/);
+ }
 });
