@@ -29,6 +29,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
   preparing: { label: "Preparando", color: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: Package },
   ready: { label: "Listo", color: "bg-teal-100 text-teal-800 border-teal-200", icon: CheckCircle },
   processing: { label: "En proceso", color: "bg-blue-100 text-blue-800 border-blue-200", icon: Truck },
+  shipped: { label: "Enviado", color: "bg-sky-100 text-sky-800 border-sky-200", icon: Truck },
   delivered: { label: "Entregado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   completed: { label: "Completado", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle },
   cancelled: { label: "Cancelado", color: "bg-red-100 text-red-800 border-red-200", icon: Package },
