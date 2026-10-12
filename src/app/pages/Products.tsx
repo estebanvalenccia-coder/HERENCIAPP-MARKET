@@ -604,7 +604,7 @@ export function Products() {
                           ? site.productsPage.outOfStockText
                           : collection.id === "servicios"
                             ? "Contratar"
-                            : site.productsPage.addButtonLabel}
+                            : needsExplicitVariantSelection(product) ? "Elegir opciones" : site.productsPage.addButtonLabel}
                       </button>
                     </div>
                   </div>
