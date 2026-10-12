@@ -74,3 +74,31 @@ test("supplier warehouse diagnostic reasons remain fail-closed and actionable",(
  }
  assert.equal(assessCjCatalogReadiness({product,metadata,variant,stock,fx}).stock.reason,null);
 });
+
+test("verified CJ factory supply unlocks inventory eligibility without pretending stock is in CJ warehouse",()=>{
+ const actual=assessCjCatalogReadiness({
+   product,metadata,variant,fx,
+   stock:{verified:true,vid:variant.vid,origin:"CN",quantity:0,available:false},
+   supply:{mode:"factory",verified:true,available:true,vid:variant.vid,origin:"CN",quantity:19},
+ });
+ assert.equal(actual.productDataValid,true);
+ assert.equal(actual.stock.available,false);
+ assert.equal(actual.stock.quantity,0);
+ assert.equal(actual.supply.available,true);
+ assert.equal(actual.supply.quantity,19);
+ assert.equal(actual.checkoutEnabled,false);
+ assert.equal(actual.automaticOrdersEnabled,false);
+ assert.equal(actual.shippingVerified,false);
+});
+test("unverified or mismatched factory supply remains blocked for CJ dropshipping",()=>{
+ for(const supply of [
+   {mode:"factory",verified:false,available:false,vid:variant.vid,origin:"CN",reportedQuantity:9000},
+   {mode:"factory",verified:true,available:true,vid:"wrong",origin:"CN",quantity:9000},
+   {mode:"factory",verified:true,available:true,vid:variant.vid,origin:"US",quantity:9000},
+ ]) {
+   const actual=assessCjCatalogReadiness({product,metadata,variant,fx,
+     stock:{verified:true,vid:variant.vid,origin:"CN",quantity:0,available:false},supply});
+   assert.equal(actual.productDataValid,false);
+   assert.equal(actual.supply.available,false);
+ }
+});
