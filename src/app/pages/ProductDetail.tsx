@@ -218,11 +218,17 @@ export function ProductDetail() {
   }, [product, selected]);
   const effectivePrice = Number(selected?.price ?? (product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0));
   const isCjProduct = isCjSupplierItem(product);
+  // A CJ supplier USD price is not a EUR retail price. Imported variants with
+  // no independently verified EUR price must NEVER inherit the product base
+  // price, which otherwise misleads customers and can create loss-making sales.
+  const cjVariantPriceMissing = isCjProduct && variants.length > 0 &&
+    (!selected || selected.price == null ||
+      !Number.isFinite(Number(selected.price)) || Number(selected.price) <= 0);
   const cjSellability = assessCjPublicProductStatus(product);
   const cjLegal=assessCjDistanceSaleCompliance(product);
   // The public storefront must never expose provider diagnostics or compliance checklists.
   const cjUnavailable = isCjProduct && (
-    !cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
+    !cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote || cjVariantPriceMissing ||
     !cjAvailability?.fresh || !cjAvailability?.available
   );
   const trackInventory = product?.trackInventory !== false;
@@ -313,11 +319,11 @@ export function ProductDetail() {
       image: galleryImages,
       sku: selected?.sku || product.sku || undefined,
       brand: product.vendor ? {"@type":"Brand",name:product.vendor} : undefined,
-      offers: {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!cjUnavailable&&(!trackInventory||stock>0))?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
+      offers: cjVariantPriceMissing ? undefined : {"@type":"Offer",priceCurrency:"EUR",price:effectivePrice,availability:(!cjUnavailable&&(!trackInventory||stock>0))?"https://schema.org/InStock":"https://schema.org/OutOfStock",url:window.location.href}
     });
     document.head.appendChild(script);
     return () => document.getElementById(id)?.remove();
-  }, [product, selectedVariant, effectivePrice, stock, trackInventory, galleryImages, cjUnavailable]);
+  }, [product, selectedVariant, effectivePrice, stock, trackInventory, galleryImages, cjUnavailable, cjVariantPriceMissing]);
 
   const toggleFavorite = async () => {
     let list: string[] = [];
@@ -380,6 +386,7 @@ export function ProductDetail() {
     if (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available))
       return toast.error("Este artículo no está disponible temporalmente. Inténtalo más tarde.");
     if (cjPendingVariantQuote) return toast.error("Esta opción no está disponible temporalmente.");
+    if (cjVariantPriceMissing) return toast.error("Falta el precio verificado de esta variante CJ.");
     if (isPrintful) {
       if (!selectedVariant || !selected) return toast.error("Selecciona talla y color antes de añadir la camiseta.");
       if (!selected?.printfulSyncVariantId || !selected?.printfulCatalogVariantId)
@@ -540,9 +547,14 @@ export function ProductDetail() {
             <h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1>
             {detailConfig.showDescription !== false && <p className="text-muted-foreground text-lg">{product.description}</p>}
           </div>
-          <div className="text-5xl font-bold text-primary">
-            €{effectivePrice.toFixed(2)}
-            {serviceProduct && <span className="ml-2 text-lg font-semibold text-muted-foreground">/ hora</span>}
+          <div className="text-5xl font-bold text-primary" aria-live="polite">
+            {cjVariantPriceMissing ? (
+              <span className="text-2xl">Precio por confirmar</span>
+            ) : (
+              <>€{effectivePrice.toFixed(2)}
+                {serviceProduct && <span className="ml-2 text-lg font-semibold text-muted-foreground">/ hora</span>}
+              </>
+            )}
           </div>
           <div className="flex flex-wrap gap-2"><span className="px-4 py-2 bg-muted rounded-xl font-medium">{collection.name}</span>{product.featured && <span className="px-4 py-2 bg-primary/10 text-primary rounded-xl font-medium flex items-center gap-2"><Sparkles className="w-4 h-4" />Destacado</span>}</div>
           {detailConfig.showDetails !== false && details.length > 0 && <div className="grid grid-cols-2 gap-3">{details.map((d) => <div key={d.label} className="rounded-xl border border-border p-3"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><d.icon className="h-4 w-4" />{d.label}</div><p className="mt-1 font-semibold">{d.value}</p></div>)}</div>}
@@ -557,10 +569,17 @@ export function ProductDetail() {
                         const options=Array.isArray(v.optionValues)&&v.optionValues.length?v.optionValues:splitSupplierOptions(v.name||v);
                         return options[index]===value;
                       });
+                      const pricedVariant = variantOptionGroups.length === 1
+                        ? variants.find((v:any)=>{
+                            const options=Array.isArray(v.optionValues)&&v.optionValues.length?v.optionValues:splitSupplierOptions(v.name||v);
+                            return options[index]===value;
+                          })
+                        : null;
+                      const optionPrice = pricedVariant?.price == null ? null : Number(pricedVariant.price);
                       return <button type="button" key={value} disabled={!exists}
                         aria-pressed={selectedOptionValues[index]===value}
                         onClick={()=>changeVariantOption(index,value)}
-                        className={`rounded-xl border px-4 py-2 text-sm font-semibold ${selectedOptionValues[index]===value?"border-primary bg-primary/10 text-primary":"border-border"}`}>{value}</button>;
+                        className={`rounded-xl border px-4 py-2 text-sm font-semibold ${selectedOptionValues[index]===value?"border-primary bg-primary/10 text-primary":"border-border"}`}>{value}{optionPrice != null && Number.isFinite(optionPrice) && optionPrice > 0 && <span className="ml-1 text-xs">· €{optionPrice.toFixed(2)}</span>}</button>;
                     })}
                   </div>
                 </div>
@@ -622,7 +641,7 @@ export function ProductDetail() {
           ) : detailConfig.showQuantity !== false ? (
             <div className="space-y-2"><label className="block text-sm font-medium">Cantidad</label><div className="flex items-center gap-4"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">−</button><span className="text-2xl font-bold w-16 text-center">{quantity}</span><button onClick={() => setQuantity(trackInventory ? Math.min(Number.isFinite(stock) ? stock : 99, quantity + 1) : Math.min(99, quantity + 1))} className="w-12 h-12 rounded-xl bg-muted text-xl font-bold">+</button></div></div>
           ) : null}
-          <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote ||
+          <div className="flex gap-3"><button disabled={!cjSellability.availableToAdd || !cjLegal.ready || cjPendingVariantQuote || cjVariantPriceMissing ||
             (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available)) ||
             (trackInventory && stock<=0) || (isPrintful && (!selectedVariant || !(effectivePrice>0)))} onClick={addToCart} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg disabled:opacity-50"><ShoppingCart className="w-6 h-6" />{cjUnavailable ? "Temporalmente no disponible" : trackInventory && stock<=0 ? "Agotado" : serviceProduct ? `Reservar y pagar ${serviceHours} ${serviceHours === 1 ? "hora" : "horas"}` : "Añadir al carrito"}</button>{detailConfig.showFavorite !== false && <button onClick={() => void toggleFavorite()} className={`w-16 h-16 flex items-center justify-center rounded-xl ${favorite ? "bg-primary text-primary-foreground" : "bg-muted"}`}><Heart className={`w-6 h-6 ${favorite ? "fill-current" : ""}`} /></button>}</div>
           {detailConfig.showStock !== false && <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl text-sm">{
