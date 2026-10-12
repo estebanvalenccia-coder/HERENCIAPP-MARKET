@@ -342,16 +342,18 @@ export async function verifyCjVariantPrice(
 export function interpretCjVariantStock(rows, vidInput, originInput = "CN") {
   const vid = String(vidInput || "").trim();
   const origin = String(originInput || "CN").trim().toUpperCase();
-  if (!Array.isArray(rows) || !vid || !/^[A-Z]{2}$/.test(origin)) return { available:false, quantity:0, verified:false };
+  if (!Array.isArray(rows) || !vid || !/^[A-Z]{2}$/.test(origin))
+    return { available:false, quantity:0, verified:false, reason:"INVALID_STOCK_RESPONSE" };
   const matched = rows.filter(row => String(row?.vid || "") === vid &&
     String(row?.countryCode || "").toUpperCase() === origin);
-  if (!matched.length) return { available:false, quantity:0, verified:false };
+  if (!matched.length)
+    return { available:false, quantity:0, verified:false, reason:"WAREHOUSE_NOT_REPORTED" };
   // Null or empty inventory values are unknown, NOT verified zero stock.
   // Reuse the same strict aggregation as the multi-warehouse inspector.
   const snapshot = interpretCjWarehouseStocks(rows,vid);
   const warehouse = snapshot.warehouses.find(row => row.countryCode === origin);
   if (!warehouse?.verified || !Number.isSafeInteger(warehouse.quantity)) {
-    return { available:false, quantity:0, verified:false };
+    return { available:false, quantity:0, verified:false, reason:"WAREHOUSE_INVENTORY_UNVERIFIED" };
   }
   return { available:warehouse.available, quantity:warehouse.quantity, verified:true, vid, origin, source:"cj_api" };
 }
