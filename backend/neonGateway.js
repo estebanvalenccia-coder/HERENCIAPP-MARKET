@@ -37,6 +37,7 @@ import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,suppl
 import { readSupplierProductLinks,confirmSupplierProductLink } from "./supplierProductLinks.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
+import { summarizeCjProductReviews } from "./cjAutomatedReview.js";
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -536,6 +537,17 @@ const server=http.createServer(async(req,res)=>{try{
     const saved=await saveNeonCommerceProduct(merged,{...(productId?{id:productId}:{})});
     return json(res,200,{ok:true,product:saved,variantCount:response.variants.length,
       syncProductId:syncId,checkedAt:response.checkedAt});
+  }
+
+  // Single-pass CJ review, private to admins. Unknown API facts stay unknown,
+  // never become fictional manufacturer data, stock counts or compliance approvals.
+  if(path==="/api/admin/suppliers/cj/review-products"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const products=await listNeonCommerceProducts({includeArchived:true});
+    const summary=summarizeCjProductReviews(products);
+    return json(res,200,{ok:true,source:"catalog_and_documentary_evidence",...summary,
+      liveProviderStockChecked:false,liveShippingChecked:false,
+      note:"Las observaciones logísticas se comprueban por variante y destino antes de autorizar venta; no se inventan datos de CJ."});
   }
 
   // Read-only CJ variants lookup for an existing Commerce product. Never creates or pays orders.

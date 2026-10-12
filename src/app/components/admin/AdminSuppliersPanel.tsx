@@ -131,6 +131,14 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     supplierId: string; type: string; state: string; automaticOrders: boolean; reason: string;
   }>>([]);
   const [testingSupplierId, setTestingSupplierId] = useState("");
+  const [cjReview,setCjReview]=useState<Awaited<ReturnType<typeof backendApi.reviewCjProducts>>|null>(null);
+  const [cjReviewBusy,setCjReviewBusy]=useState(false);
+  const refreshCjReview=async()=>{
+    setCjReviewBusy(true);
+    try{setCjReview(await backendApi.reviewCjProducts());}
+    catch(error:any){toast.error(error?.message||"No se pudieron revisar los productos CJ");}
+    finally{setCjReviewBusy(false);}
+  };
   const [cjConfigured, setCjConfigured] = useState(false);
   const [cjLiveEnabled, setCjLiveEnabled] = useState(false);
   const [cjTesting, setCjTesting] = useState(false);
@@ -1193,6 +1201,34 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         ].map(action=><button key={action.id} type="button" onClick={()=>openWorkspaceSection(action.id)}
           className="rounded-xl border px-3 py-3 text-left text-xs font-bold hover:bg-muted">{action.name}</button>)}
       </div>
+    </section>
+
+    <section className="rounded-2xl border border-border bg-card p-5" aria-label="Revisión automática CJ">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-lg font-bold">CJdropshipping · Estado de productos</h2>
+          <p className="text-xs text-muted-foreground">Revisión masiva de información guardada y documentación. Nunca da por verificados un fabricante, un transporte o un stock desconocidos.</p>
+        </div>
+        <button type="button" onClick={()=>void refreshCjReview()} disabled={cjReviewBusy}
+          className="rounded-xl border px-3 py-2 text-sm font-bold disabled:opacity-50">
+          {cjReviewBusy?"Revisando…":"Revisar todos los productos CJ"}
+        </button>
+      </div>
+      {cjReview&&<div className="mt-4 space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-900">Listos: {cjReview.ready}</div>
+          <div className="rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-900">Pendientes: {cjReview.pending}</div>
+          <div className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-900">Bloqueados: {cjReview.blocked}</div>
+        </div>
+        <p className="text-xs text-muted-foreground">Esta revisión no consulta aún tarifas y stock en directo. Los datos no comprobados quedan pendientes.</p>
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {cjReview.results.map(result=><details key={result.productId} className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm font-semibold">{result.state==="ready"?"🟢":result.state==="blocked"?"🔴":"🟡"} {result.name}</summary>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+              {[...result.confirmed,...result.pending].map((reason,index)=><li key={index}>{reason}</li>)}
+            </ul>
+          </details>)}
+        </div>
+      </div>}
     </section>
 
     <DropshippingLaunchGuide suppliers={suppliers} products={products} fulfillments={fulfillments}
