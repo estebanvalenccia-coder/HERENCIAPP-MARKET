@@ -554,7 +554,7 @@ export const backendApi = {
       fx: { rate: number; date: string; checkedAt: string; provider: string } | null;
       pricingAssumptions: { vatRate: number; minMarginPercent: number; processingFeePercent: number; processingFixedEur: number; currencyBufferPercent: number };
       pricingWarning: string;
-      warning: string;
+      warning: string; quotationEngine?: "simple" | "detailed"; fallbackWarning?:string;
     }>("/api/admin/catalog/cj-freight", {
       method: "POST",
       body: JSON.stringify({ productId, vid, zip, destination, origin }),
