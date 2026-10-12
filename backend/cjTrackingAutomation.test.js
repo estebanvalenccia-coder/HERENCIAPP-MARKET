@@ -161,9 +161,10 @@ test("manual CJ create checks stock and quotes before an external createOrderV2 
   source.indexOf("async function verifyCjCustomerFunding("),
  );
  assert.match(check,/queryCjVariantStock/);
- assert.match(check,/validateCjLiveWarehouseStock/);
+ assert.match(check,/validateCjLiveSupplyEvidence/);
+ assert.match(check,/queryCjFactorySupply/);
  assert.match(check,/origin:"CN"/);
- assert.ok(check.indexOf("queryCjVariantStock")<check.indexOf("validateCjLiveWarehouseStock"));
+ assert.ok(check.indexOf("queryCjVariantStock")<check.indexOf("validateCjLiveSupplyEvidence"));
  const create=source.slice(
   source.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid"'),
   source.indexOf('app.post("/api/admin/supplier-fulfillments/:id/cj-pay"'),
