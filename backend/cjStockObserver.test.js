@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {cjFactoryObservationKey,readCjFactoryObservation} from "./cjFactorySupply.js";
 import {
   cjObservationKey,cjObservedTargets,readCjObservation,createCjStockObserver,
 } from "./cjStockObserver.js";
@@ -102,4 +103,54 @@ test("frontend and backend never use cached observations to authorize purchases"
  assert.match(storefront,/!cjAvailability\?\.fresh/);
  assert.match(checkout,/queryCjVariantStock/);
  assert.doesNotMatch(checkout,/readCjObservation|cjStockObserver/);
+});
+
+test("background observer independently checks verified factory supply and leaves merchant stock unchanged",async()=>{
+ const kv=new Map(),asked=[];
+ const withSource={...product,metadata:{...product.metadata,
+   sourceProductUrl:"https://cjdropshipping.com/product-p-"+PID+".html"}};
+ const worker=createCjStockObserver({
+   listProducts:async()=>[withSource],
+   read:async k=>kv.get(k)||null,
+   upsert:async(k,v)=>kv.set(k,v),
+   mutate:async(k,fn)=>kv.set(k,await fn(kv.get(k)||null)),
+   queryStock:async()=>({verified:true,available:false,quantity:0,vid:VID,origin:"CN"}),
+   querySupply:async args=>{asked.push(args);return {
+     source:"cj_api",mode:"factory",verified:true,available:true,quantity:11,vid:VID,origin:"CN",
+   };},
+   now:()=>NOW,
+ });
+ const result=await worker.sweep();
+ assert.equal(result.factoryVerified,1);
+ assert.deepEqual(asked,[{pid:PID,vid:VID,origin:"CN"}]);
+ const warehouse=readCjObservation(kv.get(cjObservationKey(PID,VID)),{productId:PID,vid:VID,nowMs:NOW});
+ const supplier=readCjFactoryObservation(kv.get(cjFactoryObservationKey(PID,VID)),{productId:PID,vid:VID,nowMs:NOW});
+ assert.equal(warehouse.quantity,0);
+ assert.equal(warehouse.available,false);
+ assert.equal(supplier.quantity,11);
+ assert.equal(supplier.available,true);
+ assert.equal(supplier.notReserved,true);
+ assert.equal([...kv.keys()].some(k=>k==="commerceProducts"||k==="posOperations"),false);
+});
+test("factory inventory declared but unverified never becomes public availability",async()=>{
+ const kv=new Map();
+ const worker=createCjStockObserver({
+   listProducts:async()=>[{...product,metadata:{...product.metadata,
+     sourceProductUrl:"https://cjdropshipping.com/product-p-"+PID+".html"}}],
+   read:async k=>kv.get(k)||null,
+   upsert:async(k,v)=>kv.set(k,v),
+   mutate:async(k,fn)=>kv.set(k,await fn(kv.get(k)||null)),
+   queryStock:async()=>({verified:false,available:false,quantity:0,reason:"UNVERIFIED_STOCK"}),
+   querySupply:async()=>({source:"cj_api",mode:"factory",verified:false,available:false,
+     quantity:null,reportedQuantity:5000,vid:VID,origin:"CN"}),
+   now:()=>NOW,logger:{warn(){}},
+ });
+ const result=await worker.sweep();
+ assert.equal(result.factoryVerified,0);
+ assert.equal(kv.has(cjFactoryObservationKey(PID,VID)),false);
+ const gateway=readFileSync(new URL("./neonGateway.js",import.meta.url),"utf8");
+ const route=gateway.slice(gateway.indexOf('if(path==="/api/commerce/cj-availability"'),
+   gateway.indexOf('if(path==="/api/commerce/products"'));
+ assert.match(route,/readCjFactoryObservation/);
+ assert.doesNotMatch(route,/queryCjFactorySupply|createOrderV2|payBalance/);
 });
