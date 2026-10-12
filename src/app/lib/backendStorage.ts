@@ -516,6 +516,14 @@ export const backendApi = {
     });
   },
 
+  async getPrintfulAutomationStatus() {
+    return request<{
+      ok:boolean;autoConfirmationEnabled:boolean;configured:boolean;reason:string;
+      limits:{maxOrderCostEur:number|null;maxDailySpendEur:number|null;minMarginPct:number|null};
+      trackingPollEnabled:boolean;
+    }>("/api/admin/suppliers/printful/automation-status");
+  },
+
   async getPrintfulShippingStatus() {
     return request<{
       provider: "printful"; configured: boolean; storeIdConfigured: boolean;
