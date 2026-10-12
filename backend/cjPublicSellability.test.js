@@ -8,11 +8,11 @@ const product={status:"active",price:14,variants:[],metadata:{
   supplierId:"supplier-cj",supplierVariantId:"1869634031584169984",supplierSku:"CJFU224821801AZ",
   cjPreferredLogisticName:"",fulfillmentMode:"autopilot"
 }};
-test("an active CJ product without verified shipping is visibly blocked before Stripe",()=>{
+test("CJ product can be listed with shipping chosen at checkout; no unsupported charge is allowed",()=>{
  const result=assessCjPublicProductStatus(product);
  assert.equal(result.cj,true);
- assert.equal(result.availableToAdd,false);
- assert.ok(result.blockers.some(x=>x.includes("transporte")));
+ assert.equal(result.availableToAdd,true);
+ assert.ok(result.warnings.some(x=>x.includes("tarifa CJ válida")));
  assert.ok(result.warnings.some(x=>x.includes("color y tamaño")));
  assert.ok(result.warnings.some(x=>x.includes("Autopilot")));
  assert.equal(assessCjPublicProductStatus({...product,metadata:{...product.metadata,cjPreferredLogisticName:"CJPacket"}}).availableToAdd,true);
@@ -29,5 +29,6 @@ test("frontend and admin expose actionable shipping and variant blockers, preser
  assert.match(admin,/supplierVariantId: resetCj \? ""/);
  assert.match(admin,/sourceCatalogUrl: changedSupplier/);
  assert.doesNotMatch(admin.slice(admin.indexOf("const linkExistingProduct = async"),admin.indexOf("const saveSupplier = async")),/trackInventory:\s*false/);
- assert.match(server,/if \(!logisticName\) invalid/);
+ assert.match(server,/const choice=priced\.find/);
+ assert.match(server,/No se realizará ningún cobro/);
 });
