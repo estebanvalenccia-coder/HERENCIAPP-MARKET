@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import {
   COMMERCE_COLLECTIONS,
@@ -317,6 +318,7 @@ export function Products() {
   function addToCart(productId: any) {
     const product = displayProducts.find((item) => String(item.id) === String(productId));
     if (!product) return toast.error("Artículo no encontrado");
+    if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
 
     const variants = Array.isArray(product?.variants) ? product.variants : [];
     const variant = variants.length
