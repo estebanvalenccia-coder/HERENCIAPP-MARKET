@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizePrintfulSyncProduct,getPrintfulSyncProduct,listPrintfulSyncProducts} from "./printfulCatalogSync.js";
+import {normalizePrintfulSyncProduct,getPrintfulSyncProduct,listPrintfulSyncProducts,listPrintfulStores} from "./printfulCatalogSync.js";
 
 const fixture={
  code:200,result:{sync_product:{id:421,name:"Camisa Jungle",variants:4,thumbnail_url:"https://cdn.printful.com/thumbnail.png"},
@@ -64,4 +64,11 @@ test("Printful paginated product listing",async()=>{
  const products=await listPrintfulSyncProducts({env:{PRINTFUL_API_TOKEN:"token"},fetchImpl});
  assert.equal(products.length,101);
  assert.equal(calls,2);
+});
+
+test("discover authorized Printful stores with page-aware pagination",async()=>{
+ const stores=await listPrintfulStores({env:{PRINTFUL_API_TOKEN:"test"},fetchImpl:async(url,init)=>({
+   ok:true,status:200,json:async()=>({result:[{id:31,name:"Herencia POD",type:"native"}]})
+ })});
+ assert.deepEqual(stores,[{id:"31",name:"Herencia POD",type:"native"}]);
 });
