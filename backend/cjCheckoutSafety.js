@@ -1,5 +1,5 @@
 // CJ-only checkout verification. All supplier requests are read-only. Never creates orders.
-import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock, queryCjFactorySupply } from "./cjCatalogImporter.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { resolveCjPurchasedVariant, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
@@ -96,7 +96,27 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     invalid(reasons[failure] + " No se realizará ningún cobro.");
   }
   const [selectedVariant, freight, fx, stock] = checks.map((check) => check.value);
-  if (stock?.verified !== true || stock?.available !== true || stock?.vid !== vid || stock?.origin !== "CN") invalid("CJ no confirmó existencias en el almacén de origen para esta variante. No se realizará ningún cobro.");
+  const warehouseReady = stock?.verified === true && stock?.available === true &&
+    stock?.vid === vid && stock?.origin === "CN" && Number.isSafeInteger(stock.quantity) && stock.quantity > 0;
+  // Dropshipping does not require merchant-owned stock or pre-positioned CJ stock.
+  // When the CJ warehouse cannot fulfill, check EXACT VID factory inventory via
+  // official per-PID data; only verifiedWarehouse=1 and positive factory units
+  // count as confirmed supplier availability. This is NOT a stock reservation.
+  let factorySupply = null;
+  if (!warehouseReady) {
+    try {
+      factorySupply = await (deps.getSupply || queryCjFactorySupply)({pid,vid,origin:"CN"});
+    } catch (error) {
+      console.warn("[cj.checkout] factory availability unavailable", String(error?.code || "UPSTREAM").slice(0,40));
+    }
+  }
+  const factoryReady = !warehouseReady &&
+    factorySupply?.mode === "factory" && factorySupply?.verified === true &&
+    factorySupply?.available === true && factorySupply?.vid === vid &&
+    factorySupply?.origin === "CN" && Number.isSafeInteger(factorySupply.quantity) &&
+    factorySupply.quantity > 0;
+  if (!warehouseReady && !factoryReady)
+    invalid("CJ no confirmó existencias verificadas en almacén ni abastecimiento verificado en fábrica para esta variante. No se realizará ningún cobro.");
   if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
   if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
@@ -126,7 +146,8 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       available: true, vid:identity.vid, sku:identity.sku,
       selectedVariant:identity.name, destination:"ES", postalCode:String(shippingAddress.postalCode).trim(),
       methodName: logisticName, checkedAt:new Date().toISOString(),
-      stockAtQuote:stock.quantity,
+      stockAtQuote: warehouseReady ? stock.quantity : factorySupply.quantity,
+      supplierSupplyMode: warehouseReady ? "warehouse" : "factory_verified",
     },
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
@@ -135,6 +156,8 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       deliveryProvider:"cj", logisticName, quotedAt:new Date().toISOString(),
       warning:storeFundedPromotion
         ? "Cupón autorizado: Herencia asume la diferencia de coste del proveedor y el envío."
+        : factoryReady
+        ? "CJ confirma unidades verificadas en fábrica; la preparación puede tardar más. Se revalidarán stock y costes antes de cumplir."
         : "El transporte del proveedor está incluido en el precio de venta. Se revisará antes del cumplimiento.",
     },
   };
