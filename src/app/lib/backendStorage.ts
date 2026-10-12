@@ -441,6 +441,12 @@ export const backendApi = {
     return result;
   },
 
+  async reviewCjLiveBatch(offset=0){
+    return request<{ok:true;readOnly:true;results:Array<{productId:string;name:string;state:string;lastError:string;variantCount:number;stock:{verified:boolean;quantity?:number};price:{verified:boolean;amount?:number;currency?:string}}>;total:number;nextOffset:number|null}>("/api/admin/suppliers/cj/review-live-batch",{
+      method:"POST",body:JSON.stringify({offset})
+    });
+  },
+
   async reviewCjProducts(){
     return request<{ok:true;total:number;ready:number;pending:number;blocked:number;
       liveProviderStockChecked:false;liveShippingChecked:false;
