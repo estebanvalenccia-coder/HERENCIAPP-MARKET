@@ -108,6 +108,11 @@ export function validateManualCjCreate({ record, supplier, order, nowMs = Date.n
     throw cjManualError("Falta el identificador real de variante CJ (VID).");
   }
   const quote = item.cjPricingEstimate;
+  // The fulfillment country belongs to this exact checkout quote, never to
+  // the supplier's default setting or to a browser-supplied field.
+  const quoteOrigin=String(quote?.origin||"CN").trim().toUpperCase();
+  if(!/^[A-Z]{2}$/.test(quoteOrigin))
+    throw cjManualError("País de salida CJ inválido en la cotización.");
   if (!verifiedCjQuoteMatches({
     quote,
     identity:{vid:String(item.supplierVariantId || ""),sku:String(item.supplierSku || ""),
@@ -143,6 +148,7 @@ export function validateManualCjCreate({ record, supplier, order, nowMs = Date.n
     maxAllowedUsd: Math.round(approvedMaxUsd * 100) / 100,
     maxAllowedEur: Math.round(budgetEur * 100) / 100,
     logisticName: String(item.cjPreferredLogisticName),
+    origin:quoteOrigin,
     orderNumber: cjManualOrderNumber(record),
   };
 }
@@ -220,7 +226,15 @@ export function applyCjManualStage(current = {}, id, fromStatuses, patch = {}) {
  */
 export function validateCjLiveSupplyEvidence(stock,supply,{vid,origin="CN"}={}){
   try{
-    const warehouse=validateCjLiveWarehouseStock(stock,{vid,origin});
+    const requested=String(origin||"").trim().toUpperCase();
+    const warehouse=requested==="CN" ? validateCjLiveWarehouseStock(stock,{vid,origin})
+      : (/^[A-Z]{2}$/.test(requested) &&
+         stock?.source==="cj_api" && stock?.verified===true &&
+         stock?.available===true && String(stock.vid||"")===String(vid||"") &&
+         String(stock.origin||"")===requested && Number.isSafeInteger(stock.quantity) &&
+         stock.quantity>0
+        ? {vid:String(vid),origin:requested,quantity:stock.quantity,verified:true}
+        : (()=>{throw cjManualError("CJ no confirmó stock verificable en el almacén de origen.");})());
     return {...warehouse,mode:"warehouse"};
   }catch(_error){
     const selected=String(vid||"").trim();
