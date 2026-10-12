@@ -486,7 +486,8 @@ export const backendApi = {
       ok: true; productId: string; provider: "cj"; source: "cj_api";
       checkedAt: string; origin: "CN"; vid: string; sku: string;
       variant: {vid: string; sku: string; name: string; option: string};
-      stock: {verified: boolean; available: boolean; quantity: number | null};
+      stock: {verified: boolean; available: boolean; quantity: number | null; reason?:string | null};
+      supply: null | {mode:"factory";verified:boolean;available:boolean;quantity:number|null;reportedQuantity?:number|null;reason:string|null;notReserved:true};
       supplierPriceUsd: number | null; supplierBaseEur: number | null;
       supplierBaseCostIncludesShipping: false; salePriceEur: number | null;
       savedVidMatches: boolean; savedSkuMatches: boolean; publicVariantMapped: boolean;
@@ -494,7 +495,7 @@ export const backendApi = {
       shippingVerified: false; checkoutEnabled: false; automaticOrdersEnabled: false; automaticStockWrite: false;
       warehouses: Array<{countryCode:string;verified:boolean;available:boolean;quantity:number|null}>;
       warehousesWarning?: string;
-      fxDate: string | null; stockWarning?: string; fxWarning?: string; message: string;
+      fxDate: string | null; stockWarning?: string; supplyWarning?:string; fxWarning?: string; message: string;
     }>("/api/admin/catalog/cj-readiness", {
       method: "POST", body: JSON.stringify({productId,vid}),
     });
