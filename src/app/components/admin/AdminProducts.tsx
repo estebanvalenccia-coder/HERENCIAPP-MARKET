@@ -1570,9 +1570,9 @@ export function AdminProducts({
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <label className="text-xs font-bold">Nombre
                               <input value={variant.name} onChange={(e) => updateEditVariant(variant.id, { name: e.target.value })} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5" />
-                              {variant.supplierVariantId && <span className="mt-1 block break-all text-[10px] text-muted-foreground">CJ VID: {variant.supplierVariantId}</span>}
+                              {variant.supplierVariantId && <span className="mt-1 block break-all text-[10px] text-muted-foreground">{editingProduct?.metadata?.provider === "printful" ? "Printful Sync Variant ID" : "CJ VID"}: {variant.supplierVariantId}</span>}
                               {Boolean(variant.supplierVariantId) && (
-                                <span className="mt-1 block text-[10px] text-muted-foreground">Origen CJ: no modifiques el SKU si debe conservar la vinculación.</span>
+                                <span className="mt-1 block text-[10px] text-muted-foreground">{editingProduct?.metadata?.provider === "printful" ? "Origen Printful: conserva el SKU para mantener la vinculación." : "Origen CJ: no modifiques el SKU si debe conservar la vinculación."}</span>
                               )}
                             </label>
                             {Boolean(variant.supplierVariantId) && <label className="text-xs font-bold sm:col-span-2">Valores de opciones (separados por |)
