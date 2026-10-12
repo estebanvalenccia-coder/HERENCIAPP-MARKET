@@ -15,6 +15,7 @@ export const CJ_PREVIEW_COUNTRIES = Object.freeze([
 export const SUPPLIER_PRESETS = Object.freeze([
   { id:"cj", name:"CJdropshipping", host:"cjdropshipping.com", type:"cj", api:"existing_read_only" },
   { id:"eprolo", name:"EPROLO", host:"eprolo.com", type:"api", api:"authorization_required" },
+  { id:"banggood", name:"Banggood", host:"banggood.com", type:"api", api:"authorization_required" },
   { id:"printful", name:"Printful", host:"printful.com", type:"api", api:"authorization_required" },
   { id:"printify", name:"Printify", host:"printify.com", type:"api", api:"authorization_required" },
   { id:"aliexpress", name:"AliExpress", host:"aliexpress.com", type:"api", api:"authorization_required" },

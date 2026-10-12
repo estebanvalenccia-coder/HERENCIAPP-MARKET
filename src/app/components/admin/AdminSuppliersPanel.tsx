@@ -1531,6 +1531,24 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             <option value="webhook">Webhook personalizado</option>
             <option value="cj">CJdropshipping API existente</option>
           </select>
+          {normalizedSupplierDomain(form.sourceHost) === "banggood.com" && (
+            <div className="md:col-span-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" aria-label="Integración Banggood pendiente">
+              <p className="font-bold">Banggood Dropshipping · configuración segura</p>
+              <p className="mt-1">
+                Banggood permite pedidos individuales y ofrece API Dropship, pero el acceso exige una cuenta autorizada.
+                La plantilla registra el proveedor como API pendiente: no importa productos, ni crea ni paga pedidos automáticamente.
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5">
+                <li><a className="underline" href="https://www.banggood.com/index.php?com=dropshipcenter&t=login" target="_blank" rel="noopener noreferrer">Solicita cuenta Dropship en Banggood</a>.</li>
+                <li><a className="underline" href="https://api.banggood.com/" target="_blank" rel="noopener noreferrer">Solicita acceso a Banggood Open Platform</a> y verifica herenciamarket.es.</li>
+                <li>Guarda BANGGOOD_APP_ID y BANGGOOD_APP_SECRET solo en las variables privadas del backend Railway.</li>
+                <li>Importa únicamente el catálogo autorizado mediante CSV/JSON y comprueba SKU, variante, almacén, coste y envío a España antes de publicar.</li>
+              </ol>
+              <p className="mt-2 text-xs">
+                La presencia de claves no prueba conexión operativa. Hasta verificar llamadas reales de lectura y recepción de pedidos, utiliza gestión manual.
+              </p>
+            </div>
+          )}
           {form.integrationType === "webhook" && (
             <div className="md:col-span-2 rounded-xl border border-border bg-muted/20 p-4">
               <label className="block text-sm font-semibold">
