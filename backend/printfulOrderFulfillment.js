@@ -99,7 +99,8 @@ export function summarizePrintfulRejection(body,httpStatus,payload={}){
    .replace(/(?:\+?\d[ -]?){7,}/g,"[NUMBER]")
    .replace(/[\r\n\t]/g," ").slice(0,240);
  const classifier=(String(error.reason||"")+" "+original).toLowerCase();
- const category=/store|platform|integration|manual order|not connected/.test(classifier)?"store":
+ const category=/external id|external_id|identifier/.test(classifier)?"identifier":
+   /store|platform|integration|manual order|not connected/.test(classifier)?"store":
    /scope|auth|permission|access|token/.test(classifier)?"authorization":
    /file|design|mockup|print area|template/.test(classifier)?"print_file":
    /sync|variant|catalog|product/.test(classifier)?"variant":
@@ -113,6 +114,9 @@ export function summarizePrintfulRejection(body,httpStatus,payload={}){
 }
 
 export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=fetch}={}){
+ // Printful's estimate endpoint rejects an external_id because no provider
+ // order is being created. Keep it only on POST /orders and its idempotent lookup.
+ const {external_id:_unusedOrderReference,...estimatePayload}=payload||{};
  const token=id(env.PRINTFUL_API_TOKEN),storeId=id(env.PRINTFUL_STORE_ID);
  if(!token)fail("Falta PRINTFUL_API_TOKEN",503);
  if(storeId&&!numericId(storeId))fail("PRINTFUL_STORE_ID inválido",422);
@@ -120,7 +124,7 @@ export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=f
  try{response=await fetchImpl(API+"/orders/estimate-costs",{
    method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",
      ...(storeId?{"X-PF-Store-Id":storeId}:{})},
-   body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)
+   body:JSON.stringify(estimatePayload),signal:AbortSignal.timeout(15000)
  });}catch{fail("Printful no respondió a la cotización. No se ha autorizado ningún cargo.",503);}
  if(response.status===401||response.status===403)fail("Printful no permite cotizar pedidos con este token.",403);
  if(response.status===429)fail("Límite de consultas Printful; vuelve a intentarlo.",429);
