@@ -9679,6 +9679,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const shippingAddress = metadata?.shippingAddress || {};
     let shippingQuote = null;
     let authoritativeShipping = 0;
+    let directCjShipping = false;
     if (!serviceOnly) {
       const supplierOperations = await readSupplierOperations();
       const directCj = await evaluateCjCheckout({
@@ -9687,7 +9688,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         promotionAuthorized: Boolean(verifiedPromotion?.rule && authoritativeDiscount > 0),
         suppliers: supplierOperations.suppliers || [],
       });
-      if (directCj.cjOnly) {
+      directCjShipping = directCj.cjOnly;
+      if (directCjShipping) {
         shippingQuote = directCj.shippingQuote;
         authoritativeShipping = 0;
       } else {
@@ -9708,7 +9710,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     // Apply the same shipping policy as checkout, including advanced distance rules.
     // Only a server-verified full-discount coupon can make delivery free.
-    if (!serviceOnly && !directCj?.cjOnly && shippingQuote) {
+    if (!serviceOnly && !directCjShipping && shippingQuote) {
       const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
       if (shippingSettings.advancedEnabled) {
         authoritativeShipping = shippingQuoteForCart({
