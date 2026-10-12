@@ -254,9 +254,13 @@ export function assessCjAutopilotDryRun({
     nowMs
   }))
     push("La cotización de variante, SKU, código postal o transporte es inválida o caducó.");
-  if(!stock || stock.verified!==true||stock.vid!==norm(item.supplierVariantId)||
-     stock.origin!=="CN"||stock.available!==true||!(stock.quantity>=1))
-    push("CJ no confirma existencias para el VID exacto en almacén CN.");
+  const sourceOrigin=String(quote?.origin||"CN").trim().toUpperCase();
+  if(!/^[A-Z]{2}$/.test(sourceOrigin) || !stock || stock.verified!==true ||
+     stock.vid!==norm(item.supplierVariantId) ||
+     stock.origin!==sourceOrigin || stock.available!==true ||
+     !Number.isSafeInteger(stock.quantity) || stock.quantity<1 ||
+     (sourceOrigin!=="CN" && (stock.mode!=="warehouse" || stock.source!=="cj_api")))
+    push("CJ no confirma abastecimiento verificable para el VID exacto y almacén de la cotización.");
   if(!dailyExposure||dailyExposure.verifiedCompletely!==true ||
      !Number.isFinite(dailyExposure.usedEur))
     push("No se ha podido verificar el gasto CJ de hoy.");

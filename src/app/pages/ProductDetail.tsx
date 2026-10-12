@@ -552,8 +552,8 @@ export function ProductDetail() {
                cjAvailability?.fresh ? cjAvailability.available
                  ? cjAvailability.mode === "factory"
                    ? "CJ confirmó el abastecimiento de " + cjAvailability.quantity + " unidades en fábrica. Herencia no mantiene inventario propio. La preparación puede tardar más; se verificará de nuevo antes del pago."
-                   : "CJ confirmó " + cjAvailability.quantity + " unidades en almacén CN. Existencias no reservadas; se verificarán al pagar."
-                 : cjAvailability.mode === "factory" ? "CJ no confirma unidades disponibles actualmente en fábrica." : "CJ no confirma unidades disponibles en el almacén CN; la fábrica sigue pendiente de verificación."
+                   : "CJ confirmó " + cjAvailability.quantity + " unidades en el almacén " + (cjAvailability.origin === "DE" ? "de Alemania (DE)" : cjAvailability.origin) + ". Existencias no reservadas; se verificarán al pagar."
+                 : cjAvailability.mode === "factory" ? "CJ no confirma unidades disponibles actualmente en fábrica." : "CJ no confirma unidades disponibles en el almacén " + (cjAvailability.origin||"CN") + "; el suministro sigue pendiente de verificación."
                : "La disponibilidad de CJ no está verificada recientemente. El producto no se puede añadir hasta que se actualice la consulta."}
             </p>}
           {cjPendingVariantQuote && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">Esta opción no tiene un SKU/VID CJ válido. Revisa el producto en Administración.</p>}

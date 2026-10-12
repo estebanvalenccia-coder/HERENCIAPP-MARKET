@@ -5331,7 +5331,7 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
     };
   }
   const logisticName = String(preferredMethods[0] || supplier?.cjLogisticName || process.env.CJ_DEFAULT_LOGISTIC_NAME || "CJPacket Ordinary").trim();
-  const fromCountryCode = String(supplier?.cjFromCountryCode || "CN").trim().toUpperCase().slice(0, 2);
+  const fromCountryCode = String(record.items?.[0]?.cjPricingEstimate?.origin || supplier?.cjFromCountryCode || "CN").trim().toUpperCase().slice(0, 2);
   const orderNumber = ("HM-" + String(record.orderId || "") + "-" + String(record.id || "").slice(0, 8)).slice(0, 50);
 
   const maxConfiguredPaymentUsd = normalizeMoney(supplier?.cjMaxPaymentUsd || 0);
@@ -7048,9 +7048,9 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   const zip = String(record.shippingAddress?.postalCode || "");
   // This safeguard runs immediately before reserving a real CJ order.
   // The checkout stock observation may already be stale when an admin approves.
-  const origin=String(supplier.cjFromCountryCode||"CN").trim().toUpperCase();
-  if(origin!=="CN")throw cjManualError(
-    "El checkout CJ actual solo ha validado existencias y portes de origen CN. No se creará el pedido.");
+  const origin=String(line.cjPricingEstimate?.origin||"CN").trim().toUpperCase();
+  if(!/^[A-Z]{2}$/.test(origin))throw cjManualError(
+    "La cotización no identifica un país de salida CJ válido. No se creará el pedido.");
   let variant, freight, stock;
   try {
     // CJ commonly rate-limits basic accounts to one request per second.
@@ -7058,20 +7058,20 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
     variant=await verifyCjVariantPrice({pid,vid});
     await new Promise(resolve=>setTimeout(resolve,1150));
     freight=await quoteCjVariantShipping({
-      vid,quantity:1,origin:"CN",destination:"ES",zip,
+      vid,quantity:1,origin,destination:"ES",zip,
     });
     await new Promise(resolve=>setTimeout(resolve,1150));
-    stock=await queryCjVariantStock({vid,origin:"CN"});
+    stock=await queryCjVariantStock({vid,origin});
   } catch {
     throw cjManualError("CJ no pudo verificar precio, stock o envío de la variante al código postal. No se creará ningún pedido.");
   }
   let factorySupply=null;
-  if(!(stock?.verified===true && stock?.available===true && stock?.vid===vid &&
+  if(origin==="CN" && !(stock?.verified===true && stock?.available===true && stock?.vid===vid &&
        stock?.origin==="CN" && Number.isSafeInteger(stock.quantity) && stock.quantity>0)){
     try{factorySupply=await queryCjFactorySupply({pid,vid,origin:"CN"});}
     catch{ /* An unavailable supplier confirmation must not authorize a purchase. */ }
   }
-  const supplyEvidence=validateCjLiveSupplyEvidence(stock,factorySupply,{vid,origin:"CN"});
+  const supplyEvidence=validateCjLiveSupplyEvidence(stock,factorySupply,{vid,origin});
   const method = (freight?.methods || []).find((row) =>
     String(row.name || "") === String(line.cjPreferredLogisticName || ""));
   // Recheck authoritative CJ identity immediately before actual supplier order
@@ -7083,7 +7083,7 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   } catch {
     throw cjManualError("CJ no confirmó el SKU y VID exactos del artículo elegido. No se creará ningún pedido.");
   }
-  if (freight?.vid !== vid || freight?.destination !== "ES" ||
+  if (freight?.vid !== vid || freight?.origin !== origin || freight?.destination !== "ES" ||
       String(freight?.zip || "") !== zip) {
     throw cjManualError("El destino o variante de la cotización CJ han cambiado. No se creará ningún pedido.");
   }
@@ -7101,7 +7101,7 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
     throw cjManualError("CJ ha cambiado el coste o transporte para el código postal. Recalcula la cotización y autoriza el nuevo importe.");
   }
   return { liveTotalUsd, verifiedZip: zip, logisticName: method.name,
-    stock:{...supplyEvidence,available:true}, productUsd, postageUsd };
+    origin,stock:{...supplyEvidence,available:true}, productUsd, postageUsd };
 }
 
 async function verifyCjCustomerFunding(order, funding) {
@@ -7255,7 +7255,7 @@ async function createCjAutopilotUnpaid(record,mandate,checks){
         email:String(prepared.customerEmail||"").slice(0,50),
         remark:"Pedido Herencia Market · Autopilot",
         payType:3,isSandbox:0,logisticName:preview.logisticName,
-        fromCountryCode:String(supplier.cjFromCountryCode||"CN").slice(0,2),
+        fromCountryCode:String(preview.origin||"CN").slice(0,2),
         platform:"api",orderFlow:1,
         products:[{vid:String(line.supplierVariantId).slice(0,50),
           ...(line.supplierSku?{sku:String(line.supplierSku).slice(0,50)}:{}),
@@ -7522,7 +7522,7 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
         payType: 3,
         isSandbox: 0,
         logisticName: preview.logisticName,
-        fromCountryCode: String(supplier.cjFromCountryCode || "CN").slice(0, 2),
+        fromCountryCode: String(preview.origin || "CN").slice(0, 2),
         platform: "api",
         orderFlow: 1,
         products: [{

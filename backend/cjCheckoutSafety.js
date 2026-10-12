@@ -1,5 +1,5 @@
 // CJ-only checkout verification. All supplier requests are read-only. Never creates orders.
-import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock, queryCjFactorySupply } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock, queryCjVariantWarehouses, queryCjFactorySupply } from "./cjCatalogImporter.js";
 import { extractCjProductId } from "./cjProductIds.js";
 import { estimateCjProfitability, getUsdToEurRate } from "./cjProfitability.js";
 import { resolveCjPurchasedVariant, assertCjSupplierIdentity } from "./cjVariantIdentity.js";
@@ -63,108 +63,148 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     (deps.getRate || getUsdToEurRate)(),
     (deps.getStock || queryCjVariantStock)({vid,origin:"CN"}),
   ]);
-  const failure = checks.findIndex((check) => check.status === "rejected");
-  if (failure !== -1) {
-    const reasons = [
-      "CJ no pudo verificar la variante y su precio actual.",
-      "CJ no pudo cotizar el transporte para el código postal indicado.",
-      "No se pudo verificar el cambio de dólares a euros.",
-      "CJ no pudo verificar las existencias de esta variante.",
-    ];
-    const reason = checks[failure].reason;
-    if (reason?.code === "CJ_RATE_LIMITED" || reason?.code === "CJ_QUOTA_EXHAUSTED" ||
-        Number(reason?.upstreamCode) === 1600200 || Number(reason?.upstreamHttpStatus) === 429) {
-      console.warn("[cj.checkout] CJ API throttled", {
-        step: ["variant", "shipping", "fx", "stock"][failure],
-        code: String(reason?.code || "CJ_RATE_LIMITED").slice(0, 35),
-      });
-      const error = new Error(reason?.code === "CJ_QUOTA_EXHAUSTED"
-        ? "CJdropshipping ha agotado temporalmente su cuota de API. El código postal es correcto, pero el proveedor no permite cotizar el transporte ahora. No se realizará ningún cobro."
-        : "CJdropshipping está limitando temporalmente las solicitudes de transporte (API 429). No es un problema con tu código postal. Inténtalo más tarde; no se realizará ningún cobro.");
-      error.code = reason?.code || "CJ_RATE_LIMITED";
-      error.statusCode = 503;
-      throw error;
+  const firstFailure = checks.findIndex((check) =>
+    check.status === "rejected" && (checks.indexOf(check) === 0 || checks.indexOf(check) === 2));
+  if (firstFailure !== -1) {
+    const error = checks[firstFailure].reason;
+    if (error?.code === "CJ_RATE_LIMITED" || error?.code === "CJ_QUOTA_EXHAUSTED") {
+      const unavailable = new Error("CJ está limitando temporalmente la verificación de precio o divisa. No se realizará ningún cobro.");
+      unavailable.code = error.code;
+      unavailable.statusCode = 503;
+      throw unavailable;
     }
-    // No API key, customer address, request payload or CJ response bodies in logs.
-    console.warn("[cj.checkout] supplier validation failed", {
-      step: ["variant", "shipping", "fx", "stock"][failure],
-      code: String(reason?.code || "UPSTREAM_UNAVAILABLE").replace(/[^A-Z0-9_]/gi, "").slice(0, 60),
-      upstreamHttpStatus: Number(reason?.upstreamHttpStatus) || undefined,
-      upstreamCode: Number(reason?.upstreamCode) || undefined,
-    });
-    invalid(reasons[failure] + " No se realizará ningún cobro.");
+    invalid(firstFailure === 0 ? "CJ no pudo verificar el VID/SKU y el precio actual. No se realizará ningún cobro." :
+      "No se pudo verificar el cambio USD/EUR. No se realizará ningún cobro.");
   }
-  const [selectedVariant, freight, fx, stock] = checks.map((check) => check.value);
-  const warehouseReady = stock?.verified === true && stock?.available === true &&
-    stock?.vid === vid && stock?.origin === "CN" && Number.isSafeInteger(stock.quantity) && stock.quantity > 0;
-  // Dropshipping does not require merchant-owned stock or pre-positioned CJ stock.
-  // When the CJ warehouse cannot fulfill, check EXACT VID factory inventory via
-  // official per-PID data; only verifiedWarehouse=1 and positive factory units
-  // count as confirmed supplier availability. This is NOT a stock reservation.
-  let factorySupply = null;
-  if (!warehouseReady) {
-    try {
-      factorySupply = await (deps.getSupply || queryCjFactorySupply)({pid,vid,origin:"CN"});
-    } catch (error) {
-      console.warn("[cj.checkout] factory availability unavailable", String(error?.code || "UPSTREAM").slice(0,40));
-    }
-  }
-  const factoryReady = !warehouseReady &&
-    factorySupply?.mode === "factory" && factorySupply?.source === "cj_api" && factorySupply?.verified === true &&
-    factorySupply?.available === true && factorySupply?.vid === vid &&
-    factorySupply?.origin === "CN" && Number.isSafeInteger(factorySupply.quantity) &&
-    factorySupply.quantity > 0;
-  if (!warehouseReady && !factoryReady)
-    invalid("CJ no confirmó existencias verificadas en almacén ni abastecimiento verificado en fábrica para esta variante. No se realizará ningún cobro.");
-  if (!Array.isArray(freight?.methods)) invalid("CJ no devolvió tarifas de transporte válidas. No se realizará ningún cobro.");
-  if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0) invalid("El cambio USD/EUR devuelto no es válido. No se realizará ningún cobro.");
-  if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
+  const selectedVariant = checks[0].value;
+  const fx = checks[2].value;
+  if (!Number.isFinite(Number(fx?.rate)) || Number(fx.rate) <= 0)
+    invalid("El cambio USD/EUR no es válido. No se realizará ningún cobro.");
+  if (!selectedVariant || selectedVariant.priceUsd == null)
+    invalid("CJ no confirmó el coste de la variante seleccionada.");
   assertCjSupplierIdentity(identity, selectedVariant);
-  if (freight.vid !== vid || freight.destination !== "ES" || String(freight.zip || "") !== String(shippingAddress.postalCode)) invalid("La cotización CJ no coincide con la variante o el destino.");
   const effectiveUnitPrice = Number(item.price || 0) - Math.max(0, Number(discount || 0));
   const storeFundedPromotion = promotionAuthorized === true && Number(discount) > 0;
-  // Choose the best VERIFIED real CJ shipping method for the customer's
-  // destination at checkout, not a fixed manual setting for all postcodes.
-  // Complete USD postage, feasible profit and exact VID are mandatory.
-  const priced = freight.methods
-    .filter(method=>String(method?.name||"").trim() &&
-      method?.totalPostageUsd != null &&
+  const postalCode = String(shippingAddress.postalCode).trim();
+  const shippingLookup = deps.quoteShipping || quoteCjVariantShipping;
+  const stockLookup = deps.getStock || queryCjVariantStock;
+  const warehouseLookup = deps.getWarehouses || queryCjVariantWarehouses;
+  const factoryLookup = deps.getSupply || queryCjFactorySupply;
+  const admissible = (origin,stock) => Boolean(
+    stock?.verified === true && stock?.available === true &&
+    stock?.vid === vid && stock?.origin === origin &&
+    Number.isSafeInteger(stock?.quantity) && stock.quantity > 0);
+  const pricedMethods = (freight,origin) => {
+    if (!Array.isArray(freight?.methods) || freight?.vid !== vid ||
+        freight?.destination !== "ES" || String(freight?.zip||"") !== postalCode ||
+        (freight.origin && freight.origin !== origin) ||
+        (origin !== "CN" && freight.origin !== origin)) return [];
+    return freight.methods.filter(method =>
+      String(method?.name||"").trim() && method?.totalPostageUsd != null &&
       Number.isFinite(Number(method.totalPostageUsd)) &&
-      Number(method.totalPostageUsd)>=0)
-    .map(method=>({
+      Number(method.totalPostageUsd) >= 0).map(method => ({
       method,
-      profitability:estimateCjProfitability({
-        salePriceEur:effectiveUnitPrice,productUsd:selectedVariant.priceUsd,
-        postageUsd:method.totalPostageUsd,usdEurRate:fx.rate,
+      profitability: estimateCjProfitability({
+        salePriceEur:effectiveUnitPrice, productUsd:selectedVariant.priceUsd,
+        postageUsd:method.totalPostageUsd, usdEurRate:fx.rate,
         vatRate:Number(product.iva ?? product.taxRate ?? 21),
         minMarginPercent:Math.max(0,Number(supplier.minMarginPercent ?? 30)),
         additionalImportCostEur:compliance.additionalImportCostEur,
       }),
-    }))
-    .filter(entry=>canProceedWithVerifiedCjCosts({
+    })).filter(entry=>canProceedWithVerifiedCjCosts({
       profitability:entry.profitability,promotionAuthorized,discount,
-    }))
-    .sort((a,b)=>Number(a.method.totalPostageUsd)-Number(b.method.totalPostageUsd));
-  const choice=priced.find(entry=>entry.method.name===preferredLogisticName) || priced[0];
-  if(!choice)
-    invalid("CJ no confirmó un transporte con coste completo y margen permitido para esta dirección. No se realizará ningún cobro.");
-  const logisticName=String(choice.method.name);
-  const selectedFreight=choice.method;
-  const profitability=choice.profitability;
+    })).sort((a,b)=>Number(a.method.totalPostageUsd)-Number(b.method.totalPostageUsd));
+  };
+  let chosen = null;
+  const candidates = [];
+  const cnStock = checks[3].status === "fulfilled" ? checks[3].value : null;
+  if (admissible("CN",cnStock))
+    candidates.push({origin:"CN",stock:cnStock,mode:"warehouse"});
+  else {
+    // Supplier-owned verified factory inventory, never merchant-owned units.
+    try {
+      const factory=await factoryLookup({pid,vid,origin:"CN"});
+      if(factory?.source === "cj_api" && factory?.mode === "factory" &&
+         admissible("CN",factory))
+        candidates.push({origin:"CN",stock:factory,mode:"factory_verified"});
+    }catch(error){
+      console.warn("[cj.checkout] CJ factory supply lookup unavailable",
+        String(error?.code||"UPSTREAM").slice(0,40));
+    }
+  }
+  if (candidates.length && checks[1].status === "fulfilled") {
+    const options = pricedMethods(checks[1].value,"CN");
+    const choice = options.find(entry=>entry.method.name===preferredLogisticName)||options[0];
+    if(choice) chosen={...choice,...candidates[0]};
+  }
+  // A zero/unknown CN stock or a missing CN→ES rate must not mask a real,
+  // authenticated warehouse elsewhere. Every alternative route is verified
+  // for exact VID, origin, address, total freight and profitability.
+  if (!chosen) {
+    let available = [];
+    try {
+      const result = await warehouseLookup({vid});
+      if (result?.vid === vid && Array.isArray(result?.warehouses))
+        available = result.warehouses.filter(w=>w?.verified === true &&
+          w?.available === true && Number.isSafeInteger(w.quantity) &&
+          w.quantity > 0 && /^[A-Z]{2}$/.test(String(w.countryCode||"")) &&
+          w.countryCode !== "CN");
+    } catch(error){
+      console.warn("[cj.checkout] warehouse alternatives unavailable",
+        String(error?.code||"UPSTREAM").slice(0,40));
+    }
+    const preferred=["DE","ES","FR","PL","IT","NL","BE","PT","CZ","AT"];
+    available.sort((a,b)=>{
+      const ai=preferred.indexOf(a.countryCode),bi=preferred.indexOf(b.countryCode);
+      return (ai<0?99:ai)-(bi<0?99:bi) ||
+        b.quantity-a.quantity || a.countryCode.localeCompare(b.countryCode);
+    });
+    for(const row of available.slice(0,3)){
+      const origin=row.countryCode;
+      try {
+        const stock=await stockLookup({vid,origin});
+        if(!admissible(origin,stock)) continue;
+        const freight=await shippingLookup({vid,quantity:1,origin,destination:"ES",zip:postalCode});
+        const options=pricedMethods(freight,origin);
+        const choice=options.find(entry=>entry.method.name===preferredLogisticName)||options[0];
+        if(choice){chosen={...choice,origin,stock,mode:"warehouse"};break;}
+      }catch(error) {
+        console.warn("[cj.checkout] alternative origin not quoteable",{
+          origin, code:String(error?.code||"UPSTREAM").slice(0,40),
+        });
+      }
+    }
+  }
+  if (!chosen && candidates.length && checks[1].status==="fulfilled" &&
+      (checks[1].value?.vid !== vid || checks[1].value?.destination !== "ES" ||
+       String(checks[1].value?.zip||"") !== postalCode ||
+       (checks[1].value?.origin && checks[1].value.origin !== "CN")))
+    invalid("La cotización CJ no coincide con la variante o el destino. No se realizará ningún cobro.");
+  if (!chosen) {
+    // Never charge if the exact variant cannot be supplied and shipped with
+    // a complete profitable CJ quote for the real destination.
+    const cnAvailable = candidates.length > 0;
+    invalid(cnAvailable
+      ? "CJ no confirmó un transporte con coste completo y margen permitido para esta dirección, desde ningún almacén verificado. No se realizará ningún cobro."
+      : "CJ no confirmó existencias verificadas y transporte rentable para esta variante en ningún almacén. No se realizará ningún cobro.");
+  }
+  const {origin,stock,mode,method:selectedFreight,profitability} = chosen;
+  const logisticName=String(selectedFreight.name);
+  const factoryReady=mode==="factory_verified";
   return {
     cjOnly:true, profitability, storeFundedPromotion,
     verifiedQuote: {
       ...profitability,
       available: true, vid:identity.vid, sku:identity.sku,
       selectedVariant:identity.name, destination:"ES", postalCode:String(shippingAddress.postalCode).trim(),
-      methodName: logisticName, checkedAt:new Date().toISOString(),
-      stockAtQuote: warehouseReady ? stock.quantity : factorySupply.quantity,
-      supplierSupplyMode: warehouseReady ? "warehouse" : "factory_verified",
+      methodName: logisticName, origin, checkedAt:new Date().toISOString(),
+      stockAtQuote: stock.quantity,
+      supplierSupplyMode: mode,
     },
     shippingQuote: {
       ok:true, price:0, currency:"EUR", distanceKm:0, distanceText:"Envío directo CJ",
       durationText:String(selectedFreight.time || ""),
-      destination:"España", origin:"Proveedor CJdropshipping",
+      destination:"España", origin:"Proveedor CJdropshipping · "+origin,
       deliveryProvider:"cj", logisticName, quotedAt:new Date().toISOString(),
       warning:storeFundedPromotion
         ? "Cupón autorizado: Herencia asume la diferencia de coste del proveedor y el envío."
