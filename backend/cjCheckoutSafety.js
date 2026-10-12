@@ -111,7 +111,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
     }
   }
   const factoryReady = !warehouseReady &&
-    factorySupply?.mode === "factory" && factorySupply?.verified === true &&
+    factorySupply?.mode === "factory" && factorySupply?.source === "cj_api" && factorySupply?.verified === true &&
     factorySupply?.available === true && factorySupply?.vid === vid &&
     factorySupply?.origin === "CN" && Number.isSafeInteger(factorySupply.quantity) &&
     factorySupply.quantity > 0;
