@@ -1069,3 +1069,39 @@ export async function getNeonAnalyticsSummary(days = 30) {
     generatedAt: new Date().toISOString(),
   };
 }
+
+
+/** Atomically attach the exact CJ-authenticated variant to an explicitly
+ * requested draft. Never touches status, merchant stock, customer orders,
+ * supplier balances, images, collections, or EUR pricing. */
+export async function bindVerifiedCjDraftVariant(picked={}) {
+  if(!neonPool || !picked.productId || !picked.vid || !picked.sku ||
+     !Number.isFinite(picked.supplierPriceUsd) || picked.supplierPriceUsd<=0)
+    return false;
+  const result=await neonPool.query(
+    `UPDATE commerce_products SET
+       metadata = (metadata - 'cjAutoLinkRequest') ||
+         jsonb_build_object(
+           'supplierVariantId',$2::text,'cjVid',$2::text,
+           'supplierSku',$3::text,'cjSku',$3::text,
+           'supplierOriginalPrice',$4::numeric,'supplierCurrency','USD',
+           'supplierPriceCapturedAt',now()::text,
+           'cjVariantLinkedAt',now()::text,
+           'cjVariantLinkedSource','cj_api',
+           'cjPreferredLogisticName','',
+           'cjPricingEstimate',null,
+           'cjProfitabilityQuote',null),
+       updated_at=now()
+     WHERE id=$1 AND status='draft'
+       AND metadata->>'sourceHost'='cjdropshipping.com'
+       AND metadata->>'fulfillmentType'='dropship'
+       AND metadata->>'supplierProductId'=$5
+       AND COALESCE(metadata->>'supplierVariantId','')=''
+       AND COALESCE(metadata->>'supplierSku','')=''
+       AND metadata->'cjAutoLinkRequest' = $6::jsonb
+     RETURNING id`,
+    [picked.productId,picked.vid,picked.sku,picked.supplierPriceUsd,
+     picked.pid,JSON.stringify({pid:picked.pid,quantity:picked.quantity,color:picked.color})]
+  );
+  return result.rowCount===1;
+}
