@@ -51,7 +51,7 @@ export function prepareCjVariantPriceRequest(product, provider) {
     zip:String(request.zip),pending};
 }
 
-export function quoteCjVariantRetailPrice({variant,freight,fx,zip,vatRate=21,minMarginPercent=30}={}){
+export function quoteCjVariantRetailPrice({variant,freight,fx,zip,vatRate=21,minMarginPercent=30,additionalImportCostEur=3}={}){
   if(!variant || !validMoney(variant.priceUsd) || Number(variant.priceUsd)<=0 ||
      !validId(variant.vid) || !validSku(variant.sku) ||
      freight?.source!=="cj_api" || freight.origin!=="CN" ||
@@ -71,7 +71,7 @@ export function quoteCjVariantRetailPrice({variant,freight,fx,zip,vatRate=21,min
   const cost=estimateCjProfitability({
     salePriceEur:0,productUsd:variant.priceUsd,
     postageUsd:Number(best.totalPostageUsd),
-    usdEurRate:Number(fx.rate),vatRate,minMarginPercent,
+    usdEurRate:Number(fx.rate),vatRate,minMarginPercent,additionalImportCostEur,
   });
   const minimum=Number(cost.recommendedMinimumPriceEur);
   if(!cost.available || !Number.isFinite(minimum) || minimum<=0 ||
@@ -82,7 +82,7 @@ export function quoteCjVariantRetailPrice({variant,freight,fx,zip,vatRate=21,min
   const confirmed=estimateCjProfitability({
     salePriceEur:retailPriceEur,productUsd:variant.priceUsd,
     postageUsd:Number(best.totalPostageUsd),
-    usdEurRate:Number(fx.rate),vatRate,minMarginPercent,
+    usdEurRate:Number(fx.rate),vatRate,minMarginPercent,additionalImportCostEur,
   });
   if(!confirmed.available || !confirmed.feasible)
     return {ok:false,reason:"MIN_MARGIN_NOT_MET"};
@@ -92,7 +92,7 @@ export function quoteCjVariantRetailPrice({variant,freight,fx,zip,vatRate=21,min
     logisticName:best.name,fxRate:Number(fx.rate),fxDate:String(fx.date),
     zip,checkedAt:new Date().toISOString(),
     estimatedMarginPercent:confirmed.estimatedMarginPercent,
-    minMarginPercent,vatRate};
+    minMarginPercent,vatRate,additionalImportCostEur};
 }
 
 export function createCjVariantAutoPricing({listProducts,queryVariants,quoteFreight,getFx,savePrice,completeRequest,logger=console}={}){
@@ -125,7 +125,13 @@ export function createCjVariantAutoPricing({listProducts,queryVariants,quoteFrei
             try{
               const freight=await quoteFreight({vid:variant.vid,quantity:1,origin:"CN",
                 destination:"ES",zip:plan.zip});
-              const preview=quoteCjVariantRetailPrice({variant,freight,fx,zip:plan.zip});
+              // Until customs costs are reviewed, include a conservative
+              // €3 provisional import allowance. It is NOT a customs quote.
+              const importCost=product.metadata?.cjImportCostsReviewed===true &&
+                validMoney(product.metadata?.cjAdditionalImportCostEur)
+                ? Number(product.metadata.cjAdditionalImportCostEur) : 3;
+              const preview=quoteCjVariantRetailPrice({variant,freight,fx,zip:plan.zip,
+                additionalImportCostEur:importCost});
               if(!preview.ok){blocked++;logger.warn?.("[cj.variant-pricing] no quote",{id:product.id,vid:variant.vid,reason:preview.reason});continue;}
               const saved=await savePrice({...preview,productId:plan.productId,pid:plan.pid});
               if(saved===true)priced++;else blocked++;
