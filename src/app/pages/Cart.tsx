@@ -117,7 +117,9 @@ export function Cart() {
     serviceHours: item.serviceHours, serviceBooking: item.serviceBooking,
   })));
   const calculatedDiscount = couponBasis === cartSignature ? discount : 0;
-  const total = Math.max(0, subtotal - calculatedDiscount + shipping);
+  const fullCouponDiscount = Boolean(appliedCoupon && subtotal > 0 && calculatedDiscount >= subtotal - 0.001);
+  const effectiveShipping = fullCouponDiscount ? 0 : shipping;
+  const total = Math.max(0, subtotal - calculatedDiscount + effectiveShipping);
   const itemKey = (item: CartItem) => item.lineKey || String(item.id);
 
   const updateQuantity = (key: string, delta: number) => {
@@ -205,7 +207,7 @@ export function Cart() {
     navigate("/checkout", {
       state: {
         paymentMethod,
-        shippingCost: shipping,
+        shippingCost: effectiveShipping,
         discount: calculatedDiscount,
         coupon: calculatedDiscount > 0 ? appliedCoupon : "",
       },
@@ -402,7 +404,7 @@ export function Cart() {
               <>
                 <div className="flex justify-between gap-4">
                   <span className="text-[#6c786f]">{containsCj ? "Transporte CJ" : "Envío desde"}</span>
-                  <span className="font-black">{containsCj ? "Por calcular" : shipping === 0 ? "Gratis" : `€${shipping.toFixed(2)}`}</span>
+                  <span className="font-black">{fullCouponDiscount ? "Gratis" : containsCj ? "Por calcular" : effectiveShipping === 0 ? "Gratis" : `€${effectiveShipping.toFixed(2)}`}</span>
                 </div>
                 <p className="rounded-2xl bg-[#f4f1e8] p-3 text-xs leading-5 text-[#6c786f]">
                   {containsCj
