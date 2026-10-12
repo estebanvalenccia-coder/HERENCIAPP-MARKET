@@ -33,3 +33,30 @@ export function inspectCjFactorySupply(data, vidInput, originInput = "CN") {
     quantity:factory,mode:"factory",reason:factory===0?"FACTORY_OUT_OF_STOCK":null,
     notReserved:true};
 }
+
+export const CJ_FACTORY_OBSERVATION_PREFIX="cjFactoryObservation:v1:";
+export const CJ_FACTORY_FRESH_MS=45*60_000;
+export function cjFactoryObservationKey(productId,vid){
+  return CJ_FACTORY_OBSERVATION_PREFIX+String(productId)+":"+String(vid);
+}
+/**
+ * Ephemeral, read-only view for storefront merchandising. NEVER reuse it as
+ * permission for payment or external CJ order creation: checkout must requery.
+ */
+export function readCjFactoryObservation(raw,{productId,vid,nowMs=Date.now(),maxAgeMs=CJ_FACTORY_FRESH_MS}={}){
+  let data=null;
+  try{data=typeof raw==="string"?JSON.parse(raw):raw;}catch{}
+  const ageMs=nowMs-Date.parse(data?.checkedAt||"");
+  const verified=Boolean(data?.source==="cj_api" && data?.mode==="factory" &&
+    data?.verified===true && data?.origin==="CN" &&
+    data?.productId===String(productId) && data?.vid===String(vid) &&
+    Number.isSafeInteger(data?.quantity) && data.quantity>=0);
+  const fresh=verified && Number.isFinite(ageMs) && ageMs>=0 && ageMs<=maxAgeMs;
+  return {
+    provider:"cj",origin:"CN",mode:"factory",vid:String(vid||""),
+    checkedAt:verified?data.checkedAt:null,verified,fresh,
+    available:fresh && data.quantity>0,quantity:fresh?data.quantity:null,
+    notReserved:true,checkoutRevalidates:true,
+    source:fresh?"cj_factory_observation":"unverified",
+  };
+}
