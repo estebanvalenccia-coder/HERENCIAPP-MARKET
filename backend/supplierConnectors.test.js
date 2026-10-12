@@ -72,7 +72,7 @@ test("Banggood onboarding never permits orders on credentials alone", () => {
   assert.equal(supplierConnectorReadiness({integrationType:"api",sourceHost:"eprolo.com"}, {}, crypto.createHash).state,"adapter_required");
 });
 
-test("new webhook requires successful non-order verification against exact env config", () {
+test("new webhook requires successful non-order verification against exact env config", () => {
   const supplier = { integrationType: "webhook", connectorKey: "VIVERO_NORTE" };
   assert.equal(supplierConnectorReadiness(supplier, env, crypto.createHash).state, "test_required");
   const connector = resolveSupplierWebhookConnector(supplier, env);
