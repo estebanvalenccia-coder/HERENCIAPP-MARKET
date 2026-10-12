@@ -1105,3 +1105,67 @@ export async function bindVerifiedCjDraftVariant(picked={}) {
   );
   return result.rowCount===1;
 }
+
+
+/**
+ * Store a real CJ-authenticated price preview for exactly one currently
+ * unpriced variant. The conditional SQL prevents overwriting manual prices,
+ * changing stock, publishing drafts, or changing other products.
+ */
+export async function saveVerifiedCjVariantRetailPrice(quote={}) {
+  if(!neonPool || !/^[0-9]{1,32}$/.test(String(quote.productId||"")) ||
+    !/^[a-z0-9-]{8,100}$/i.test(String(quote.vid||"")) ||
+    !/^[a-z0-9._-]{8,100}$/i.test(String(quote.sku||"")) ||
+    !Number.isFinite(quote.priceEur) || quote.priceEur<=0 ||
+    !Number.isFinite(quote.supplierPriceUsd) || quote.supplierPriceUsd<=0 ||
+    !Number.isFinite(quote.postageUsd) || quote.postageUsd<0 ||
+    !Number.isFinite(quote.fxRate) || quote.fxRate<=0 ||
+    !Number.isFinite(quote.estimatedMarginPercent) ||
+    quote.estimatedMarginPercent<quote.minMarginPercent)
+    return false;
+  const preview={
+    source:"cj_api",mode:"postal_preview",zip:quote.zip,
+    vid:quote.vid,sku:quote.sku,priceEur:quote.priceEur,
+    supplierPriceUsd:quote.supplierPriceUsd,postageUsd:quote.postageUsd,
+    logisticName:quote.logisticName,fxRate:quote.fxRate,
+    fxDate:quote.fxDate,checkedAt:quote.checkedAt,
+    estimatedMarginPercent:quote.estimatedMarginPercent,
+    minMarginPercent:quote.minMarginPercent,vatRate:quote.vatRate,
+    disclaimer:"Cotización postal orientativa; no autoriza compras ni garantiza el envío final."
+  };
+  const result=await neonPool.query(
+    `UPDATE commerce_product_variants AS v
+     SET price=$4::numeric,
+         metadata=v.metadata || jsonb_build_object('cjVariantRetailPricePreview',$5::jsonb)
+     FROM commerce_products AS p
+     WHERE v.product_id=p.id AND p.id=$1
+       AND p.status IN ('draft','active')
+       AND p.metadata->>'sourceHost'='cjdropshipping.com'
+       AND p.metadata->>'fulfillmentType'='dropship'
+       AND p.metadata->'cjVariantAutoPricingRequest'=$6::jsonb
+       AND v.price IS NULL
+       AND v.metadata->>'supplierVariantId'=$2
+       AND COALESCE(v.metadata->>'supplierSku',v.sku)=$3
+     RETURNING v.id`,
+    [String(quote.productId),String(quote.vid),String(quote.sku),
+      quote.priceEur,JSON.stringify(preview),
+      JSON.stringify({pid:quote.pid,zip:quote.zip})]
+  );
+  return result.rowCount===1;
+}
+
+export async function completeVerifiedCjVariantPriceRequest(productId,pid,zip) {
+  if(!neonPool)return false;
+  const result=await neonPool.query(
+    `UPDATE commerce_products AS p
+     SET metadata=p.metadata-'cjVariantAutoPricingRequest',updated_at=now()
+     WHERE p.id=$1 AND p.status IN ('draft','active')
+       AND p.metadata->'cjVariantAutoPricingRequest'=$2::jsonb
+       AND EXISTS (SELECT 1 FROM commerce_product_variants v WHERE v.product_id=p.id)
+       AND NOT EXISTS (SELECT 1 FROM commerce_product_variants v
+         WHERE v.product_id=p.id AND (v.price IS NULL OR v.price<=0))
+     RETURNING p.id`,
+    [String(productId),JSON.stringify({pid,zip})]
+  );
+  return result.rowCount===1;
+}
