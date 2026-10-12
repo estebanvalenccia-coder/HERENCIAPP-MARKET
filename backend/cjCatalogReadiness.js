@@ -3,7 +3,7 @@
 const finite = value => value !== "" && value !== undefined && value !== null &&
   Number.isFinite(Number(value)) && Number(value) >= 0;
 const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant = {}, stock = null, fx = null, origin = "CN" } = {}) {
+export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant = {}, stock = null, supply = null, fx = null, origin = "CN" } = {}) {
   const problems = [];
   const vid = String(variant?.vid || "").trim();
   const sku = String(variant?.sku || "").trim();
@@ -14,6 +14,9 @@ export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant 
   const rate = fx && Number(fx.rate) > 0 ? Number(fx.rate) : null;
   const verifiedStock = stock?.verified === true && stock?.vid === vid && stock?.origin === origin;
   const quantity = verifiedStock && Number.isSafeInteger(stock?.quantity) && stock.quantity >= 0 ? stock.quantity : null;
+  const factoryReady=supply?.mode==="factory" && supply?.verified===true &&
+    supply?.available===true && supply?.vid===vid && supply?.origin===origin &&
+    Number.isSafeInteger(supply.quantity) && supply.quantity>0;
   const mapped = Array.isArray(product.variants) && product.variants.some(row =>
     String(row?.supplierVariantId || row?.cjVid || "") === vid &&
     String(row?.supplierSku || row?.cjSku || "") === sku);
@@ -32,8 +35,8 @@ export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant 
     INVALID_STOCK_RESPONSE:"CJ devolvió una respuesta de inventario inválida o incompleta. Reintenta la consulta más tarde.",
     UNVERIFIED_STOCK:"Stock del almacén sin verificar: no publiques existencias supuestas.",
   };
-  if (!verifiedStock || quantity === null) problems.push(stockExplanations[stockReason]);
-  else if (quantity === 0) problems.push("La variante está sin existencias en el almacén consultado.");
+  if ((!verifiedStock || quantity === null) && !factoryReady) problems.push(stockExplanations[stockReason]);
+  else if (quantity === 0 && !factoryReady) problems.push("La variante está sin existencias en el almacén consultado.");
   if (!rate) problems.push("No se pudo verificar el cambio USD/EUR.");
   const baseCostEur = supplierPriceUsd !== null && rate ? round(supplierPriceUsd * rate) : null;
   return {
@@ -43,10 +46,16 @@ export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant 
     supplierPriceUsd, supplierBaseEur: baseCostEur, // EXCLUDES shipping, fees and VAT
     supplierBaseCostIncludesShipping: false,
     stock: { verified: verifiedStock && quantity !== null, quantity, available: quantity !== null && quantity > 0, reason:stockReason },
+    supply: supply ? {
+      source:"cj_api",mode:"factory",verified:Boolean(supply.verified),available:factoryReady,
+      quantity:supply.verified && Number.isSafeInteger(supply.quantity)?supply.quantity:null,
+      reportedQuantity:supply.verified ? null : (supply.reportedQuantity ?? null),
+      reason:supply.reason||null,notReserved:true,
+    } : null,
     productDataValid: problems.length === 0, issues: problems,
     shippingVerified: false, checkoutEnabled: false, automaticOrdersEnabled: false, automaticStockWrite: false,
     message: problems.length
       ? "Hay bloqueos o datos pendientes. La consulta no modifica la tienda ni activa pedidos."
-      : "Datos básicos verificados. Falta validar transporte y margen para la dirección real de cada cliente antes de vender.",
+      : factoryReady ? "CJ confirma abastecimiento de fábrica para esta variante; falta validar transporte, margen y plazo real antes de vender." : "Datos básicos verificados. Falta validar transporte y margen para la dirección real de cada cliente antes de vender.",
   };
 }
