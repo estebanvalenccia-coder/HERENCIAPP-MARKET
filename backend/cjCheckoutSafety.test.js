@@ -208,3 +208,54 @@ test("CJ checkout never charges using unpriced or unprofitable shipping options"
    suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps
  }),/transporte con coste completo y margen permitido/);
 });
+
+test("CJ exact gardening VID from 202 DE units can checkout only with real DE→ES verified profitable freight",async()=>{
+ const vid=cj.metadata.supplierVariantId,called=[];
+ const deps={
+  verifyVariant:async()=>({vid,sku:cj.metadata.supplierSku,priceUsd:5}),
+  getRate:async()=>({rate:.9}),
+  getStock:async({origin})=>{called.push("stock:"+origin);return {
+    source:"cj_api",verified:origin==="DE",available:origin==="DE",
+    quantity:origin==="DE"?202:0,vid,origin,
+  };},
+  getSupply:async()=>({source:"cj_api",mode:"factory",verified:false,available:false,vid,origin:"CN"}),
+  getWarehouses:async()=>({vid,warehouses:[{countryCode:"DE",verified:true,available:true,quantity:202}]}),
+  quoteShipping:async({origin,zip})=>{called.push("freight:"+origin+":"+zip);return {
+    origin,vid,zip,destination:"ES",
+    methods:origin==="DE"?[{name:"Deutsche Post",totalPostageUsd:2,shippingUsd:2,time:"4-8 días"}]:[],
+  };},
+ };
+ const result=await evaluateCjCheckout({lines:[{id:cj.id,quantity:1,price:20}],
+  catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
+ assert.equal(result.verifiedQuote.origin,"DE");
+ assert.equal(result.verifiedQuote.stockAtQuote,202);
+ assert.equal(result.verifiedQuote.supplierSupplyMode,"warehouse");
+ assert.equal(result.verifiedQuote.methodName,"Deutsche Post");
+ assert.ok(called.includes("stock:DE"));
+ assert.ok(called.includes("freight:DE:08032"));
+});
+test("CJ will not charge with DE units if exact VID stock is unverified or DE→ES freight absent",async()=>{
+ const vid=cj.metadata.supplierVariantId;
+ const base={
+  verifyVariant:async()=>({vid,sku:cj.metadata.supplierSku,priceUsd:5}),
+  getRate:async()=>({rate:.9}),
+  getStock:async({origin})=>({source:"cj_api",verified:origin==="DE",available:origin==="DE",
+    quantity:origin==="DE"?202:0,vid,origin}),
+  getSupply:async()=>({source:"cj_api",mode:"factory",verified:false,available:false,vid,origin:"CN"}),
+  getWarehouses:async()=>({vid,warehouses:[{countryCode:"DE",verified:true,available:true,quantity:202}]}),
+  quoteShipping:async({origin})=>({origin,vid,zip:"08032",destination:"ES",
+    methods:origin==="DE"?[{name:"DE route",totalPostageUsd:2,shippingUsd:2}]:[]}),
+ };
+ const run=(deps)=>evaluateCjCheckout({lines:[{id:cj.id,quantity:1,price:20}],
+  catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
+ await assert.rejects(run({...base,getWarehouses:async()=>({vid,warehouses:[
+  {countryCode:"DE",verified:false,available:true,quantity:202}]})}),/no confirmó existencias verificadas/);
+ await assert.rejects(run({...base,quoteShipping:async({origin})=>({
+  origin,vid,zip:"08032",destination:"ES",methods:[]})}),/no confirmó existencias verificadas/);
+ await assert.rejects(run({...base,quoteShipping:async({origin})=>({
+  origin:"CN",vid,zip:"08032",destination:"ES",
+  methods:[{name:"Wrong origin",totalPostageUsd:2,shippingUsd:2}]})}),/no confirmó existencias verificadas/);
+ await assert.rejects(run({...base,quoteShipping:async({origin})=>({
+  origin,vid,zip:"08032",destination:"ES",
+  methods:origin==="DE"?[{name:"Expensive",totalPostageUsd:100,shippingUsd:100}]:[]})}),/no confirmó existencias verificadas/);
+});
