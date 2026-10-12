@@ -11632,6 +11632,33 @@ app.listen(port, () => {
       }
     },6000);
   }
+  // Explicit one-order recovery of a fully discounted customer's failed Printful
+  // draft. It is safe only for zero-value coupon orders: no Printful confirmation,
+  // charge, retry or Stripe payment. The existing order-creation idempotency
+  // claim and reconciliation logic remain authoritative.
+  const safeRecoveryId=String(process.env.PRINTFUL_RECOVER_FREE_DRAFT_ORDER_ID||"").trim();
+  if(/^[a-z0-9-]{8,100}$/i.test(safeRecoveryId)){
+    setTimeout(async()=>{
+      try{
+        const recoveryOrder=await getOrderPrimary(safeRecoveryId);
+        if(!recoveryOrder||recoveryOrder.status!=="paid"||
+          Number(recoveryOrder.total)!==0||
+          String(recoveryOrder.payment_method)!=="coupon"||
+          String(recoveryOrder.stripe_payment_intent_id||"").trim()){
+          console.warn("[printful.draft-recovery]",JSON.stringify({status:"blocked",reason:"not_zero_coupon_order"}));
+          return;
+        }
+        const recovered=await syncPrintfulDraftForOrder(safeRecoveryId);
+        console.info("[printful.draft-recovery]",JSON.stringify({status:recovered.status||"unknown",
+          orderReference:safeRecoveryId.slice(0,8),providerStatus:recovered.printfulStatus||null,
+          providerOrderId:recovered.externalOrderId||null,charged:false,confirmed:false}));
+      }catch(error){
+        console.warn("[printful.draft-recovery]",JSON.stringify({status:"attention",
+          code:Number(error.statusCode)||500,
+          providerDiagnosis:error.providerDiagnosis||null,charged:false,confirmed:false}));
+      }
+    },12000);
+  }
   // The first account verification happens after startup; subsequent checks are limited
   // to once every six hours even though other safe workers run every 15 minutes.
   let cjAccountLastProbeAt=0;

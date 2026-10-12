@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate,summarizePrintfulRejection,printfulExternalOrderId} from "./printfulOrderFulfillment.js";
 const product={id:"p1",name:"Camisa jungle",metadata:{provider:"printful"},
  variants:[{name:"Negro / M",printfulSyncVariantId:"123456",printfulCatalogVariantId:"2020",printfulAvailability:"active",sku:"NJ-M"}]};
@@ -136,4 +137,16 @@ test("Printful external IDs are stable, valid, <=32 chars and distinguish separa
  assert.ok(first.length<=32);
  assert.match(first,/^[A-Za-z0-9_-]+$/);
  assert.throws(()=>printfulExternalOrderId("@invalid"),/inválido/);
+});
+
+test("a one-time test-order recovery is restricted to zero-value coupons and does not confirm production",()=>{
+ const source=readFileSync(new URL("./server.js",import.meta.url),"utf8");
+ const at=source.indexOf("const safeRecoveryId=String(process.env.PRINTFUL_RECOVER_FREE_DRAFT_ORDER_ID");
+ assert.ok(at>0);
+ const recovery=source.slice(at,at+1400);
+ assert.match(recovery,/Number\(recoveryOrder.total\)!==0/);
+ assert.match(recovery,/payment_method\)!=="coupon"/);
+ assert.match(recovery,/stripe_payment_intent_id/);
+ assert.match(recovery,/syncPrintfulDraftForOrder\(safeRecoveryId\)/);
+ assert.doesNotMatch(recovery,/confirmPrintfulDraft|maybeAutoConfirmPrintfulOrder/);
 });
