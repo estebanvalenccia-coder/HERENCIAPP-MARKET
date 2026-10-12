@@ -77,7 +77,7 @@ export function supplierConnectorReadiness(supplier = {}, env = process.env, cre
   if (type === "api") {
     // Banggood uses its own dropship credentials, not the Affiliate API.
     // Merely saving credentials cannot certify API access or authorize buying.
-    const host = String(supplier?.sourceHost || "").trim().toLowerCase().replace(/^www\\./, "");
+    const host = String(supplier?.sourceHost || "").trim().toLowerCase().replace(/^www\./, "");
     if (host === "banggood.com" || host.endsWith(".banggood.com")) {
       const credentialsPresent = Boolean(String(env.BANGGOOD_APP_ID || "").trim()) &&
         Boolean(String(env.BANGGOOD_APP_SECRET || "").trim());
