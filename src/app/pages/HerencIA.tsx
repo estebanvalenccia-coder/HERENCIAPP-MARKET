@@ -4,6 +4,7 @@ import { Bot, Crown, Heart, Leaf, Loader2, Paperclip, Send, ShoppingBag, Sparkle
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 
 type AccessState = {
   authenticated: boolean;
@@ -190,6 +191,11 @@ export function HerencIA() {
   };
 
   const addToCart = async (product: Product, checkout = false) => {
+    if (needsExplicitVariantSelection(product)) {
+      toast.info("Elige primero el color y la talla en la ficha del producto.");
+      navigate(`/producto/${product.id}`);
+      return;
+    }
     let cart: any[] = [];
     try {
       const current = JSON.parse(backendStorage.getItem("cart") || "[]");
