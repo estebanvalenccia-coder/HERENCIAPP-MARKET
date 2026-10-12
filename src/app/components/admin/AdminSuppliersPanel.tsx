@@ -143,7 +143,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     if(id==="supplier-catalog"){
       setShowImportedProducts(true);
       setImportTab("connected");
-      setOnlyCjImports(true);
+      setOnlyCjImports(false);
     }
     setWorkspaceMode("advanced");
     window.setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
@@ -1125,8 +1125,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <p className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.18em] text-primary"><Layers3 className="h-4 w-4"/>HERENCIA · COMERCIO MULTIPROVEEDOR</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Central de Dropshipping</h1>
           <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">
-            Una sola central para CJdropshipping, AliExpress y cualquier proveedor que incorpores.
-            Gestiona productos, conexiones, presupuestos y pedidos sin cambiar las integraciones existentes.
+            CJdropshipping, Printful y todos tus proveedores en un solo lugar.
+            Gestiona conexiones, productos, automatizaciones y pedidos sin cambiar las integraciones existentes.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1150,6 +1150,49 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         {connectedSuppliers} conexiones API configuradas o verificadas · Compras propias registradas: {money(spent)}.
         Los proveedores CSV y manuales no realizan compras automáticas.
       </p>
+    </section>
+
+    <section aria-label="Acceso rápido a proveedores" className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-bold">Mis proveedores</h2>
+          <p className="text-sm text-muted-foreground">Cada conexión tiene sus propias comprobaciones. Una API configurada no garantiza compras automáticas.</p>
+        </div>
+        <button type="button" onClick={()=>openWorkspaceSection("supplier-registered")}
+          className="rounded-lg border px-3 py-2 text-sm font-semibold">Gestionar conexiones</button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          {name:"CJdropshipping",detail:"Catálogo, stock, pedidos y transporte",id:"supplier-catalog",match:(type:string)=>type==="cj"},
+          {name:"Printful",detail:"Diseños e impresión bajo demanda",id:"supplier-printful",match:(type:string)=>type==="printful"},
+          {name:"Otros proveedores",detail:"API, CSV, URL o gestión manual",id:"supplier-registered",match:(type:string)=>type!=="cj"&&type!=="printful"},
+        ].map(provider=>{
+          const connections=supplierConnectorStatuses.filter(item=>provider.match(String(item.type||"").toLowerCase()));
+          const ready=connections.some(item=>item.state==="ready");
+          const configured=connections.some(item=>item.state==="configured");
+          const blocked=connections.some(item=>item.state==="error"||item.state==="blocked");
+          return <div key={provider.name} className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
+            <div>
+              <h3 className="font-bold">{provider.name}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{provider.detail}</p>
+              <p className="mt-2 text-xs font-semibold">{blocked?"Requiere atención":ready?"Conexión verificada":configured?"Conexión configurada":"Revisar conexión"}</p>
+            </div>
+            <button type="button" onClick={()=>openWorkspaceSection(provider.id)}
+              className="rounded-lg border border-border bg-background px-3 py-2 text-left text-sm font-bold">
+              Abrir {provider.name} <ArrowRight className="ml-1 inline h-4 w-4"/>
+            </button>
+          </div>;
+        })}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+        {[
+          {name:"Todos los productos",id:"supplier-catalog"},
+          {name:"Pedidos de todos",id:"supplier-orders"},
+          {name:"Automatizaciones",id:"supplier-cj-automation"},
+          {name:"Incidencias",id:"supplier-operations"},
+        ].map(action=><button key={action.id} type="button" onClick={()=>openWorkspaceSection(action.id)}
+          className="rounded-xl border px-3 py-3 text-left text-xs font-bold hover:bg-muted">{action.name}</button>)}
+      </div>
     </section>
 
     <DropshippingLaunchGuide suppliers={suppliers} products={products} fulfillments={fulfillments}
