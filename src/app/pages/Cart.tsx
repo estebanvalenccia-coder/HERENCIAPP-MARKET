@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings } from "../../../backend/shippingPolicy.js";
 import { isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity";
+import { firstUnselectedPrintfulItem, isPrintfulProduct } from "../lib/printfulVariantSelection.js";
 
 interface CartItem {
   id: number | string;
@@ -108,6 +109,7 @@ export function Cart() {
   const cjComposition = useMemo(() => validateCjCartComposition(cartItems), [cartItems]);
   const containsCj = cjComposition.cjCount > 0;
   const cjOnly = containsCj && cjComposition.valid;
+  const printfulIssue = firstUnselectedPrintfulItem(cartItems);
   const subtotal = cartItems.reduce((sum, item) => sum + lineTotal(item), 0);
   // A CJ shipping quote is NOT the Barcelona delivery fee. It must be
   // established by the backend for the real postal address before payment.
@@ -201,6 +203,11 @@ export function Cart() {
 
   const goCheckout = () => {
     if (!cartItems.length) return toast.error("Tu carrito está vacío");
+    if (printfulIssue) {
+      toast.error("Debes elegir la talla y el color de tu camiseta antes de pagar.");
+      navigate(`/producto/${printfulIssue.id}`);
+      return;
+    }
     if (!cjComposition.valid) return toast.error(cjComposition.message);
     if (containsCj && !["tarjeta","bizum"].includes(paymentMethod))
       return toast.error("Por ahora los pedidos CJ deben pagarse con tarjeta o Bizum verificado antes de su preparación.");
@@ -269,6 +276,12 @@ export function Cart() {
                       ) : item.selectedVariant ? (
                         <p className="mt-1 text-xs text-[#6c786f]">Variante: {item.selectedVariant}</p>
                       ) : null}
+                      {!service && isPrintfulProduct(item) && (
+                        <div className="mt-2 space-y-1">
+                          <Link to={`/producto/${item.id}`} className="text-sm font-bold text-[#315b42] underline underline-offset-2">Elegir o cambiar talla y color</Link>
+                          {printfulIssue && String(printfulIssue.id) === String(item.id) && <p role="alert" className="text-xs font-semibold text-rose-700">Esta talla se añadió sin confirmación. Elige tus opciones antes del pago.</p>}
+                        </div>
+                      )}
                       {!service && item.personalization?.dedication ? (
                         <p className="mt-1 text-xs text-[#6c786f]">Dedicatoria: “{item.personalization.dedication}”</p>
                       ) : null}
