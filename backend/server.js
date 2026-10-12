@@ -6392,7 +6392,7 @@ app.post("/api/admin/suppliers/printful/estimate",requireAdmin,async(req,res)=>{
     const payload=preparePrintfulDraft(order,catalog);
     const estimate=await estimatePrintfulOrder(payload);
     return res.json({ok:true,orderId,estimate,readOnly:true,charged:false});
-  }catch(error){return res.status(error.statusCode||500).json({error:error.message});}
+  }catch(error){return res.status(error.statusCode||500).json({error:error.message,providerDiagnosis:error.providerDiagnosis||null,readOnly:true,charged:false});}
 });
 app.post("/api/admin/suppliers/printful/draft",requireAdmin,async(req,res)=>{
   if(!requirePrimaryDatabase(res))return;
@@ -11607,6 +11607,31 @@ supportV2Export = supportV2.exportCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
+  // Explicit, one-off READ-ONLY diagnostic for a real order with a failed quote.
+  // Enabled only via private Railway variable; does not create or confirm orders.
+  const diagnosticId=String(process.env.PRINTFUL_QUOTE_DIAG_ORDER_ID||"").trim();
+  if(/^[a-z0-9-]{8,100}$/i.test(diagnosticId)){
+    setTimeout(async()=>{
+      try {
+        const order=await getOrderPrimary(diagnosticId);
+        if(!order)throw Object.assign(new Error("order_not_found"),{statusCode:404});
+        const catalog=await loadAuthoritativeProducts({includeArchived:true});
+        const draft=preparePrintfulDraft(order,catalog);
+        try {
+          const quote=await estimatePrintfulOrder(draft);
+          console.info("[printful.quote-diagnostic]",JSON.stringify({ok:true,orderReference:diagnosticId.slice(0,8),
+            currency:quote.currency,total:quote.total,readOnly:true}));
+        }catch(error){
+          console.warn("[printful.quote-diagnostic]",JSON.stringify({ok:false,orderReference:diagnosticId.slice(0,8),
+            ...error.providerDiagnosis||{category:"preflight",providerReason:"unknown",httpStatus:error.statusCode||0},
+            readOnly:true}));
+        }
+      }catch(error){
+        console.warn("[printful.quote-diagnostic]",JSON.stringify({ok:false,category:"local_validation",
+          statusCode:Number(error.statusCode)||422,reason:String(error.message||"error").replace(/[^a-z_ ]/gi,"").slice(0,70)}));
+      }
+    },6000);
+  }
   // The first account verification happens after startup; subsequent checks are limited
   // to once every six hours even though other safe workers run every 15 minutes.
   let cjAccountLastProbeAt=0;
