@@ -150,7 +150,7 @@ test("CJ dropshipping checkout may source verified EXACT VID factory units witho
      {name:"CJPacket Liquid Line",totalPostageUsd:2,shippingUsd:2,time:"5-10"}]}),
    getRate:async()=>({rate:0.9}),
    getStock:async()=>({verified:true,available:false,quantity:0,vid,origin:"CN"}),
-   getSupply:async()=>({mode:"factory",verified:true,available:true,quantity:6,vid,origin:"CN"}),
+   getSupply:async()=>({source:"cj_api",mode:"factory",verified:true,available:true,quantity:6,vid,origin:"CN"}),
  };
  const response=await evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20}],
    catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
@@ -167,7 +167,7 @@ test("factory inventory 9000 without verification cannot create a CJ payment pat
      {name:"CJPacket Liquid Line",totalPostageUsd:2,shippingUsd:2}]}),
    getRate:async()=>({rate:0.9}),
    getStock:async()=>({verified:true,available:false,quantity:0,vid,origin:"CN"}),
-   getSupply:async()=>({mode:"factory",verified:false,available:false,reportedQuantity:9000,vid,origin:"CN"}),
+   getSupply:async()=>({source:"cj_api",mode:"factory",verified:false,available:false,reportedQuantity:9000,vid,origin:"CN"}),
  };
  await assert.rejects(evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20}],
    catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps}),
