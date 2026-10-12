@@ -95,3 +95,29 @@ export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=f
  let data;try{data=await response.json();}catch{fail("Printful devolvió una cotización ilegible.",502);}
  return normalizePrintfulEstimate(data);
 }
+
+/**
+ * Real Printful financial action. ONLY the server-side guarded live mandate
+ * may call this, never the browser or a Stripe payment webhook directly.
+ * Timeout/5xx are uncertain outcomes: DO NOT automatically retry.
+ */
+export async function confirmPrintfulDraft(providerOrderId,{env=process.env,fetchImpl=fetch}={}){
+ const token=id(env.PRINTFUL_API_TOKEN),storeId=id(env.PRINTFUL_STORE_ID),orderId=id(providerOrderId);
+ if(!token)fail("Falta PRINTFUL_API_TOKEN",503);
+ if(storeId&&!numericId(storeId))fail("PRINTFUL_STORE_ID inválido",422);
+ if(!numericId(orderId))fail("ID Printful para confirmar inválido",422);
+ const headers={Authorization:"Bearer "+token,"Content-Type":"application/json",
+   ...(storeId?{"X-PF-Store-Id":storeId}:{})};
+ let response;
+ try{
+   response=await fetchImpl(API+"/orders/"+orderId+"/confirm",{
+     method:"POST",headers,signal:AbortSignal.timeout(15000),
+   });
+ }catch{fail("Confirmación Printful incierta: comprobar pedido, nunca repetir sin conciliación.",503);}
+ if(response.status===401||response.status===403)fail("Printful no permite confirmar pedidos con este token.",403);
+ if(!response.ok)fail("Printful no confirmó producción; conciliar antes de repetir.",response.status>=500?503:422);
+ let result;
+ try{result=(await response.json())?.result;}catch{fail("Respuesta de confirmación Printful incompleta; conciliar.",503);}
+ if(String(result?.id)!==orderId)fail("Printful no devolvió el ID esperado al confirmar; conciliar.",503);
+ return {id:orderId,status:id(result.status||"unknown"),externalId:id(result.external_id)};
+}

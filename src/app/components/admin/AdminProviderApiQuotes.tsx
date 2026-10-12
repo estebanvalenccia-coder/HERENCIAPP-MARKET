@@ -4,6 +4,7 @@ import { backendApi } from "../../lib/backendStorage";
 
 type PrintfulQuote = Awaited<ReturnType<typeof backendApi.quotePrintfulShipping>>;
 type PrintfulStatus = Awaited<ReturnType<typeof backendApi.getPrintfulShippingStatus>>;
+type PrintfulAutomationStatus = Awaited<ReturnType<typeof backendApi.getPrintfulAutomationStatus>>;
 
 const money = (amount: number) =>
   new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(amount);
@@ -15,6 +16,7 @@ const money = (amount: number) =>
  */
 export function AdminProviderApiQuotes() {
   const [status, setStatus] = useState<PrintfulStatus | null>(null);
+  const [automationStatus,setAutomationStatus]=useState<PrintfulAutomationStatus|null>(null);
   const [statusError, setStatusError] = useState("");
   const [variantId, setVariantId] = useState("");
   const [destination, setDestination] = useState("ES");
@@ -81,6 +83,7 @@ export function AdminProviderApiQuotes() {
 
   useEffect(() => {
     let active = true;
+    backendApi.getPrintfulAutomationStatus().then(result => {if(active)setAutomationStatus(result);}).catch(()=>{});
     backendApi.getPrintfulShippingStatus().then(result => {
       if (active) setStatus(result);
     }).catch((reason: any) => {
@@ -132,7 +135,12 @@ export function AdminProviderApiQuotes() {
       <p className="mt-1 text-xs text-muted-foreground">
         Variables del backend: <code>PRINTFUL_API_TOKEN</code> y, para tokens de cuenta,
         <code className="ml-1">PRINTFUL_STORE_ID</code>. No escribas credenciales aquí.
-        La conexión no activa pedidos automáticos.
+        La conexión no activa por sí misma cargos automáticos.
+      </p>
+      <p className="mt-2 text-xs font-semibold" role="status">{automationStatus?.autoConfirmationEnabled
+        ? `Fabricación automática limitada: máximo ${automationStatus.limits.maxOrderCostEur} € por pedido y ${automationStatus.limits.maxDailySpendEur} € por día; margen mínimo ${automationStatus.limits.minMarginPct}%.`
+        : "Borradores automáticos después del pago. Producción y cargos automáticos todavía desactivados hasta fijar presupuestos y margen en Railway."}
+        {automationStatus?.trackingPollEnabled?" Seguimiento automático activado.":""}
       </p>
     </div>
 
@@ -165,7 +173,7 @@ export function AdminProviderApiQuotes() {
 
     <section className="mt-4 rounded-xl border border-border p-4" aria-label="Pedidos de Printful">
       <h3 className="font-bold">Pedidos Printful · preparación y seguimiento</h3>
-      <p className="mt-1 text-xs text-muted-foreground">Al confirmar una compra de productos exclusivamente Printful, Herencia intenta crear automáticamente un pedido real en estado borrador. No se confirma la producción ni se cobra a Herencia hasta verificar el coste y autorizarlo.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Al confirmar un pago Stripe de un pedido exclusivamente Printful, Herencia prepara un borrador. La producción se confirma solo si los límites automáticos están activados y se verifica el margen y el coste real.</p>
       <label className="mt-3 block text-xs font-bold">ID completo del pedido Herencia
         <input className="mt-1 w-full rounded-lg border bg-background p-2" value={printfulOrderId} onChange={event=>setPrintfulOrderId(event.target.value.trim())} placeholder="Referencia del pedido Herencia"/>
       </label>

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate} from "./printfulOrderFulfillment.js";
+import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate} from "./printfulOrderFulfillment.js";
 const product={id:"p1",name:"Camisa jungle",metadata:{provider:"printful"},
  variants:[{name:"Negro / M",printfulSyncVariantId:"123456",printfulCatalogVariantId:"2020",printfulAvailability:"active",sku:"NJ-M"}]};
 const order={id:"dddddddd-0000-4000-8000-000000000001",status:"paid",items:[{id:"p1",selectedVariant:"Negro / M",quantity:1,printfulSyncVariantId:"123456"}],
@@ -63,4 +63,19 @@ test("Printful estimates reject missing money, currency and temporary API failur
  await assert.rejects(estimatePrintfulOrder(preparePrintfulDraft(order,[product]),{
    env:{PRINTFUL_API_TOKEN:"secret"},fetchImpl:async()=>({ok:false,status:403})
  }),/token/);
+});
+
+test("live confirmation is a dedicated guarded action with exact provider identity",async()=>{
+ let calls=0;
+ const result=await confirmPrintfulDraft("987",{env:{PRINTFUL_API_TOKEN:"secret",PRINTFUL_STORE_ID:"52"},fetchImpl:async(url,options)=>{
+   calls++;
+   assert.equal(url,"https://api.printful.com/orders/987/confirm");
+   assert.equal(options.method,"POST");
+   assert.equal(options.headers["X-PF-Store-Id"],"52");
+   return {ok:true,status:200,json:async()=>({result:{id:987,status:"pending",external_id:"HERENCIA-"+order.id}})};
+ }});
+ assert.equal(calls,1);
+ assert.equal(result.status,"pending");
+ await assert.rejects(confirmPrintfulDraft("@HERENCIA-evil",{env:{PRINTFUL_API_TOKEN:"secret"}}),/inválido/);
+ await assert.rejects(confirmPrintfulDraft("987",{env:{PRINTFUL_API_TOKEN:"secret"},fetchImpl:async()=>{throw Error("timeout")}}),/incierta/);
 });
