@@ -74,7 +74,24 @@ export function supplierConnectorReadiness(supplier = {}, env = process.env, cre
   };
   if (type === "manual") return { type, state: "manual", automaticOrders: false, reason: "Tramitación manual." };
   if (type === "csv") return { type, state: "file_exchange", automaticOrders: false, reason: "Importación/exportación por archivos; sin sincronización automática." };
-  if (type === "api") return { type, state: "adapter_required", automaticOrders: false, reason: "Necesita implementar el adaptador autorizado específico de ese proveedor." };
+  if (type === "api") {
+    // Banggood uses its own dropship credentials, not the Affiliate API.
+    // Merely saving credentials cannot certify API access or authorize buying.
+    const host = String(supplier?.sourceHost || "").trim().toLowerCase().replace(/^www\\./, "");
+    if (host === "banggood.com" || host.endsWith(".banggood.com")) {
+      const credentialsPresent = Boolean(String(env.BANGGOOD_APP_ID || "").trim()) &&
+        Boolean(String(env.BANGGOOD_APP_SECRET || "").trim());
+      return {
+        type,
+        state: credentialsPresent ? "credentials_present_unverified" : "not_configured",
+        automaticOrders: false,
+        reason: credentialsPresent ?
+          "Claves Banggood detectadas solo en Railway; falta verificar permisos de Dropship, catálogo, variantes y envío. Compras automáticas deshabilitadas." :
+          "Solicita acceso a Banggood Open Platform y configura BANGGOOD_APP_ID y BANGGOOD_APP_SECRET en el backend Railway. Compras automáticas deshabilitadas.",
+      };
+    }
+    return { type, state: "adapter_required", automaticOrders: false, reason: "Necesita implementar el adaptador autorizado específico de ese proveedor." };
+  }
   const connector = resolveSupplierWebhookConnector(supplier, env);
   if (!connector.configured) return { type, state: "not_configured", automaticOrders: false, reason: connector.reason };
   const verified = connector.legacy || (
