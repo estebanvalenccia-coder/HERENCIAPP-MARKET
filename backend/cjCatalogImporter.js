@@ -1,6 +1,7 @@
 // CJdropshipping read-only catalog adapter. Never creates or pays orders.
 import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
 import { splitSupplierOptions } from "./productVariantOptions.js";
+import { inspectCjFactorySupply } from "./cjFactorySupply.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
@@ -415,4 +416,23 @@ export async function queryCjVariantStock({vid, origin = "CN"} = {}) {
     headers:{"CJ-Access-Token":accessToken},
   });
   return interpretCjVariantStock(data,safeVid,origin);
+}
+
+/**
+ * CJ factory fulfillment availability, separate from on-hand CJ inventory.
+ * Uses the official product/stock/getInventoryByPid response where EACH
+ * variant has its own factoryInventory and verifiedWarehouse marker.
+ * An unverified factory count is shown for diagnostics, not for payment.
+ */
+export async function queryCjFactorySupply({pid,vid,origin="CN"}={}) {
+  const safePid=String(pid||"").trim(),safeVid=String(vid||"").trim();
+  if(!isCjProductId(safePid) || !/^[a-z0-9-]{8,100}$/i.test(safeVid)) {
+    const error=new Error("Producto/variante CJ inválidos para consultar abastecimiento");
+    error.statusCode=422;throw error;
+  }
+  const accessToken=await token();
+  const data=await cjFetch("/product/stock/getInventoryByPid?pid="+encodeURIComponent(safePid),{
+    headers:{"CJ-Access-Token":accessToken},
+  });
+  return {...inspectCjFactorySupply(data,safeVid,origin),pid:safePid};
 }
