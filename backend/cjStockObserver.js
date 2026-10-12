@@ -43,12 +43,14 @@ export function cjObservedTargets(products) {
 export function readCjObservation(raw,{productId,vid,nowMs=Date.now(),maxAgeMs=CJ_STOCK_FRESH_MS}={}) {
   let item=null; try {item=typeof raw==="string"?JSON.parse(raw):raw;} catch {}
   const ageMs=nowMs-Date.parse(item?.checkedAt||"");
+  const origin=String(item?.origin||"").trim().toUpperCase();
+  const validOrigin=origin==="CN" || (item?.mode==="warehouse" && /^[A-Z]{2}$/.test(origin));
   const verified=Boolean(item?.verified===true && item?.source==="cj_api" &&
-    item?.origin==="CN" && item?.vid===String(vid) && item?.productId===String(productId) &&
+    validOrigin && item?.vid===String(vid) && item?.productId===String(productId) &&
     Number.isSafeInteger(item?.quantity) && item.quantity>=0);
   const fresh=verified && Number.isFinite(ageMs) && ageMs>=0 && ageMs<=maxAgeMs;
   return {
-    provider:"cj", origin:"CN", vid:String(vid||""),
+    provider:"cj", origin:verified?origin:"CN", mode:"warehouse", vid:String(vid||""),
     checkedAt:verified?item.checkedAt:null,
     verified, fresh, available:fresh && item.quantity>0,
     quantity:fresh?item.quantity:null, notReserved:true,
@@ -56,7 +58,7 @@ export function readCjObservation(raw,{productId,vid,nowMs=Date.now(),maxAgeMs=C
   };
 }
 export function createCjStockObserver({
-  listProducts, read, upsert, mutate, queryStock, querySupply=null, now=()=>Date.now(),
+  listProducts, read, upsert, mutate, queryStock, queryWarehouses=null, querySupply=null, now=()=>Date.now(),
   maxPerSweep=4, logger=console,
 }={}) {
   if (![listProducts,read,upsert,mutate,queryStock].every(fn=>typeof fn==="function"))
@@ -84,7 +86,7 @@ export function createCjStockObserver({
       if (!targets.length) return {status:"no_candidates",inspected:0};
       const previous=Number(await read(CURSOR_KEY));
       const start=Number.isSafeInteger(previous)&&previous>=0?previous%targets.length:0;
-      let inspected=0, verified=0, factoryVerified=0, limited=false, unavailable=0, invalid=0, outOfStock=0;
+      let inspected=0, verified=0, altVerified=0, factoryVerified=0, limited=false, unavailable=0, invalid=0, outOfStock=0;
       for(let offset=0; offset<Math.min(batchSize,targets.length);offset++){
         const item=targets[(start+offset)%targets.length];
         try {
@@ -107,6 +109,33 @@ export function createCjStockObserver({
                 stock?.vid!==item.vid?"VID_MISMATCH":
                 stock?.origin!=="CN"?"WAREHOUSE_MISMATCH":"INVALID_STOCK_RESPONSE",
             });
+          }
+          // Inventory from a verified alternative CJ warehouse (e.g. DE)
+          // enables true dropshipping without any merchant-held stock.
+          // Saved only as an expiring observation. Checkout re-verifies origin.
+          if(!(stock?.verified===true && stock?.available===true) &&
+             typeof queryWarehouses==="function"){
+            const report=await queryWarehouses({vid:item.vid});
+            const candidates=report?.vid===item.vid && Array.isArray(report.warehouses)
+              ? report.warehouses.filter(row=>row.verified===true &&
+                row.available===true && Number.isSafeInteger(row.quantity) &&
+                row.quantity>0 && row.countryCode!=="CN" &&
+                /^[A-Z]{2}$/.test(String(row.countryCode||"")))
+              : [];
+            const preferred=["DE","ES","FR","PL","IT","NL","BE","PT","CZ","AT"];
+            candidates.sort((a,b)=>{
+              const ai=preferred.indexOf(a.countryCode),bi=preferred.indexOf(b.countryCode);
+              return (ai<0?99:ai)-(bi<0?99:bi) || b.quantity-a.quantity;
+            });
+            if(candidates.length){
+              const source=candidates[0];
+              await upsert(cjObservationKey(item.productId,item.vid),JSON.stringify({
+                productId:item.productId,vid:item.vid,origin:source.countryCode,
+                mode:"warehouse",quantity:source.quantity,verified:true,source:"cj_api",
+                checkedAt:new Date(now()).toISOString(),
+              }));
+              altVerified++;
+            }
           }
           // Supplier-managed factory units are distinct from warehouse units.
           // Observe them automatically when CJ has no ready physical inventory.
@@ -140,7 +169,7 @@ export function createCjStockObserver({
       }
       // Resume from the first uninspected candidate, including after quota stop.
       await upsert(CURSOR_KEY,String((start+inspected)%targets.length));
-      return {status:limited?"rate_limited":"complete",inspected,verified,factoryVerified,unavailable,invalid,outOfStock,rateLimited:limited,totalTargets:targets.length};
+      return {status:limited?"rate_limited":"complete",inspected,verified,altVerified,factoryVerified,unavailable,invalid,outOfStock,rateLimited:limited,totalTargets:targets.length};
     }finally{
       if(claimed){
         try{await mutate(LEASE_KEY,raw=>{
