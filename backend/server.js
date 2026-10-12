@@ -35,7 +35,8 @@ import {
   validateManualCjCreate, validateManualCjPayment, validateCjLiveSupplyEvidence, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
-import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder } from "./printfulOrderFulfillment.js";
+import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft } from "./printfulOrderFulfillment.js";
+import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
   normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
@@ -1342,6 +1343,13 @@ app.post(
         // A missing product, address or provider permission creates an admin incident instead.
         try {
           await syncPrintfulDraftForOrder(String(inventoryOrder.id));
+          // Independently capped live production confirmation. Disabled unless
+          // explicit Railway EUR ceilings and safe estimated margin are present.
+          const confirmation=await maybeAutoConfirmPrintfulOrder(String(inventoryOrder.id));
+          if(confirmation?.skipped&&confirmation.reason!=="automatic_supplier_payments_disabled"&&
+             confirmation.reason!=="supplier_draft_required"){
+            console.info("[printful.auto-confirm] blocked",confirmation.reason);
+          }
         } catch (printfulError) {
           console.warn("[printful] draft requires attention",String(printfulError?.message||"").slice(0,180));
           await addAutomationNotification({
@@ -6241,6 +6249,131 @@ async function syncPrintfulDraftForOrder(orderId){
     throw error;
   }
 }
+/**
+ * Printful live automation is inert unless there is an explicit, bounded
+ * backend-only payment mandate. Zero/unknown prices never authorize production.
+ * All state transitions are persisted before making a provider charge.
+ */
+async function maybeAutoConfirmPrintfulOrder(orderId) {
+  const policy=printfulLivePolicy();
+  if(!policy.enabled)return {skipped:true,reason:policy.reason};
+  if(!hasNeon())return {skipped:true,reason:"database_required"};
+  const order=await getOrderPrimary(orderId);
+  if(!order)return {skipped:true,reason:"order_not_found"};
+  const draft=JSON.parse((await readNeonStorageValue("printfulOrderDraft:v1:"+orderId))||"{}");
+  if(!["created","reconciled"].includes(draft.status))
+    return {skipped:true,reason:"supplier_draft_required"};
+  const confirmKey="printfulOrderConfirm:v1:"+orderId;
+  const confirmation=JSON.parse((await readNeonStorageValue(confirmKey))||"{}");
+  if(confirmation.status)return {skipped:true,reason:"already_claimed_or_requires_reconciliation",status:confirmation.status};
+  const products=await loadAuthoritativeProducts({includeArchived:true});
+  const payload=preparePrintfulDraft(order,products);
+  const estimate=await estimatePrintfulOrder(payload);
+  const decision=assessPrintfulAutoConfirm({order,estimate,policy});
+  if(!decision.allowed)return {skipped:true,reason:decision.reason};
+  const provider=await lookupPrintfulOrder(orderId);
+  if(!provider||provider.externalId!=="HERENCIA-"+orderId||provider.id!==String(draft.externalOrderId))
+    return {skipped:true,reason:"exact_supplier_order_identity_not_verified"};
+  if(provider.status!=="draft")
+    return {skipped:true,reason:"supplier_order_not_draft",providerStatus:provider.status};
+  let reserved=false;
+  let budgetBlocked=false;
+  const budgetKey=printfulDailyBudgetKey();
+  await mutateNeonStorageValue(budgetKey,raw=>{
+    let budget={spentOrReservedEur:0,orders:{}};
+    try{const parsed=JSON.parse(raw||"{}");if(parsed&&typeof parsed==="object")budget={...budget,...parsed};}catch{}
+    if(!budget.orders||typeof budget.orders!=="object")budget.orders={};
+    const spent=Number(budget.spentOrReservedEur);
+    if(!Number.isFinite(spent)||spent<0){budgetBlocked=true;return JSON.stringify(budget);}
+    if(Object.hasOwn(budget.orders,orderId)){budgetBlocked=true;return JSON.stringify(budget);}
+    if(Math.round((spent+decision.costEur)*100)>Math.round(policy.maxDailySpendEur*100)){
+      budgetBlocked=true;return JSON.stringify(budget);
+    }
+    budget.orders[orderId]={costEur:decision.costEur,status:"reserved",at:new Date().toISOString()};
+    budget.spentOrReservedEur=Math.round((spent+decision.costEur)*100)/100;
+    reserved=true;
+    return JSON.stringify(budget);
+  });
+  if(!reserved)return {skipped:true,reason:budgetBlocked?"daily_budget_or_duplicate":"budget_unavailable"};
+  let claimed=false;
+  await mutateNeonStorageValue(confirmKey,raw=>{
+    let old={};try{old=JSON.parse(raw||"{}");}catch{}
+    if(old.status)return raw;
+    claimed=true;
+    return JSON.stringify({status:"confirming",orderId,externalOrderId:provider.id,
+      costEur:decision.costEur,createdAt:new Date().toISOString()});
+  });
+  if(!claimed)return {skipped:true,reason:"confirmation_already_claimed"};
+  try{
+    const confirmed=await confirmPrintfulDraft(provider.id);
+    if(confirmed.externalId!=="HERENCIA-"+orderId)
+      throw Object.assign(new Error("Confirmación Printful sin referencia externa exacta"),{statusCode:503});
+    const saved={status:"confirmed",orderId,externalOrderId:provider.id,
+      providerStatus:confirmed.status,costEur:decision.costEur,updatedAt:new Date().toISOString()};
+    await upsertNeonStorageValue(confirmKey,JSON.stringify(saved));
+    return saved;
+  }catch(error){
+    // A POST may have charged Printful despite a timeout. Never retry automatically.
+    await upsertNeonStorageValue(confirmKey,JSON.stringify({status:"confirmation_unknown",
+      orderId,externalOrderId:provider.id,updatedAt:new Date().toISOString()})).catch(()=>{});
+    await addAutomationNotification({type:"printful_payment_attention",
+      title:"Conciliar confirmación Printful",
+      message:"Pedido "+orderId+": confirmar en Printful antes de cualquier nuevo cargo.",
+      entityType:"order",entityId:orderId,dedupeKey:"printful-confirm:"+orderId}).catch(()=>{});
+    return {skipped:true,reason:"confirmation_unknown_requires_manual_reconciliation"};
+  }
+}
+
+/** Read-only shipment polling; one provider at a time, no customer data sent. */
+async function sweepPrintfulTracking() {
+  if(!hasNeon()||!String(process.env.PRINTFUL_API_TOKEN||"").trim())return {checked:0};
+  const rows=await listNeonStorageByPrefix("printfulOrderDraft:v1:");
+  const candidates=rows.map(row=>{
+    let data={};try{data=JSON.parse(row.value||"{}");}catch{}
+    return data;
+  }).filter(data=>["created","reconciled"].includes(data.status)&&
+      /^[a-z0-9-]{8,100}$/i.test(String(data.orderId||"")))
+    .sort((a,b)=>Date.parse(a.lastCheckedAt||0)-Date.parse(b.lastCheckedAt||0))
+    .slice(0,3);
+  let checked=0;
+  for(const draft of candidates){
+    const orderId=String(draft.orderId);
+    try{
+      const provider=await lookupPrintfulOrder(orderId);
+      if(!provider||provider.externalId!=="HERENCIA-"+orderId||
+         String(provider.id)!==String(draft.externalOrderId))continue;
+      const tracking=normalizePrintfulTracking(provider);
+      const now=new Date().toISOString();
+      await upsertNeonStorageValue("printfulOrderDraft:v1:"+orderId,
+        JSON.stringify({...draft,printfulStatus:tracking.providerStatus,
+          shipments:tracking.shipments,lastCheckedAt:now,updatedAt:now}));
+      const order=await getOrderPrimary(orderId);
+      if(order && tracking.hasTracking &&
+         ["paid","confirmed","preparing","processing","ready","shipped"].includes(String(order.status))){
+        const previous=order.metadata?.printfulTracking;
+        if(JSON.stringify(previous?.shipments||[])!==JSON.stringify(tracking.shipments)||
+           previous?.providerStatus!==tracking.providerStatus){
+          await patchOrderPrimary(orderId,{
+            metadata:{...(order.metadata||{}),printfulTracking:{...tracking,lastCheckedAt:now}},
+            ...(order.status==="shipped"?{}:{status:"shipped"}),
+          });
+        }
+      }
+      checked++;
+    }catch(error){
+      console.warn("[printful.tracking] requires attention",String(error?.statusCode||"CHECK_FAILED"));
+    }
+  }
+  return {checked};
+}
+app.get("/api/admin/suppliers/printful/automation-status",requireAdmin,(_req,res)=>{
+  const policy=printfulLivePolicy();
+  return res.json({ok:true,autoConfirmationEnabled:policy.enabled,
+    configured:policy.configured,reason:policy.reason,limits:{
+      maxOrderCostEur:policy.maxOrderCostEur,maxDailySpendEur:policy.maxDailySpendEur,
+      minMarginPct:policy.minMarginPct},trackingPollEnabled:process.env.PRINTFUL_TRACKING_ENABLED!=="false"});
+});
+
 app.post("/api/admin/suppliers/printful/estimate",requireAdmin,async(req,res)=>{
   if(!requirePrimaryDatabase(res))return;
   try{
@@ -11514,6 +11647,11 @@ app.listen(port, () => {
       if(result.processed)console.info("[cj.autopilot.live]",result.status,"processed=1");
     }catch(error){
       console.warn("[cj.autopilot.live] requires attention",String(error?.code||"FAILED").slice(0,50));
+    }
+    // Read-only Printful shipment status, no Printful balance is charged.
+    if(process.env.PRINTFUL_TRACKING_ENABLED!=="false"){
+      try{await sweepPrintfulTracking();}
+      catch(error){console.warn("[printful.tracking] polling failed",String(error?.statusCode||"CHECK_FAILED"));}
     }
     // Safe by default: this polls at most 3 already ordered CJ shipments per
     // 15 min and never purchases or spends supplier balance. Can opt out.
