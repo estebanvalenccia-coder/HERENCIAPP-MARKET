@@ -55,3 +55,22 @@ test("admin-only audit route never creates orders or saves public stock and pric
  assert.match(code,/upsertNeonStorageValue\(cjObservationKey\(productId,vid\)/);
  assert.doesNotMatch(code,/createOrderV2|cjPayOrder|saveNeonCommerceProduct|paymentIntents/);
 });
+
+test("supplier warehouse diagnostic reasons remain fail-closed and actionable",()=>{
+ const cases=[
+   ["WAREHOUSE_NOT_REPORTED","no informó el almacén"],
+   ["WAREHOUSE_INVENTORY_UNVERIFIED","inventario físico verificable"],
+   ["INVALID_STOCK_RESPONSE","respuesta de inventario inválida"],
+ ];
+ for(const [reason,expected] of cases){
+   const report=assessCjCatalogReadiness({product,metadata,variant,stock:{verified:false,reason},fx});
+   assert.equal(report.stock.verified,false);
+   assert.equal(report.stock.available,false);
+   assert.equal(report.stock.quantity,null);
+   assert.equal(report.stock.reason,reason);
+   assert.ok(report.issues.some(issue=>issue.includes(expected)));
+   assert.equal(report.checkoutEnabled,false);
+   assert.equal(report.automaticOrdersEnabled,false);
+ }
+ assert.equal(assessCjCatalogReadiness({product,metadata,variant,stock,fx}).stock.reason,null);
+});
