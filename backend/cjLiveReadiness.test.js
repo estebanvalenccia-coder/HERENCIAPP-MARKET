@@ -22,3 +22,21 @@ test("activation status explains real supplier, budget, supervised test and env 
  assert.match(admin,/data\.activationBlockers\.map/);
  assert.match(admin,/Ningún cambio de proveedor/);
 });
+
+
+test("CJ control center has a direct access from the visible orders area in guided view",()=>{
+ const panel=readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx",import.meta.url),"utf8");
+ const start=panel.indexOf('<h2 className="text-xl font-bold">Pedidos CJ: comprobar cuenta real</h2>');
+ const end=panel.indexOf('<section id="supplier-orders"',start);
+ assert.ok(start>=0 && end>start);
+ const section=panel.slice(start,end);
+ assert.match(section,/Centro de control CJ/);
+ assert.match(section,/openWorkspaceSection\("supplier-cj-automation"\)/);
+ // The target is deliberately inside the advanced view. Wait for React to
+ // mount it before scrolling; setTimeout(0) could scroll to a missing node.
+ assert.match(panel,/pendingWorkspaceTarget/);
+ assert.match(panel,/useEffect\(\(\)=>\{/);
+ assert.match(panel,/element\.scrollIntoView/);
+ assert.doesNotMatch(panel,/window\.setTimeout\(\(\)=>document\.getElementById\(id\)/);
+ assert.match(panel,/<AdminCjAutomationStatus\/>/);
+});
