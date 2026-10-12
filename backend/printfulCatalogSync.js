@@ -110,5 +110,5 @@ export async function listPrintfulSyncProducts(options={}){
 export async function getPrintfulSyncProduct(syncId,options={}){
  if(!/^[0-9]{1,20}$/.test(id(syncId)))fail("Selecciona un identificador de producto sincronizado Printful.");
  const payload=await printfulGet("/store/products/"+id(syncId),options);
- return normalizePrintfulSyncProduct(payload,{storeId:options.storeId||options.env?.PRINTFUL_STORE_ID??process.env.PRINTFUL_STORE_ID,existingVariants:options.existingVariants});
+ return normalizePrintfulSyncProduct(payload,{storeId:options.storeId || options.env?.PRINTFUL_STORE_ID || process.env.PRINTFUL_STORE_ID,existingVariants:options.existingVariants});
 }
