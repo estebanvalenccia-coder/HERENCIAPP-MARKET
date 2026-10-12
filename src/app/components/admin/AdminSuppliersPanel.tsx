@@ -2267,7 +2267,6 @@ function ImportedProductRow({
       const variant = selection.variant;
       setSupplierVariantId(String(variant.vid));
       setSupplierSku(String(variant.sku || ""));
-      setQuoteOrigin("CN");
       setQuoteDestination("ES");
       setQuoteMode("city");
       const readiness = await backendApi.checkCjVariantReadiness(String(product.id), String(variant.vid));
@@ -2281,35 +2280,50 @@ function ImportedProductRow({
       let quotedZip = "";
       let quoteWarning = "";
       const tried: string[] = [];
-      for (const postal of cjSpanishFreightPreviewSamples("ES")) {
-        tried.push(postal);
-        const next = await backendApi.quoteCjProductFreight(String(product.id), String(variant.vid), postal, "ES", "CN");
-        if (next?.fallbackWarning) quoteWarning = next.fallbackWarning;
-        if (next?.methods?.length) {
-          quoted = next;
-          quotedZip = postal;
-          break;
+      const verifiedWarehouses=(readiness.warehouses || []).filter(w=>
+        w.verified===true && w.available===true && Number.isSafeInteger(w.quantity) &&
+        w.quantity>0);
+      const origins=[
+        ...(readiness.stock?.available || readiness.supply?.available ? ["CN"] : []),
+        ...verifiedWarehouses.map(w=>w.countryCode).filter(code=>
+          code!=="CN" && /^[A-Z]{2}$/.test(code)).sort((a,b)=>
+            (a==="DE"?-1:b==="DE"?1:a.localeCompare(b))),
+      ].filter((value,index,list)=>list.indexOf(value)===index).slice(0,3);
+      const selectedOrigin=origins[0]||"CN";
+      for (const origin of origins) {
+        for (const postal of cjSpanishFreightPreviewSamples("ES")) {
+          tried.push(origin+":"+postal);
+          try {
+            const next=await backendApi.quoteCjProductFreight(String(product.id),
+              String(variant.vid),postal,"ES",origin);
+            if(next?.fallbackWarning)quoteWarning=next.fallbackWarning;
+            if(next?.methods?.length){quoted=next;quotedZip=postal;break;}
+          } catch(_error) {
+            // Continue with other authenticated warehouse alternatives.
+          }
         }
+        if(quoted)break;
       }
-      setQuoteZip(quotedZip || tried[tried.length - 1] || "");
+      setQuoteOrigin(quoted?.origin||selectedOrigin);
+      setQuoteZip(quotedZip||"");
       setQuoteCity(quotedZip === "08001" ? "Barcelona" : quotedZip === "28001" ? "Madrid" : "");
       setFreightQuote(quoted);
       const preferred = recommendCjPreviewMethod(quoted?.methods);
       if (preferred) setSelectedFreightName(String(preferred.name));
       const issues: string[] = [];
-      if ((!readiness.stock?.verified || !readiness.stock?.available) && !readiness.supply?.available)
+      if (!readiness.stock?.available && !readiness.supply?.available && !verifiedWarehouses.length)
         issues.push(readiness.supply?.reason==="FACTORY_NOT_VERIFIED"
           ? "CJ informa unidades de fábrica, pero todavía no ha verificado su disponibilidad"
-          : "CJ no ha confirmado abastecimiento desde almacén ni fábrica para el VID exacto");
+          : "CJ no ha confirmado abastecimiento desde ningún almacén ni fábrica para el VID exacto");
       if (!quoted?.methods?.length)
-        issues.push("sin tarifas CJ para los CP de referencia " + tried.join(" y ") + (quoteWarning ? ". " + quoteWarning : ""));
+        issues.push("sin tarifas CJ desde los almacenes verificados hacia España (" + tried.join(", ") + ")" + (quoteWarning ? ". " + quoteWarning : ""));
       else if (!preferred)
         issues.push("ninguna tarifa ofrece un coste completo y un margen mínimo verificado");
       if (readiness.supplierBaseEur == null)
         issues.push("coste en EUR sin tipo de cambio verificado");
       setAutoValidationMessage(issues.length
         ? "Validación automática: NO APTO para venta automática. Pendiente: " + issues.join("; ") + "."
-        : "Consultas CJ completadas con stock y estimación de transporte. Falta validar datos legales, dirección real del cliente y guardar manualmente la variante; esta prueba NO activa pagos.");
+        : "CJ confirmó existencias y un envío estimado desde " + (quoted?.origin||selectedOrigin) + ". Falta validar datos legales, dirección real del cliente y margen real; esta prueba NO activa pagos.");
     } catch (error: any) {
       setAutoValidationMessage("CJ no pudo completar la validación: " + String(error?.message || "consulta no disponible") + ". No se habilitan compras.");
     } finally {
