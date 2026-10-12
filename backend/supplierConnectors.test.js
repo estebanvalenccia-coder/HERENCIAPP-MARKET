@@ -58,7 +58,21 @@ test("manual CSV and unknown external API never become connected by naming a pro
   assert.equal(supplierConnectorReadiness({ integrationType: "cj" }, env, crypto.createHash).automaticOrders, false);
 });
 
-test("new webhook requires successful non-order verification against exact env config", () => {
+test("Banggood onboarding never permits orders on credentials alone", () => {
+  const supplier = { name:"Banggood", sourceHost:"www.banggood.com", integrationType:"api", fulfillmentMode:"autopilot" };
+  const missing = supplierConnectorReadiness(supplier, {}, crypto.createHash);
+  assert.equal(missing.state, "not_configured");
+  assert.equal(missing.automaticOrders, false);
+  const partial = supplierConnectorReadiness(supplier, { BANGGOOD_APP_ID: "test-app" }, crypto.createHash);
+  assert.equal(partial.state, "not_configured");
+  const present = supplierConnectorReadiness(supplier, { BANGGOOD_APP_ID: "test-app", BANGGOOD_APP_SECRET: "test-secret" }, crypto.createHash);
+  assert.equal(present.state, "credentials_present_unverified");
+  assert.equal(present.automaticOrders, false);
+  assert.match(present.reason, /Compras automáticas deshabilitadas/);
+  assert.equal(supplierConnectorReadiness({integrationType:"api",sourceHost:"eprolo.com"}, {}, crypto.createHash).state,"adapter_required");
+});
+
+test("new webhook requires successful non-order verification against exact env config", () {
   const supplier = { integrationType: "webhook", connectorKey: "VIVERO_NORTE" };
   assert.equal(supplierConnectorReadiness(supplier, env, crypto.createHash).state, "test_required");
   const connector = resolveSupplierWebhookConnector(supplier, env);
