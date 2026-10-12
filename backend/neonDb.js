@@ -1079,7 +1079,7 @@ export async function bindVerifiedCjDraftVariant(picked={}) {
      !Number.isFinite(picked.supplierPriceUsd) || picked.supplierPriceUsd<=0)
     return false;
   const result=await neonPool.query(
-    \`UPDATE commerce_products SET
+    `UPDATE commerce_products SET
        metadata = (metadata - 'cjAutoLinkRequest') ||
          jsonb_build_object(
            'supplierVariantId',$2::text,'cjVid',$2::text,
@@ -1099,7 +1099,7 @@ export async function bindVerifiedCjDraftVariant(picked={}) {
        AND COALESCE(metadata->>'supplierVariantId','')=''
        AND COALESCE(metadata->>'supplierSku','')=''
        AND metadata->'cjAutoLinkRequest' = $6::jsonb
-     RETURNING id\`,
+     RETURNING id`,
     [picked.productId,picked.vid,picked.sku,picked.supplierPriceUsd,
      picked.pid,JSON.stringify({pid:picked.pid,quantity:picked.quantity,color:picked.color})]
   );
