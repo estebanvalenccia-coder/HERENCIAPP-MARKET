@@ -23,7 +23,7 @@ export function assessCjCatalogReadiness({ product = {}, metadata = {}, variant 
     problems.push("La variante de CJ no coincide con las variantes configuradas en la ficha pública.");
   if (supplierPriceUsd === null) problems.push("CJ no devolvió un precio de proveedor verificable.");
   if (!Number.isFinite(salePriceEur) || salePriceEur <= 0) problems.push("El precio de venta al público no es válido.");
-  const stockReason = verifiedStock ? null :
+  const stockReason = verifiedStock && quantity !== null ? null :
     ["WAREHOUSE_NOT_REPORTED","WAREHOUSE_INVENTORY_UNVERIFIED","INVALID_STOCK_RESPONSE"]
       .includes(String(stock?.reason || "")) ? stock.reason : "UNVERIFIED_STOCK";
   const stockExplanations = {
