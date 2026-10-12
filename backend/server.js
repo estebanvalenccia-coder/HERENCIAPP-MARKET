@@ -5635,6 +5635,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
   for (const group of groups.values()) {
     const dedupeKey = String(order.id) + "::" + (group.supplierId || group.sourceHost || "unassigned");
     const found = existing.find((entry) => String(entry?.dedupeKey || "") === dedupeKey);
+    if ((operations.supplierFulfillmentDeletedKeys || []).includes(dedupeKey)) continue;
     // Unsent rows with missing CJ costs can self-heal when the catalog has
     // since saved a verified EUR quote, even if a cached UI sends force=false.
     // Do not overwrite externally submitted or already approved purchases.
@@ -5711,6 +5712,7 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     const record = {
       id: found?.id || crypto.randomUUID(),
       dedupeKey,
+      queueRemoved: found?.queueRemoved === true,
       orderId: String(order.id),
       supplierId: group.supplierId,
       supplierName: group.supplierName,
@@ -6185,6 +6187,48 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "No se pudo cargar la cola de proveedores" });
+  }
+});
+
+// Admin-only queue management. Customer orders, payments and provider orders remain untouched.
+app.post("/api/admin/supplier-fulfillments/manage", requireAdmin, async (req, res) => {
+  if (!requirePrimaryDatabase(res)) return;
+  const action = String(req.body?.action || "");
+  const ids = req.body?.ids;
+  if (!["remove", "delete"].includes(action) || !Array.isArray(ids) ||
+      !ids.length || ids.length > 200 || ids.some(id => typeof id !== "string" || !id.trim()))
+    return res.status(400).json({ error: "Acción o selección no válida (máximo 200)." });
+  const requested = [...new Set(ids)];
+  try {
+    const operations = await readSupplierOperations();
+    const queue = Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [];
+    const selected = requested.map(id => queue.find(entry => String(entry.id) === id));
+    if (selected.some(item => !item)) return res.status(404).json({ error: "Algún pedido ya no existe. Actualiza la cola." });
+    // Never detach a record with possible external side effects.
+    const protectedStatuses = new Set(["ordered", "shipped", "delivered", "payment_required",
+      "cj_creating", "cj_creation_unknown", "cj_paying", "cj_payment_unknown"]);
+    if (selected.some(item => item.externalOrderId || item.trackingNumber ||
+        protectedStatuses.has(String(item.status || "")) ||
+        item.cjPaidAt || item.cjCreatedAt || item.orderedAt || item.paidAt))
+      return res.status(409).json({ error: "Hay pedidos ya enviados o con estado incierto en CJ/proveedor. No se pueden retirar ni borrar." });
+    if (action === "remove") {
+      const chosen = new Set(requested);
+      operations.supplierFulfillments = queue.map(item => chosen.has(String(item.id))
+        ? { ...item, queueRemoved: true, updatedAt: new Date().toISOString() } : item);
+    } else {
+      const chosen = new Set(requested);
+      const keys = selected.map(item => String(item.dedupeKey || "")).filter(Boolean);
+      if (keys.length !== selected.length)
+        return res.status(409).json({ error: "Pedido sin clave de sincronización: no se puede eliminar con seguridad." });
+      operations.supplierFulfillmentDeletedKeys = [...new Set([
+        ...(operations.supplierFulfillmentDeletedKeys || []), ...keys,
+      ])];
+      operations.supplierFulfillments = queue.filter(item => !chosen.has(String(item.id)));
+    }
+    await writeSupplierOperations(operations);
+    return res.json({ ok: true, affected: requested.length });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "No se pudieron gestionar los pedidos." });
   }
 });
 
