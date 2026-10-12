@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate} from "./printfulOrderFulfillment.js";
+import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate,summarizePrintfulRejection} from "./printfulOrderFulfillment.js";
 const product={id:"p1",name:"Camisa jungle",metadata:{provider:"printful"},
  variants:[{name:"Negro / M",printfulSyncVariantId:"123456",printfulCatalogVariantId:"2020",printfulAvailability:"active",sku:"NJ-M"}]};
 const order={id:"dddddddd-0000-4000-8000-000000000001",status:"paid",items:[{id:"p1",selectedVariant:"Negro / M",quantity:1,printfulSyncVariantId:"123456"}],
@@ -78,4 +78,34 @@ test("live confirmation is a dedicated guarded action with exact provider identi
  assert.equal(result.status,"pending");
  await assert.rejects(confirmPrintfulDraft("@HERENCIA-evil",{env:{PRINTFUL_API_TOKEN:"secret"}}),/inválido/);
  await assert.rejects(confirmPrintfulDraft("987",{env:{PRINTFUL_API_TOKEN:"secret"},fetchImpl:async()=>{throw Error("timeout")}}),/incierta/);
+});
+
+test("failed Printful quote exposes safe provider category and never creates an order",async()=>{
+ const payload=preparePrintfulDraft(order,[product]);
+ let requestCount=0;
+ const response={code:400,error:{reason:"BadRequest",
+   message:"This variant is missing the print file for example@example.com at Calle Falsa 20."}};
+ const diagnostic=summarizePrintfulRejection(response,400,payload);
+ assert.equal(diagnostic.httpStatus,400);
+ assert.equal(diagnostic.providerReason,"BadRequest");
+ assert.equal(diagnostic.category,"print_file");
+ assert.doesNotMatch(diagnostic.detail,/example@example.com|Calle Falsa 20/);
+ await assert.rejects(
+  estimatePrintfulOrder(payload,{env:{PRINTFUL_API_TOKEN:"secret",PRINTFUL_STORE_ID:"42"},
+    fetchImpl:async(url,req)=>{
+      requestCount++;assert.equal(req.method,"POST");
+      assert.equal(url,"https://api.printful.com/orders/estimate-costs");
+      return {ok:false,status:400,json:async()=>response};
+    }}),
+  e=>e.providerDiagnosis?.category==="print_file"&&e.providerDiagnosis?.httpStatus===400
+ );
+ assert.equal(requestCount,1);
+});
+test("provider errors about stores and shipping can be classified without customer data",()=>{
+ const payload=preparePrintfulDraft(order,[product]);
+ const store=summarizePrintfulRejection({error:{reason:"BadRequest",message:"This endpoint applies only to Manual Order / API stores"}},400,payload);
+ assert.equal(store.category,"store");
+ const shipping=summarizePrintfulRejection({error:{reason:"BadRequest",message:"Recipient ZIP 08032 invalid for shipping"}},400,payload);
+ assert.equal(shipping.category,"shipping");
+ assert.doesNotMatch(shipping.detail,/08032/);
 });
