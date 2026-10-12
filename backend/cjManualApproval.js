@@ -211,3 +211,27 @@ export function applyCjManualStage(current = {}, id, fromStatuses, patch = {}) {
   next[at] = row;
   return { operations: { ...current, supplierFulfillments: next }, record: row };
 }
+
+/**
+ * Recheck supplier fulfillment before a REAL CJ creation (not just checkout).
+ * Permits factory availability only when CJ's per-PID, exact-VID inventory
+ * explicitly marks it verified; physical merchant inventory is not required.
+ * Still requires separate price, postage, budget and Stripe verifications.
+ */
+export function validateCjLiveSupplyEvidence(stock,supply,{vid,origin="CN"}={}){
+  try{
+    const warehouse=validateCjLiveWarehouseStock(stock,{vid,origin});
+    return {...warehouse,mode:"warehouse"};
+  }catch(_error){
+    const selected=String(vid||"").trim();
+    const location=String(origin||"").trim().toUpperCase();
+    if(selected && location==="CN" && supply?.mode==="factory" &&
+       supply?.source==="cj_api" && supply?.verified===true &&
+       supply?.available===true && String(supply.vid||"")===selected &&
+       String(supply.origin||"")===location &&
+       Number.isSafeInteger(supply.quantity) && supply.quantity>0){
+       return {vid:selected,origin:location,quantity:supply.quantity,verified:true,mode:"factory_verified",notReserved:true};
+    }
+    throw cjManualError("CJ no confirmó abastecimiento verificado del VID exacto en almacén ni fábrica. La compra está bloqueada.");
+  }
+}

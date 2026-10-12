@@ -141,3 +141,35 @@ test("out-of-stock supplier VID never allows payment despite a valid shipping qu
     getRate:async()=>({rate:.9}),getStock:async()=>({verified:true,available:false,quantity:0,vid:variant.supplierVariantId,origin:"CN"})}
  }),/no confirmó existencias/);
 });
+
+test("CJ dropshipping checkout may source verified EXACT VID factory units without merchant inventory",async()=>{
+ const vid="1531107375489495040";
+ const deps={
+   verifyVariant:async()=>({vid,sku:"CJJZGJYL00285-Green EU Plug",priceUsd:5}),
+   quoteShipping:async()=>({vid,origin:"CN",destination:"ES",zip:"08032",methods:[
+     {name:"CJPacket Liquid Line",totalPostageUsd:2,shippingUsd:2,time:"5-10"}]}),
+   getRate:async()=>({rate:0.9}),
+   getStock:async()=>({verified:true,available:false,quantity:0,vid,origin:"CN"}),
+   getSupply:async()=>({source:"cj_api",mode:"factory",verified:true,available:true,quantity:6,vid,origin:"CN"}),
+ };
+ const response=await evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20}],
+   catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps});
+ assert.equal(response.cjOnly,true);
+ assert.equal(response.verifiedQuote.supplierSupplyMode,"factory_verified");
+ assert.equal(response.verifiedQuote.stockAtQuote,6);
+ assert.equal(response.shippingQuote.price,0);
+});
+test("factory inventory 9000 without verification cannot create a CJ payment path",async()=>{
+ const vid="1531107375489495040";
+ const deps={
+   verifyVariant:async()=>({vid,sku:"CJJZGJYL00285-Green EU Plug",priceUsd:5}),
+   quoteShipping:async()=>({vid,origin:"CN",destination:"ES",zip:"08032",methods:[
+     {name:"CJPacket Liquid Line",totalPostageUsd:2,shippingUsd:2}]}),
+   getRate:async()=>({rate:0.9}),
+   getStock:async()=>({verified:true,available:false,quantity:0,vid,origin:"CN"}),
+   getSupply:async()=>({source:"cj_api",mode:"factory",verified:false,available:false,reportedQuantity:9000,vid,origin:"CN"}),
+ };
+ await assert.rejects(evaluateCjCheckout({lines:[{id:"cj-product",quantity:1,price:20}],
+   catalog:[cj],suppliers:[supplier],shippingAddress:{country:"ES",postalCode:"08032"},deps}),
+   /no confirmó existencias verificadas/);
+});

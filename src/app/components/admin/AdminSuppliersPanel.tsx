@@ -2294,8 +2294,10 @@ function ImportedProductRow({
       const preferred = recommendCjPreviewMethod(quoted?.methods);
       if (preferred) setSelectedFreightName(String(preferred.name));
       const issues: string[] = [];
-      if (!readiness.stock?.verified || !readiness.stock?.available)
-        issues.push("stock físico del almacén CN sin disponibilidad confirmada");
+      if ((!readiness.stock?.verified || !readiness.stock?.available) && !readiness.supply?.available)
+        issues.push(readiness.supply?.reason==="FACTORY_NOT_VERIFIED"
+          ? "CJ informa unidades de fábrica, pero todavía no ha verificado su disponibilidad"
+          : "CJ no ha confirmado abastecimiento desde almacén ni fábrica para el VID exacto");
       if (!quoted?.methods?.length)
         issues.push("sin tarifas CJ para los CP de referencia " + tried.join(" y "));
       else if (!preferred)
@@ -2579,6 +2581,15 @@ function ImportedProductRow({
         {cjHealth.warehousesWarning && <p className="font-medium text-amber-800">{cjHealth.warehousesWarning}</p>}
         <p>Existencias CJ: <strong>{cjHealth.stock.verified ? cjHealth.stock.quantity + " unidades verificadas" : "no verificadas"}</strong>
           {cjHealth.stock.verified && !cjHealth.stock.available ? " · AGOTADO" : ""}</p>
+        {cjHealth.supply && <p className="font-semibold">
+          Abastecimiento dropshipping (fábrica CJ): {cjHealth.supply.available
+            ? cjHealth.supply.quantity + " unidades verificadas por CJ · no necesitas inventario propio"
+            : cjHealth.supply.reason === "FACTORY_NOT_VERIFIED"
+              ? "La fábrica declara " + (cjHealth.supply.reportedQuantity ?? "un número desconocido") + " unidades; CJ aún no las ha verificado."
+              : "Pendiente de confirmación del proveedor."}
+          {" "}No equivale a reservar unidades ni confirma el transporte a España.
+        </p>}
+        {cjHealth.supplyWarning && <p className="font-semibold text-amber-800">{cjHealth.supplyWarning}</p>}
         <p>Precio proveedor: <strong>{cjHealth.supplierPriceUsd == null ? "Sin dato" : "$" + cjHealth.supplierPriceUsd.toFixed(2) + " USD"}</strong>
           {cjHealth.supplierBaseEur != null ? " · " + money(cjHealth.supplierBaseEur) + " aprox. al cambio consultado" : ""}
           {" "}· sin transporte, IVA ni comisiones.</p>
