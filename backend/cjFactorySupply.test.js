@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {inspectCjFactorySupply} from "./cjFactorySupply.js";
+import {inspectCjFactorySupply,cjFactoryObservationKey,readCjFactoryObservation} from "./cjFactorySupply.js";
 const vid="2074707068783022081";
 const row=(factoryInventory,verifiedWarehouse=1)=>({
   variantInventories:[{vid,inventory:[{countryCode:"CN",cjInventory:0,factoryInventory,verifiedWarehouse}]}]
@@ -39,4 +39,21 @@ test("missing, conflicting, negative or other-variant sources fail closed",()=>{
    assert.equal(r.available,false);
    assert.equal(r.verified,false);
  }
+});
+
+test("factory supply observations are exact-variant, read-only and expire in 45 minutes",()=>{
+ const productId="item-1",now=Date.parse("2026-10-12T13:00:00Z");
+ const raw=JSON.stringify({productId,vid,origin:"CN",quantity:28,
+   verified:true,mode:"factory",source:"cj_api",checkedAt:new Date(now).toISOString()});
+ assert.equal(cjFactoryObservationKey(productId,vid),"cjFactoryObservation:v1:item-1:"+vid);
+ const valid=readCjFactoryObservation(raw,{productId,vid,nowMs:now+60_000});
+ assert.equal(valid.available,true);
+ assert.equal(valid.mode,"factory");
+ assert.equal(valid.notReserved,true);
+ assert.equal(valid.checkoutRevalidates,true);
+ assert.equal(readCjFactoryObservation(raw,{productId,vid,nowMs:now+50*60_000}).available,false);
+ assert.equal(readCjFactoryObservation(raw,{productId,vid:"wrong",nowMs:now}).fresh,false);
+ assert.equal(readCjFactoryObservation(raw,{productId:"other",vid,nowMs:now}).fresh,false);
+ assert.equal(readCjFactoryObservation(raw.replace('"verified":true','"verified":false'),{productId,vid,nowMs:now}).available,false);
+ assert.equal(readCjFactoryObservation(raw.replace('"quantity":28','"quantity":null'),{productId,vid,nowMs:now}).fresh,false);
 });
