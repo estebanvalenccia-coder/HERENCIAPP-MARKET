@@ -9,7 +9,7 @@ import {
   listNeonOrders, getNeonOrder, patchNeonOrder, mutateNeonStorageValue,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
-  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
+  bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, bindVerifiedCjDraftVariant, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
 } from "./neonDb.js";
 import {
   hasR2,
@@ -30,6 +30,7 @@ import { validateCjEuFreightPreview } from "./cjEuFreightPreview.js";
 import { resolveCjPurchasedVariant } from "./cjVariantIdentity.js";
 import { cjObservationKey, isCjStockProduct, readCjObservation, createCjStockObserver } from "./cjStockObserver.js";
 import {cjFactoryObservationKey,readCjFactoryObservation} from "./cjFactorySupply.js";
+import {createCjDraftAutoLink} from "./cjDraftAutoLink.js";
 import { previewSupplierFile, draftForSupplierFile, inspectSupplierFile } from "./supplierFileImporter.js";
 import { compareSupplierFileProducts } from "./supplierFileDiff.js";
 import { prepareSupplierCostApproval } from "./supplierCostApproval.js";
@@ -1362,9 +1363,20 @@ const cjStockObserver=createCjStockObserver({
   queryWarehouses:queryCjVariantWarehouses,
   querySupply:queryCjFactorySupply,
 });
+const cjDraftLinker=createCjDraftAutoLink({
+  listProducts:()=>listNeonCommerceProducts({includeArchived:false}),
+  queryVariants:queryCjProductVariants,
+  saveBinding:bindVerifiedCjDraftVariant,
+});
 const observerEnabled=Boolean(process.env.CJ_API_KEY) &&
   String(process.env.CJ_STOCK_OBSERVER_ENABLED||"true").toLowerCase()!=="false";
 let cjStockObserverStartup=null, cjStockObserverInterval=null;
+function runCjDraftLinker(){
+  cjDraftLinker.sweep().then(result=>{
+    if(result.processed>0)console.log('[cj.draft-autolink]',
+      'processed='+result.processed,'linked='+result.linked,'blocked='+result.blocked);
+  }).catch(error=>console.warn('[cj.draft-autolink] unavailable',String(error?.code||'READ_FAILED').slice(0,40)));
+}
 function runCjStockObserver(){
   cjStockObserver.sweep()
     .then(result=>{
@@ -1375,9 +1387,13 @@ function runCjStockObserver(){
 }
 server.listen(publicPort,"0.0.0.0",async()=>{
   if(observerEnabled){
-    cjStockObserverStartup=setTimeout(runCjStockObserver,20_000);
+    const linkingStartup=setTimeout(runCjDraftLinker,20_000);
+    linkingStartup.unref?.();
+    cjStockObserverStartup=setTimeout(runCjStockObserver,30_000);
     cjStockObserverStartup.unref?.();
     cjStockObserverInterval=setInterval(runCjStockObserver,20*60_000);
+    const linkingInterval=setInterval(runCjDraftLinker,20*60_000);
+    linkingInterval.unref?.();
     cjStockObserverInterval.unref?.();
   }
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
