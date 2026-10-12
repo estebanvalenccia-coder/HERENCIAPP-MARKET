@@ -6333,9 +6333,10 @@ async function sweepPrintfulTracking() {
     return data;
   }).filter(data=>["created","reconciled"].includes(data.status)&&
       /^[a-z0-9-]{8,100}$/i.test(String(data.orderId||"")))
-    .sort((a,b)=>Date.parse(a.lastCheckedAt||0)-Date.parse(b.lastCheckedAt||0))
+    .sort((a,b)=>(Date.parse(a.lastCheckedAt)||0)-(Date.parse(b.lastCheckedAt)||0))
     .slice(0,3);
   let checked=0;
+  let autoConfirmationChecked=false;
   for(const draft of candidates){
     const orderId=String(draft.orderId);
     try{
@@ -6360,6 +6361,11 @@ async function sweepPrintfulTracking() {
         }
       }
       checked++;
+      if(!autoConfirmationChecked&&printfulLivePolicy().enabled&&tracking.providerStatus==="draft"){
+        autoConfirmationChecked=true;
+        const confirmation=await maybeAutoConfirmPrintfulOrder(orderId);
+        if(confirmation?.skipped)console.info("[printful.auto-confirm] held",confirmation.reason);
+      }
     }catch(error){
       console.warn("[printful.tracking] requires attention",String(error?.statusCode||"CHECK_FAILED"));
     }
