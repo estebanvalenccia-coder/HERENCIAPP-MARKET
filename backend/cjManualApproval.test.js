@@ -192,3 +192,26 @@ test("real CJ procurement permits verified factory fulfillment when CJ physical 
    assert.throws(()=>validateCjLiveSupplyEvidence(stock,invalidFactory,{vid,origin:"CN"}),/abastecimiento verificado/);
  }
 });
+
+test("real CJ order preflight accepts exact verified DE warehouse and rejects wrong-origin evidence",()=>{
+ const vid="CJ-VARIANT-DE",stock={
+  source:"cj_api",verified:true,available:true,quantity:202,vid,origin:"DE"
+ };
+ const validated=validateCjLiveSupplyEvidence(stock,null,{vid,origin:"DE"});
+ assert.equal(validated.mode,"warehouse");
+ assert.equal(validated.source,"cj_api");
+ assert.equal(validated.quantity,202);
+ for(const invalid of [
+  {...stock,origin:"CN"}, {...stock,vid:"OTHER"},
+  {...stock,quantity:0},{...stock,verified:false},
+  {...stock,source:"unverified"}
+ ])assert.throws(()=>validateCjLiveSupplyEvidence(invalid,null,{vid,origin:"DE"}),
+  /abastecimiento verificado/);
+ const base=fixtures();
+ const item=base.record.items[0];
+ const prepared=validateManualCjCreate({...base,record:{
+  ...base.record,items:[{...item,cjPricingEstimate:{
+   ...item.cjPricingEstimate,origin:"DE",
+  }}]},nowMs:NOW});
+ assert.equal(prepared.origin,"DE");
+});
