@@ -17,6 +17,7 @@ import {
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
+import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { parseBouquetCatalog } from "../lib/bouquetCatalog";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
@@ -592,6 +593,12 @@ export function SalesChatWidget() {
   };
 
   const addProduct = async (product: SalesProduct, goCheckout = false) => {
+    if (needsExplicitVariantSelection(product)) {
+      setOpen(false);
+      toast.info("Selecciona talla y color antes de comprar.");
+      navigate(`/producto/${product.id}`);
+      return false;
+    }
     const variant = currentVariant(product);
     const available = productStock(product, variant);
     if (product.trackInventory !== false && available <= 0) {
