@@ -28,11 +28,11 @@ import {
  reserveCjDailyBudget,settleCjBudgetReservation,readCjBudgetLedger,
 } from "./cjAutopilotPolicy.js";
 import { extractCjProductId } from "./cjProductIds.js";
-import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock } from "./cjCatalogImporter.js";
+import { verifyCjVariantPrice, quoteCjVariantShipping, queryCjVariantStock, queryCjFactorySupply } from "./cjCatalogImporter.js";
 import { CJ_AUDIT_ORDER_STATUSES, summarizeCjAccountOrders } from "./cjOrderAudit.js";
 import {
   cjManualError, cjConfirmation, cjManualOrderNumber, classifyCjOrderFunding,
-  validateManualCjCreate, validateManualCjPayment, validateCjLiveWarehouseStock, applyCjManualStage,
+  validateManualCjCreate, validateManualCjPayment, validateCjLiveSupplyEvidence, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder } from "./printfulOrderFulfillment.js";
@@ -7062,7 +7062,13 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
   } catch {
     throw cjManualError("CJ no pudo verificar precio, stock o envío de la variante al código postal. No se creará ningún pedido.");
   }
-  validateCjLiveWarehouseStock(stock,{vid,origin:"CN"});
+  let factorySupply=null;
+  if(!(stock?.verified===true && stock?.available===true && stock?.vid===vid &&
+       stock?.origin==="CN" && Number.isSafeInteger(stock.quantity) && stock.quantity>0)){
+    try{factorySupply=await queryCjFactorySupply({pid,vid,origin:"CN"});}
+    catch{ /* An unavailable supplier confirmation must not authorize a purchase. */ }
+  }
+  const supplyEvidence=validateCjLiveSupplyEvidence(stock,factorySupply,{vid,origin:"CN"});
   const method = (freight?.methods || []).find((row) =>
     String(row.name || "") === String(line.cjPreferredLogisticName || ""));
   // Recheck authoritative CJ identity immediately before actual supplier order
@@ -7092,7 +7098,7 @@ async function verifyCjManualLiveCosts(record, supplier, maxApprovedUsd, savedUs
     throw cjManualError("CJ ha cambiado el coste o transporte para el código postal. Recalcula la cotización y autoriza el nuevo importe.");
   }
   return { liveTotalUsd, verifiedZip: zip, logisticName: method.name,
-    stock, productUsd, postageUsd };
+    stock:{...supplyEvidence,available:true}, productUsd, postageUsd };
 }
 
 async function verifyCjCustomerFunding(order, funding) {
