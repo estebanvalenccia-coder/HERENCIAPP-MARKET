@@ -9662,6 +9662,15 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       if (selectedVariantName && !variant) {
         return res.status(409).json({ error: `Variante no disponible para ${product.name}` });
       }
+      if (product.metadata?.provider === "printful") {
+        if (!variant || !variant.printfulSyncVariantId || !variant.printfulCatalogVariantId ||
+            variant.printfulAvailability !== "active") {
+          return res.status(409).json({error:"Printful no confirma esta variante como disponible"});
+        }
+        if (String(raw?.printfulSyncVariantId||"") && String(raw.printfulSyncVariantId)!==String(variant.printfulSyncVariantId)) {
+          return res.status(409).json({error:"La variante Printful del carrito ha cambiado. Actualiza el carrito."});
+        }
+      }
 
       const trackInventory = !service && product.trackInventory !== false;
       const stock = Math.max(0, Math.floor(Number(variant?.stock ?? product.stock ?? 0)));
@@ -9689,6 +9698,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         iva: Math.max(0, Number(product.iva || 21)),
         quantity,
         selectedVariant: selectedVariantName || undefined,
+        ...(product.metadata?.provider === "printful" ? {printfulSyncVariantId:String(variant?.printfulSyncVariantId||""),printfulCatalogVariantId:String(variant?.printfulCatalogVariantId||"")} : {}),
         personalization: raw?.personalization && typeof raw.personalization === "object"
           ? { dedication: String(raw.personalization.dedication || "").slice(0, 280) }
           : undefined,

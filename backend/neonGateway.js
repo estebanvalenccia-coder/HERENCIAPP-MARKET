@@ -37,6 +37,7 @@ import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,suppl
 import { readSupplierProductLinks,confirmSupplierProductLink } from "./supplierProductLinks.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
+import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -485,6 +486,56 @@ const server=http.createServer(async(req,res)=>{try{
       pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
       pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar usando la dirección y el código postal del cliente antes de enviar un pedido real.",
     });
+  }
+
+  // Printful synced products: private token, admin-only, no purchases.
+  if(path==="/api/admin/printful/stores"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const stores=await listPrintfulStores();
+    return json(res,200,{ok:true,stores});
+  }
+  if(path==="/api/admin/printful/sync-products"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const url=new URL(req.url,"http://localhost");
+    const storeId=String(url.searchParams.get("storeId")||process.env.PRINTFUL_STORE_ID||"").trim();
+    if(storeId&&!/^[0-9]{1,20}$/.test(storeId))return json(res,422,{error:"Tienda Printful inválida"});
+    const products=await listPrintfulSyncProducts({storeId});
+    return json(res,200,{ok:true,products});
+  }
+  if(path==="/api/admin/printful/sync-product"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const productId=String(body?.productId||"").trim();
+    const syncId=String(body?.syncProductId||"").trim();
+    const storeId=String(body?.storeId||process.env.PRINTFUL_STORE_ID||"").trim();
+    if(storeId&&!/^[0-9]{1,20}$/.test(storeId))return json(res,422,{error:"Tienda Printful inválida"});
+    if(!syncId||!/^[0-9]{1,20}$/.test(syncId))return json(res,422,{error:"Selecciona un producto sincronizado Printful válido"});
+    const existing=productId?await getNeonCommerceProduct(productId,{includeArchived:true}):null;
+    if(productId&&(!existing||existing.status==="archived"))return json(res,404,{error:"Producto de Herencia no encontrado"});
+    if(existing?.metadata?.printfulSyncProductId&&String(existing.metadata.printfulSyncProductId)!==syncId)
+      return json(res,409,{error:"La ficha está vinculada a otro producto Printful; desvincúlala antes de cambiar de origen"});
+    if(existing?.metadata?.printfulStoreId&&String(existing.metadata.printfulStoreId)!==storeId)
+      return json(res,409,{error:"El producto pertenece a otra tienda Printful"});
+    const response=await getPrintfulSyncProduct(syncId,{storeId,existingVariants:existing?.variants||[]});
+    if(!response.variants.length)return json(res,502,{error:"Printful no devolvió variantes; no se modifica el catálogo"});
+    const conflicts=(await listNeonCommerceProducts({includeArchived:true})).filter(p=>
+      String(p.metadata?.printfulSyncProductId||"")===syncId && String(p.id)!==productId);
+    if(conflicts.length)return json(res,409,{error:"Ese producto Printful ya está vinculado a otra ficha de Herencia"});
+    // First-time import is draft: merchant must review prices, images and publication.
+    const merged={
+      ...(existing||{}), name:existing?.name||response.name,
+      image:existing?.image||response.image,
+      images:existing?.images?.length?existing.images:(response.image?[response.image]:[]),
+      variants:response.variants,trackInventory:false,status:existing?.status||"draft",
+      metadata:{...(existing?.metadata||{}),
+        provider:"printful",sourceHost:"printful.com",
+        printfulSyncProductId:syncId,printfulStoreId:response.storeId,
+        inventoryMode:"printful_on_demand",variantOptionLabels:response.optionLabels,
+        printfulSyncedAt:response.checkedAt}
+    };
+    const saved=await saveNeonCommerceProduct(merged,{...(productId?{id:productId}:{})});
+    return json(res,200,{ok:true,product:saved,variantCount:response.variants.length,
+      syncProductId:syncId,checkedAt:response.checkedAt});
   }
 
   // Read-only CJ variants lookup for an existing Commerce product. Never creates or pays orders.

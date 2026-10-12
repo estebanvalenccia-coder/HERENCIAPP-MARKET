@@ -137,6 +137,10 @@ type EditVariant = {
   image: string;
   supplierVariantId?: string;
   supplierSku?: string;
+  printfulSyncVariantId?: string;
+  printfulCatalogVariantId?: string;
+  printfulAvailability?: string;
+  printfulOnDemand?: boolean;
   optionValues?: string[];
 };
 
@@ -179,6 +183,7 @@ export function AdminProducts({
   const [editVariants, setEditVariants] = useState<EditVariant[]>([]);
   const [variantOptionLabels, setVariantOptionLabels] = useState<string[]>([]);
   const [cjVariantsBusy, setCjVariantsBusy] = useState(false);
+  const [printfulVariantsBusy, setPrintfulVariantsBusy] = useState(false);
   const [descriptionBusy, setDescriptionBusy] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [profileGenerating, setProfileGenerating] = useState<string | null>(null);
@@ -614,6 +619,10 @@ export function AdminProducts({
         image: String(variant.image || ""),
         supplierVariantId: String((variant as any).supplierVariantId || ""),
         supplierSku: String((variant as any).supplierSku || ""),
+        printfulSyncVariantId:String((variant as any).printfulSyncVariantId || ""),
+        printfulCatalogVariantId:String((variant as any).printfulCatalogVariantId || ""),
+        printfulAvailability:String((variant as any).printfulAvailability || ""),
+        printfulOnDemand:(variant as any).printfulOnDemand === true,
         optionValues: Array.isArray((variant as any).optionValues) ? (variant as any).optionValues.map(String) : [],
       }))
     );
@@ -882,6 +891,7 @@ export function AdminProducts({
           sku: variant.sku.trim() || undefined,
           image: variant.image ? (imageMap.get(variant.image) || variant.image) : undefined,
           ...(variant.supplierVariantId ? {supplierVariantId:variant.supplierVariantId,supplierSku:variant.supplierSku,optionValues:variant.optionValues||[]} : {}),
+          ...(variant.printfulSyncVariantId?{printfulSyncVariantId:variant.printfulSyncVariantId,printfulCatalogVariantId:variant.printfulCatalogVariantId,printfulAvailability:variant.printfulAvailability,printfulOnDemand:true,optionValues:variant.optionValues||[]}:{}),
         }));
 
       if (new Set(variants.map(v=>v.name.toLowerCase())).size !== variants.length) throw new Error("Hay variantes con el mismo nombre. Cada combinación debe ser única.");
@@ -1512,6 +1522,31 @@ export function AdminProducts({
                           {cjVariantsBusy?"Consultando CJ…":"Importar variantes reales CJ"}
                         </button>
                       )}
+                      {editingProduct.metadata?.provider==="printful" && editingProduct.metadata?.printfulSyncProductId && (
+                        <button type="button" disabled={printfulVariantsBusy} onClick={async()=>{
+                          setPrintfulVariantsBusy(true);
+                          try{
+                            const result=await backendApi.syncPrintfulProduct(String(editingProduct.metadata.printfulSyncProductId),String(editingProduct.id));
+                            setEditVariants(result.product.variants.map((v:any,i:number)=>({
+                              id:"printful-"+String(v.printfulSyncVariantId||i),name:String(v.name||""),
+                              price:v.price==null?"":String(v.price),stock:String(v.stock??0),
+                              sku:String(v.sku||""),image:String(v.image||""),
+                              supplierVariantId:String(v.supplierVariantId||""),
+                              supplierSku:String(v.supplierSku||""),
+                              printfulSyncVariantId:String(v.printfulSyncVariantId||""),
+                              printfulCatalogVariantId:String(v.printfulCatalogVariantId||""),
+                              printfulAvailability:String(v.printfulAvailability||""),
+                              printfulOnDemand:true,optionValues:v.optionValues||[]
+                            })));
+                            setVariantOptionLabels(result.product.metadata?.variantOptionLabels||["Color","Talla"]);
+                            toast.success("Variantes Printful sincronizadas: "+result.variantCount);
+                            await load();
+                          }catch(error:any){toast.error(error?.message||"Error al sincronizar Printful");}
+                          finally{setPrintfulVariantsBusy(false);}
+                        }} className="rounded-xl border border-primary/40 px-3 py-2 text-xs font-black text-primary disabled:opacity-50">
+                          {printfulVariantsBusy?"Sincronizando…":"Sincronizar variantes con Printful"}
+                        </button>
+                      )}
                       <button type="button" onClick={() => setEditVariants(current=>[...current,makeEditVariant()])} className="rounded-xl bg-primary px-3 py-2 text-xs font-black text-primary-foreground">+ Variante</button>
                     </div>
                   </div>
@@ -1529,7 +1564,7 @@ export function AdminProducts({
                       {editVariants.map((variant, index) => (
                         <div key={variant.id} className="rounded-xl bg-muted/20 p-3">
                           <div className="mb-3 flex items-center justify-between">
-                            <span className="text-xs font-black">Variante {index + 1}</span>
+                            <span className="text-xs font-black">{variant.name || `Variante ${index + 1}`}</span>
                             <button type="button" onClick={() => setEditVariants((current) => current.filter((item) => item.id !== variant.id))} className="rounded-lg bg-destructive/10 px-2 py-1 text-xs font-black text-destructive">Quitar</button>
                           </div>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

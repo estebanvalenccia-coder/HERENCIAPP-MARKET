@@ -413,6 +413,20 @@ export const backendApi = {
     }>(`/api/commerce/cj-availability?productId=${encodeURIComponent(productId)}&selectedVariant=${encodeURIComponent(selectedVariant)}`);
   },
 
+  async listPrintfulStores() {
+    return request<{ok:boolean;stores:Array<{id:string;name:string;type:string}>}>("/api/admin/printful/stores");
+  },
+  async listPrintfulSyncProducts(storeId="") {
+    return request<{ok:boolean;products:Array<{id:string;name:string;variants:number;thumbnail:string}>}>("/api/admin/printful/sync-products"+(storeId?"?storeId="+encodeURIComponent(storeId):""));
+  },
+  async syncPrintfulProduct(syncProductId:string,productId?:string,storeId="") {
+    const result=await request<{ok:boolean;product:any;variantCount:number;syncProductId:string;checkedAt:string}>("/api/admin/printful/sync-product",{
+      method:"POST",body:JSON.stringify({syncProductId,productId,storeId})
+    });
+    emitCommerceProductsChange();
+    return result;
+  },
+
   async listCjProductVariants(productId: string) {
     return request<{
       ok: boolean;

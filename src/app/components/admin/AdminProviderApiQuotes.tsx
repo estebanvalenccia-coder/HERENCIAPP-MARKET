@@ -22,6 +22,36 @@ export function AdminProviderApiQuotes() {
   const [quote, setQuote] = useState<PrintfulQuote | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncProducts,setSyncProducts]=useState<Array<{id:string;name:string;variants:number;thumbnail:string}>>([]);
+  const [stores,setStores]=useState<Array<{id:string;name:string;type:string}>>([]);
+  const [storeId,setStoreId]=useState("");
+  const [syncProductId,setSyncProductId]=useState("");
+  const [herenciaProductId,setHerenciaProductId]=useState("");
+  const [syncBusy,setSyncBusy]=useState(false);
+  const [syncError,setSyncError]=useState("");
+  const [syncSuccess,setSyncSuccess]=useState("");
+  const refreshSyncProducts=async()=>{
+    setSyncBusy(true);setSyncError("");
+    try{
+      let selectedStore=storeId;
+      if(!stores.length){
+        const listing=await backendApi.listPrintfulStores();
+        setStores(listing.stores);
+        if(listing.stores.length===1){selectedStore=listing.stores[0].id;setStoreId(selectedStore);}
+      }
+      const result=await backendApi.listPrintfulSyncProducts(selectedStore);
+      setSyncProducts(result.products);if(result.products.length===1)setSyncProductId(result.products[0].id);
+    }catch(error:any){setSyncError(error?.message||"No se pudieron listar los productos Printful");}
+    finally{setSyncBusy(false);}
+  };
+  const syncProduct=async()=>{
+    if(!syncProductId)return;
+    setSyncBusy(true);setSyncError("");setSyncSuccess("");
+    try{const result=await backendApi.syncPrintfulProduct(syncProductId,herenciaProductId.trim()||undefined,storeId);
+      setSyncSuccess("Guardadas "+result.variantCount+" variantes reales en Herencia. Producto: "+String(result.product.id)+". Revisa precios y publicación en Productos.");
+    }catch(error:any){setSyncError(error?.message||"Printful no pudo sincronizar las variantes. La ficha anterior se conserva.");}
+    finally{setSyncBusy(false);}
+  };
 
   useEffect(() => {
     let active = true;
@@ -78,6 +108,33 @@ export function AdminProviderApiQuotes() {
         <code className="ml-1">PRINTFUL_STORE_ID</code>. No escribas credenciales aquí.
         La conexión no activa pedidos automáticos.
       </p>
+    </div>
+
+    <div className="mt-5 rounded-xl border border-border p-4">
+      <h3 className="font-bold">Catálogo sincronizado de Printful</h3>
+      <p className="mt-1 text-xs text-muted-foreground">Obtén las camisetas y sus combinaciones reales directamente de tu tienda Printful. Los artículos nuevos se crean como borrador; los pedidos no se envían al proveedor desde aquí.</p>
+      <button type="button" disabled={syncBusy} onClick={()=>void refreshSyncProducts()} className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Consultar mis productos Printful</button>
+      {stores.length>1&&<label className="mt-3 block text-xs font-bold">Tienda Printful
+        <select value={storeId} onChange={e=>{setStoreId(e.target.value);setSyncProducts([]);setSyncProductId("");}} className="mt-1 w-full rounded-lg border bg-background p-2">
+          <option value="">Selecciona tu tienda</option>
+          {stores.map(store=><option key={store.id} value={store.id}>{store.name} · {store.id}</option>)}
+        </select>
+        <button type="button" disabled={syncBusy||!storeId} onClick={()=>void refreshSyncProducts()} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold">Cargar esta tienda</button>
+      </label>}
+      {syncProducts.length>0&&<div className="mt-3 space-y-2">
+        <label className="block text-xs font-bold">Producto sincronizado Printful
+          <select value={syncProductId} onChange={e=>setSyncProductId(e.target.value)} className="mt-1 w-full rounded-lg border bg-background p-2">
+            <option value="">Selecciona un producto</option>
+            {syncProducts.map(p=><option key={p.id} value={p.id}>{p.name} · {p.variants} variantes · #{p.id}</option>)}
+          </select>
+        </label>
+        <label className="block text-xs font-bold">ID de la ficha Herencia existente (opcional)
+          <input value={herenciaProductId} onChange={e=>setHerenciaProductId(e.target.value.trim())} placeholder="Déjalo vacío para importar como borrador nuevo" className="mt-1 w-full rounded-lg border bg-background p-2"/>
+        </label>
+        <button type="button" onClick={()=>void syncProduct()} disabled={syncBusy||!syncProductId} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">Sincronizar variantes con Printful</button>
+      </div>}
+      {syncError&&<p role="alert" className="mt-2 text-sm font-semibold text-red-700">{syncError}</p>}
+      {syncSuccess&&<p role="status" className="mt-2 text-sm font-semibold text-emerald-700">{syncSuccess}</p>}
     </div>
 
     <div className="mt-4 grid gap-3 md:grid-cols-3">

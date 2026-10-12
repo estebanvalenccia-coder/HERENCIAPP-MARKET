@@ -351,6 +351,12 @@ export function ProductDetail() {
     if (isCjProduct && (!cjAvailability?.fresh || !cjAvailability.available))
       return toast.error("CJ no ha confirmado existencias recientes de esta variante. Inténtalo de nuevo más tarde.");
     if (cjPendingVariantQuote) return toast.error("Selecciona una variante CJ que tenga SKU y VID válidos.");
+    if (product.metadata?.provider === "printful") {
+      if (!selected?.printfulSyncVariantId || !selected?.printfulCatalogVariantId)
+        return toast.error("Elige una variante realmente sincronizada con Printful.");
+      if (selected?.printfulAvailability !== "active")
+        return toast.error("Printful no confirma que esta variante esté disponible.");
+    }
     if (trackInventory && stock <= 0) return toast.error("Producto agotado");
     if (isCjProduct && quantity !== 1) return toast.error("Para CJ solo se permite una unidad por pedido.");
     const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
@@ -390,7 +396,9 @@ export function ProductDetail() {
       return toast.error(`Solo quedan ${stock} unidades disponibles`);
     }
     if (existingItem) existingItem.quantity += quantity;
-    else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined, personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
+    else cart.push({ ...product, price: effectivePrice, quantity, lineKey, selectedVariant: selectedVariant || undefined,
+      ...(product.metadata?.provider==="printful"?{printfulSyncVariantId:String(selected?.printfulSyncVariantId||""),printfulCatalogVariantId:String(selected?.printfulCatalogVariantId||"")}:{}),
+      personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
     toast.success("Producto añadido al carrito");
