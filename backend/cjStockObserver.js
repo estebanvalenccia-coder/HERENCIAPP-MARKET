@@ -4,6 +4,8 @@
  * NEVER merchant stock/prices, orders, Stripe or supplier balance.
  */
 import crypto from "node:crypto";
+import {extractCjProductId} from "./cjProductIds.js";
+import {cjFactoryObservationKey} from "./cjFactorySupply.js";
 
 export const CJ_STOCK_OBSERVER_PREFIX = "cjStockObservation:v1:";
 const LEASE_KEY = "cjStockObserverLease:v1";
@@ -54,7 +56,7 @@ export function readCjObservation(raw,{productId,vid,nowMs=Date.now(),maxAgeMs=C
   };
 }
 export function createCjStockObserver({
-  listProducts, read, upsert, mutate, queryStock, now=()=>Date.now(),
+  listProducts, read, upsert, mutate, queryStock, querySupply=null, now=()=>Date.now(),
   maxPerSweep=4, logger=console,
 }={}) {
   if (![listProducts,read,upsert,mutate,queryStock].every(fn=>typeof fn==="function"))
@@ -74,11 +76,15 @@ export function createCjStockObserver({
         return JSON.stringify({owner,expiresAt:current+10*60_000});
       });
       if (!claimed) return {status:"another_worker",inspected:0};
-      const targets=cjObservedTargets(await listProducts());
+      const products=await listProducts();
+      const targets=cjObservedTargets(products);
+      const productPids=new Map((Array.isArray(products)?products:[]).map(p=>[
+        String(p?.id||""),extractCjProductId(String(p?.metadata?.sourceProductUrl||""))
+      ]));
       if (!targets.length) return {status:"no_candidates",inspected:0};
       const previous=Number(await read(CURSOR_KEY));
       const start=Number.isSafeInteger(previous)&&previous>=0?previous%targets.length:0;
-      let inspected=0, verified=0, limited=false, unavailable=0, invalid=0, outOfStock=0;
+      let inspected=0, verified=0, factoryVerified=0, limited=false, unavailable=0, invalid=0, outOfStock=0;
       for(let offset=0; offset<Math.min(batchSize,targets.length);offset++){
         const item=targets[(start+offset)%targets.length];
         try {
@@ -102,6 +108,26 @@ export function createCjStockObserver({
                 stock?.origin!=="CN"?"WAREHOUSE_MISMATCH":"INVALID_STOCK_RESPONSE",
             });
           }
+          // Supplier-managed factory units are distinct from warehouse units.
+          // Observe them automatically when CJ has no ready physical inventory.
+          // Never write factory inventory to the storefront product stock.
+          if(!(stock?.verified===true && stock?.available===true) &&
+             typeof querySupply==="function" && productPids.get(item.productId)){
+            const supply=await querySupply({
+              pid:productPids.get(item.productId),vid:item.vid,origin:"CN",
+            });
+            if(supply?.source==="cj_api" && supply?.mode==="factory" &&
+               supply?.verified===true && supply?.vid===item.vid &&
+               supply?.origin==="CN" && Number.isSafeInteger(supply?.quantity) &&
+               supply.quantity>=0){
+              await upsert(cjFactoryObservationKey(item.productId,item.vid),JSON.stringify({
+                productId:item.productId,vid:item.vid,origin:"CN",
+                quantity:supply.quantity,mode:"factory",source:"cj_api",verified:true,
+                checkedAt:new Date(now()).toISOString(),
+              }));
+              factoryVerified++;
+            }
+          }
         }catch(e){
           // Never overwrite a previously verified observation with fake stock.
           if(["CJ_RATE_LIMITED","CJ_QUOTA_EXHAUSTED"].includes(String(e?.code||""))){
@@ -114,7 +140,7 @@ export function createCjStockObserver({
       }
       // Resume from the first uninspected candidate, including after quota stop.
       await upsert(CURSOR_KEY,String((start+inspected)%targets.length));
-      return {status:limited?"rate_limited":"complete",inspected,verified,unavailable,invalid,outOfStock,rateLimited:limited,totalTargets:targets.length};
+      return {status:limited?"rate_limited":"complete",inspected,verified,factoryVerified,unavailable,invalid,outOfStock,rateLimited:limited,totalTargets:targets.length};
     }finally{
       if(claimed){
         try{await mutate(LEASE_KEY,raw=>{
