@@ -574,7 +574,7 @@ async function hydrateNeonProductRows(rows = []) {
       occasion:row.occasion||"", allowDedication:row.allow_dedication!==false,
       seoTitle:row.seo_title||row.name, seoDescription:row.seo_description||row.description||"",
       image:primary?.url||row.metadata?.image||"", images:imgs.map(x=>({id:x.id,url:x.url,alt:x.alt_text,position:x.position})),
-      variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||"",supplierVariantId:v.metadata?.supplierVariantId||"",supplierSku:v.metadata?.supplierSku||"",optionValues:Array.isArray(v.metadata?.optionValues)?v.metadata.optionValues:[]})),
+      variants:vars.map(v=>({id:v.id,name:v.name,sku:v.sku||"",price:v.price==null?undefined:num(v.price),stock:int(v.stock),image:v.metadata?.image||"",supplierVariantId:v.metadata?.supplierVariantId||"",supplierSku:v.metadata?.supplierSku||"",printfulSyncVariantId:v.metadata?.printfulSyncVariantId||"",printfulCatalogVariantId:v.metadata?.printfulCatalogVariantId||"",printfulAvailability:v.metadata?.printfulAvailability||"",printfulOnDemand:v.metadata?.printfulOnDemand===true,optionValues:Array.isArray(v.metadata?.optionValues)?v.metadata.optionValues:[]})),
       // Keep the supplier/import metadata accessible to admin panels and editors.
       // Historically it was flattened and lost on the next product edit.
       collections:cols, ...(row.metadata||{}), metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
@@ -841,7 +841,7 @@ export async function saveNeonCommerceProduct(input = {}, { id = null, createOnl
       await neonPool.query(
         "insert into commerce_product_variants(product_id,name,sku,price,compare_at_price,stock,position,metadata) values($1,$2,$3,$4,$5,$6,$7,$8)",
         [productId,String(v.name).trim(),String(v.sku||"")||null,v.price==null||v.price===""?null:num(v.price),
-         v.compareAtPrice==null||v.compareAtPrice===""?null:num(v.compareAtPrice),int(v.stock),i,{...(v.image?{image:v.image}:{}),...(v.supplierVariantId?{supplierVariantId:String(v.supplierVariantId)}:{}),...(v.supplierSku?{supplierSku:String(v.supplierSku)}:{}),...(Array.isArray(v.optionValues)?{optionValues:v.optionValues.map(x=>String(x).slice(0,120)).slice(0,4)}:{})}]
+         v.compareAtPrice==null||v.compareAtPrice===""?null:num(v.compareAtPrice),int(v.stock),i,{...(v.image?{image:v.image}:{}),...(v.supplierVariantId?{supplierVariantId:String(v.supplierVariantId)}:{}),...(v.supplierSku?{supplierSku:String(v.supplierSku)}:{}),...(Array.isArray(v.optionValues)?{optionValues:v.optionValues.map(x=>String(x).slice(0,120)).slice(0,4)}:{}),...(v.printfulSyncVariantId?{printfulSyncVariantId:String(v.printfulSyncVariantId)}:{}),...(v.printfulCatalogVariantId?{printfulCatalogVariantId:String(v.printfulCatalogVariantId)}:{}),...(v.printfulAvailability?{printfulAvailability:String(v.printfulAvailability)}:{}),...(v.printfulOnDemand===true?{printfulOnDemand:true}:{})}]
       );
     }
   }
