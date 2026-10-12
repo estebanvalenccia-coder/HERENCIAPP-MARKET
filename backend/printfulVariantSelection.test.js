@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {isPrintfulProduct,needsExplicitVariantSelection,validPrintfulCartSelection,firstUnselectedPrintfulItem}
+import {isPrintfulProduct,needsExplicitVariantSelection,validPrintfulCartSelection,firstUnselectedPrintfulItem,removeStalePrintfulLines}
  from "../src/app/lib/printfulVariantSelection.js";
 const variants=[
  {name:"White / XS",printfulSyncVariantId:"101",printfulCatalogVariantId:"9526",printfulAvailability:"active"},
@@ -27,5 +27,6 @@ test("explicit variant must match authentic supplier IDs and live availability",
  assert.equal(validPrintfulCartSelection({...chosen,selectedVariant:"White / XL"}),false);
  assert.equal(validPrintfulCartSelection({...chosen,variants:variants.map(v=>({...v,printfulAvailability:"unknown"}))}),false);
  assert.equal(firstUnselectedPrintfulItem([chosen]),null);
+ assert.deepEqual(removeStalePrintfulLines([{...product,selectedVariant:"White / XS"},chosen,{id:"rose"}],"camisa"),[chosen,{id:"rose"}]);
  assert.equal(firstUnselectedPrintfulItem([{id:"rose",metadata:{}}]),null);
 });

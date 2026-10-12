@@ -18,6 +18,10 @@ export function validPrintfulCartSelection(item) {
     String(variant.printfulCatalogVariantId)===String(item.printfulCatalogVariantId || "") &&
     variant.printfulAvailability === "active");
 }
+export function removeStalePrintfulLines(items, productId) {
+  return (Array.isArray(items) ? items : []).filter(item =>
+    String(item?.id) !== String(productId) || validPrintfulCartSelection(item));
+}
 export function firstUnselectedPrintfulItem(items) {
   return (Array.isArray(items)?items:[]).find(item=>!validPrintfulCartSelection(item)) || null;
 }

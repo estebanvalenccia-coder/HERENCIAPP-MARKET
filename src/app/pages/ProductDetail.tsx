@@ -8,7 +8,7 @@ import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/s
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
 import { isCjSupplierItem, assessCjPublicProductStatus } from "../lib/cjFulfillmentIdentity";
-import { isPrintfulProduct } from "../lib/printfulVariantSelection.js";
+import { isPrintfulProduct, removeStalePrintfulLines } from "../lib/printfulVariantSelection.js";
 import {assessCjDistanceSaleCompliance} from "../lib/cjDistanceSaleCompliance";
 
 export function ProductDetail() {
@@ -421,6 +421,12 @@ export function ProductDetail() {
       return;
     }
 
+    // An old quick-add may have silently chosen XS. Replace that unconfirmed
+    // cart entry with the customer\u0027s explicit size/color selection.
+    if (isPrintful) {
+      const cleaned = removeStalePrintfulLines(cart,product.id);
+      cart.splice(0,cart.length,...cleaned);
+    }
     const lineKey = `${product.id}::${selectedVariant || "base"}::${dedication.trim()}`;
     const existingItem = cart.find((item: any) => item.lineKey === lineKey);
     if (trackInventory && Number(existingItem?.quantity || 0) + quantity > stock) {
