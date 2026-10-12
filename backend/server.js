@@ -35,7 +35,7 @@ import {
   validateManualCjCreate, validateManualCjPayment, validateCjLiveSupplyEvidence, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
-import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft } from "./printfulOrderFulfillment.js";
+import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft, printfulExternalOrderId } from "./printfulOrderFulfillment.js";
 import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
@@ -6272,7 +6272,7 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
   const decision=assessPrintfulAutoConfirm({order,estimate,policy});
   if(!decision.allowed)return {skipped:true,reason:decision.reason};
   const provider=await lookupPrintfulOrder(orderId);
-  if(!provider||provider.externalId!=="HERENCIA-"+orderId||provider.id!==String(draft.externalOrderId))
+  if(!provider||provider.externalId!==printfulExternalOrderId(orderId)||provider.id!==String(draft.externalOrderId))
     return {skipped:true,reason:"exact_supplier_order_identity_not_verified"};
   if(provider.status!=="draft")
     return {skipped:true,reason:"supplier_order_not_draft",providerStatus:provider.status};
@@ -6307,7 +6307,7 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
   if(!claimed)return {skipped:true,reason:"confirmation_already_claimed"};
   try{
     const confirmed=await confirmPrintfulDraft(provider.id);
-    if(confirmed.externalId!=="HERENCIA-"+orderId)
+    if(confirmed.externalId!==printfulExternalOrderId(orderId))
       throw Object.assign(new Error("Confirmación Printful sin referencia externa exacta"),{statusCode:503});
     const saved={status:"confirmed",orderId,externalOrderId:provider.id,
       providerStatus:confirmed.status,costEur:decision.costEur,updatedAt:new Date().toISOString()};
@@ -6342,7 +6342,7 @@ async function sweepPrintfulTracking() {
     const orderId=String(draft.orderId);
     try{
       const provider=await lookupPrintfulOrder(orderId);
-      if(!provider||provider.externalId!=="HERENCIA-"+orderId||
+      if(!provider||provider.externalId!==printfulExternalOrderId(orderId)||
          String(provider.id)!==String(draft.externalOrderId))continue;
       const tracking=normalizePrintfulTracking(provider);
       const now=new Date().toISOString();
