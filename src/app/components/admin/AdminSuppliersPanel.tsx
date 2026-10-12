@@ -41,6 +41,7 @@ import { SupplierImportImages } from "./SupplierImportImages";
 import { createDsersProductCsv, isAliExpressProduct } from "../../lib/dsersCsv";
 import { extractCjProductId } from "../../../../backend/cjProductIds.js";
 import { assessCjPublicProductStatus } from "../../lib/cjFulfillmentIdentity.js";
+import { chooseCjValidationVariant, cjSpanishFreightPreviewSamples, recommendCjPreviewMethod } from "../../../../backend/cjAdminAutoValidation.js";
 
 type SupplierMode = "manual" | "autopilot";
 
@@ -2134,6 +2135,9 @@ function ImportedProductRow({
   const [freightQuote, setFreightQuote] = useState<any>(null);
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState("");
+  const [autoValidating, setAutoValidating] = useState(false);
+  const [autoValidationMessage, setAutoValidationMessage] = useState("");
+  const [autoQuoteIsReference, setAutoQuoteIsReference] = useState(false);
   const [preflight, setPreflight] = useState<any>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [selectedFreightName, setSelectedFreightName] = useState(String(metadata.cjPreferredLogisticName || ""));
@@ -2166,7 +2170,7 @@ function ImportedProductRow({
   const verifiedQuoteAge = Date.now() - Date.parse(String(freightQuote?.checkedAt || ""));
   const hasFreshCjQuote = Number.isFinite(verifiedQuoteAge) && verifiedQuoteAge >= 0 &&
     verifiedQuoteAge < 15 * 60_000;
-  const quoteForSave = quoteOrigin === "CN" && freightQuote?.origin === "CN" &&
+  const quoteForSave = !autoQuoteIsReference && quoteOrigin === "CN" && freightQuote?.origin === "CN" &&
     quoteDestination === "ES" && quoteMode === "city" && /^\d{5}$/.test(quoteZip.trim()) &&
     freightQuote?.zip === quoteZip.trim() && freightQuote?.destination === "ES" &&
     freightQuote?.variant?.vid === supplierVariantId && hasFreshCjQuote &&
@@ -2198,6 +2202,7 @@ function ImportedProductRow({
 
   const quoteCjShippingForEu = async () => {
     if (!String(supplierVariantId || "").trim()) return toast.error("Selecciona primero una variante CJ con VID válido");
+    setAutoQuoteIsReference(false);
     setFreightLoading(true);
     setFreightError("");
     setFreightQuote(null);
@@ -2211,6 +2216,82 @@ function ImportedProductRow({
       setFreightError(String(error?.message || "CJ no pudo calcular el transporte"));
     } finally {
       setFreightLoading(false);
+    }
+  };
+
+  const autoValidateCjProduct = async () => {
+    if (autoValidating) return;
+    setAutoValidating(true);
+    setAutoValidationMessage("");
+    setFreightQuote(null);
+    setFreightError("");
+    setSelectedFreightName("");
+    setCjHealth(null);
+    setCjHealthError("");
+    setAutoQuoteIsReference(true);
+    try {
+      // Read-only CJ calls. No catalog updates, customer charges or supplier orders.
+      const variantsReport = await backendApi.listCjProductVariants(String(product.id));
+      const list = Array.isArray(variantsReport.variants) ? variantsReport.variants : [];
+      setCjVariants(list);
+      setCjLookupComplete(true);
+      if (variantsReport.truncated) {
+        setAutoValidationMessage("CJ devolvió un catálogo parcial de variantes. Selecciona y revisa manualmente la variante exacta.");
+        return;
+      }
+      const selection = chooseCjValidationVariant(list, supplierVariantId);
+      if (!selection.variant) {
+        setAutoValidationMessage(selection.reason === "NO_VARIANTS"
+          ? "CJ no ha devuelto variantes para este producto."
+          : "Hay varias variantes CJ. Selecciona la que venderás y vuelve a pulsar Validar automáticamente.");
+        return;
+      }
+      const variant = selection.variant;
+      setSupplierVariantId(String(variant.vid));
+      setSupplierSku(String(variant.sku || ""));
+      setQuoteOrigin("CN");
+      setQuoteDestination("ES");
+      setQuoteMode("city");
+      const readiness = await backendApi.checkCjVariantReadiness(String(product.id), String(variant.vid));
+      setCjHealth(readiness);
+      const baseEur = Number(readiness.supplierBaseEur);
+      // Only propose CJ supplier base cost with an actual USD/EUR rate; freight
+      // and taxes are excluded. Saving the product is a separate administrator action.
+      if (readiness.supplierBaseEur != null && Number.isFinite(baseEur) && baseEur > 0)
+        setCost(Math.round(baseEur * 100) / 100);
+      let quoted: any = null;
+      let quotedZip = "";
+      const tried: string[] = [];
+      for (const postal of cjSpanishFreightPreviewSamples("ES")) {
+        tried.push(postal);
+        const next = await backendApi.quoteCjProductFreight(String(product.id), String(variant.vid), postal, "ES", "CN");
+        if (next?.methods?.length) {
+          quoted = next;
+          quotedZip = postal;
+          break;
+        }
+      }
+      setQuoteZip(quotedZip || tried[tried.length - 1] || "");
+      setQuoteCity(quotedZip === "08001" ? "Barcelona" : quotedZip === "28001" ? "Madrid" : "");
+      setFreightQuote(quoted);
+      const preferred = recommendCjPreviewMethod(quoted?.methods);
+      if (preferred) setSelectedFreightName(String(preferred.name));
+      const issues: string[] = [];
+      if (!readiness.stock?.verified || !readiness.stock?.available)
+        issues.push("stock físico del almacén CN sin disponibilidad confirmada");
+      if (!quoted?.methods?.length)
+        issues.push("sin tarifas CJ para los CP de referencia " + tried.join(" y "));
+      else if (!preferred)
+        issues.push("ninguna tarifa ofrece un coste completo y un margen mínimo verificado");
+      if (readiness.supplierBaseEur == null)
+        issues.push("coste en EUR sin tipo de cambio verificado");
+      setAutoValidationMessage(issues.length
+        ? "Validación automática: NO APTO para venta automática. Pendiente: " + issues.join("; ") + "."
+        : "Consultas CJ completadas con stock y estimación de transporte. Falta validar datos legales, dirección real del cliente y guardar manualmente la variante; esta prueba NO activa pagos.");
+    } catch (error: any) {
+      setAutoValidationMessage("CJ no pudo completar la validación: " + String(error?.message || "consulta no disponible") + ". No se habilitan compras.");
+    } finally {
+      setAutoValidating(false);
     }
   };
 
@@ -2316,6 +2397,12 @@ function ImportedProductRow({
           <p className="text-xs text-muted-foreground">Consulta de solo lectura: nunca crea un pedido ni cobra nada.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={autoValidating || cjLoading || cjHealthLoading || freightLoading} onClick={() => void autoValidateCjProduct()}
+            title="Recupera variantes, verifica stock y coste, y prueba Madrid/Barcelona sin comprar ni publicar"
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+            <ShieldCheck className="h-4 w-4"/>
+            {autoValidating ? "Validando CJ…" : "Validar CJ automáticamente"}
+          </button>
           <button type="button" disabled={cjLoading} onClick={() => void lookupCjVariants()}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-background px-3 py-2 text-xs font-bold disabled:opacity-50">
             <RefreshCw className={"h-4 w-4" + (cjLoading ? " animate-spin" : "")}/>
@@ -2348,6 +2435,7 @@ function ImportedProductRow({
           </button>
         </div>
       </div>
+      {autoValidationMessage && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950">{autoValidationMessage}</p>}
       <div className="space-y-3 rounded-xl border border-emerald-200 bg-background p-3">
         <label className="block text-xs font-semibold">Almacén de origen CJ
           <select aria-label="Almacén origen de la cotización CJ" value={quoteOrigin}
