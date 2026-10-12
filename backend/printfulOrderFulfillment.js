@@ -2,10 +2,22 @@
  * Printful fulfillment draft connector. No payment/confirmation endpoint is called here.
  * A draft in Printful isn't a fulfillment order until explicitly confirmed (charge).
  */
+import {createHash} from "node:crypto";
 const API="https://api.printful.com";
 const fail=(message,statusCode=422)=>{const e=new Error(message);e.statusCode=statusCode;throw e;};
 const id=v=>String(v??"").trim();
 const numericId=v=>/^[1-9][0-9]{0,19}$/.test(id(v));
+/**
+ * Printful v1 limits order external_id to 32 [A-Za-z0-9_-] characters.
+ * A full UUID prefixed with HERENCIA- is invalid (45 characters).
+ * 22 base64url characters of SHA256 preserve 132 bits of identity and
+ * deterministically reconcile orders without exposing internal UUIDs.
+ */
+export function printfulExternalOrderId(orderId){
+ const normalized=id(orderId).toLowerCase();
+ if(!/^[a-z0-9-]{8,100}$/.test(normalized))fail("Pedido Herencia inválido",422);
+ return "HERENCIA-"+createHash("sha256").update(normalized).digest("base64url").slice(0,22);
+}
 export function preparePrintfulDraft(order,products){
  const orderId=id(order?.id);if(!/^[a-z0-9-]{8,100}$/i.test(orderId))fail("Pedido Herencia inválido");
  if(!["paid","confirmed","preparing","processing"].includes(id(order?.status)))fail("El pedido no está confirmado para preparar Printful",409);
@@ -36,7 +48,7 @@ export function preparePrintfulDraft(order,products){
  const phone=id(address.phone||order.metadata?.phone);
  if(!name||!address1||!city||!zip||!/^[A-Z]{2}$/.test(country)||!email.includes("@"))
    fail("Faltan datos de entrega para Printful: nombre, dirección, código postal, ciudad, país o email.",422);
- return {external_id:"HERENCIA-"+orderId,
+ return {external_id:printfulExternalOrderId(orderId),
   recipient:{name,address1,address2:id(address.address2||address.line2)||undefined,city,
     state_name:id(address.province||address.state)||undefined,country_code:country,zip,email,phone:phone||undefined},
   items};
@@ -45,7 +57,7 @@ export async function printfulOrderRequest(method,path,{payload,env=process.env,
  const token=id(env.PRINTFUL_API_TOKEN),storeId=id(env.PRINTFUL_STORE_ID);
  if(!token)fail("Falta PRINTFUL_API_TOKEN",503);
  if(storeId&&!numericId(storeId))fail("PRINTFUL_STORE_ID inválido",422);
- if(!/^\/orders(?:\/@HERENCIA-[a-z0-9-]+)?$/.test(path))fail("Ruta de pedidos Printful no autorizada",422);
+ if(!/^\/orders(?:\/@HERENCIA-[a-z0-9_-]{22})?$/i.test(path))fail("Ruta de pedidos Printful no autorizada",422);
  const request={method,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(storeId?{"X-PF-Store-Id":storeId}:{})},
   ...(payload?{body:JSON.stringify(payload)}:{}),signal:AbortSignal.timeout(15000)};
  let response;
@@ -61,7 +73,7 @@ export async function printfulOrderRequest(method,path,{payload,env=process.env,
     trackingNumber:id(s.tracking_number),trackingUrl:id(s.tracking_url),status:id(s.status)
    })):[]};
 }
-export const lookupPrintfulOrder=(orderId,opts={})=>printfulOrderRequest("GET","/orders/@HERENCIA-"+id(orderId),opts);
+export const lookupPrintfulOrder=(orderId,opts={})=>printfulOrderRequest("GET","/orders/@"+printfulExternalOrderId(orderId),opts);
 export const createPrintfulDraft=(payload,opts={})=>printfulOrderRequest("POST","/orders",{...opts,payload});
 
 /**
