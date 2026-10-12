@@ -166,14 +166,24 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [cjOrderAuditLoading, setCjOrderAuditLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [workspaceMode,setWorkspaceMode]=useState<"guided"|"advanced">("guided");
+  const [pendingWorkspaceTarget,setPendingWorkspaceTarget]=useState("");
+  // Navigation targets inside the advanced view do not exist until React mounts it.
+  // Scroll after the view has rendered instead of racing against a zero-delay timer.
+  useEffect(()=>{
+    if(workspaceMode!=="advanced" || !pendingWorkspaceTarget)return;
+    const element=document.getElementById(pendingWorkspaceTarget);
+    if(!element)return;
+    element.scrollIntoView({behavior:"smooth",block:"start"});
+    setPendingWorkspaceTarget("");
+  },[workspaceMode,pendingWorkspaceTarget]);
   const openWorkspaceSection=(id:string)=>{
     if(id==="supplier-catalog"){
       setShowImportedProducts(true);
       setImportTab("connected");
       setOnlyCjImports(false);
     }
+    setPendingWorkspaceTarget(id);
     setWorkspaceMode("advanced");
-    window.setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
   };
   const [savingProductId, setSavingProductId] = useState("");
   const [processingId, setProcessingId] = useState("");
@@ -1771,11 +1781,18 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <h2 className="text-xl font-bold">Pedidos CJ: comprobar cuenta real</h2>
           <p className="mt-1 text-sm text-muted-foreground">Consulta los estados de CJ mediante su API. Solo lectura: no se crean, confirman ni pagan pedidos. La búsqueda puede tardar unos segundos por los límites de CJ.</p>
         </div>
-        <button type="button" disabled={cjOrderAuditLoading || !cjConfigured} onClick={() => void checkCjAccountOrders()}
-          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
-          <RefreshCw className={"h-4 w-4" + (cjOrderAuditLoading ? " animate-spin" : "")}/>
-          {cjOrderAuditLoading ? "Consultando CJ…" : "Comprobar pedidos en CJ"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={()=>openWorkspaceSection("supplier-cj-automation")}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"
+            aria-label="Abrir Centro de control de pedidos CJ">
+            <Bot className="h-4 w-4"/> Centro de control CJ <ArrowRight className="h-4 w-4"/>
+          </button>
+          <button type="button" disabled={cjOrderAuditLoading || !cjConfigured} onClick={() => void checkCjAccountOrders()}
+            className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 font-semibold disabled:opacity-50">
+            <RefreshCw className={"h-4 w-4" + (cjOrderAuditLoading ? " animate-spin" : "")}/>
+            {cjOrderAuditLoading ? "Consultando CJ…" : "Comprobar pedidos en CJ"}
+          </button>
+        </div>
       </div>
       {cjOrderAudit && <div className="mt-4 space-y-3 text-sm">
         <p className="font-semibold">Última consulta: {new Date(cjOrderAudit.checkedAt).toLocaleString("es-ES")} · {cjOrderAudit.checkedStatuses}/7 estados consultados</p>
