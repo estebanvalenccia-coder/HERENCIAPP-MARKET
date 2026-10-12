@@ -79,6 +79,39 @@ export function normalizePrintfulEstimate(payload){
    costs[key]==null?null:Number(costs[key])]).filter(([,value])=>value!=null&&Number.isFinite(value))),
    checkedAt:new Date().toISOString()};
 }
+/** Diagnostic metadata only: never logs Printful credentials or the recipient. */
+export function summarizePrintfulRejection(body,httpStatus,payload={}){
+ const error=body?.error&&typeof body.error==="object"?body.error:{};
+ const original=String(error.message|| (typeof body?.result==="string"?body.result:"") || "").slice(0,550);
+ const recipient=payload?.recipient||{};
+ let safe=original;
+ // Vendor error strings sometimes interpolate recipient fields; strip any matching
+ // submitted customer details before the private admin/logging boundary.
+ for(const part of [recipient.name,recipient.address1,recipient.address2,recipient.city,
+    recipient.state_name,recipient.zip,recipient.email,recipient.phone]){
+   const value=String(part||"").trim();
+   if(value.length<3)continue;
+   safe=safe.split(value).join("[REDACTED]");
+ }
+ safe=safe.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,"[EMAIL]")
+   .replace(/(?:Bearer\s+|token[=:\s]+)[A-Za-z0-9._-]+/gi,"[SECRET]")
+   .replace(/https?:\/\/\S+/gi,"[URL]")
+   .replace(/(?:\+?\d[ -]?){7,}/g,"[NUMBER]")
+   .replace(/[\r\n\t]/g," ").slice(0,240);
+ const classifier=(String(error.reason||"")+" "+original).toLowerCase();
+ const category=/store|platform|integration|manual order|not connected/.test(classifier)?"store":
+   /scope|auth|permission|access|token/.test(classifier)?"authorization":
+   /file|design|mockup|print area|template/.test(classifier)?"print_file":
+   /sync|variant|catalog|product/.test(classifier)?"variant":
+   /zip|postal|address|recipient|shipping|country|state|delivery/.test(classifier)?"shipping":
+   /currency|vat|tax|cost|payment/.test(classifier)?"pricing":"unknown";
+ const providerReason=String(error.reason||"unknown").replace(/[^a-zA-Z0-9_-]/g,"").slice(0,64);
+ const providerCode=Number(body?.code);
+ return {httpStatus:Number(httpStatus)||0,
+   providerCode:Number.isInteger(providerCode)?providerCode:null,
+   providerReason,category,detail:safe||"Printful no ofrece más información"};
+}
+
 export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=fetch}={}){
  const token=id(env.PRINTFUL_API_TOKEN),storeId=id(env.PRINTFUL_STORE_ID);
  if(!token)fail("Falta PRINTFUL_API_TOKEN",503);
@@ -91,7 +124,13 @@ export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=f
  });}catch{fail("Printful no respondió a la cotización. No se ha autorizado ningún cargo.",503);}
  if(response.status===401||response.status===403)fail("Printful no permite cotizar pedidos con este token.",403);
  if(response.status===429)fail("Límite de consultas Printful; vuelve a intentarlo.",429);
- if(!response.ok)fail("Printful rechazó la cotización; revisa dirección, variante o archivos de impresión.",502);
+ if(!response.ok){
+   let data=null;try{data=await response.json();}catch{}
+   const error=new Error("Printful rechazó la cotización del pedido.");
+   error.statusCode=502;
+   error.providerDiagnosis=summarizePrintfulRejection(data,response.status,payload);
+   throw error;
+ }
  let data;try{data=await response.json();}catch{fail("Printful devolvió una cotización ilegible.",502);}
  return normalizePrintfulEstimate(data);
 }
