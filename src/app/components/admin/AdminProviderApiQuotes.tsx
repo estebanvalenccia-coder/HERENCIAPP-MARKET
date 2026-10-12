@@ -4,6 +4,7 @@ import { backendApi } from "../../lib/backendStorage";
 
 type PrintfulQuote = Awaited<ReturnType<typeof backendApi.quotePrintfulShipping>>;
 type PrintfulStatus = Awaited<ReturnType<typeof backendApi.getPrintfulShippingStatus>>;
+type PrintfulAutomationStatus = Awaited<ReturnType<typeof backendApi.getPrintfulAutomationStatus>>;
 
 const money = (amount: number) =>
   new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(amount);
