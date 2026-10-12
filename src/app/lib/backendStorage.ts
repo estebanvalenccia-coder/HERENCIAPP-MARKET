@@ -1060,6 +1060,13 @@ export const backendApi = {
     );
   },
 
+  async manageSupplierFulfillments(ids: string[], action: "remove" | "delete") {
+    return request<{ ok: boolean; affected: number }>("/api/admin/supplier-fulfillments/manage", {
+      method: "POST",
+      body: JSON.stringify({ ids, action }),
+    });
+  },
+
   async listSupplierFulfillments() {
     return request<{
       fulfillments: any[];
