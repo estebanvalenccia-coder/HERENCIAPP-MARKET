@@ -30,7 +30,16 @@ export function AdminProviderApiQuotes() {
   const [printfulOrderId,setPrintfulOrderId]=useState("");
   const [printfulOrderBusy,setPrintfulOrderBusy]=useState(false);
   const [printfulOrderStatus,setPrintfulOrderStatus]=useState("");
+  const [printfulOrderEstimate,setPrintfulOrderEstimate]=useState("");
   const [printfulOrderError,setPrintfulOrderError]=useState("");
+  const estimateOrder=async()=>{
+    if(!printfulOrderId.trim())return;
+    setPrintfulOrderBusy(true);setPrintfulOrderError("");setPrintfulOrderEstimate("");
+    try{const response=await backendApi.estimatePrintfulOrder(printfulOrderId.trim());
+      setPrintfulOrderEstimate("Coste Printful estimado: "+response.estimate.total.toFixed(2)+" "+response.estimate.currency+" · Incluye los componentes devueltos por Printful. No se ha realizado ningún cargo.");
+    }catch(error:any){setPrintfulOrderError(error?.message||"No se pudo cotizar Printful");}
+    finally{setPrintfulOrderBusy(false);}
+  };
   const checkOrder=async(createDraft:boolean)=>{
     if(!printfulOrderId.trim())return;
     setPrintfulOrderBusy(true);setPrintfulOrderError("");setPrintfulOrderStatus("");
@@ -161,11 +170,14 @@ export function AdminProviderApiQuotes() {
         <input className="mt-1 w-full rounded-lg border bg-background p-2" value={printfulOrderId} onChange={event=>setPrintfulOrderId(event.target.value.trim())} placeholder="Referencia del pedido Herencia"/>
       </label>
       <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void estimateOrder()}
+          className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50">Consultar coste real estimado</button>
         <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void checkOrder(false)}
           className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50">Consultar pedido en Printful</button>
         <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void checkOrder(true)}
           className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50">Preparar borrador sin pagar</button>
       </div>
+      {printfulOrderEstimate&&<p role="status" className="mt-3 text-sm font-semibold">{printfulOrderEstimate}</p>}
       {printfulOrderStatus&&<p role="status" className="mt-3 text-sm font-semibold">{printfulOrderStatus}</p>}
       {printfulOrderError&&<p role="alert" className="mt-3 text-sm font-semibold text-red-700">{printfulOrderError}</p>}
     </section>
