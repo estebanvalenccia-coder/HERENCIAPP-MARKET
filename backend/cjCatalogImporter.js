@@ -2,6 +2,7 @@
 import { extractCjProductId, isCjProductId } from "./cjProductIds.js";
 import { splitSupplierOptions } from "./productVariantOptions.js";
 import { inspectCjFactorySupply } from "./cjFactorySupply.js";
+import { buildCjAccurateFreightPayload, interpretCjAccurateFreightRates } from "./cjAccurateFreight.js";
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 let cachedToken = "";
 let cachedUntil = 0;
@@ -60,7 +61,7 @@ function scheduleCjRequest(fn) {
 }
 async function cjFetch(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
-  const cacheable = path.startsWith("/product/variant/") || path.startsWith("/product/stock/") || path === "/logistic/freightCalculate";
+  const cacheable = path.startsWith("/product/variant/") || path.startsWith("/product/stock/") || path === "/logistic/freightCalculate" || path === "/logistic/freightCalculateTip";
   const key = cacheable ? method + " " + path + " " + String(options.body || "") : "";
   const previous = key && recentResults.get(key);
   if (previous && previous.expiresAt > Date.now()) return previous.data;
@@ -251,8 +252,43 @@ export async function quoteCjVariantShipping({ vid, quantity = 1, origin = "CN",
     clearanceUsd: price(entry?.clearanceOperationFee),
     totalPostageUsd: price(entry?.totalPostageFee),
   })).filter(entry => entry.name && entry.shippingUsd !== null);
+  // CJ recommends freightCalculateTip for more accurate quotations.
+  // Never guess weight or a logistics property to obtain an artificial rate.
+  // This fallback is invoked only if simple freight returns NO methods.
+  let fallbackWarning="",quotationEngine="simple";
+  if(!methods.length){
+    try{
+      const rawVariant=await cjFetch("/product/variant/queryByVid?vid="+encodeURIComponent(safeVid),{
+        headers:{"CJ-Access-Token":accessToken},
+      });
+      const pid=String(rawVariant?.pid||"").trim();
+      if(!isCjProductId(pid) || String(rawVariant?.vid||"")!==safeVid)
+        throw new Error("CJ_VARIANT_NOT_CONFIRMED");
+      const product=await cjFetch("/product/query?pid="+encodeURIComponent(pid),{
+        headers:{"CJ-Access-Token":accessToken},
+      });
+      if(product?.pid && String(product.pid).toLowerCase()!==pid.toLowerCase())
+        throw new Error("CJ_PRODUCT_NOT_CONFIRMED");
+      const payload=buildCjAccurateFreightPayload({
+        product:{...product,pid},variant:rawVariant,vid:safeVid,
+        origin:from,destination:to,zip:postal,quantity:qty,
+      });
+      if(!payload)throw new Error("CJ_LOGISTICS_DATA_INCOMPLETE");
+      const detailed=await cjFetch("/logistic/freightCalculateTip",{
+        method:"POST",headers:{"content-type":"application/json","CJ-Access-Token":accessToken},
+        body:JSON.stringify(payload),
+      });
+      methods.push(...interpretCjAccurateFreightRates(detailed));
+      if(methods.length)quotationEngine="detailed";
+      else fallbackWarning="La consulta logística detallada tampoco ofreció rutas confirmadas para este producto.";
+    }catch(error){
+      if(["CJ_RATE_LIMITED","CJ_QUOTA_EXHAUSTED"].includes(String(error?.code||""))) throw error;
+      fallbackWarning="CJ no permitió completar la cotización detallada. Revisa los datos logísticos del artículo con el proveedor.";
+    }
+  }
   return {
     origin: from, destination: to, zip: postal, vid:safeVid, quantity:qty,
+    quotationEngine,fallbackWarning,
     methods: methods.sort((a,b) => (a.totalPostageUsd ?? a.shippingUsd) - (b.totalPostageUsd ?? b.shippingUsd)),
     currency: "USD", rateType: postal ? "postal_estimate" : "country_estimate", source: "cj_api",
     warning: postal

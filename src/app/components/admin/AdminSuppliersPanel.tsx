@@ -2226,7 +2226,8 @@ function ImportedProductRow({
     try {
       const result = await backendApi.quoteCjProductFreight(String(product.id), String(supplierVariantId).trim(), freightPostalCode, quoteDestination, quoteOrigin);
       setFreightQuote(result);
-      if (!result.methods?.length) setFreightError(freightPostalCode
+      if (!result.methods?.length && result.fallbackWarning) setFreightError(result.fallbackWarning);
+      else if (!result.methods?.length) setFreightError(freightPostalCode
         ? "CJ no devuelve tarifas para esta ubicación desde " + quoteOrigin + ". Prueba otro código postal u otro almacén con stock verificado."
         : "CJ no devuelve tarifas generales desde " + quoteOrigin + " para este país. Prueba una ciudad de referencia o cambia a otro almacén con existencias.");
     } catch (error: any) {
@@ -2278,10 +2279,12 @@ function ImportedProductRow({
         setCost(Math.round(baseEur * 100) / 100);
       let quoted: any = null;
       let quotedZip = "";
+      let quoteWarning = "";
       const tried: string[] = [];
       for (const postal of cjSpanishFreightPreviewSamples("ES")) {
         tried.push(postal);
         const next = await backendApi.quoteCjProductFreight(String(product.id), String(variant.vid), postal, "ES", "CN");
+        if (next?.fallbackWarning) quoteWarning = next.fallbackWarning;
         if (next?.methods?.length) {
           quoted = next;
           quotedZip = postal;
@@ -2299,7 +2302,7 @@ function ImportedProductRow({
           ? "CJ informa unidades de fábrica, pero todavía no ha verificado su disponibilidad"
           : "CJ no ha confirmado abastecimiento desde almacén ni fábrica para el VID exacto");
       if (!quoted?.methods?.length)
-        issues.push("sin tarifas CJ para los CP de referencia " + tried.join(" y "));
+        issues.push("sin tarifas CJ para los CP de referencia " + tried.join(" y ") + (quoteWarning ? ". " + quoteWarning : ""));
       else if (!preferred)
         issues.push("ninguna tarifa ofrece un coste completo y un margen mínimo verificado");
       if (readiness.supplierBaseEur == null)
@@ -2624,6 +2627,7 @@ function ImportedProductRow({
         {freightError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-900">{freightError}</p>}
         {freightQuote && freightQuote.methods?.length > 0 && <div className="space-y-2">
           <p className="text-xs font-semibold">{freightQuote.rateType === "country_estimate" ? "Estimación general por país" : referenceEstimate ? "Estimación para una ciudad de referencia (CP de ejemplo)" : "Estimación para el código postal indicado"}. No es una tarifa final.</p>
+          <p className="text-xs font-semibold">{freightQuote.quotationEngine === "detailed" ? "Cotización logística detallada de CJ; basada en peso y propiedades declaradas por el proveedor." : "Cotización logística estándar de CJ."}</p>
           <p className="text-xs font-semibold">Opciones de CJ (estimación en USD, no incluye automáticamente impuestos no declarados):</p>
           {freightQuote.methods.slice(0, 12).map((method: any, index: number) => <button type="button" key={method.name + "-" + index}
             aria-pressed={selectedFreightName === method.name}
