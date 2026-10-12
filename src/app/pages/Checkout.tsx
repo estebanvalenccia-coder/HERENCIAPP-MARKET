@@ -297,7 +297,8 @@ export function Checkout() {
   }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, cjOnly, businessSuite.scheduledOrdersEnabled]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + lineTotal(item), 0);
-  const shipping = hasPhysicalItems ? shippingCost : 0;
+  const fullCouponDiscount = Boolean(coupon && subtotal > 0 && discount >= subtotal - 0.001);
+  const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
   const handleChange = (key: string, value: string) =>
@@ -503,7 +504,7 @@ export function Checkout() {
                   <p className="text-destructive">{shippingError}</p>
                 ) : shippingInfo ? (
                   <div className="space-y-1">
-                    <p className="font-semibold">Envío calculado: €{shippingCost.toFixed(2)}</p>
+                    <p className="font-semibold">Envío calculado: €{shipping.toFixed(2)}</p>
                     <p className="text-muted-foreground">
                       Distancia: {shippingInfo.distanceText || `${shippingInfo.distanceKm} km`}
                       {shippingInfo.durationText ? ` · Tiempo estimado: ${shippingInfo.durationText}` : ""}

@@ -3662,6 +3662,9 @@ async function validateCommerceOrderPayload(order = {}) {
     }
   }
 
+  // A verified coupon covering the entire merchandise subtotal also covers delivery.
+  if (couponCode && subtotal > 0 && discount >= subtotal - 0.001) shipping = 0;
+
   if (hasPhysicalItems && !directCjShipping) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
@@ -9676,6 +9679,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const shippingAddress = metadata?.shippingAddress || {};
     let shippingQuote = null;
     let authoritativeShipping = 0;
+    let directCjShipping = false;
     if (!serviceOnly) {
       const supplierOperations = await readSupplierOperations();
       const directCj = await evaluateCjCheckout({
@@ -9684,7 +9688,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         promotionAuthorized: Boolean(verifiedPromotion?.rule && authoritativeDiscount > 0),
         suppliers: supplierOperations.suppliers || [],
       });
-      if (directCj.cjOnly) {
+      directCjShipping = directCj.cjOnly;
+      if (directCjShipping) {
         shippingQuote = directCj.shippingQuote;
         authoritativeShipping = 0;
       } else {
@@ -9703,6 +9708,27 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       }
     }
 
+    // Apply the same shipping policy as checkout, including advanced distance rules.
+    // Only a server-verified full-discount coupon can make delivery free.
+    if (!serviceOnly && !directCjShipping && shippingQuote) {
+      const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
+      if (shippingSettings.advancedEnabled) {
+        authoritativeShipping = shippingQuoteForCart({
+          settings: shippingSettings,
+          lines: authoritativeItems.map(item => {
+            const product = catalog.find(row => String(row.id) === String(item.id)) || {};
+            return { ...item, category: product.category || "", collection: product.collection || product.collections?.[0] || "" };
+          }),
+          distanceKm: Number(shippingQuote.distanceKm),
+          legacyPrice: Number(shippingQuote.price || 0),
+        });
+        shippingQuote = { ...shippingQuote, price: authoritativeShipping, pricing: { model: "admin_policy_v2" } };
+      }
+    }
+    if (couponCode && authoritativeSubtotal > 0 && authoritativeDiscount >= authoritativeSubtotal - 0.001) {
+      authoritativeShipping = 0;
+      if (shippingQuote) shippingQuote = { ...shippingQuote, price: 0 };
+    }
     const authoritativeTotal = Number((authoritativeSubtotal - authoritativeDiscount + authoritativeShipping).toFixed(2));
     const totalCents = Math.round(authoritativeTotal * 100);
     if (!Number.isFinite(totalCents) || totalCents < 0 || (totalCents > 0 && totalCents < 50)) {
