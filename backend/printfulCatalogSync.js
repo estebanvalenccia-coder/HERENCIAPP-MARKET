@@ -57,10 +57,10 @@ export function normalizePrintfulSyncProduct(response,{storeId="",existingVarian
    inventoryMode:"printful_on_demand",checkedAt:new Date().toISOString()};
 }
 
-export async function printfulGet(path,{env=process.env,fetchImpl=fetch,wait=delay}={}){
+export async function printfulGet(path,{env=process.env,fetchImpl=fetch,wait=delay,storeId:requestedStoreId}={}){
  const token=id(env.PRINTFUL_API_TOKEN);
  if(!token)fail("Configura PRINTFUL_API_TOKEN en Railway.",503);
- const storeId=id(env.PRINTFUL_STORE_ID);
+ const storeId=id(requestedStoreId||env.PRINTFUL_STORE_ID);
  if(storeId && !/^[0-9]+$/.test(storeId))fail("PRINTFUL_STORE_ID inválido.",422);
  const url=new URL(path,API);
  if(url.origin!==API)fail("Ruta Printful no autorizada.");
@@ -75,6 +75,7 @@ export async function printfulGet(path,{env=process.env,fetchImpl=fetch,wait=del
    }
    if(response.status===401||response.status===403)fail("El token Printful no tiene acceso a productos sincronizados de esta tienda.",403);
    if(response.status===404)fail("Producto sincronizado no encontrado en la tienda Printful.",404);
+   if(response.status===400)fail("Printful requiere un ID de tienda válido o permisos de lectura del catálogo.",422);
    if(!response.ok)fail("Printful rechazó la consulta de catálogo. No se modificaron datos.",502);
    let payload;try{payload=await response.json();}catch{fail("Respuesta Printful ilegible.",502);}
    if(payload?.code && Number(payload.code)>=400)fail("Printful no autorizó la consulta.",502);
@@ -82,6 +83,17 @@ export async function printfulGet(path,{env=process.env,fetchImpl=fetch,wait=del
  }
 }
 
+export async function listPrintfulStores(options={}){
+ const stores=[];let offset=0;
+ for(let page=0;page<20;page++){
+   const payload=await printfulGet("/stores?limit=100&offset="+offset,{...options,storeId:""});
+   if(!Array.isArray(payload?.result))fail("Printful no devolvió un listado de tiendas.",502);
+   stores.push(...payload.result.map(item=>({id:id(item.id),name:id(item.name),type:id(item.type)})));
+   if(payload.result.length<100)return stores;
+   offset+=payload.result.length;
+ }
+ fail("Demasiadas tiendas para verificar.",422);
+}
 export async function listPrintfulSyncProducts(options={}){
  const rows=[];let offset=0;
  for(let page=0;page<20;page++){
@@ -98,5 +110,5 @@ export async function listPrintfulSyncProducts(options={}){
 export async function getPrintfulSyncProduct(syncId,options={}){
  if(!/^[0-9]{1,20}$/.test(id(syncId)))fail("Selecciona un identificador de producto sincronizado Printful.");
  const payload=await printfulGet("/store/products/"+id(syncId),options);
- return normalizePrintfulSyncProduct(payload,{storeId:options.env?.PRINTFUL_STORE_ID??process.env.PRINTFUL_STORE_ID,existingVariants:options.existingVariants});
+ return normalizePrintfulSyncProduct(payload,{storeId:options.storeId||options.env?.PRINTFUL_STORE_ID??process.env.PRINTFUL_STORE_ID,existingVariants:options.existingVariants});
 }
