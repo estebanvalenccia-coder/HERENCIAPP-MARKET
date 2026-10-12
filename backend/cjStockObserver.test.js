@@ -154,3 +154,45 @@ test("factory inventory declared but unverified never becomes public availabilit
  assert.match(route,/readCjFactoryObservation/);
  assert.doesNotMatch(route,/queryCjFactorySupply|createOrderV2|payBalance/);
 });
+
+test("periodic CJ observer publishes verified 202 DE units for the exact VID without merchant stock writes",async()=>{
+ const kv=new Map(),vid=VID;
+ const obs=createCjStockObserver({
+  listProducts:async()=>[product],
+  read:async k=>kv.get(k)||null,
+  upsert:async(k,v)=>kv.set(k,v),
+  mutate:async(k,fn)=>kv.set(k,await fn(kv.get(k)||null)),
+  queryStock:async()=>({verified:false,available:false,quantity:0,vid,origin:"CN"}),
+  queryWarehouses:async()=>({vid,warehouses:[
+    {countryCode:"DE",verified:true,available:true,quantity:202},
+    {countryCode:"US",verified:false,available:true,quantity:90000},
+  ]}),
+  now:()=>NOW,logger:{warn(){}},
+ });
+ const report=await obs.sweep();
+ assert.equal(report.altVerified,1);
+ const available=readCjObservation(kv.get(cjObservationKey(PID,VID)),
+   {productId:PID,vid:VID,nowMs:NOW});
+ assert.equal(available.available,true);
+ assert.equal(available.origin,"DE");
+ assert.equal(available.quantity,202);
+ assert.equal(available.notReserved,true);
+ assert.equal(readCjObservation(kv.get(cjObservationKey(PID,VID)),
+   {productId:PID,vid:VID,nowMs:NOW+50*60_000}).available,false);
+ assert.equal([...kv.keys()].some(key=>key==="commerceProducts"||key==="posOperations"),false);
+});
+test("unknown DE inventory and mismatched VID cannot be advertised by periodic observer",async()=>{
+ const kv=new Map();
+ const worker=createCjStockObserver({
+  listProducts:async()=>[product],
+  read:async k=>kv.get(k)||null,
+  upsert:async(k,v)=>kv.set(k,v),
+  mutate:async(k,fn)=>kv.set(k,await fn(kv.get(k)||null)),
+  queryStock:async()=>({verified:false,available:false,quantity:null}),
+  queryWarehouses:async()=>({vid:"WRONG",warehouses:[
+    {countryCode:"DE",verified:true,available:true,quantity:202}]}),
+  now:()=>NOW,logger:{warn(){}},
+ });
+ assert.equal((await worker.sweep()).altVerified,0);
+ assert.equal(kv.has(cjObservationKey(PID,VID)),false);
+});
