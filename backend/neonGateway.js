@@ -37,7 +37,7 @@ import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,suppl
 import { readSupplierProductLinks,confirmSupplierProductLink } from "./supplierProductLinks.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
-import { listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
+import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -489,9 +489,17 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   // Printful synced products: private token, admin-only, no purchases.
+  if(path==="/api/admin/printful/stores"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const stores=await listPrintfulStores();
+    return json(res,200,{ok:true,stores});
+  }
   if(path==="/api/admin/printful/sync-products"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
-    const products=await listPrintfulSyncProducts();
+    const url=new URL(req.url,"http://localhost");
+    const storeId=String(url.searchParams.get("storeId")||process.env.PRINTFUL_STORE_ID||"").trim();
+    if(storeId&&!/^[0-9]{1,20}$/.test(storeId))return json(res,422,{error:"Tienda Printful inválida"});
+    const products=await listPrintfulSyncProducts({storeId});
     return json(res,200,{ok:true,products});
   }
   if(path==="/api/admin/printful/sync-product"&&req.method==="POST"){
@@ -499,12 +507,16 @@ const server=http.createServer(async(req,res)=>{try{
     const body=await bodyJson(req);
     const productId=String(body?.productId||"").trim();
     const syncId=String(body?.syncProductId||"").trim();
+    const storeId=String(body?.storeId||process.env.PRINTFUL_STORE_ID||"").trim();
+    if(storeId&&!/^[0-9]{1,20}$/.test(storeId))return json(res,422,{error:"Tienda Printful inválida"});
     if(!syncId||!/^[0-9]{1,20}$/.test(syncId))return json(res,422,{error:"Selecciona un producto sincronizado Printful válido"});
     const existing=productId?await getNeonCommerceProduct(productId,{includeArchived:true}):null;
     if(productId&&(!existing||existing.status==="archived"))return json(res,404,{error:"Producto de Herencia no encontrado"});
     if(existing?.metadata?.printfulSyncProductId&&String(existing.metadata.printfulSyncProductId)!==syncId)
       return json(res,409,{error:"La ficha está vinculada a otro producto Printful; desvincúlala antes de cambiar de origen"});
-    const response=await getPrintfulSyncProduct(syncId,{existingVariants:existing?.variants||[]});
+    if(existing?.metadata?.printfulStoreId&&String(existing.metadata.printfulStoreId)!==storeId)
+      return json(res,409,{error:"El producto pertenece a otra tienda Printful"});
+    const response=await getPrintfulSyncProduct(syncId,{storeId,existingVariants:existing?.variants||[]});
     if(!response.variants.length)return json(res,502,{error:"Printful no devolvió variantes; no se modifica el catálogo"});
     const conflicts=(await listNeonCommerceProducts({includeArchived:true})).filter(p=>
       String(p.metadata?.printfulSyncProductId||"")===syncId && String(p.id)!==productId);
