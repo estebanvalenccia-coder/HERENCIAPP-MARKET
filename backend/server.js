@@ -6281,7 +6281,8 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
   const budgetKey=printfulDailyBudgetKey();
   await mutateNeonStorageValue(budgetKey,raw=>{
     let budget={spentOrReservedEur:0,orders:{}};
-    try{const parsed=JSON.parse(raw||"{}");if(parsed&&typeof parsed==="object")budget={...budget,...parsed};}catch{}
+    try{const parsed=JSON.parse(raw||"{}");if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw Error("invalid_ledger");budget={...budget,...parsed};}
+    catch{budgetBlocked=true;return raw||JSON.stringify({invalidLedger:true});}
     if(!budget.orders||typeof budget.orders!=="object")budget.orders={};
     const spent=Number(budget.spentOrReservedEur);
     if(!Number.isFinite(spent)||spent<0){budgetBlocked=true;return JSON.stringify(budget);}
