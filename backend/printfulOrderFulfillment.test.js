@@ -1,13 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate,summarizePrintfulRejection} from "./printfulOrderFulfillment.js";
+import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,confirmPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate,summarizePrintfulRejection,printfulExternalOrderId} from "./printfulOrderFulfillment.js";
 const product={id:"p1",name:"Camisa jungle",metadata:{provider:"printful"},
  variants:[{name:"Negro / M",printfulSyncVariantId:"123456",printfulCatalogVariantId:"2020",printfulAvailability:"active",sku:"NJ-M"}]};
 const order={id:"dddddddd-0000-4000-8000-000000000001",status:"paid",items:[{id:"p1",selectedVariant:"Negro / M",quantity:1,printfulSyncVariantId:"123456"}],
  customer_email:"example@example.com",customer_name:"Buyer",metadata:{shippingAddress:{address:"Calle Falsa 20",postalCode:"08032",city:"Barcelona",country:"ES"}}};
 test("confirmed Herencia order uses Printful synced variant ID and deterministic external reference",()=>{
  const p=preparePrintfulDraft(order,[product]);
- assert.equal(p.external_id,"HERENCIA-"+order.id);
+ assert.equal(p.external_id,printfulExternalOrderId(order.id));
+ assert.ok(p.external_id.length<=32);
+ assert.match(p.external_id,/^[A-Za-z0-9_-]+$/);
  assert.deepEqual(p.items,[{sync_variant_id:123456,quantity:1}]);
  assert.equal(p.recipient.country_code,"ES");
 });
@@ -21,11 +23,11 @@ test("no sending unpaid, mixed supplier or missing address orders",()=>{
  assert.throws(()=>preparePrintfulDraft({...order,metadata:{}},[product]),/dirección/);
 });
 test("GET external ID reconciliation can confirm exact Printful status",async()=>{
- const calls=[];const f=async(url,req)=>{calls.push([url,req]);return {ok:true,status:200,json:async()=>({result:{id:893,status:"draft",external_id:"HERENCIA-"+order.id}})}};
+ const calls=[];const f=async(url,req)=>{calls.push([url,req]);return {ok:true,status:200,json:async()=>({result:{id:893,status:"draft",external_id:printfulExternalOrderId(order.id)}})}};
  const o=await lookupPrintfulOrder(order.id,{env:{PRINTFUL_API_TOKEN:"secret",PRINTFUL_STORE_ID:"52"},fetchImpl:f});
  assert.equal(o.id,"893");assert.equal(o.status,"draft");
  assert.equal(calls[0][1].headers["X-PF-Store-Id"],"52");
- assert.equal(calls[0][0].split("/orders/")[1],"@HERENCIA-"+order.id);
+ assert.equal(calls[0][0].split("/orders/")[1],"@"+printfulExternalOrderId(order.id));
 });
 test("create remains draft: no confirm query parameter or money charging endpoint",async()=>{
  const payload=preparePrintfulDraft(order,[product]);let seen;
@@ -77,7 +79,7 @@ test("live confirmation is a dedicated guarded action with exact provider identi
    assert.equal(url,"https://api.printful.com/orders/987/confirm");
    assert.equal(options.method,"POST");
    assert.equal(options.headers["X-PF-Store-Id"],"52");
-   return {ok:true,status:200,json:async()=>({result:{id:987,status:"pending",external_id:"HERENCIA-"+order.id}})};
+   return {ok:true,status:200,json:async()=>({result:{id:987,status:"pending",external_id:printfulExternalOrderId(order.id)}})};
  }});
  assert.equal(calls,1);
  assert.equal(result.status,"pending");
@@ -124,4 +126,14 @@ test("real failed quote Invalid External ID gets an identifier diagnosis, never 
    assert.equal(Object.hasOwn(JSON.parse(req.body),"external_id"),false);
    return {ok:false,status:400,json:async()=>({code:400,error:{reason:"BadRequest",message:"Invalid External ID specified"}})};
  }}),e=>e.providerDiagnosis?.detail==="Invalid External ID specified");
+});
+
+test("Printful external IDs are stable, valid, <=32 chars and distinguish separate Herencia orders",()=>{
+ const first=printfulExternalOrderId(order.id);
+ const second=printfulExternalOrderId("dddddddd-0000-4000-8000-000000000002");
+ assert.equal(first,printfulExternalOrderId(order.id.toUpperCase()));
+ assert.notEqual(first,second);
+ assert.ok(first.length<=32);
+ assert.match(first,/^[A-Za-z0-9_-]+$/);
+ assert.throws(()=>printfulExternalOrderId("@invalid"),/inválido/);
 });
