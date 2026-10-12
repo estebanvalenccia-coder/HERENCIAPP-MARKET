@@ -175,6 +175,11 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
       }
     }
   }
+  if (!chosen && candidates.length && checks[1].status==="fulfilled" &&
+      (checks[1].value?.vid !== vid || checks[1].value?.destination !== "ES" ||
+       String(checks[1].value?.zip||"") !== postalCode ||
+       (checks[1].value?.origin && checks[1].value.origin !== "CN")))
+    invalid("La cotización CJ no coincide con la variante o el destino. No se realizará ningún cobro.");
   if (!chosen) {
     // Never charge if the exact variant cannot be supplied and shipped with
     // a complete profitable CJ quote for the real destination.
