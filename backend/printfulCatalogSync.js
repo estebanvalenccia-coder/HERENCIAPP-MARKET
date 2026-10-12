@@ -23,8 +23,9 @@ export function normalizePrintfulSyncProduct(response,{storeId="",existingVarian
    seen.add(syncId);
    const previous=existing.get(syncId);
    const catalog=v?.product && typeof v.product==="object"?v.product:{};
-   const color=id(catalog.color||v.color);
-   const size=id(catalog.size||v.size);
+   const parts=id(v?.name).split(" / ").map(x=>x.trim()).filter(Boolean);
+   const color=id(catalog.color||v.color||(parts.length>=3?parts[parts.length-2]:""));
+   const size=id(catalog.size||v.size||(parts.length>=3?parts[parts.length-1]:""));
    const label=[color,size].filter(Boolean).join(" / ")||id(v?.name);
    if(!label)fail("Printful devolvió una variante sin talla, color ni nombre.",502);
    const files=Array.isArray(v.files)?v.files:[];
@@ -40,8 +41,10 @@ export function normalizePrintfulSyncProduct(response,{storeId="",existingVarian
      supplierSku:originalSku,supplierVariantId:syncId,printfulSyncVariantId:syncId,
      printfulCatalogVariantId:catalogId,printfulAvailability:availability,
      printfulAvailabilityVerified:availability!=="unknown",printfulOnDemand:true,
+     printfulRetailPriceUnverified:retail,
      stock:0,image,
-     price:previous?.price!=null?previous.price:retail??undefined,
+     // Printful retail_price currency is not proven EUR for this store. Never silently convert.
+     price:previous?.price!=null?previous.price:undefined,
      ...(previous?.price!=null?{manualPricePreserved:true}:{}),
      availabilityStatus:verified?"available":"unverified",
    };
