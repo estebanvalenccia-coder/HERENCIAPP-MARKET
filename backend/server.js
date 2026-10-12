@@ -35,7 +35,7 @@ import {
   validateManualCjCreate, validateManualCjPayment, validateCjLiveWarehouseStock, applyCjManualStage,
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
-import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft } from "./printfulOrderFulfillment.js";
+import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder } from "./printfulOrderFulfillment.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
   normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
@@ -6212,6 +6212,9 @@ async function syncPrintfulDraftForOrder(orderId){
   // Unknown prior outcomes require manual reconciliation: never POST again.
   if(current.status==="creating"||current.status==="unknown")
     throw Object.assign(new Error("Posible pedido Printful previo; no se duplicará. Reconciliar en Printful."),{statusCode:409});
+  // The provider quotation is read-only and must be complete before creating a draft.
+  // Quote currency can differ from Herencia EUR; never mix them or authorize a charge.
+  const estimate=await estimatePrintfulOrder(payload);
   let claimed=false;
   if(!hasNeon())throw Object.assign(new Error("Neon es obligatorio para crear pedidos Printful sin duplicados"),{statusCode:503});
   await mutateNeonStorageValue(key,raw=>{
@@ -6224,7 +6227,9 @@ async function syncPrintfulDraftForOrder(orderId){
   try{
     const created=await createPrintfulDraft(payload);
     const saved={status:"created",orderId:String(order.id),externalOrderId:created.id,
-      printfulStatus:created.status,shipments:created.shipments,updatedAt:new Date().toISOString()};
+      printfulStatus:created.status,shipments:created.shipments,
+      estimatedCost:estimate.total,currency:estimate.currency,estimateCheckedAt:estimate.checkedAt,
+      updatedAt:new Date().toISOString()};
     await upsertStorageValue(key,JSON.stringify(saved));
     return saved;
   }catch(error){
@@ -6233,6 +6238,19 @@ async function syncPrintfulDraftForOrder(orderId){
     throw error;
   }
 }
+app.post("/api/admin/suppliers/printful/estimate",requireAdmin,async(req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const orderId=String(req.body?.orderId||"").trim();
+    if(!/^[a-z0-9-]{8,100}$/i.test(orderId))return res.status(422).json({error:"Pedido Herencia inválido"});
+    const order=await getOrderPrimary(orderId);
+    if(!order)return res.status(404).json({error:"Pedido Herencia no encontrado"});
+    const catalog=await loadAuthoritativeProducts({includeArchived:true});
+    const payload=preparePrintfulDraft(order,catalog);
+    const estimate=await estimatePrintfulOrder(payload);
+    return res.json({ok:true,orderId,estimate,readOnly:true,charged:false});
+  }catch(error){return res.status(error.statusCode||500).json({error:error.message});}
+});
 app.post("/api/admin/suppliers/printful/draft",requireAdmin,async(req,res)=>{
   if(!requirePrimaryDatabase(res))return;
   try{
@@ -9954,6 +9972,16 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
             entityId: orderId,
             dedupeKey: "supplier-fulfillment:" + orderId,
           }).catch(() => null);
+        }
+        try{
+          await syncPrintfulDraftForOrder(String(paidOrder.id));
+        }catch(printfulError){
+          console.warn("[printful] free coupon draft requires attention",String(printfulError?.message||"").slice(0,180));
+          await addAutomationNotification({
+            type:"printful_draft_attention",title:"Pedido gratuito Printful pendiente",
+            message:"Pedido #"+orderId.slice(0,8)+": "+String(printfulError?.message||"Verifica el borrador Printful"),
+            entityType:"order",entityId:orderId,dedupeKey:"printful-draft:"+orderId,
+          }).catch(()=>null);
         }
         broadcastAdminOrderEvent(paidOrder, "order_paid");
         void emitNeuralBusinessEvent("order.paid", normalizeOrder(paidOrder));
