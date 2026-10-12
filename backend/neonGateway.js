@@ -37,7 +37,7 @@ import { readSupplierAftercare,createAftercareCase,transitionAftercareCase,suppl
 import { readSupplierProductLinks,confirmSupplierProductLink } from "./supplierProductLinks.js";
 import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfile } from "./supplierFileProfiles.js";
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
-import { summarizeCjProductReviews } from "./cjAutomatedReview.js";
+import { summarizeCjProductReviews, assessCjAutomatedProduct } from "./cjAutomatedReview.js";
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 
 const publicPort = Number(process.env.PORT || 3001);
@@ -539,15 +539,58 @@ const server=http.createServer(async(req,res)=>{try{
       syncProductId:syncId,checkedAt:response.checkedAt});
   }
 
-  // Single-pass CJ review, private to admins. Unknown API facts stay unknown,
-  // never become fictional manufacturer data, stock counts or compliance approvals.
+
+  // CJ batch checks are read-only and at most 2 products per request.
+  // Manufacturer and EU safety evidence cannot be inferred from logistics results.
   if(path==="/api/admin/suppliers/cj/review-products"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
-    const products=await listNeonCommerceProducts({includeArchived:true});
-    const summary=summarizeCjProductReviews(products);
-    return json(res,200,{ok:true,source:"catalog_and_documentary_evidence",...summary,
-      liveProviderStockChecked:false,liveShippingChecked:false,
-      note:"Las observaciones logísticas se comprueban por variante y destino antes de autorizar venta; no se inventan datos de CJ."});
+    const products=(await listNeonCommerceProducts({includeArchived:true})).filter(p=>{
+      const m=p.metadata||{};
+      return String(m.sourceHost||"").toLowerCase().replace(/^www\\./,"")==="cjdropshipping.com";
+    });
+    const observations={};
+    await Promise.all(products.map(async p=>{
+      let r={};try{r=JSON.parse(await readNeonStorageValue("cjProductReview:v1:"+String(p.id))||"{}");}catch{}
+      if(r.checkedAt && Date.now()-Date.parse(r.checkedAt)<15*60*1000)observations[String(p.id)]=r;
+    }));
+    const summary=summarizeCjProductReviews(products,observations);
+    return json(res,200,{ok:true,...summary,source:"cj_api_and_documentary_evidence",liveShippingChecked:false});
+  }
+  if(path==="/api/admin/suppliers/cj/review-live-batch"&&req.method==="POST"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const offset=Number(body?.offset??0);
+    if(!Number.isSafeInteger(offset)||offset<0||offset>5000)return json(res,422,{error:"Offset inválido"});
+    const products=(await listNeonCommerceProducts({includeArchived:true})).filter(p=>
+      p.status!=="archived" && String(p.metadata?.sourceHost||"").toLowerCase().replace(/^www\\./,"")==="cjdropshipping.com");
+    const batch=products.slice(offset,offset+2);
+    const results=[];
+    for(const product of batch){
+      const productId=String(product.id);
+      const obs={checkedAt:new Date().toISOString(),stock:{verified:false},price:{verified:false},
+        shipping:{verified:false},lastError:"",variantCount:0};
+      try{
+        const url=new URL(String(product.metadata?.sourceProductUrl||""));
+        if(url.protocol!=="https:"||!["www.cjdropshipping.com","cjdropshipping.com"].includes(url.hostname.toLowerCase()))throw Error("URL original de CJ inválida");
+        const pid=extractCjProductId(url);
+        if(!pid)throw Error("Falta el PID de CJ");
+        const response=await queryCjProductVariants(pid);
+        if(response.truncated)throw Error("Variantes incompletas; hay que revisar por lotes");
+        obs.variantCount=response.variants.length;
+        const mapped=(product.variants||[]).find(v=>v.supplierVariantId&&response.variants.some(row=>String(row.vid)===String(v.supplierVariantId)));
+        if(!mapped)throw Error("Falta vincular el VID/SKU de una variante real de CJ");
+        const row=response.variants.find(v=>String(v.vid)===String(mapped.supplierVariantId));
+        obs.price=row.priceUsd!=null?{verified:true,amount:row.priceUsd,currency:"USD",vid:row.vid}:{verified:false};
+        const stock=await queryCjVariantStock({vid:row.vid,origin:"CN"});
+        if(stock.verified===true)obs.stock={verified:true,available:stock.available===true,quantity:stock.quantity,origin:"CN",vid:row.vid};
+        if(!obs.stock.verified)obs.lastError="CJ no confirma stock en China";
+      }catch(error){obs.lastError=String(error?.message||"Error de CJ").slice(0,240);}
+      await mutateNeonStorageValue("cjProductReview:v1:"+productId,()=>JSON.stringify(obs));
+      const state=assessCjAutomatedProduct(product,obs);
+      results.push({productId,name:String(product.name||""),...obs,state:state.state,pending:state.pending,confirmed:state.confirmed});
+    }
+    return json(res,200,{ok:true,results,total:products.length,
+      nextOffset:offset+batch.length<products.length?offset+batch.length:null,readOnly:true});
   }
 
   // Read-only CJ variants lookup for an existing Commerce product. Never creates or pays orders.

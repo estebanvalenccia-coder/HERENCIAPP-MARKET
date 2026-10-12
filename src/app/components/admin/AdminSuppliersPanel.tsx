@@ -132,6 +132,24 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   }>>([]);
   const [testingSupplierId, setTestingSupplierId] = useState("");
   const [cjReview,setCjReview]=useState<Awaited<ReturnType<typeof backendApi.reviewCjProducts>>|null>(null);
+  const [cjLiveRows,setCjLiveRows]=useState<Array<{productId:string;name:string;state:string;lastError:string;variantCount:number;stock:{verified:boolean;quantity?:number};price:{verified:boolean;amount?:number;currency?:string}}>>([]);
+  const [cjBatchProgress,setCjBatchProgress]=useState("");
+  const syncCjReview=async()=>{
+    if(cjReviewBusy)return;
+    setCjReviewBusy(true);setCjLiveRows([]);setCjBatchProgress("Iniciando comprobaciones reales de CJ…");
+    try{
+      let offset=0;
+      for(let iteration=0;iteration<100;iteration++){
+        const result=await backendApi.reviewCjLiveBatch(offset);
+        setCjLiveRows(prev=>[...prev,...result.results]);
+        setCjBatchProgress("Verificados "+(offset+result.results.length)+" de "+result.total+" productos activos");
+        if(result.nextOffset==null)break;
+        offset=result.nextOffset;
+      }
+      setCjReview(await backendApi.reviewCjProducts());
+    }catch(error:any){toast.error(error?.message||"CJ no completó la revisión. Puedes reintentar sin modificar los productos.");}
+    finally{setCjReviewBusy(false);}
+  };
   const [cjReviewBusy,setCjReviewBusy]=useState(false);
   const refreshCjReview=async()=>{
     setCjReviewBusy(true);
@@ -1213,13 +1231,28 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           {cjReviewBusy?"Revisando…":"Revisar todos los productos CJ"}
         </button>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={()=>void syncCjReview()} disabled={cjReviewBusy}
+          className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+          {cjReviewBusy?"Sincronizando CJ…":"Comprobar stock y precios reales de CJ"}
+        </button>
+        {cjBatchProgress&&<span role="status" className="text-xs text-muted-foreground">{cjBatchProgress}</span>}
+      </div>
+      {cjLiveRows.length>0&&<div className="mt-3 max-h-60 space-y-1 overflow-y-auto rounded-lg border p-3 text-xs">
+        {cjLiveRows.map(row=><p key={row.productId}>
+          {row.stock.verified?"✓":"!"} {row.name} · {row.variantCount} variantes ·
+          {row.stock.verified?" Stock CN: "+String(row.stock.quantity):" Stock no verificado"}
+          {row.price.verified?" · Precio "+row.price.amount+" "+row.price.currency:""}
+          {row.lastError?" · "+row.lastError:""}
+        </p>)}
+      </div>}
       {cjReview&&<div className="mt-4 space-y-3">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-900">Listos: {cjReview.ready}</div>
           <div className="rounded-lg bg-amber-50 p-3 text-sm font-bold text-amber-900">Pendientes: {cjReview.pending}</div>
           <div className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-900">Bloqueados: {cjReview.blocked}</div>
         </div>
-        <p className="text-xs text-muted-foreground">Esta revisión no consulta aún tarifas y stock en directo. Los datos no comprobados quedan pendientes.</p>
+        <p className="text-xs text-muted-foreground">Stock y precios se consultan con CJ al pulsar «Comprobar»; transporte y documentación exigen una validación independiente. Las verificaciones caducan a los 15 minutos.</p>
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {cjReview.results.map(result=><details key={result.productId} className="rounded-lg border p-3">
             <summary className="cursor-pointer text-sm font-semibold">{result.state==="ready"?"🟢":result.state==="blocked"?"🔴":"🟡"} {result.name}</summary>
