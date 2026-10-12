@@ -57,7 +57,7 @@ test("archived CJ imports do not count as available to launch",()=>{
  assert.equal(state.steps[1].state,"action_required");
  assert.equal(state.activeCjProducts,0);
 });
-test("published CJ item with Sandbox and missing shipping is called out, never shown ready",()=>{
+test("published CJ item in Sandbox cannot be live even if carrier is selected at checkout",()=>{
  const state=buildDropshippingLaunchStatus({
    suppliers:[{...live,cjSandbox:true}],
    products:[{id:"garden",name:"Bolsa de jardinería",status:"active",price:14,stock:1,
@@ -69,7 +69,7 @@ test("published CJ item with Sandbox and missing shipping is called out, never s
  assert.equal(state.catalogReview.length,1);
  assert.equal(state.activeCjProducts,1);
  assert.ok(state.catalogReview[0].issues.some(x=>x.includes("Sandbox")));
- assert.ok(state.catalogReview[0].issues.some(x=>x.includes("transporte")));
+ assert.ok(state.catalogReview[0].issues.some(x=>x.includes("portes CJ en tiempo real")));
  assert.equal(state.steps[0].state,"action_required");
 });
 test("a positive local stock and configured shipping do not certify CJ live availability",()=>{

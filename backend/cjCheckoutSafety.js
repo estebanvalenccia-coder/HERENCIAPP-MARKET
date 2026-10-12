@@ -52,8 +52,7 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   // Resolve from the server-side persisted variants, never the cart's VID/SKU.
   const identity = resolveCjPurchasedVariant(product, item.selectedVariant);
   const vid = identity.vid;
-  const logisticName = String(meta.cjPreferredLogisticName || "").trim();
-  if (!logisticName) invalid("Este artículo CJ todavía necesita un transportista válido.");
+  const preferredLogisticName = String(meta.cjPreferredLogisticName || "").trim();
   // Parallel read-only lookups. No personal name, phone or street address goes to CJ.
   const pid = extractCjProductId(meta.sourceProductUrl);
   if (!pid) invalid("Falta el producto de origen CJ para verificar su variante.");
@@ -122,23 +121,36 @@ export async function evaluateCjCheckout({ lines, catalog, shippingAddress, disc
   if (!selectedVariant || selectedVariant.priceUsd == null) invalid("CJ no confirmó el coste de la variante seleccionada.");
   assertCjSupplierIdentity(identity, selectedVariant);
   if (freight.vid !== vid || freight.destination !== "ES" || String(freight.zip || "") !== String(shippingAddress.postalCode)) invalid("La cotización CJ no coincide con la variante o el destino.");
-  const selectedFreight = freight.methods.find((entry)=>entry.name===logisticName);
-  if (!selectedFreight || selectedFreight.totalPostageUsd==null) invalid("El transportista CJ guardado no tiene un coste de envío completo para este código postal.");
   const effectiveUnitPrice = Number(item.price || 0) - Math.max(0, Number(discount || 0));
-  const profitability = estimateCjProfitability({
-    salePriceEur: effectiveUnitPrice, productUsd:selectedVariant.priceUsd,
-    postageUsd:selectedFreight.totalPostageUsd,usdEurRate:fx.rate,
-    vatRate:Number(product.iva ?? product.taxRate ?? 21),
-    minMarginPercent:Math.max(0,Number(supplier.minMarginPercent ?? 30)),
-    additionalImportCostEur:compliance.additionalImportCostEur,
-  });
-  // Verified admin coupons are explicit store-funded promotions. Product and
-  // freight prices MUST still be verified; only the minimum-margin requirement
-  // can be waived, and never from client-controlled discount metadata alone.
   const storeFundedPromotion = promotionAuthorized === true && Number(discount) > 0;
-  if (!canProceedWithVerifiedCjCosts({ profitability, promotionAuthorized, discount })) {
-    invalid("No se puede cobrar este artículo CJ con el precio actual: el coste con transporte e impuestos supera el margen mínimo. Revisa su precio en Administración.");
-  }
+  // Choose the best VERIFIED real CJ shipping method for the customer's
+  // destination at checkout, not a fixed manual setting for all postcodes.
+  // Complete USD postage, feasible profit and exact VID are mandatory.
+  const priced = freight.methods
+    .filter(method=>String(method?.name||"").trim() &&
+      method?.totalPostageUsd != null &&
+      Number.isFinite(Number(method.totalPostageUsd)) &&
+      Number(method.totalPostageUsd)>=0)
+    .map(method=>({
+      method,
+      profitability:estimateCjProfitability({
+        salePriceEur:effectiveUnitPrice,productUsd:selectedVariant.priceUsd,
+        postageUsd:method.totalPostageUsd,usdEurRate:fx.rate,
+        vatRate:Number(product.iva ?? product.taxRate ?? 21),
+        minMarginPercent:Math.max(0,Number(supplier.minMarginPercent ?? 30)),
+        additionalImportCostEur:compliance.additionalImportCostEur,
+      }),
+    }))
+    .filter(entry=>canProceedWithVerifiedCjCosts({
+      profitability:entry.profitability,promotionAuthorized,discount,
+    }))
+    .sort((a,b)=>Number(a.method.totalPostageUsd)-Number(b.method.totalPostageUsd));
+  const choice=priced.find(entry=>entry.method.name===preferredLogisticName) || priced[0];
+  if(!choice)
+    invalid("CJ no confirmó un transporte con coste completo y margen permitido para esta dirección. No se realizará ningún cobro.");
+  const logisticName=String(choice.method.name);
+  const selectedFreight=choice.method;
+  const profitability=choice.profitability;
   return {
     cjOnly:true, profitability, storeFundedPromotion,
     verifiedQuote: {

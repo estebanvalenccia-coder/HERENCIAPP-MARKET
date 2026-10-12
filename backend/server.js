@@ -5597,10 +5597,13 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       }
     }
     const shippingAddress = compactShippingAddress(order);
+    // The carrier has been chosen by server-side live CJ freight + margin checks.
+    // Never reuse a static admin preference for an unverified customer postcode.
+    const liveCjLogisticName = isCj ? String(quote?.methodName || "").trim() : "";
     const quoteVerified = isCj && quantity === 1 && verifiedCjQuoteMatches({
       quote, identity:cjIdentity, destination:"ES",
       postalCode:shippingAddress.postalCode,
-      methodName:String(metadata.cjPreferredLogisticName || "").trim(),
+      methodName:liveCjLogisticName,
       salePriceEur:salePrice - Math.max(0, Number(order?.metadata?.discount || 0)),
     });
     const supplierCost = quoteVerified ? normalizeMoney(quote.costEur) :
@@ -5628,8 +5631,8 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       supplierCost,
       supplierVariantId: String(isCj ? (cjIdentity?.vid || "") : (metadata.supplierVariantId || metadata.cjVid || "")).trim().slice(0, 100),
       supplierSku: String(isCj ? (cjIdentity?.sku || "") : (metadata.supplierSku || metadata.cjSku || "")).trim().slice(0, 100),
-      cjPreferredLogisticName: String(metadata.cjPreferredLogisticName || "").trim().slice(0, 120),
-      cjPreferredLogisticCountry: String(metadata.cjPreferredLogisticCountry || "").trim().slice(0, 2),
+      cjPreferredLogisticName: isCj ? (quoteVerified ? liveCjLogisticName.slice(0,120) : "") : String(metadata.cjPreferredLogisticName || "").trim().slice(0,120),
+      cjPreferredLogisticCountry: isCj ? (quoteVerified ? "ES" : "") : String(metadata.cjPreferredLogisticCountry || "").trim().slice(0,2),
       cjPricingEstimate: quoteVerified ? quote : null,
       pricingReviewNeeded: isCj && !quoteVerified,
       estimatedCost: normalizeMoney(supplierCost * quantity),
