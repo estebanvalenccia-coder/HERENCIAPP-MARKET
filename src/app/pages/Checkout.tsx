@@ -5,6 +5,7 @@ import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
 import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
+import { firstUnselectedPrintfulItem } from "../lib/printfulVariantSelection.js";
 
 const DELIVERY_SLOTS = ["09:00-12:00", "12:00-15:00", "15:00-18:00", "18:00-21:00"];
 const todayInMadrid = () => new Intl.DateTimeFormat("en-CA", {
@@ -103,6 +104,7 @@ export function Checkout() {
   const cjOnly = useMemo(() => shippingCartItems.length > 0 && shippingCartItems.every(isCjSupplierItem), [shippingCartItems]);
   const mixedCjCart = hasCjItems && !cjOnly;
   const cjComposition = useMemo(() => validateCjCartComposition(shippingCartItems), [shippingCartItems]);
+  const printfulIssue = useMemo(() => firstUnselectedPrintfulItem(shippingCartItems), [shippingCartItems]);
   const shippingCatalogPending = hasPhysicalItems && shippingCatalog === null;
   const deliveryMethod = onlyServices ? "servicio" : "envio";
 
@@ -305,6 +307,11 @@ export function Checkout() {
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const validateForm = () => {
+    if (printfulIssue) {
+      toast.error("Antes de pagar, selecciona explícitamente el color y la talla.");
+      navigate(`/producto/${printfulIssue.id}`);
+      return false;
+    }
     if (shippingCatalogPending || shippingCatalogError) {
       toast.error(shippingCatalogError || "Espera a que verifiquemos el envío antes de continuar.");
       return false;
@@ -568,6 +575,7 @@ export function Checkout() {
         <div className="space-y-6">
           <div className="sticky top-28 h-fit rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm">
             <h2 className="mb-6 text-2xl font-bold">{onlyServices ? "Resumen de la reserva" : "Resumen del pedido"}</h2>
+            {printfulIssue && <div role="alert" className="mb-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-900">Debes confirmar la talla y el color de {printfulIssue.name || "la camiseta"} antes de pagar. <button type="button" onClick={()=>navigate(`/producto/${printfulIssue.id}`)} className="underline">Elegir talla y color</button></div>}
 
             <div className="mb-6 space-y-3">
               {cartItems.length ? (
