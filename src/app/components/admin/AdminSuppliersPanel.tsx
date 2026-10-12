@@ -184,6 +184,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const [hiddenFulfillmentIds, setHiddenFulfillmentIds] = useState<string[]>(() => readHiddenIds(HIDDEN_FULFILLMENTS_KEY));
   const [showHiddenSuppliers, setShowHiddenSuppliers] = useState(false);
   const [showHiddenFulfillments, setShowHiddenFulfillments] = useState(false);
+  const [selectedFulfillmentIds, setSelectedFulfillmentIds] = useState<string[]>([]);
+  const [managingFulfillments, setManagingFulfillments] = useState(false);
   const [showSuspectImports, setShowSuspectImports] = useState(false);
   const [existingSearch, setExistingSearch] = useState("");
   const [existingProductId, setExistingProductId] = useState("");
@@ -848,6 +850,23 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     }
   };
 
+  const manageFulfillmentRows = async (ids: string[], action: "remove" | "delete") => {
+    if (!ids.length || managingFulfillments) return;
+    const confirmation = action === "remove" ? `¿Quitar ${ids.length} pedidos de la cola manteniendo las ventas?` :
+      `Se eliminarán ${ids.length} registros de proveedor (no las ventas). Escribe ELIMINAR para confirmar.`;
+    if (action === "remove" ? !window.confirm(confirmation) : window.prompt(confirmation) !== "ELIMINAR") return;
+    setManagingFulfillments(true);
+    try {
+      const result = await backendApi.manageSupplierFulfillments(ids, action);
+      setSelectedFulfillmentIds([]);
+      setFulfillments(current => action === "delete"
+        ? current.filter((entry: any) => !ids.includes(String(entry.id)))
+        : current.map((entry: any) => ids.includes(String(entry.id)) ? { ...entry, queueRemoved: true } : entry));
+      toast.success(`${result.affected} pedidos actualizados.`);
+    } catch (error: any) { toast.error(error?.message || "No se pudieron actualizar los pedidos"); }
+    finally { setManagingFulfillments(false); }
+  };
+
   const syncPaidOrders = async () => {
     if (syncingPaidOrders) return;
     const candidates = orders.filter((order: any) =>
@@ -1082,6 +1101,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const hiddenFulfillmentCount = fulfillments.filter((item: any) =>
     hiddenFulfillmentIds.includes(String(item.id))).length;
   const displayedFulfillments = fulfillments.filter((item: any) => {
+    if (item.queueRemoved === true) return false;
     if (!showHiddenFulfillments && hiddenFulfillmentIds.includes(String(item.id))) return false;
     const supplierId = String(item.supplierId || item.supplierName || "unassigned");
     if (queueSupplierFilter !== "all" && queueSupplierFilter !== supplierId) return false;
@@ -1690,7 +1710,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           </button>
         </div>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">Cerrar una tarjeta solo la oculta de este navegador: no cancela ni elimina el pedido. Puedes recuperarla desde «Ver ocultos».</p>
+      <p className="mt-2 text-xs text-muted-foreground">Cerrar oculta solo en este navegador. Quitar de la cola conserva las ventas; eliminar definitivamente borra solo el registro de proveedor. Pedidos enviados a CJ protegidos.</p>
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted-foreground">
           Proveedor
@@ -1714,6 +1734,22 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         <p className="self-end pb-2 text-xs text-muted-foreground">
           {displayedFulfillments.length} resultados · {attentionFulfillments.length} requieren revisión
         </p>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="inline-flex items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" aria-label="Seleccionar todos los pedidos visibles"
+            checked={displayedFulfillments.length > 0 && displayedFulfillments.every((item: any) => selectedFulfillmentIds.includes(String(item.id)))}
+            onChange={event => setSelectedFulfillmentIds(event.target.checked
+              ? [...new Set([...selectedFulfillmentIds, ...displayedFulfillments.map((item: any) => String(item.id))])]
+              : selectedFulfillmentIds.filter(id => !displayedFulfillments.some((item: any) => String(item.id) === id)))} />
+          Seleccionar todos
+        </label>
+        <button type="button" disabled={managingFulfillments || !selectedFulfillmentIds.length} onClick={() => void manageFulfillmentRows(selectedFulfillmentIds, "remove")}
+          className="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-40">Quitar seleccionados de la cola</button>
+        <button type="button" disabled={managingFulfillments || !selectedFulfillmentIds.length} onClick={() => void manageFulfillmentRows(selectedFulfillmentIds, "delete")}
+          className="rounded-lg border border-red-500 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40">Eliminar seleccionados</button>
+        <button type="button" disabled={managingFulfillments || !displayedFulfillments.length} onClick={() => void manageFulfillmentRows(displayedFulfillments.map((item: any) => String(item.id)), "delete")}
+          className="rounded-lg border border-red-500 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40">Eliminar todos los visibles</button>
       </div>
       <div className="mt-4 space-y-3">
         {!displayedFulfillments.length ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No hay pedidos en este filtro. Puedes elegir otro proveedor o mostrar todos los estados.</p> :
@@ -1744,6 +1780,17 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
                   {item.trackingNumber && <p className="mt-2 text-sm">Tracking: <strong>{item.trackingNumber}</strong></p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-1 text-xs font-semibold">
+                    <input type="checkbox" aria-label={`Seleccionar pedido ${String(item.orderId || "").slice(0, 8)}`}
+                      checked={selectedFulfillmentIds.includes(String(item.id))}
+                      onChange={event => setSelectedFulfillmentIds(current => event.target.checked
+                        ? [...new Set([...current, String(item.id)])] : current.filter(id => id !== String(item.id)))} />
+                    Seleccionar
+                  </label>
+                  <button type="button" disabled={managingFulfillments} onClick={() => void manageFulfillmentRows([String(item.id)], "remove")}
+                    className="rounded-lg border px-2 py-1.5 text-xs font-semibold disabled:opacity-40">Quitar de cola</button>
+                  <button type="button" disabled={managingFulfillments} onClick={() => void manageFulfillmentRows([String(item.id)], "delete")}
+                    className="rounded-lg border border-red-500 px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-40">Eliminar definitivamente</button>
                   <button type="button" aria-label={isHidden ? "Restaurar pedido a mi vista" : "Cerrar tarjeta de pedido sin cancelarlo"}
                     title={isHidden ? "Volver a mostrar el pedido" : "Quitar de mi vista sin borrar ni cancelar el pedido"}
                     onClick={() => setHiddenFulfillmentIds(current =>
