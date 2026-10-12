@@ -63,3 +63,35 @@ export async function printfulOrderRequest(method,path,{payload,env=process.env,
 }
 export const lookupPrintfulOrder=(orderId,opts={})=>printfulOrderRequest("GET","/orders/@HERENCIA-"+id(orderId),opts);
 export const createPrintfulDraft=(payload,opts={})=>printfulOrderRequest("POST","/orders",{...opts,payload});
+
+/**
+ * Official Printful v1 estimate-costs is read-only. Costs are supplier amounts,
+ * not customer retail amounts. Never infer a zero-cost order from missing fields.
+ */
+export function normalizePrintfulEstimate(payload){
+ const costs=payload?.result?.costs||payload?.result;
+ const currency=id(costs?.currency).toUpperCase();
+ const total=Number(costs?.total);
+ if(!/^[A-Z]{3}$/.test(currency)||!Number.isFinite(total)||total<0)
+   fail("Printful no devolvió un coste completo con moneda verificable.",502);
+ const lines=["subtotal","shipping","tax","vat","digitization","additional_fee","fulfillment_fee"];
+ return {total,currency,breakdown:Object.fromEntries(lines.map(key=>[key,
+   costs[key]==null?null:Number(costs[key])]).filter(([,value])=>value!=null&&Number.isFinite(value))),
+   checkedAt:new Date().toISOString()};
+}
+export async function estimatePrintfulOrder(payload,{env=process.env,fetchImpl=fetch}={}){
+ const token=id(env.PRINTFUL_API_TOKEN),storeId=id(env.PRINTFUL_STORE_ID);
+ if(!token)fail("Falta PRINTFUL_API_TOKEN",503);
+ if(storeId&&!numericId(storeId))fail("PRINTFUL_STORE_ID inválido",422);
+ let response;
+ try{response=await fetchImpl(API+"/orders/estimate-costs",{
+   method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",
+     ...(storeId?{"X-PF-Store-Id":storeId}:{})},
+   body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)
+ });}catch{fail("Printful no respondió a la cotización. No se ha autorizado ningún cargo.",503);}
+ if(response.status===401||response.status===403)fail("Printful no permite cotizar pedidos con este token.",403);
+ if(response.status===429)fail("Límite de consultas Printful; vuelve a intentarlo.",429);
+ if(!response.ok)fail("Printful rechazó la cotización; revisa dirección, variante o archivos de impresión.",502);
+ let data;try{data=await response.json();}catch{fail("Printful devolvió una cotización ilegible.",502);}
+ return normalizePrintfulEstimate(data);
+}

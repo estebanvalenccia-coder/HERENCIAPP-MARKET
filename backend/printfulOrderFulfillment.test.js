@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft} from "./printfulOrderFulfillment.js";
+import {preparePrintfulDraft,lookupPrintfulOrder,createPrintfulDraft,estimatePrintfulOrder,normalizePrintfulEstimate} from "./printfulOrderFulfillment.js";
 const product={id:"p1",name:"Camisa jungle",metadata:{provider:"printful"},
  variants:[{name:"Negro / M",printfulSyncVariantId:"123456",printfulCatalogVariantId:"2020",printfulAvailability:"active",sku:"NJ-M"}]};
 const order={id:"dddddddd-0000-4000-8000-000000000001",status:"paid",items:[{id:"p1",selectedVariant:"Negro / M",quantity:1,printfulSyncVariantId:"123456"}],
@@ -41,4 +41,26 @@ test("401 429 and transport uncertainty fail without declaring a supplier order"
  await assert.rejects(lookupPrintfulOrder(order.id,{env,fetchImpl:async()=>({status:403,ok:false})}),/token/);
  await assert.rejects(lookupPrintfulOrder(order.id,{env,fetchImpl:async()=>({status:429,ok:false})}),/limitado/);
  await assert.rejects(createPrintfulDraft(preparePrintfulDraft(order,[product]),{env,fetchImpl:async()=>{throw Error("timeout")}}),/incierto/);
+});
+
+test("Printful supplier estimate includes authoritative currency, shipping and tax",async()=>{
+ const env={PRINTFUL_API_TOKEN:"secret",PRINTFUL_STORE_ID:"42"};
+ const payload=preparePrintfulDraft(order,[product]);
+ const calls=[];
+ const quote=await estimatePrintfulOrder(payload,{env,fetchImpl:async(url,req)=>{
+   calls.push({url,req});
+   return {ok:true,status:200,json:async()=>({result:{costs:{currency:"EUR",total:"25.49",subtotal:"18.00",shipping:"5.49",vat:"2.00"}}})};
+ }});
+ assert.equal(quote.total,25.49);
+ assert.equal(quote.currency,"EUR");
+ assert.equal(quote.breakdown.shipping,5.49);
+ assert.equal(calls[0].url,"https://api.printful.com/orders/estimate-costs");
+ assert.equal(calls[0].req.headers["X-PF-Store-Id"],"42");
+});
+test("Printful estimates reject missing money, currency and temporary API failures",async()=>{
+ assert.throws(()=>normalizePrintfulEstimate({result:{costs:{total:21}}}),/moneda/);
+ assert.throws(()=>normalizePrintfulEstimate({result:{costs:{total:"n/a",currency:"USD"}}}),/moneda/);
+ await assert.rejects(estimatePrintfulOrder(preparePrintfulDraft(order,[product]),{
+   env:{PRINTFUL_API_TOKEN:"secret"},fetchImpl:async()=>({ok:false,status:403})
+ }),/token/);
 });
