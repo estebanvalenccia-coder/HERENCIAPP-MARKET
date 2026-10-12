@@ -27,6 +27,23 @@ export function AdminProviderApiQuotes() {
   const [storeId,setStoreId]=useState("");
   const [syncProductId,setSyncProductId]=useState("");
   const [herenciaProductId,setHerenciaProductId]=useState("");
+  const [printfulOrderId,setPrintfulOrderId]=useState("");
+  const [printfulOrderBusy,setPrintfulOrderBusy]=useState(false);
+  const [printfulOrderStatus,setPrintfulOrderStatus]=useState("");
+  const [printfulOrderError,setPrintfulOrderError]=useState("");
+  const checkOrder=async(createDraft:boolean)=>{
+    if(!printfulOrderId.trim())return;
+    setPrintfulOrderBusy(true);setPrintfulOrderError("");setPrintfulOrderStatus("");
+    try{
+      const response=createDraft?
+        await backendApi.createPrintfulOrderDraft(printfulOrderId.trim()):
+        await backendApi.checkPrintfulOrderStatus(printfulOrderId.trim());
+      setPrintfulOrderStatus(response.externalOrderId?
+        "ID Printful: "+response.externalOrderId+" · Estado: "+String(response.printfulStatus||response.status||"sin confirmar"):
+        "Printful no encuentra todavía ese pedido. Comprueba si está pagado y tiene variantes vinculadas.");
+    }catch(error:any){setPrintfulOrderError(error?.message||"No se pudo consultar el pedido de Printful");}
+    finally{setPrintfulOrderBusy(false);}
+  };
   const [syncBusy,setSyncBusy]=useState(false);
   const [syncError,setSyncError]=useState("");
   const [syncSuccess,setSyncSuccess]=useState("");
@@ -136,6 +153,22 @@ export function AdminProviderApiQuotes() {
       {syncError&&<p role="alert" className="mt-2 text-sm font-semibold text-red-700">{syncError}</p>}
       {syncSuccess&&<p role="status" className="mt-2 text-sm font-semibold text-emerald-700">{syncSuccess}</p>}
     </div>
+
+    <section className="mt-4 rounded-xl border border-border p-4" aria-label="Pedidos de Printful">
+      <h3 className="font-bold">Pedidos Printful · preparación y seguimiento</h3>
+      <p className="mt-1 text-xs text-muted-foreground">Al confirmar una compra de productos exclusivamente Printful, Herencia intenta crear automáticamente un pedido real en estado borrador. No se confirma la producción ni se cobra a Herencia hasta verificar el coste y autorizarlo.</p>
+      <label className="mt-3 block text-xs font-bold">ID completo del pedido Herencia
+        <input className="mt-1 w-full rounded-lg border bg-background p-2" value={printfulOrderId} onChange={event=>setPrintfulOrderId(event.target.value.trim())} placeholder="Referencia del pedido Herencia"/>
+      </label>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void checkOrder(false)}
+          className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50">Consultar pedido en Printful</button>
+        <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void checkOrder(true)}
+          className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50">Preparar borrador sin pagar</button>
+      </div>
+      {printfulOrderStatus&&<p role="status" className="mt-3 text-sm font-semibold">{printfulOrderStatus}</p>}
+      {printfulOrderError&&<p role="alert" className="mt-3 text-sm font-semibold text-red-700">{printfulOrderError}</p>}
+    </section>
 
     <div className="mt-4 grid gap-3 md:grid-cols-3">
       <label className="text-sm font-semibold">ID de variante del catálogo Printful
