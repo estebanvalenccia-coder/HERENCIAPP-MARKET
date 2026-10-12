@@ -26,6 +26,8 @@ export function assessCjAutomatedProduct(product={},observation={}){
  return {applicable:true,state,ready:state==="ready",verified:false,
   // 'ready' is a conditional technical indicator; legal evidence remains separately reviewed.
   pending:issues,confirmed,warnings:compliance.warnings,
+  stockObservation:observation.stock||null,priceObservation:observation.price||null,
+  shippingObservation:observation.shipping||null,
   checkedAt:new Date().toISOString(),requiresLegalReview:!compliance.ready};
 }
 export function summarizeCjProductReviews(products=[],observations={}){
