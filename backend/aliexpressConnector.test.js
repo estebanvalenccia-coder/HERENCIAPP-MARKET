@@ -26,7 +26,7 @@ test("encrypts OAuth tokens using AES-GCM and refuses modified ciphertext", () =
     assert.ok(!encrypted.includes(value.accessToken));
     assert.deepEqual(decryptAliExpressTokens(encrypted), value);
     const edited = JSON.parse(encrypted);
-    edited.payload = "A" + edited.payload.slice(1);
+    edited.payload = (edited.payload[0] === "A" ? "B" : "A") + edited.payload.slice(1);
     assert.throws(() => decryptAliExpressTokens(JSON.stringify(edited)));
   } finally {
     if (previous === undefined) delete process.env.ALIEXPRESS_TOKEN_ENCRYPTION_KEY;
