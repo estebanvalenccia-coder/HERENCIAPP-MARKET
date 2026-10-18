@@ -330,6 +330,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           <p>Crear pedidos: {activationStatus.cj.orderCreationRequested?"Solicitado":"Desactivado"}</p>
           <p>Pagos: {activationStatus.cj.supplierPaymentRequested?"Solicitados":"Desactivados"}</p>
           <p>Autopilot: {activationStatus.cj.liveRunnerRequested?"Solicitado":"Desactivado"}</p>
+          <p>Mandato: {activationStatus.cj.validMerchantMandate?"Vigente":"No validado"}</p>
+          <p className="font-semibold">{activationStatus.cj.fullyAuthorized?"Autorización habilitada, sujeta a comprobaciones por pedido":"Compras desatendidas no autorizadas"}</p>
           <p className="mt-1 text-muted-foreground">Requiere mandato y pedido real supervisado.</p>
         </div>
         <div className="rounded-lg border p-3"><strong className="block text-sm">Printful</strong>
