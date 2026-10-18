@@ -5,6 +5,7 @@
  */
 import crypto from "node:crypto";
 import { makeAliExpressUnpublishedDraft } from "./aliexpressDraftImporter.js";
+import { parseAliExpressProductId } from "./aliexpressProductLink.js";
 
 export const ALIEXPRESS_OAUTH_KEY = "aliexpressoauth:v1";
 export const ALIEXPRESS_TRACK_KEY = "aliexpresscatalogtracked:v1";
@@ -287,8 +288,9 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
         return true;
       }
       if (path === base + "/product" && req.method === "GET") {
-        const id = new URL(req.url, "http://localhost").searchParams.get("product_id") || "";
-        if (!/^\d{8,22}$/.test(id)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
+        const input = new URL(req.url, "http://localhost").searchParams.get("input") || new URL(req.url, "http://localhost").searchParams.get("product_id") || "";
+        const id = parseAliExpressProductId(input);
+        if (!id) { respond(res, 400, { error: "Pega un enlace completo de AliExpress o un ID de producto válido." }); return true; }
         respond(res, 200, await getProduct(id));
         return true;
       }
@@ -298,8 +300,8 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
         for await (const chunk of req) { raw += chunk; if (raw.length > 1500) break; }
         if (raw.length > 1500) { respond(res, 413, { error: "Payload too large" }); return true; }
         let body; try { body = JSON.parse(raw); } catch { respond(res, 400, { error: "Invalid JSON" }); return true; }
-        const productId = String(body.productId || "");
-        if (!/^\d{8,22}$/.test(productId)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
+        const productId = parseAliExpressProductId(body.productInput || body.productId || "");
+        if (!productId) { respond(res, 400, { error: "Pega un enlace completo de AliExpress o un ID de producto válido." }); return true; }
         const product = await getProduct(productId);
         const draft = makeAliExpressUnpublishedDraft(product);
         const saved = await saveDraft(draft, { id: draft.id, createOnly: true });
