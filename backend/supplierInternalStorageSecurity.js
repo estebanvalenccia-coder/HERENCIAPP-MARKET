@@ -21,6 +21,7 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "supplierwebhookdispatch:",
   "aliexpressoauth:",
   "aliexpresscatalogtracked:",
+  "aliexpresscatalogcursor:",
   "aliexpresscatalogsnapshot:",
   "aliexpressoauth:",
   "aliexpresscatalogtracked:",
