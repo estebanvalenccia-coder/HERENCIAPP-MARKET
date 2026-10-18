@@ -304,7 +304,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     products.filter((product: any) => {
       const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : product;
       return String(product?.status || "") !== "archived" &&
-        Boolean(metadata.importedFromUrl || metadata.sourceProductUrl);
+        Boolean(metadata.importedFromUrl || metadata.sourceProductUrl || metadata.importedByApi || metadata.sourceProvider === "aliexpress");
     }), [products]
   );
   const suspectImports = importedProducts.filter(suspiciousImportedProduct);
@@ -317,7 +317,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const importState = (product: any): "pending" | "connected" | "hidden" => {
     const metadata = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
     if (metadata.supplierHubHidden) return "hidden";
-    return metadata.supplierId ? "connected" : "pending";
+    return metadata.supplierId || (metadata.sourceProvider === "aliexpress" && metadata.supplierConnectionKey === "aliexpress") ? "connected" : "pending";
   };
   const importCounts = {
     pending: importedProducts.filter(product => !suspiciousImportedProduct(product) && importState(product) === "pending").length,
