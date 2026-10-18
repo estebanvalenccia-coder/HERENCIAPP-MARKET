@@ -62,13 +62,13 @@ export function AdminAliExpressConnection() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const queryProduct = async () => {
-    if (!/^\d{8,22}$/.test(productId.trim())) {
-      setError("Escribe el identificador numérico del producto de AliExpress.");
+    if (!productId.trim()) {
+      setError("Pega el enlace completo de AliExpress o su ID de producto.");
       return;
     }
     setWorking(true); setError(""); setProduct(null);
     try {
-      const result = await requestJson("/product?product_id=" + encodeURIComponent(productId.trim()));
+      const result = await requestJson("/product?input=" + encodeURIComponent(productId.trim()));
       setProduct(result);
       setInfo("Producto consultado mediante API; no se ha publicado ni comprado.");
     } catch (err) {
@@ -153,11 +153,11 @@ export function AdminAliExpressConnection() {
     </div>}
     {status?.authorized && <>
       <div className="space-y-2">
-        <label htmlFor="ali-product-id" className="block text-sm font-semibold">Consultar producto por ID</label>
+        <label htmlFor="ali-product-id" className="block text-sm font-semibold">Pega un enlace o ID de producto AliExpress</label>
         <div className="flex flex-wrap items-center gap-2">
           <input id="ali-product-id" value={productId} onChange={(e) => setProductId(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            placeholder="100500..." inputMode="numeric" maxLength={22} />
+            placeholder="https://es.aliexpress.com/item/...html o ID" maxLength={2048} />
           <button type="button" disabled={working} onClick={() => void queryProduct()} className="inline-flex gap-2 items-center rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"><Search className="h-4 w-4" />Consultar</button>
         </div>
       </div>
@@ -166,7 +166,7 @@ export function AdminAliExpressConnection() {
         <p>ID: {product.productId} · Variantes obtenidas: {product.variants?.length ?? 0} · Revisado: {new Date(product.checkedAt).toLocaleString("es-ES")}</p>
         {product.variants?.slice(0, 6).map((variant, index) => <p key={index}>SKU: {variant.sku || "sin dato"} · Precio: {variant.price == null ? "sin dato" : variant.price + " " + variant.currency} · Stock: {variant.stock == null ? "sin verificar" : variant.stock}</p>)}
         <p className="text-xs text-muted-foreground">{product.note}</p>
-        <button type="button" disabled={working} onClick={() => void importDraft()} className="rounded-lg border border-border px-3 py-2 font-semibold disabled:opacity-50">Importar como borrador (no publicado)</button>
+        <button type="button" disabled={working} onClick={() => void importDraft()} className="rounded-lg border border-border px-3 py-2 font-semibold disabled:opacity-50">Importar con variantes (borrador)</button>
         <button type="button" disabled={working || tracked.includes(product.productId)} onClick={() => void trackProduct()} className="rounded-lg border border-border px-3 py-2 font-semibold disabled:opacity-50">
           {tracked.includes(product.productId) ? "Producto en seguimiento" : "Seguir automáticamente"}
         </button>
