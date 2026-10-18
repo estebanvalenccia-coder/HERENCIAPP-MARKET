@@ -635,11 +635,43 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const importProductByUrl = async () => {
     const url = String(importUrl || "").trim();
     if (!url) return toast.error("Pega la URL del producto");
-    try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Unsupported protocol");
-    } catch {
-      return toast.error("La URL debe empezar por https:// o http://");
+    // AliExpress product IDs can be pasted alone; every other provider needs a URL.
+    const isAliExpressId = /^\d{8,22}$/.test(url);
+    let parsedUrl: URL | null = null;
+    if (!isAliExpressId) {
+      try {
+        parsedUrl = new URL(url);
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("Unsupported protocol");
+      } catch {
+        return toast.error("Pega una URL de producto válida o el ID numérico de AliExpress");
+      }
+    }
+    const aliHost = parsedUrl?.protocol === "https:" &&
+      (parsedUrl.hostname === "aliexpress.com" || parsedUrl.hostname.endsWith(".aliexpress.com"));
+    if (isAliExpressId || aliHost) {
+      // Never scrape AliExpress HTML: use the OAuth API and preserve exact variant identity.
+      setImportingUrl(true);
+      setSavedImport(null);
+      setManualImport(null);
+      setImportFeedback({ ok: true, message: "Consultando la API oficial de AliExpress…" });
+      try {
+        const response = await fetch("/api/admin/integrations/aliexpress/draft", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productInput: url }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(String(result.error || result.reason || "La API de AliExpress no pudo importar este producto"));
+        setSavedImport({id:String(result.id),name:"Producto de AliExpress",status:"draft",outcome:"Importación API con variantes originales"});
+        setImportFeedback({ok:true,message:"Importado y vinculado con "+Number(result.variants||0)+" variantes reales de AliExpress. Se guarda como borrador hasta verificar coste, envío y margen."});
+        await load();
+        toast.success("Producto de AliExpress importado y vinculado");
+      } catch (error:any) {
+        const message = String(error?.message || "No se pudo importar desde AliExpress");
+        setImportFeedback({ok:false,message});
+        toast.error(message);
+      } finally { setImportingUrl(false); }
+      return;
     }
 
     setImportFeedback({ ok: true, message: "Consultando catálogo del proveedor…" });
