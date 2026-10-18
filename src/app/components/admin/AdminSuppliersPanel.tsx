@@ -6,6 +6,7 @@ import { AdminSupplierCatalogUrlImport } from "./AdminSupplierCatalogUrlImport";
 import { AdminSupplierOperations } from "./AdminSupplierOperations";
 import { AdminCjAutomationStatus } from "./AdminCjAutomationStatus";
 import { DropshippingLaunchGuide } from "./DropshippingLaunchGuide";
+import { AdminAliExpressPanel } from "./AdminAliExpressPanel";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1275,6 +1276,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       </div>}
     </section>
 
+    <AdminAliExpressPanel/>
     <DropshippingLaunchGuide suppliers={suppliers} products={products} fulfillments={fulfillments}
       onNavigate={openWorkspaceSection} onRefresh={()=>{void load();}} onOpenProduct={onOpenProduct}/>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
