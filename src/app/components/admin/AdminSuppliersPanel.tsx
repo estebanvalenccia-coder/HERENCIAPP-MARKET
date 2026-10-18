@@ -632,8 +632,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     return confirmedProduct;
   };
 
-  const importProductByUrl = async () => {
-    const url = String(importUrl || "").trim();
+  const importProductByUrl = async (inputOverride?: string) => {
+    const url = String(inputOverride || importUrl || "").trim();
     if (!url) return toast.error("Pega la URL del producto");
     // AliExpress product IDs can be pasted alone; every other provider needs a URL.
     const isAliExpressId = /^\d{8,22}$/.test(url);
@@ -1229,6 +1229,8 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       products={products}
       fulfillments={fulfillments}
       onOpenProduct={onOpenProduct}
+      onImportProductByUrl={importProductByUrl}
+      onReload={load}
     />
 
     {workspaceMode==="advanced"&&<>
