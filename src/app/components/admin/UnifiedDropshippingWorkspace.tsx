@@ -1,5 +1,5 @@
 import {useMemo,useState} from "react";
-import {ArrowRight,Layers3,Link2,PackagePlus,ShoppingBag,Truck,Bot,AlertTriangle,CheckCircle2,Clock3} from "lucide-react";
+import {ArrowRight,Layers3,Link2,PackagePlus,ShoppingBag,Truck,Bot,AlertTriangle} from "lucide-react";
 import {AdminAliExpressConnection} from "./AdminAliExpressConnection";
 
 type Provider="all"|"aliexpress"|"cj"|"printful"|"manual";
@@ -57,7 +57,7 @@ function productPublishable(product:any){
   if(draft)return {ready:false,reason:"Borrador: revisar ficha antes de publicar"};
   if(metadata.approvedForPublication===false||metadata.complianceVerified===false)
     return {ready:false,reason:"Revisión de costes o normativa pendiente"};
-  if(!Number(product?.price)>0&&!variantConfigured)return {ready:false,reason:"Faltan precio y variantes verificadas"};
+  if(!(Number(product?.price)>0)&&!variantConfigured)return {ready:false,reason:"Faltan precio y variantes verificadas"};
   return {ready:true,reason:"Publicado (la compra al proveedor se verifica por separado)"};
 }
 export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduct,
