@@ -45,8 +45,12 @@ export function makeAliExpressUnpublishedDraft(product) {
     variants,
     metadata: {
       sourceProvider: "aliexpress",
+      supplierConnectionKey: "aliexpress",
+      sourceProductUrl: "https://www.aliexpress.com/item/" + id + ".html",
+      fulfillmentMode: "manual",
       sourceProductId: id,
       supplierProductId: id,
+      providerOrderProductId: id,
       importedByApi: true,
       importReviewRequired: true,
       sourceProductStatus: String(product.status || ""),
