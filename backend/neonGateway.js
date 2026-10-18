@@ -127,6 +127,17 @@ child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
+  // Public AliExpress registration callback. Registration works before an App Key
+  // exists, but authorization codes are never accepted or logged until the
+  // authenticated OAuth/token exchange workflow is configured separately.
+  if(path==="/api/integrations/aliexpress/callback"&&req.method==="GET"){
+    const query=new URL(req.url,"http://localhost").searchParams;
+    if(["code","state","error"].some(key=>query.has(key))){
+      return json(res,503,{ok:false,provider:"aliexpress",status:"oauth_not_configured",message:"AliExpress OAuth no esta configurado. No se ha procesado ni guardado ningun codigo de autorizacion."});
+    }
+    return json(res,200,{ok:true,provider:"aliexpress",status:"registration_ready",message:"Callback de registro disponible. La autorizacion de cuentas requiere App Key, App Secret y permisos API."});
+  }
+
   if(path==="/api/runtime-version"&&req.method==="GET"){
     const candidate=String(process.env.RAILWAY_GIT_COMMIT_SHA||"").trim().toLowerCase();
     const commit=/^[0-9a-f]{40}$/.test(candidate)?candidate:null;
