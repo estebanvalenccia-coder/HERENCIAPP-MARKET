@@ -1,3 +1,4 @@
+import { createAliExpressConnector } from "./aliexpressConnector.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { isPrivateSupplierStorageKey } from "./supplierInternalStorageSecurity.js";
 import { normalizeCouponCode, settleCouponUse } from "./promoCodes.js";
@@ -85,6 +86,7 @@ function normalizeOrderRow(order){
   };
 }
 async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
+const aliexpressConnector = createAliExpressConnector({read:readNeonStorageValue,write:upsertNeonStorageValue,requireAdmin:adminSession});
 async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>maxBytes){const error=new Error("Payload demasiado grande");error.statusCode=413;throw error;}chunks.push(c);}return Buffer.concat(chunks);}
 async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}res.writeHead(r.status,responseHeaders);if(r.body){for await(const c of r.body)res.write(c);}res.end();}
@@ -127,15 +129,8 @@ child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
-  // Public AliExpress registration callback. Registration works before an App Key
-  // exists, but authorization codes are never accepted or logged until the
-  // authenticated OAuth/token exchange workflow is configured separately.
-  if(path==="/api/integrations/aliexpress/callback"&&req.method==="GET"){
-    const query=new URL(req.url,"http://localhost").searchParams;
-    if(["code","state","error"].some(key=>query.has(key))){
-      return json(res,503,{ok:false,provider:"aliexpress",status:"oauth_not_configured",message:"AliExpress OAuth no esta configurado. No se ha procesado ni guardado ningun codigo de autorizacion."});
-    }
-    return json(res,200,{ok:true,provider:"aliexpress",status:"registration_ready",message:"Callback de registro disponible. La autorizacion de cuentas requiere App Key, App Secret y permisos API."});
+  if(path==="/api/integrations/aliexpress/callback" || path.startsWith("/api/admin/integrations/aliexpress/")) {
+    return await aliexpressConnector.handle(req,res,path);
   }
 
   if(path==="/api/runtime-version"&&req.method==="GET"){
@@ -1428,6 +1423,7 @@ server.listen(publicPort,"0.0.0.0",async()=>{
     cjStockObserverInterval.unref?.();
   }
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
+  aliexpressConnector.startAutomation();
   if(hasR2){
     const status=await checkR2Connection({verifyWrite:true});
     if(status.ok) console.log(`[r2] read/write OK bucket=${status.bucket}`);
