@@ -69,6 +69,20 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const [importing,setImporting]=useState(false);
   const [notice,setNotice]=useState("");
   const [importError,setImportError]=useState("");
+  const [activationStatus,setActivationStatus]=useState<any>(null);
+  const [activationLoading,setActivationLoading]=useState(false);
+  const [activationError,setActivationError]=useState("");
+  const checkActivation=async()=>{
+    setActivationLoading(true);setActivationError("");
+    try{
+      const res=await fetch("/api/admin/suppliers/automation-status",{credentials:"same-origin",cache:"no-store"});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(String(body.error||"No se pudo consultar la autorización de compras."));
+      setActivationStatus(body);
+    }catch(error:any){setActivationError(String(error?.message||"No se pudo consultar."));}
+    finally{setActivationLoading(false);}
+  };
+
   const [printfulCatalog,setPrintfulCatalog]=useState<Array<{id:string;name:string;variants:number}>>([]);
   const [catalogBusy,setCatalogBusy]=useState(false);
   const [orderFilter,setOrderFilter]=useState<"attention"|"active"|"all">("attention");
@@ -300,6 +314,34 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
     <div className="flex flex-wrap gap-2">
       <button type="button" onClick={()=>go("supplier-operations")} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"><AlertTriangle className="h-4 w-4"/>Incidencias</button>
       <button type="button" onClick={()=>go("supplier-cj-automation")} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"><Bot className="h-4 w-4"/>Configuración técnica avanzada</button>
+    </div>
+    <div className="space-y-3 rounded-xl border border-border p-4" aria-label="Estado real de compras y pagos automáticos">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h3 className="font-bold">Estado real de compras y pagos</h3>
+          <p className="text-xs text-muted-foreground">Diagnóstico del servidor, no una autorización para cargar dinero.</p></div>
+        <button type="button" onClick={()=>void checkActivation()} disabled={activationLoading}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">
+          {activationLoading?"Comprobando…":"Verificar automatización"}
+        </button>
+      </div>
+      {activationError&&<p role="alert" className="text-sm text-red-700">{activationError}</p>}
+      {activationStatus&&<div className="grid gap-2 text-xs sm:grid-cols-3">
+        <div className="rounded-lg border p-3"><strong className="block text-sm">CJdropshipping</strong>
+          <p>Crear pedidos: {activationStatus.cj.orderCreationRequested?"Solicitado":"Desactivado"}</p>
+          <p>Pagos: {activationStatus.cj.supplierPaymentRequested?"Solicitados":"Desactivados"}</p>
+          <p>Autopilot: {activationStatus.cj.liveRunnerRequested?"Solicitado":"Desactivado"}</p>
+          <p className="mt-1 text-muted-foreground">Requiere mandato y pedido real supervisado.</p>
+        </div>
+        <div className="rounded-lg border p-3"><strong className="block text-sm">Printful</strong>
+          <p>Confirmación: {activationStatus.printful.confirmationRequested?"Solicitada":"Desactivada"}</p>
+          <p>Límites: {activationStatus.printful.limitsConfigured?"Configurados":"Incompletos"}</p>
+          <p className="mt-1 text-muted-foreground">Solo ante pago Stripe verificado, cotización y margen válidos.</p>
+        </div>
+        <div className="rounded-lg border p-3"><strong className="block text-sm">AliExpress</strong>
+          <p>Compras: No implementadas</p><p>Pagos: No implementados</p>
+          <p className="mt-1 text-muted-foreground">La conexión de catálogo no permite comprar.</p>
+        </div>
+      </div>}
     </div>
     <p className="text-xs text-muted-foreground">Importar, publicar y crear pedidos son operaciones diferentes. Solo las API verificadas pueden enviar pedidos reales; publicar una ficha no autoriza compras. No hay pagos automáticos entre proveedores sin autorizaciones y controles individuales.</p>
   </section>;
