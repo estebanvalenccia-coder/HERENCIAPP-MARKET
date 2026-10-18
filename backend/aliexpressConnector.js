@@ -133,12 +133,12 @@ export function verifyAliExpressState(state, fromCookie, now = Date.now()) {
   return provided.length === expectedBuffer.length && crypto.timingSafeEqual(provided, expectedBuffer);
 }
 function clearCookie(res) {
-  res.setHeader("Set-Cookie", COOKIE + "=; Path=/api/integrations/aliexpress; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
+  res.setHeader("Set-Cookie", COOKIE + "=; Domain=herenciamarket.es; Path=/api/integrations/aliexpress; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
 }
 function sameOrigin(req) {
   const origin = String(req.headers.origin || "").trim();
   const fetchSite = String(req.headers["sec-fetch-site"] || "").toLowerCase();
-  return fetchSite !== "cross-site" && (!origin || origin === "https://herenciamarket.es" || origin === "https://www.herenciamarket.es");
+  return fetchSite !== "cross-site" && (origin ? origin === "https://herenciamarket.es" || origin === "https://www.herenciamarket.es" : fetchSite === "same-origin");
 }
 function redirect(res, marker) {
   res.writeHead(302, { Location: "/admin?aliexpress=" + encodeURIComponent(marker), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
@@ -166,8 +166,8 @@ function extractProduct(data, expectedId) {
       sku: String(v.sku_code || ""),
       price: Number(v.offer_sale_price ?? v.sku_price) || null,
       currency: String(v.currency_code || base.currency_code || ""),
-      stockKnown: Number.isFinite(Number(v.sku_available_stock)),
-      stock: Number.isFinite(Number(v.sku_available_stock)) ? Number(v.sku_available_stock) : null,
+      stockKnown: v.sku_available_stock !== null && v.sku_available_stock !== undefined && Number.isFinite(Number(v.sku_available_stock)),
+      stock: v.sku_available_stock !== null && v.sku_available_stock !== undefined && Number.isFinite(Number(v.sku_available_stock)) ? Number(v.sku_available_stock) : null,
       available: v.sku_stock === true || v.sku_stock === "true",
       properties: (Array.isArray(properties) ? properties : [properties]).filter(Boolean).map((p) => ({ name: String(p.sku_property_name || ""), value: String(p.sku_property_value || p.property_value_definition_name || ""), image: String(p.sku_image || "") })),
     };
@@ -226,14 +226,14 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
       provider: "aliexpress", appOnline: null, appKeyConfigured: Boolean(config().appKey),
       appSecretConfigured: Boolean(config().appSecret),
       encryptionReady: config().encryptionKey.length >= 24,
-      authorized: Boolean(tokens), tokenError,
+      authorized: Boolean(tokens && tokens.refreshExpiresAt > Date.now()), tokenError,
       accessExpiresAt: tokens ? new Date(tokens.accessExpiresAt).toISOString() : null,
       refreshExpiresAt: tokens ? new Date(tokens.refreshExpiresAt).toISOString() : null,
       accountPlatform: tokens?.accountPlatform || null,
       trackedCount: (await readTracked()).length,
       catalogSyncEnabled: process.env.ALIEXPRESS_CATALOG_SYNC_ENABLED === "true",
       automaticPurchasesEnabled: false,
-      message: tokens ? "Cuenta conectada. Catalogo de solo lectura; compras y pagos bloqueados." : "Autoriza tu cuenta de AliExpress para conectar el catalogo.",
+      message: tokens && tokens.refreshExpiresAt > Date.now() ? "Cuenta conectada. Catalogo de solo lectura; compras y pagos bloqueados." : "Autoriza tu cuenta de AliExpress para conectar el catalogo.",
     };
   }
   async function handle(req, res, path) {
@@ -241,9 +241,11 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
     const base = "/api/admin/integrations/aliexpress";
     if (!callback && !path.startsWith(base + "/")) return false;
     if (req.method !== "GET" && req.method !== "POST") { respond(res, 405, { error: "Method not allowed" }); return true; }
-    if (!await requireAdmin(req)) {
-      if (callback) { clearCookie(res); redirect(res, "login_required"); }
-      else respond(res, 401, { error: "Admin session required" });
+    // Callback is authenticated by a short-lived, signed, browser-bound state cookie.
+    // Admin login is required to START OAuth; it might be host-only on www
+    // while the registered callback is on the apex domain.
+    if (!callback && !await requireAdmin(req)) {
+      respond(res, 401, { error: "Admin session required" });
       return true;
     }
     if (req.method === "POST" && !sameOrigin(req)) { respond(res, 403, { error: "Untrusted request origin" }); return true; }
@@ -252,7 +254,7 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
       if (path === base + "/authorize" && req.method === "GET") {
         if (!isConfigured()) { respond(res, 503, { error: "AliExpress credentials or encryption key missing" }); return true; }
         const state = makeState();
-        res.setHeader("Set-Cookie", COOKIE + "=" + state + "; Path=/api/integrations/aliexpress; HttpOnly; Secure; SameSite=Lax; Max-Age=600");
+        res.setHeader("Set-Cookie", COOKIE + "=" + state + "; Domain=herenciamarket.es; Path=/api/integrations/aliexpress; HttpOnly; Secure; SameSite=Lax; Max-Age=600");
         const url = new URL(BASE + "/oauth/authorize");
         url.searchParams.set("response_type", "code");
         url.searchParams.set("force_auth", "true");
