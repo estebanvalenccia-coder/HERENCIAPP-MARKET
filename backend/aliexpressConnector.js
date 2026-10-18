@@ -102,7 +102,7 @@ export function normalizeAliExpressTokenResponse(data, prior = null, now = Date.
     accessToken: data.access_token,
     refreshToken: refresh,
     accessExpiresAt: expiresAt(data.expire_time, data.expires_in, now),
-    refreshExpiresAt: expiresAt(data.refresh_token_valid_time, data.refresh_expires_in, now) || prior?.refreshExpiresAt || now,
+    refreshExpiresAt: (data.refresh_token_valid_time != null || data.refresh_expires_in != null) ? expiresAt(data.refresh_token_valid_time, data.refresh_expires_in, now) : (prior?.refreshExpiresAt || now),
     userId: String(data.user_id || prior?.userId || ""),
     accountPlatform: String(data.account_platform || prior?.accountPlatform || ""),
     connectedAt: prior?.connectedAt || new Date(now).toISOString(),
@@ -323,7 +323,11 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
     if (!tokens) return { status: "not_authorized" };
     await refreshTokens();
     if (process.env.ALIEXPRESS_CATALOG_SYNC_ENABLED !== "true") return { status: "token_checked" };
-    const ids = (await readTracked()).slice(0, SYNC_BATCH);
+    const tracked = await readTracked();
+    if (!tracked.length) return { status: "no_tracked_products" };
+    const cursorRaw = await read("aliexpresscatalogcursor:v1");
+    const cursor = Math.max(0, Number.parseInt(String(cursorRaw || "0"), 10) || 0) % tracked.length;
+    const ids = Array.from({ length: Math.min(SYNC_BATCH, tracked.length) }, (_, i) => tracked[(cursor + i) % tracked.length]);
     let checked = 0;
     for (const id of ids) {
       try {
@@ -332,6 +336,7 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
         checked++;
       } catch { break; }
     }
+    if (checked > 0) await write("aliexpresscatalogcursor:v1", String((cursor + checked) % tracked.length));
     return { status: "catalog_checked", checked };
   }
   function startAutomation() {
