@@ -1194,8 +1194,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       onNavigate={openWorkspaceSection}
       onAdvanced={()=>setWorkspaceMode("advanced")}
       supplierConnectorStatuses={supplierConnectorStatuses}
-      importedCount={importedProducts.length}
-      pendingOrders={activeFulfillments.length}
+      products={products}
+      fulfillments={fulfillments}
+      onOpenProduct={onOpenProduct}
     />
 
     {workspaceMode==="advanced"&&<>
