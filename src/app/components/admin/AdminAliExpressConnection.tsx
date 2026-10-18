@@ -94,6 +94,21 @@ export function AdminAliExpressConnection() {
     } finally { setWorking(false); }
   };
 
+  const importDraft = async () => {
+    if (!product) return;
+    setWorking(true); setError(""); setInfo("");
+    try {
+      const result = await requestJson("/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product.productId }),
+      });
+      setInfo("Borrador creado en Herencia Market con " + result.variants + " variantes. Aún no está publicado ni disponible para comprar.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo importar el borrador");
+    } finally { setWorking(false); }
+  };
+
   const revokeTracking = async (id: string) => {
     setWorking(true); setError("");
     try {
@@ -151,6 +166,7 @@ export function AdminAliExpressConnection() {
         <p>ID: {product.productId} · Variantes obtenidas: {product.variants?.length ?? 0} · Revisado: {new Date(product.checkedAt).toLocaleString("es-ES")}</p>
         {product.variants?.slice(0, 6).map((variant, index) => <p key={index}>SKU: {variant.sku || "sin dato"} · Precio: {variant.price == null ? "sin dato" : variant.price + " " + variant.currency} · Stock: {variant.stock == null ? "sin verificar" : variant.stock}</p>)}
         <p className="text-xs text-muted-foreground">{product.note}</p>
+        <button type="button" disabled={working} onClick={() => void importDraft()} className="rounded-lg border border-border px-3 py-2 font-semibold disabled:opacity-50">Importar como borrador (no publicado)</button>
         <button type="button" disabled={working || tracked.includes(product.productId)} onClick={() => void trackProduct()} className="rounded-lg border border-border px-3 py-2 font-semibold disabled:opacity-50">
           {tracked.includes(product.productId) ? "Producto en seguimiento" : "Seguir automáticamente"}
         </button>
