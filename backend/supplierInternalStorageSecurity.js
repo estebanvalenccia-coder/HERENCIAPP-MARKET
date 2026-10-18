@@ -23,9 +23,6 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "aliexpresscatalogtracked:",
   "aliexpresscatalogcursor:",
   "aliexpresscatalogsnapshot:",
-  "aliexpressoauth:",
-  "aliexpresscatalogtracked:",
-  "aliexpresscatalogsnapshot:",
 ]);
 export function isPrivateSupplierStorageKey(key){
   const value=String(key??"").trim().toLowerCase();
