@@ -4,6 +4,7 @@
  * OAuth tokens are kept encrypted in private Neon storage.
  */
 import crypto from "node:crypto";
+import { makeAliExpressUnpublishedDraft } from "./aliexpressDraftImporter.js";
 
 export const ALIEXPRESS_OAUTH_KEY = "aliexpressoauth:v1";
 export const ALIEXPRESS_TRACK_KEY = "aliexpresscatalogtracked:v1";
@@ -187,7 +188,7 @@ function extractProduct(data, expectedId) {
     note: "Costes de envio, impuestos, margenes y disponibilidad por destino deben verificarse antes de publicar.",
   };
 }
-export function createAliExpressConnector({ read, write, requireAdmin }) {
+export function createAliExpressConnector({ read, write, requireAdmin, saveDraft = null }) {
   if (typeof read !== "function" || typeof write !== "function" || typeof requireAdmin !== "function") throw new Error("Missing AliExpress dependencies");
   let refreshInFlight = null;
   async function getTokens() { return decryptAliExpressTokens(await read(ALIEXPRESS_OAUTH_KEY)); }
@@ -289,6 +290,21 @@ export function createAliExpressConnector({ read, write, requireAdmin }) {
         const id = new URL(req.url, "http://localhost").searchParams.get("product_id") || "";
         if (!/^\d{8,22}$/.test(id)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
         respond(res, 200, await getProduct(id));
+        return true;
+      }
+      if (path === base + "/draft" && req.method === "POST") {
+        if (typeof saveDraft !== "function") { respond(res, 503, { error: "Catalog draft storage unavailable" }); return true; }
+        let raw = "";
+        for await (const chunk of req) { raw += chunk; if (raw.length > 1500) break; }
+        if (raw.length > 1500) { respond(res, 413, { error: "Payload too large" }); return true; }
+        let body; try { body = JSON.parse(raw); } catch { respond(res, 400, { error: "Invalid JSON" }); return true; }
+        const productId = String(body.productId || "");
+        if (!/^\\d{8,22}$/.test(productId)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
+        const product = await getProduct(productId);
+        const draft = makeAliExpressUnpublishedDraft(product);
+        const saved = await saveDraft(draft, { id: draft.id, createOnly: true });
+        if (!saved) { respond(res, 409, { error: "Draft already exists; existing product was not changed" }); return true; }
+        respond(res, 201, { id: draft.id, status: "draft", active: false, provider: "aliexpress", variants: draft.variants.length, publicationEnabled: false });
         return true;
       }
       if (path === base + "/tracked" && req.method === "GET") {
