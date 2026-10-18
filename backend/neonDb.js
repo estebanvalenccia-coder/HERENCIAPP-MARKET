@@ -807,9 +807,10 @@ export async function saveNeonCommerceProduct(input = {}, { id = null, createOnl
   // Do not invent an existing storefront collection (e.g. plants) and do not
   // create a foreign-key reference to an unknown collection. A merchant must
   // assign a real collection before publication.
-  const isUnclassifiedFileDraft = status==="draft" && input?.metadata?.importedFromFile===true &&
+  const noCollectionDraft = status==="draft" &&
+    (input?.metadata?.importedFromFile===true || input?.metadata?.importedByApi===true || input?.metadata?.sourceProvider==="aliexpress") &&
     !input?.collection && !(Array.isArray(input?.collections)&&input.collections.length);
-  const collections=isUnclassifiedFileDraft ? [] : inferCollections(input);
+  const collections=noCollectionDraft ? [] : inferCollections(input);
   await neonPool.query("delete from commerce_product_collections where product_id=$1",[productId]);
   for(let i=0;i<collections.length;i++){
     await neonPool.query(
