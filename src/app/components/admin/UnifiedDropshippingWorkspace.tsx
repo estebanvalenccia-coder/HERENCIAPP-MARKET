@@ -141,7 +141,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           <button type="button" onClick={()=>go("supplier-catalog")} className="text-xs font-semibold underline">Abrir catálogo completo</button>
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar productos">
-          {([{id:"all",name:"Todos"},{id:"draft",name:"Borradores"},{id:"published",name:"Publicados"}] as const).map(x)=>
+          {([{id:"all",name:"Todos"},{id:"draft",name:"Borradores"},{id:"published",name:"Publicados"}] as const).map(x=>
             <button type="button" key={x.id} onClick={()=>setProductFilter(x.id)}
               aria-pressed={productFilter===x.id}
               className={"rounded-lg border px-3 py-1.5 text-xs "+(productFilter===x.id?"border-primary font-bold":"border-border")}>{x.name}</button>)}
@@ -169,7 +169,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           <button type="button" onClick={()=>go("supplier-orders")} className="text-xs font-semibold underline">Gestionar pedidos</button>
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar pedidos">
-          {([{id:"attention",name:"Incidencias"},{id:"active",name:"Activos"},{id:"all",name:"Todos"}] as const).map(x)=>
+          {([{id:"attention",name:"Incidencias"},{id:"active",name:"Activos"},{id:"all",name:"Todos"}] as const).map(x=>
             <button key={x.id} type="button" onClick={()=>setOrderFilter(x.id)} aria-pressed={orderFilter===x.id}
               className={"rounded-lg border px-3 py-1.5 text-xs "+(orderFilter===x.id?"border-primary font-bold":"border-border")}>{x.name}</button>)}
         </div>
