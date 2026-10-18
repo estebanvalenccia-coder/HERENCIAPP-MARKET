@@ -94,16 +94,18 @@ export function AdminAliExpressConnection() {
     } finally { setWorking(false); }
   };
 
-  const importDraft = async () => {
-    if (!product) return;
+  const importDraft = async (input?: string) => {
+    const source = String(input || product?.productId || productId || "").trim();
+    if (!source) { setError("Pega el enlace completo o ID de AliExpress."); return; }
     setWorking(true); setError(""); setInfo("");
     try {
       const result = await requestJson("/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: product.productId }),
+        body: JSON.stringify({ productInput: source }),
       });
-      setInfo("Borrador creado en Herencia Market con " + result.variants + " variantes. Aún no está publicado ni disponible para comprar.");
+      setInfo("Artículo original vinculado a AliExpress. Borrador creado con " + result.variants + " variantes. Revisa costes y envío para poder publicarlo.");
+      setProduct(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo importar el borrador");
     } finally { setWorking(false); }
@@ -158,6 +160,7 @@ export function AdminAliExpressConnection() {
           <input id="ali-product-id" value={productId} onChange={(e) => setProductId(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
             placeholder="https://es.aliexpress.com/item/...html o ID" maxLength={2048} />
+          <button type="button" disabled={working || !productId.trim()} onClick={() => void importDraft(productId)} className="inline-flex gap-2 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">Importar y vincular</button>
           <button type="button" disabled={working} onClick={() => void queryProduct()} className="inline-flex gap-2 items-center rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"><Search className="h-4 w-4" />Consultar</button>
         </div>
       </div>
