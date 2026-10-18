@@ -140,9 +140,28 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         if(!response.ok)throw new Error(String(result.error||"Printful no pudo importar el producto."));
         setNotice("Printful vinculado: "+result.variantCount+" variantes sincronizadas. Revisa la ficha antes de publicar.");
         await onReload();
+      }else if(selected==="cj"){
+        const previewRes=await fetch("/api/admin/catalog/import-url/preview",{
+          method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({url:input,maxProducts:1}),
+        });
+        const preview=await previewRes.json().catch(()=>({}));
+        if(!previewRes.ok)throw new Error(String(preview.error||"CJ no devolvió un producto."));
+        const product=Array.isArray(preview.products)?preview.products[0]:null;
+        if(!product||!product.supplierProductId||!Array.isArray(product.variants)||!product.variants.length)
+          throw new Error("CJ no devolvió todas las variantes originales. No se creará un borrador incompleto.");
+        const importRes=await fetch("/api/admin/catalog/import-url/product",{
+          method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({product}),
+        });
+        const imported=await importRes.json().catch(()=>({}));
+        if(!importRes.ok||!imported.product?.id)throw new Error(String(imported.error||"No se pudo guardar el producto de CJ."));
+        setNotice(imported.skipped?"El artículo CJ ya existe; revisa el producto vinculado.":
+          "CJ vinculado: "+product.variants.length+" variantes. Borrador creado; comprueba costes y logística.");
+        await onReload();
       }else{
         await onImportProductByUrl(input);
-        setNotice("Consulta completada. Revisa el resultado de importación en la sección detallada antes de publicarlo.");
+        setNotice("Abre la importación detallada para verificar si se creó el borrador.");
       }
     }catch(error:any){
       setImportError(String(error?.message||"No se pudo completar la importación."));
