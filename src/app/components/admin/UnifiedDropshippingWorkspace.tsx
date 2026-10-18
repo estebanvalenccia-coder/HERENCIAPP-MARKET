@@ -69,6 +69,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const [importing,setImporting]=useState(false);
   const [notice,setNotice]=useState("");
   const [importError,setImportError]=useState("");
+  const [printfulCatalog,setPrintfulCatalog]=useState<Array<{id:string;name:string;variants:number}>>([]);
+  const [catalogBusy,setCatalogBusy]=useState(false);
   const [orderFilter,setOrderFilter]=useState<"attention"|"active"|"all">("attention");
   const [productFilter,setProductFilter]=useState<"all"|"draft"|"published">("all");
   const current=PROVIDERS.find(item=>item.id===provider)!;
@@ -90,6 +92,17 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const activeStatus=supplierConnectorStatuses.find(x=>String(x.type||"").toLowerCase()===provider);
   const go=(id:string)=>{onAdvanced();onNavigate(id);};
   const nameFor=(id:Provider)=>PROVIDERS.find(x=>x.id===id)?.name||id;
+  const loadPrintfulCatalog=async()=>{
+    setCatalogBusy(true);setImportError("");
+    try {
+      const response=await fetch("/api/admin/printful/sync-products",{credentials:"same-origin",cache:"no-store"});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(String(body.error||"No se puede leer el catálogo Printful."));
+      setPrintfulCatalog(Array.isArray(body.products)?body.products:[]);
+      setNotice("Selecciona el producto de Printful y pulsa Importar y vincular.");
+    } catch(e:any){setImportError(String(e?.message||"Error al consultar Printful."));}
+    finally{setCatalogBusy(false);}
+  };
   const importProduct=async()=>{
     const input=sourceUrl.trim();
     if(!input)return;
@@ -129,7 +142,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         await onReload();
       }else{
         await onImportProductByUrl(input);
-        setNotice("Se ha enviado al importador "+(selected==="cj"?"de CJdropshipping":"manual")+". Consulta su resultado en Importación.");
+        setNotice("Consulta completada. Revisa el resultado de importación en la sección detallada antes de publicarlo.");
       }
     }catch(error:any){
       setImportError(String(error?.message||"No se pudo completar la importación."));
@@ -164,6 +177,18 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           {importing?"Importando…":"Importar y vincular"}
         </button>
       </div>
+      {provider==="printful"&&<div className="space-y-2">
+        <button type="button" onClick={()=>void loadPrintfulCatalog()} disabled={catalogBusy}
+          className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-50">
+          {catalogBusy?"Consultando catálogo…":"Buscar en mis productos de Printful"}
+        </button>
+        {printfulCatalog.length>0&&<div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border bg-background p-2">
+          {printfulCatalog.map(item=><button type="button" key={item.id} onClick={()=>setSourceUrl(item.id)}
+            className={"block w-full rounded-lg border px-3 py-2 text-left text-xs "+(sourceUrl===item.id?"border-primary bg-primary/10":"border-transparent hover:bg-muted")}>
+            <span className="font-bold">{item.name}</span> · {item.variants} variantes · ID {item.id}
+          </button>)}
+        </div>}
+      </div>}
       {notice&&<p role="status" className="text-sm text-emerald-700">{notice}</p>}
       {importError&&<p role="alert" className="text-sm text-red-700">{importError}</p>}
       <p className="text-xs text-muted-foreground">Se guarda para revisión. Vincular no activa automáticamente pagos ni compras.</p>
