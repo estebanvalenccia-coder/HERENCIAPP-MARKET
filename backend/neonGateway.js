@@ -44,6 +44,8 @@ import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShipp
 import { summarizeCjProductReviews, assessCjAutomatedProduct } from "./cjAutomatedReview.js";
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 import { printfulLivePolicy } from "./printfulLivePolicy.js";
+import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
+import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -506,6 +508,28 @@ const server=http.createServer(async(req,res)=>{try{
   if(path==="/api/admin/suppliers/automation-status"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const printful=printfulLivePolicy(process.env);
+    // Read only: validate the stored CJ mandate against the current registered suppliers,
+    // budget policy, and expiry. Flags on Railway never imply live payment authorization.
+    let cjAuthorization={valid:false,reason:"not_verified"};
+    try{
+      const [rawMandate,rawPolicy,rawOps]=await Promise.all([
+        readNeonStorageValue(CJ_LIVE_MANDATE_KEY),
+        readNeonStorageValue("cjAutopilotGuardrails:v1"),
+        readNeonStorageValue("posOperations"),
+      ]);
+      const policy=readCjAutopilotPolicy(rawPolicy);
+      const ops=JSON.parse(rawOps||"{}");
+      const mandate=validateCjLiveMandate(rawMandate,{
+        policy,suppliers:Array.isArray(ops.suppliers)?ops.suppliers:[],nowMs:Date.now(),
+      });
+      cjAuthorization=mandate?{valid:true,reason:"validated",expiresAt:mandate.expiresAt}:
+        {valid:false,reason:rawMandate?"mandate_expired_or_invalid":"merchant_mandate_missing"};
+    }catch{
+      cjAuthorization={valid:false,reason:"read_or_validation_failed"};
+    }
+    const cjFlags=process.env.CJ_LIVE_AUTOPILOT_ENABLED==="true" &&
+      process.env.CJ_LIVE_ORDER_CREATION_ENABLED==="true" &&
+      process.env.CJ_LIVE_PAYMENT_ENABLED==="true";
     return json(res,200,{
       ok:true,checkedAt:new Date().toISOString(),
       cj:{
@@ -515,8 +539,11 @@ const server=http.createServer(async(req,res)=>{try{
         supplierPaymentRequested:process.env.CJ_LIVE_PAYMENT_ENABLED==="true",
         requiresValidMerchantMandate:true,
         requiresSupervisedSuccessfulOrder:true,
-        fullyAuthorized:false,
-        note:"Las variables por sí solas nunca autorizan compras; hacen falta mandato válido y pedido supervisado.",
+        validMerchantMandate:cjAuthorization.valid,
+        merchantMandateStatus:cjAuthorization.reason,
+        merchantMandateExpiresAt:cjAuthorization.expiresAt||null,
+        fullyAuthorized:cjFlags&&cjAuthorization.valid,
+        note:"La autorización CJ requiere límites, mandato vigente y un pedido supervisado; cada compra sigue su preflight individual.",
       },
       printful:{
         supplierCredentialsConfigured:Boolean(process.env.PRINTFUL_API_TOKEN),
