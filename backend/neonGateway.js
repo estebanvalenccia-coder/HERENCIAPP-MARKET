@@ -43,6 +43,7 @@ import { supplierFileProfileKey, readSupplierFileProfile, saveSupplierFileProfil
 import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShippingQuotes.js";
 import { summarizeCjProductReviews, assessCjAutomatedProduct } from "./cjAutomatedReview.js";
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
+import { printfulLivePolicy } from "./printfulLivePolicy.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -498,6 +499,44 @@ const server=http.createServer(async(req,res)=>{try{
       destinationNotice:request.disclaimer,
       pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
       pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar usando la dirección y el código postal del cliente antes de enviar un pedido real.",
+    });
+  }
+
+  // Read-only financial activation diagnostics: never expose credentials or authorize charges.
+  if(path==="/api/admin/suppliers/automation-status"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const printful=printfulLivePolicy(process.env);
+    return json(res,200,{
+      ok:true,checkedAt:new Date().toISOString(),
+      cj:{
+        supplierCredentialsConfigured:Boolean(process.env.CJ_API_KEY),
+        liveRunnerRequested:process.env.CJ_LIVE_AUTOPILOT_ENABLED==="true",
+        orderCreationRequested:process.env.CJ_LIVE_ORDER_CREATION_ENABLED==="true",
+        supplierPaymentRequested:process.env.CJ_LIVE_PAYMENT_ENABLED==="true",
+        requiresValidMerchantMandate:true,
+        requiresSupervisedSuccessfulOrder:true,
+        fullyAuthorized:false,
+        note:"Las variables por sí solas nunca autorizan compras; hacen falta mandato válido y pedido supervisado.",
+      },
+      printful:{
+        supplierCredentialsConfigured:Boolean(process.env.PRINTFUL_API_TOKEN),
+        confirmationRequested:printful.requested,
+        limitsConfigured:printful.configured,
+        enabledByPolicy:printful.enabled,
+        maxOrderCostEur:printful.maxOrderCostEur,
+        maxDailySpendEur:printful.maxDailySpendEur,
+        minMarginPct:printful.minMarginPct,
+        requiresVerifiedPaidStripeOrder:true,
+        requiresCurrentEurQuote:true,
+        note:"Activación condicionada por pedido Stripe pagado, cotización EUR y margen mínimo.",
+      },
+      aliexpress:{
+        catalogConfigured:Boolean(process.env.ALIEXPRESS_APP_KEY&&process.env.ALIEXPRESS_APP_SECRET),
+        orderCreationImplemented:false,
+        supplierPaymentImplemented:false,
+        automaticPurchasesEnabled:false,
+        note:"La API de catálogo no autoriza compras automáticas.",
+      },
     });
   }
 
