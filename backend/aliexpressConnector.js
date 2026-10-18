@@ -156,25 +156,41 @@ function idList(ids) {
   if (normalized.some((id) => !/^\d{8,22}$/.test(id))) throw new Error("Invalid AliExpress product ID");
   return [...new Set(normalized)];
 }
-function extractProduct(data, expectedId) {
-  const result = data?.aliexpress_ds_product_get_response?.result || data?.aliexpress_ds_product_get_response?.resp_result?.result;
-  if (!result || typeof result !== "object") throw new Error("AliExpress did not return product details");
+export function extractAliExpressProduct(data, expectedId) {
+  const envelope = data?.aliexpress_ds_product_get_response;
+  if (!envelope || (envelope.rsp_code != null && !["200","0"].includes(String(envelope.rsp_code)))) {
+    throw new Error("AliExpress no permite consultar el artículo. Comprueba el ID, permisos API y disponibilidad en España.");
+  }
+  const result = envelope.result || envelope.resp_result?.result;
+  if (!result || typeof result !== "object") throw new Error("AliExpress no devolvió los detalles del producto");
   const base = result.ae_item_base_info_dto || {};
   const rawVariants = result.ae_item_sku_info_dtos?.ae_item_sku_info_d_t_o || result.ae_item_sku_info_dtos || [];
   const variants = (Array.isArray(rawVariants) ? rawVariants : [rawVariants]).filter(Boolean).map((v) => {
-    const properties = v.ae_sku_property_dtos?.ae_sku_property_d_t_o || v.ae_sku_property_dtos || [];
+    const rawProperties = v.ae_sku_property_dtos || v.aeop_s_k_u_propertys || [];
+    const properties = rawProperties?.ae_sku_property_d_t_o || rawProperties || [];
+    const rawStock = v.sku_available_stock ?? v.s_k_u_available_stock ?? v.ipm_sku_stock;
+    const validStock = rawStock !== null && rawStock !== undefined && Number.isFinite(Number(rawStock));
     return {
       variantId: String(v.id || ""),
       sku: String(v.sku_code || ""),
       price: Number(v.offer_sale_price ?? v.sku_price) || null,
       currency: String(v.currency_code || base.currency_code || ""),
-      stockKnown: v.sku_available_stock !== null && v.sku_available_stock !== undefined && Number.isFinite(Number(v.sku_available_stock)),
-      stock: v.sku_available_stock !== null && v.sku_available_stock !== undefined && Number.isFinite(Number(v.sku_available_stock)) ? Number(v.sku_available_stock) : null,
+      stockKnown: validStock,
+      stock: validStock ? Number(rawStock) : null,
       available: v.sku_stock === true || v.sku_stock === "true",
-      properties: (Array.isArray(properties) ? properties : [properties]).filter(Boolean).map((p) => ({ name: String(p.sku_property_name || ""), value: String(p.sku_property_value || p.property_value_definition_name || ""), image: String(p.sku_image || "") })),
+      properties: (Array.isArray(properties) ? properties : [properties]).filter(Boolean).map((p) => ({
+        name: String(p.sku_property_name || ""),
+        value: String(p.sku_property_value || p.property_value_definition_name || ""),
+        image: String(p.sku_image || ""),
+      })),
     };
   });
-  const images = String(result.ae_multimedia_info_dto?.image_urls || "").split(";").filter((s) => /^https?:\/\//.test(s)).slice(0, 8);
+  const images = String(result.ae_multimedia_info_dto?.image_urls || "").split(";").map((value) => value.trim()).filter((value) => {
+    try {
+      const uri = new URL(value);
+      return ["http:", "https:"].includes(uri.protocol) && /(^|\.)(alicdn\.com|taobaocdn\.com|aliexpress-media\.com|aliimg\.com)$/.test(uri.hostname);
+    } catch { return false; }
+  }).map((value) => value.replace(/^http:\/\//, "https://")).slice(0, 8);
   return {
     provider: "aliexpress",
     productId: String(base.product_id || expectedId),
@@ -186,7 +202,7 @@ function extractProduct(data, expectedId) {
     variants,
     checkedAt: new Date().toISOString(),
     publishable: false,
-    note: "Costes de envio, impuestos, margenes y disponibilidad por destino deben verificarse antes de publicar.",
+    note: "Costes de envío, impuestos, márgenes y disponibilidad por destino deben verificarse antes de publicar.",
   };
 }
 export function createAliExpressConnector({ read, write, requireAdmin, saveDraft = null }) {
@@ -216,7 +232,7 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
   }
   async function getProduct(id) {
     const raw = await withSession("aliexpress.ds.product.get", { product_id: id, ship_to_country: "ES", target_currency: "EUR", target_language: "ES" });
-    return extractProduct(raw, id);
+    return extractAliExpressProduct(raw, id);
   }
   async function readTracked() {
     try { return idList(JSON.parse(await read(ALIEXPRESS_TRACK_KEY) || "[]")); } catch { return []; }
