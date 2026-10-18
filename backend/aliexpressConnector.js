@@ -299,7 +299,7 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
         if (raw.length > 1500) { respond(res, 413, { error: "Payload too large" }); return true; }
         let body; try { body = JSON.parse(raw); } catch { respond(res, 400, { error: "Invalid JSON" }); return true; }
         const productId = String(body.productId || "");
-        if (!/^\\d{8,22}$/.test(productId)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
+        if (!/^\d{8,22}$/.test(productId)) { respond(res, 400, { error: "Invalid product ID" }); return true; }
         const product = await getProduct(productId);
         const draft = makeAliExpressUnpublishedDraft(product);
         const saved = await saveDraft(draft, { id: draft.id, createOnly: true });
