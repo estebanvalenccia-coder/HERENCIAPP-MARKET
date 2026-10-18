@@ -19,6 +19,9 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjstockobserverlease:v1",
   "cjstockobservercursor:v1",
   "supplierwebhookdispatch:",
+  "aliexpressoauth:",
+  "aliexpresscatalogtracked:",
+  "aliexpresscatalogsnapshot:",
 ]);
 export function isPrivateSupplierStorageKey(key){
   const value=String(key??"").trim().toLowerCase();
