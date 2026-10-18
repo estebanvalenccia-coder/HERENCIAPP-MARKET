@@ -11,6 +11,8 @@ type Props={
   supplierConnectorStatuses:SupplierState[];
   products:any[];
   fulfillments:any[];
+  onImportProductByUrl:(url:string)=>Promise<void>;
+  onReload:()=>Promise<void>;
 };
 const PROVIDERS:Array<{id:Provider;name:string;detail:string;target:string}>= [
   {id:"all",name:"Todos",detail:"Vista global",target:"supplier-registered"},
@@ -61,8 +63,12 @@ function productPublishable(product:any){
   return {ready:true,reason:"Publicado (la compra al proveedor se verifica por separado)"};
 }
 export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduct,
-  supplierConnectorStatuses,products,fulfillments}:Props){
+  supplierConnectorStatuses,products,fulfillments,onImportProductByUrl,onReload}:Props){
   const [provider,setProvider]=useState<Provider>("all");
+  const [sourceUrl,setSourceUrl]=useState("");
+  const [importing,setImporting]=useState(false);
+  const [notice,setNotice]=useState("");
+  const [importError,setImportError]=useState("");
   const [orderFilter,setOrderFilter]=useState<"attention"|"active"|"all">("attention");
   const [productFilter,setProductFilter]=useState<"all"|"draft"|"published">("all");
   const current=PROVIDERS.find(item=>item.id===provider)!;
@@ -84,6 +90,52 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const activeStatus=supplierConnectorStatuses.find(x=>String(x.type||"").toLowerCase()===provider);
   const go=(id:string)=>{onAdvanced();onNavigate(id);};
   const nameFor=(id:Provider)=>PROVIDERS.find(x=>x.id===id)?.name||id;
+  const importProduct=async()=>{
+    const input=sourceUrl.trim();
+    if(!input)return;
+    setImporting(true);setNotice("");setImportError("");
+    try{
+      let selected:Provider=provider;
+      if(input.startsWith("https://")){
+        const host=new URL(input).hostname.toLowerCase();
+        if(host==="aliexpress.com"||host.endsWith(".aliexpress.com"))selected="aliexpress";
+        else if(host==="cjdropshipping.com"||host.endsWith(".cjdropshipping.com"))selected="cj";
+        else if(host==="printful.com"||host.endsWith(".printful.com"))selected="printful";
+      }
+      if(selected==="aliexpress"){
+        const response=await fetch("/api/admin/integrations/aliexpress/draft",{method:"POST",
+          credentials:"same-origin",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({productInput:input})});
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(String(result.error||"AliExpress no pudo importar el producto."));
+        setNotice("AliExpress vinculado: "+result.variants+" variantes. Borrador creado; falta revisar costes.");
+        await onReload();
+      }else if(selected==="printful"){
+        let id=input;
+        if(input.startsWith("https://")){
+          const u=new URL(input);
+          if(!(u.hostname==="printful.com"||u.hostname.endsWith(".printful.com")))throw new Error("Este enlace no pertenece a Printful.");
+          const match=u.pathname.match(/\/(?:store\/)?products\/(\d{1,20})(?:\/|$)/);
+          if(!match)throw new Error("Pega un enlace de producto sincronizado de tu tienda Printful o su ID.");
+          id=match[1];
+        }
+        if(!/^\d{1,20}$/.test(id))throw new Error("Introduce un ID de producto sincronizado de Printful.");
+        const response=await fetch("/api/admin/printful/sync-product",{method:"POST",
+          credentials:"same-origin",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({syncProductId:id})});
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(String(result.error||"Printful no pudo importar el producto."));
+        setNotice("Printful vinculado: "+result.variantCount+" variantes sincronizadas. Revisa la ficha antes de publicar.");
+        await onReload();
+      }else{
+        await onImportProductByUrl(input);
+        setNotice("Se ha enviado al importador "+(selected==="cj"?"de CJdropshipping":"manual")+". Consulta su resultado en Importación.");
+      }
+    }catch(error:any){
+      setImportError(String(error?.message||"No se pudo completar la importación."));
+    }finally{setImporting(false);}
+  };
+
   return <section aria-label="Motor unificado de dropshipping" className="space-y-5 rounded-3xl border border-border bg-card p-4 sm:p-6">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -100,6 +152,21 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         <span className="block font-bold text-sm">{item.name}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{item.detail}</span>
       </button>)}
+    </div>
+    <div className="space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
+      <div><h3 className="font-bold">Importar y vincular producto</h3>
+        <p className="text-xs text-muted-foreground">Un solo campo: enlaces de AliExpress, CJ y productos sincronizados de Printful. También puedes elegir el proveedor y pegar su ID.</p></div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input value={sourceUrl} onChange={event=>setSourceUrl(event.target.value)} aria-label="Enlace o ID del producto"
+          placeholder="Pega enlace del producto o ID" className="min-w-0 flex-1 rounded-xl border bg-background px-3 py-3 text-sm"/>
+        <button type="button" onClick={()=>void importProduct()} disabled={importing||!sourceUrl.trim()}
+          className="rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">
+          {importing?"Importando…":"Importar y vincular"}
+        </button>
+      </div>
+      {notice&&<p role="status" className="text-sm text-emerald-700">{notice}</p>}
+      {importError&&<p role="alert" className="text-sm text-red-700">{importError}</p>}
+      <p className="text-xs text-muted-foreground">Se guarda para revisión. Vincular no activa automáticamente pagos ni compras.</p>
     </div>
     <div className="grid grid-cols-3 gap-2 text-center text-xs">
       <div className="rounded-xl border p-3"><strong className="block text-lg">{configured}</strong>API configuradas</div>
