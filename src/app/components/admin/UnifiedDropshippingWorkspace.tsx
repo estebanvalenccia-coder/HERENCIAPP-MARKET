@@ -190,7 +190,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           className="rounded-lg border bg-background p-3 text-left text-sm font-semibold">{x.name}
           <span className="block text-xs font-normal text-muted-foreground">Configurar / importar</span></button>)}
       </div>}
-      {provider==="aliexpress"&&<AdminAliExpressConnection/>}
+      {provider==="aliexpress"&&<details className="rounded-lg border border-border bg-background p-3"><summary className="cursor-pointer text-sm font-semibold">Estado de conexión, catálogo y opciones avanzadas de AliExpress</summary><div className="mt-3"><AdminAliExpressConnection/></div></details>}
     </div>
     <div>
       <h3 className="font-bold">Las cinco etapas (para todos los proveedores)</h3>
