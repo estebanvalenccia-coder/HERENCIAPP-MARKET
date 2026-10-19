@@ -18,7 +18,7 @@ export function AdminCjAutomationStatus(){
   const [error,setError]=useState("");
   const [guardrails,setGuardrails]=useState<Guardrails|null>(null);
   const [perOrder,setPerOrder]=useState("");
-  const [perDay,setPerDay]=useState("");
+  const [perDay,setPerDay]=useState("100");
   const [minMargin,setMinMargin]=useState("");
   const [allowedSupplierIds,setAllowedSupplierIds]=useState<string[]>([]);
   const [acknowledgeSimulation,setAcknowledgeSimulation]=useState(false);
@@ -248,8 +248,9 @@ export function AdminCjAutomationStatus(){
         Prepara tu presupuesto antes de automatizar compras. Guardarlo NO activa
         compras ni pagos: los importes siguen siendo límites de simulación hasta
         una autorización financiera independiente y pruebas reales controladas.
-        No hemos elegido ninguna cifra por ti.
+        Has indicado 100 € al día como presupuesto inicial; puedes editarlo en cualquier momento antes de guardar.
       </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2"><span className="text-xs text-muted-foreground">Presupuesto diario propuesto: 100 € (editable).</span><button type="button" className="rounded-lg border px-3 py-1.5 text-xs font-semibold" onClick={()=>{setPerDay("100");setAcknowledgeSimulation(false);}}>Usar 100 € diarios</button></div>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {[
           {label:"Máximo por pedido (€)",value:perOrder,set:setPerOrder},
