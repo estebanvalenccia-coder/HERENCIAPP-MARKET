@@ -9640,7 +9640,9 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
 app.post("/api/ai/plant-description", async (req, res) => {
   if (!requirePrimaryDatabase(res)) return;
 
-  const { plantName, baseDescription = "" } = req.body;
+  const { plantName, baseDescription = "" } = req.body || {};
+  if(!String(plantName||"").trim())return res.status(422).json({error:"Indica el nombre antes de generar la descripción."});
+  try {
 
   // Product plant descriptions always use the dedicated Groq configuration.
   // Do not inherit the generic admin AI provider: that setting can point to
@@ -9675,6 +9677,7 @@ app.post("/api/ai/plant-description", async (req, res) => {
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
   const aiResponse = await fetch(endpoint, {
+    signal:AbortSignal.timeout(16000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -9696,11 +9699,9 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   });
 
   if (!aiResponse.ok) {
-    const detail = await aiResponse.text();
-
-    return res.status(502).json({
-      error: `Error del proveedor de IA: ${detail}`,
-    });
+    const detail = await aiResponse.text().catch(()=>"");
+    console.warn("[plant-description] provider response",aiResponse.status,String(detail).slice(0,120));
+    return res.status(502).json({error:"Groq no pudo generar la descripción. Revisa la configuración, cuota y modelo en Railway.",code:"GROQ_UPSTREAM_ERROR"});
   }
 
   const json = await aiResponse.json();
@@ -9711,7 +9712,16 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
     .replace(/```\n?/g, "")
     .trim();
 
-  res.json({ result: JSON.parse(cleanContent) });
+  let result;
+  try { result=JSON.parse(cleanContent); }
+  catch { return res.status(502).json({error:"Groq devolvió un formato no válido. Puedes intentarlo de nuevo.",code:"GROQ_INVALID_JSON"}); }
+  if(!result||typeof result.description!=="string"||!result.description.trim())
+    return res.status(502).json({error:"Groq no devolvió una descripción utilizable.",code:"GROQ_EMPTY_DESCRIPTION"});
+  return res.json({ result });
+  } catch(error) {
+    console.warn("[plant-description] request failed",String(error?.name||"REQUEST_FAILED").slice(0,60));
+    return res.status(502).json({error:"La generación con Groq no está disponible en este momento. La ficha del producto sigue intacta.",code:"GROQ_UNAVAILABLE"});
+  }
 });
 
 
