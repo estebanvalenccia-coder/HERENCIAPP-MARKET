@@ -9638,7 +9638,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/ai/plant-description", async (req, res) => {
-  if (!requirePrimaryDatabase(res)) return;
+  // Generating a plant description does not require a database connection.
 
   const { plantName, baseDescription = "" } = req.body || {};
   if(!String(plantName||"").trim())return res.status(422).json({error:"Indica el nombre antes de generar la descripción."});
@@ -9677,7 +9677,7 @@ app.post("/api/ai/plant-description", async (req, res) => {
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
   const aiResponse = await fetch(endpoint, {
-    signal:AbortSignal.timeout(16000),
+    signal:AbortSignal.timeout(24000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -9701,7 +9701,7 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   if (!aiResponse.ok) {
     const detail = await aiResponse.text().catch(()=>"");
     console.warn("[plant-description] provider response",aiResponse.status,String(detail).slice(0,120));
-    return res.status(502).json({error:"Groq no pudo generar la descripción. Revisa la configuración, cuota y modelo en Railway.",code:"GROQ_UPSTREAM_ERROR"});
+    return res.status(aiResponse.status===429?429:502).json({error:"Groq no pudo generar la descripción. Revisa la configuración, cuota y modelo en Railway.",code:aiResponse.status===429?"GROQ_RATE_LIMIT":"GROQ_UPSTREAM_ERROR"});
   }
 
   const json = await aiResponse.json();
@@ -9720,7 +9720,7 @@ Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
   return res.json({ result });
   } catch(error) {
     console.warn("[plant-description] request failed",String(error?.name||"REQUEST_FAILED").slice(0,60));
-    return res.status(502).json({error:"La generación con Groq no está disponible en este momento. La ficha del producto sigue intacta.",code:"GROQ_UNAVAILABLE"});
+    return res.status(503).json({error:"La generación con Groq no está disponible en este momento. La ficha del producto sigue intacta.",code:"GROQ_UNAVAILABLE"});
   }
 });
 
