@@ -1,6 +1,7 @@
 import {useMemo,useState} from "react";
 import {ArrowRight,Layers3,Link2,PackagePlus,ShoppingBag,Truck,Bot,AlertTriangle} from "lucide-react";
 import {AdminAliExpressConnection} from "./AdminAliExpressConnection";
+import {UniversalSupplierBudget} from "./UniversalSupplierBudget";
 
 type Provider="all"|"aliexpress"|"cj"|"printful"|"manual";
 type SupplierState={type:string;state:string;automaticOrders:boolean;supplierId?:string};
@@ -226,6 +227,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
       {importError&&<p role="alert" className="text-sm text-red-700">{importError}</p>}
       <p className="text-xs text-muted-foreground">Se guarda para revisión. Vincular no activa automáticamente pagos ni compras.</p>
     </div>
+    <UniversalSupplierBudget/>
     <div className="grid grid-cols-3 gap-2 text-center text-xs">
       <div className="rounded-xl border p-3"><strong className="block text-lg">{configured}</strong>API configuradas</div>
       <div className="rounded-xl border p-3"><strong className="block text-lg">{pending}</strong>Pedidos activos</div>
