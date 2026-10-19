@@ -102,7 +102,25 @@ try {
   console.warn("[legacy proxy] upstream unavailable",code||String(error?.name||"NETWORK_ERROR"));
   if(!res.headersSent&&!res.writableEnded)return json(res,503,{error:"Servicio auxiliar temporalmente no disponible",code:"LEGACY_BACKEND_UNAVAILABLE",retryable:["GET","HEAD"].includes(req.method)});
   return;
-}const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}// Buffer upstream responses before committing headers so a broken legacy socket
+}const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}// Event streams must remain streaming: buffering an SSE response forever
+// blocks admin order notifications. Do not set a Content-Length for SSE.
+if(String(r.headers.get("content-type")||"").toLowerCase().includes("text/event-stream")){
+  delete responseHeaders["content-length"];
+  delete responseHeaders["transfer-encoding"];
+  res.writeHead(r.status,responseHeaders);
+  try {
+    for await(const part of r.body){
+      if(res.destroyed||res.writableEnded)break;
+      if(!res.write(part))await new Promise(resolve=>res.once("drain",resolve));
+    }
+  } catch(error) {
+    console.warn("[legacy proxy] stream ended",String(error?.cause?.code||error?.name||"STREAM_CLOSED"));
+  } finally {
+    if(!res.destroyed&&!res.writableEnded)res.end();
+  }
+  return;
+}
+// Buffer upstream responses before committing headers so a broken legacy socket
 // cannot leave the browser with a partial 200 response or throw into the gateway.
 let payload;
 try {
