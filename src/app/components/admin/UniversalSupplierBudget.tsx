@@ -12,6 +12,7 @@ export function UniversalSupplierBudget(){
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
   const [loaded,setLoaded]=useState(false);
+  const [usage,setUsage]=useState<{remainingEur:number;committedEur:number;reservedAndUncertainEur:number;day:string}|null>(null);
   useEffect(()=>{
     let active=true;
     fetch(API,{credentials:"same-origin",cache:"no-store"}).then(async r=>{
@@ -19,6 +20,7 @@ export function UniversalSupplierBudget(){
       if(!r.ok)throw Error(data.error||"No se pudo consultar el presupuesto");
       if(!active)return;
       const p:Budget=data.policy;
+      setUsage(data.ledger||null);
       setDaily(String(p.dailyMaxEur??100));
       setPerOrder(p.perOrderMaxEur==null?"":String(p.perOrderMaxEur));
       setMargin(p.minMarginPercent==null?"":String(p.minMarginPercent));
@@ -49,6 +51,7 @@ export function UniversalSupplierBudget(){
         y un contador transaccional de gasto compartido.
       </p>
     </div>
+    {usage&&<p className="rounded-lg border border-border bg-background p-3 text-xs">Consumo universal de hoy ({usage.day}): gastado {usage.committedEur.toFixed(2)} € · reservado o incierto {usage.reservedAndUncertainEur.toFixed(2)} € · disponible {usage.remainingEur.toFixed(2)} €. No incluye compras de integraciones que aún no utilizan este contador.</p>}
     <div className="grid gap-3 sm:grid-cols-3">
       <label className="text-xs font-semibold">Límite total diario (€)
         <input type="number" min="0.01" max="10000" step="0.01" value={daily}
