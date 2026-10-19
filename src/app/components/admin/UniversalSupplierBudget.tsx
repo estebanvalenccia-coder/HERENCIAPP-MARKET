@@ -5,8 +5,8 @@ type Budget={dailyMaxEur:number;perOrderMaxEur:number|null;minMarginPercent:numb
 const API="/api/admin/suppliers/universal-budget";
 export function UniversalSupplierBudget(){
   const [daily,setDaily]=useState("100");
-  const [perOrder,setPerOrder]=useState("");
-  const [margin,setMargin]=useState("");
+  const [perOrder,setPerOrder]=useState("20");
+  const [margin,setMargin]=useState("25");
   const [providers,setProviders]=useState<Record<ProviderKey,boolean>>({cj:true,printful:true,aliexpress:true});
   const [status,setStatus]=useState("");
   const [error,setError]=useState("");
@@ -22,8 +22,8 @@ export function UniversalSupplierBudget(){
       const p:Budget=data.policy;
       setUsage(data.ledger||null);
       setDaily(String(p.dailyMaxEur??100));
-      setPerOrder(p.perOrderMaxEur==null?"":String(p.perOrderMaxEur));
-      setMargin(p.minMarginPercent==null?"":String(p.minMarginPercent));
+      setPerOrder(p.perOrderMaxEur==null?"20":String(p.perOrderMaxEur));
+      setMargin(p.minMarginPercent==null?"25":String(p.minMarginPercent));
       setProviders(p.providers);
       setLoaded(true);
     }).catch(e=>{if(active)setError(String(e.message||"No se pudo cargar el presupuesto"));});
