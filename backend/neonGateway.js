@@ -45,6 +45,7 @@ import { summarizeCjProductReviews, assessCjAutomatedProduct } from "./cjAutomat
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 import { printfulLivePolicy } from "./printfulLivePolicy.js";
 import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget, validateUniversalSupplierBudget } from "./unifiedSupplierBudget.js";
+import { universalDay, universalLedgerKey, readUniversalLedger } from "./universalSupplierLedger.js";
 import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
 import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
 
@@ -509,9 +510,20 @@ const server=http.createServer(async(req,res)=>{try{
   // NOT a mandate to spend and not a cross-provider transactional reservation ledger.
   if(path==="/api/admin/suppliers/universal-budget"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
-    const policy=parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+    const day=universalDay();
+    const [rawPolicy,rawLedger]=await Promise.all([
+      readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY),
+      readNeonStorageValue(universalLedgerKey(day)),
+    ]);
+    const policy=parseUniversalSupplierBudget(rawPolicy);
+    const ledger=readUniversalLedger(rawLedger,day);
+    const committedCents=ledger.entries.filter(e=>e.status==="committed").reduce((sum,e)=>sum+e.amountCents,0);
+    const heldCents=ledger.entries.filter(e=>e.status==="reserved"||e.status==="uncertain").reduce((sum,e)=>sum+e.amountCents,0);
     return json(res,200,{ok:true,policy,canAutomaticallySpend:false,
-      message:"Presupuesto universal editable. Compras bloqueadas hasta integrar ledger compartido y mandatos por proveedor."});
+      ledger:{day,reservedAndUncertainEur:heldCents/100,committedEur:committedCents/100,
+        remainingEur:Math.max(0,(policy.dailyMaxEur*100-heldCents-committedCents)/100),
+        entries:ledger.entries.length},
+      message:"Presupuesto universal editable; compras reales requieren integrar permisos de proveedor."});
   }
   if(path==="/api/admin/suppliers/universal-budget"&&req.method==="PUT"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
