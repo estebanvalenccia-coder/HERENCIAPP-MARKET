@@ -5,7 +5,7 @@ const source=readFileSync(new URL("./server.js",import.meta.url),"utf8");
 
 test("AliExpress cannot be represented as ready to place a supplier order",()=>{
   assert.match(source,/function aliExpressQueueBlocker\(/);
-  assert.match(source,/no implementa crear ni pagar pedidos/);
+  assert.match(source,/El pago automático al proveedor no está implementado/);
   assert.match(source,/const aliExpressBlocker = aliExpressQueueBlocker\(\{/);
   assert.match(source,/status = "connector_required";\s*blocker = aliExpressBlocker/);
 });
