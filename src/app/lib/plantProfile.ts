@@ -36,7 +36,7 @@ export async function buildPlantProfilePublishPatch(
   if (!isPlantCareProduct(product)) return {};
   // Supplier tools occasionally arrive mislabeled as "Plantas"; never request
   // botanical instructions for a shovel, rake, pruning tool or fertilizer.
-  if (/\\b(pala|rastrillo|tijeras|podadora|azada|herramienta|fertilizante|fungicida|maceta|pulverizador|manguera|guantes|sustrato)\\b/i.test(String(product?.name||""))) return {};
+  if (/\b(pala|rastrillo|tijeras|podadora|azada|herramienta|fertilizante|fungicida|maceta|pulverizador|manguera|guantes|sustrato)\b/i.test(String(product?.name||""))) return {};
   if (!options.force && hasGeneratedPlantProfile(product)) return {};
 
   const plantName = String(product?.name || "").trim();
