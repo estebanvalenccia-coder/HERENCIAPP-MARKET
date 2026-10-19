@@ -10,6 +10,8 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjautopilotlivemandate:v1",
   "cjautopilotliverunnerlease:v1",
   "cjautopilotbudget:",
+  "unifiedsupplierbudget:v1",
+  "unifiedsupplierledger:v1:",
   "cjautopilotreconciliationlease:v1",
   "cjautopilotreconciliationcursor:v1",
   "cjautopilotpreflightcache:v1:",
