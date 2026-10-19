@@ -11,7 +11,7 @@ const order={id:"order-uuid",status:"paid",total:30,stripe_payment_intent_id:"pi
 const fulfillment={orderId:"order-uuid",externalOrderId:"",status:"autopilot_ready"};
 test("Official AE order and freight API methods are explicit",()=>{
  assert.equal(AE_BUY_METHOD,"aliexpress.trade.buy.placeorder");
- assert.equal(AE_FREIGHT_METHOD,"aliexpress.ds.freight.query");
+ assert.equal(AE_FREIGHT_METHOD,"aliexpress.logistics.buyer.freight.get");
 });
 test("Build an unpaid purchase with exact variant and address",()=>{
  const args=buildAliExpressUnpaidOrderRequest({productId:"1005012816873918",skuAttr:"14:200004891#red",logisticsServiceName:"AliExpress Standard Shipping",address});
@@ -34,7 +34,7 @@ test("Accept only provider response proving ONE real order",()=>{
  assert.throws(()=>parseAliExpressUnpaidCreation({aliexpress_trade_buy_placeorder_response:{result:{is_success:true,order_list:{number:[]}}}}));
 });
 test("Only EUR freight with actual service and nonnegative price is accepted",()=>{
- const response={aliexpress_ds_freight_query_response:{result:{success:true,aeop_freight_calculate_result_for_buyer_d_t_o_list:[
+ const response={aliexpress_logistics_buyer_freight_get_response:{result:{success:true,aeop_freight_calculate_result_for_buyer_dtolist:[
    {service_name:"AliExpress Standard",freight:{currency_code:"EUR",amount:2.35},error_code:0},
    {service_name:"Invalid Currency",freight:{currency_code:"USD",amount:1},error_code:0}
  ]}}};
