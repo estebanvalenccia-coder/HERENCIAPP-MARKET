@@ -8,7 +8,7 @@ const TEXT=/[\x00-\x1f\x7f]/;
 const field=(value,max=160)=>String(value??"").trim().slice(0,max);
 const fail=(message)=>{const error=new Error(message);error.statusCode=422;throw error;};
 export const AE_BUY_METHOD="aliexpress.trade.buy.placeorder";
-export const AE_FREIGHT_METHOD="aliexpress.ds.freight.query";
+export const AE_FREIGHT_METHOD="aliexpress.logistics.buyer.freight.get";
 export function buildAliExpressFreightQuery({productId,skuId,quantity=1,country="ES"}) {
   if(!ID.test(String(productId))||!field(skuId,150)||country!=="ES"||quantity!==1)
     fail("Cotización AliExpress: producto, variante, destino o cantidad inválidos.");
@@ -18,10 +18,9 @@ export function buildAliExpressFreightQuery({productId,skuId,quantity=1,country=
   })};
 }
 export function parseAliExpressFreightResponse(raw) {
-  const root=raw?.aliexpress_ds_freight_query_response?.result ||
-    raw?.aliexpress_logistics_buyer_freight_calculate_response?.result;
+  const root=raw?.aliexpress_logistics_buyer_freight_get_response?.result;
   if(!root || root.success!==true)fail("AliExpress no confirmó el transporte.");
-  const values=root.aeop_freight_calculate_result_for_buyer_d_t_o_list;
+  const values=root.aeop_freight_calculate_result_for_buyer_dtolist;
   const list=Array.isArray(values)?values:values?.aeop_freight_calculate_result_for_buyer_d_t_o || [];
   const rows=Array.isArray(list)?list:[list];
   return rows.filter(row=>{
