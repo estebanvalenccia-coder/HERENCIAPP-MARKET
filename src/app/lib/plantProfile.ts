@@ -34,15 +34,27 @@ export async function buildPlantProfilePublishPatch(
   options: { force?: boolean } = {}
 ) {
   if (!isPlantCareProduct(product)) return {};
+  // Supplier tools occasionally arrive mislabeled as "Plantas"; never request
+  // botanical instructions for a shovel, rake, pruning tool or fertilizer.
+  if (/\\b(pala|rastrillo|tijeras|podadora|azada|herramienta|fertilizante|fungicida|maceta|pulverizador|manguera|guantes|sustrato)\\b/i.test(String(product?.name||""))) return {};
   if (!options.force && hasGeneratedPlantProfile(product)) return {};
 
   const plantName = String(product?.name || "").trim();
   if (!plantName) throw new Error("La planta necesita un nombre antes de generar su ficha");
 
-  const { result } = await backendApi.generatePlantDescription({
-    plantName,
-    baseDescription: String(product?.description || "").trim(),
-  });
+  let response;
+  try {
+    response=await backendApi.generatePlantDescription({
+      plantName,baseDescription:String(product?.description||"").trim(),
+    });
+  } catch (error) {
+    // A transient Groq problem must NEVER prevent publishing, editing or
+    // saving an otherwise valid commerce product. Explicit regeneration still
+    // reports the upstream error to the administrator.
+    if(options.force)throw error;
+    return {};
+  }
+  const {result}=response;
 
   const care = result?.care && typeof result.care === "object" ? result.care : {};
   const scientificName = String(result?.scientificName || product?.scientificName || "").trim();
