@@ -18,7 +18,8 @@ import { getMarketExperience } from "../lib/marketExperience";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
 
-const DEFAULT_HERO = "/herencia-portada.avif";
+// El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
+const DEFAULT_HERO = "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86";
 
 function hexToRgb(hex: string, fallback = { r: 16, g: 43, b: 32 }) {
   const normalized = String(hex || "").trim().replace("#", "");
