@@ -102,7 +102,20 @@ try {
   console.warn("[legacy proxy] upstream unavailable",code||String(error?.name||"NETWORK_ERROR"));
   if(!res.headersSent&&!res.writableEnded)return json(res,503,{error:"Servicio auxiliar temporalmente no disponible",code:"LEGACY_BACKEND_UNAVAILABLE",retryable:["GET","HEAD"].includes(req.method)});
   return;
-}const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}res.writeHead(r.status,responseHeaders);if(r.body){for await(const c of r.body)res.write(c);}res.end();}
+}const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}// Buffer upstream responses before committing headers so a broken legacy socket
+// cannot leave the browser with a partial 200 response or throw into the gateway.
+let payload;
+try {
+  payload=Buffer.from(await r.arrayBuffer());
+} catch(error) {
+  console.warn("[legacy proxy] response interrupted",String(error?.cause?.code||error?.name||"NETWORK_ERROR"));
+  if(!res.headersSent&&!res.writableEnded)return json(res,503,{error:"Servicio auxiliar interrumpido",code:"LEGACY_RESPONSE_INTERRUPTED",retryable:["GET","HEAD"].includes(req.method)});
+  return;
+}
+delete responseHeaders["transfer-encoding"];
+responseHeaders["content-length"]=String(payload.length);
+res.writeHead(r.status,responseHeaders);
+res.end(payload);}
 async function normalizeProductMedia(input={}){
   const next={...input};
   const sourceImages=Array.isArray(input.images)&&input.images.length?input.images:(input.image?[input.image]:[]);
