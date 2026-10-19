@@ -37,6 +37,8 @@ import {
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft, printfulExternalOrderId } from "./printfulOrderFulfillment.js";
 import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
+import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget } from "./unifiedSupplierBudget.js";
+import { universalDay, reserveUniversalBudgetAtomic, settleUniversalBudgetAtomic } from "./universalSupplierLedger.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
   normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
@@ -6276,6 +6278,24 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
     return {skipped:true,reason:"exact_supplier_order_identity_not_verified"};
   if(provider.status!=="draft")
     return {skipped:true,reason:"supplier_order_not_draft",providerStatus:provider.status};
+  // The global merchant budget is authoritative for ALL suppliers. Reject
+  // unknown or unconfigured universal terms before any supplier debit.
+  const universal= parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+  const universalDate=universalDay();
+  if(!universal.providers.printful || !universal.perOrderMaxEur || !universal.minMarginPercent ||
+     decision.costEur>universal.perOrderMaxEur ||
+     Number(universal.minMarginPercent)>Number(policy.minMarginPct))
+    return {skipped:true,reason:"universal_supplier_budget_or_margin_not_configured"};
+  try {
+    await reserveUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:universalDate,orderId,provider:"printful",amountEur:decision.costEur,policy:universal,
+      paidOrderVerified:order.status==="paid"&&String(order.stripe_payment_intent_id||"").startsWith("pi_"),
+      providerQuoteVerified:estimate.currency==="EUR"&&Boolean(estimate.checkedAt),
+      marginVerified:decision.allowed&&policy.minMarginPct>=universal.minMarginPercent,
+    });
+  }catch(error){
+    return {skipped:true,reason:"universal_budget_blocked",detail:String(error?.message||"").slice(0,150)};
+  }
   let reserved=false;
   let budgetBlocked=false;
   const budgetKey=printfulDailyBudgetKey();
@@ -6295,7 +6315,11 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
     reserved=true;
     return JSON.stringify(budget);
   });
-  if(!reserved)return {skipped:true,reason:budgetBlocked?"daily_budget_or_duplicate":"budget_unavailable"};
+  if(!reserved){
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:universalDate,orderId,status:"released",remoteAttempted:false}).catch(()=>{});
+    return {skipped:true,reason:budgetBlocked?"daily_budget_or_duplicate":"budget_unavailable"};
+  }
   let claimed=false;
   await mutateNeonStorageValue(confirmKey,raw=>{
     let old={};try{old=JSON.parse(raw||"{}");}catch{}
@@ -6304,7 +6328,13 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
     return JSON.stringify({status:"confirming",orderId,externalOrderId:provider.id,
       costEur:decision.costEur,createdAt:new Date().toISOString()});
   });
-  if(!claimed)return {skipped:true,reason:"confirmation_already_claimed"};
+  if(!claimed){
+    // Remote state may already be in progress: hold the global reservation,
+    // rather than risk reusing its euros on an unrelated provider order.
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:universalDate,orderId,status:"uncertain",remoteAttempted:true}).catch(()=>{});
+    return {skipped:true,reason:"confirmation_already_claimed"};
+  }
   try{
     const confirmed=await confirmPrintfulDraft(provider.id);
     if(confirmed.externalId!==printfulExternalOrderId(orderId))
@@ -6312,8 +6342,13 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
     const saved={status:"confirmed",orderId,externalOrderId:provider.id,
       providerStatus:confirmed.status,costEur:decision.costEur,updatedAt:new Date().toISOString()};
     await upsertNeonStorageValue(confirmKey,JSON.stringify(saved));
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:universalDate,orderId,status:"committed",providerEvidence:true}).catch(()=>{});
     return saved;
   }catch(error){
+    // Failed remote requests must retain money until provider reconciliation.
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:universalDate,orderId,status:"uncertain",remoteAttempted:true}).catch(()=>{});
     // A POST may have charged Printful despite a timeout. Never retry automatically.
     await upsertNeonStorageValue(confirmKey,JSON.stringify({status:"confirmation_unknown",
       orderId,externalOrderId:provider.id,updatedAt:new Date().toISOString()})).catch(()=>{});
