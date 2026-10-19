@@ -96,7 +96,7 @@ async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let siz
 async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];let r;
 try {
-  r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual",signal:AbortSignal.timeout(25_000)});
+  r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual",signal:req.url?.startsWith("/api/admin/order-events")?undefined:AbortSignal.timeout(25_000)});
 } catch(error) {
   const code=String(error?.cause?.code||error?.code||"");
   console.warn("[legacy proxy] upstream unavailable",code||String(error?.name||"NETWORK_ERROR"));
