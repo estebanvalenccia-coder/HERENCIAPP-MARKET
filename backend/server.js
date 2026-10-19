@@ -5844,13 +5844,6 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     };
   }
 
-  const aliExpressBlocker = aliExpressQueueBlocker(record);
-  if (aliExpressBlocker) {
-    return {
-      fulfillment: { ...record, status: "connector_required", blocker: aliExpressBlocker },
-      executed: false, manual: false,
-    };
-  }
   const now = new Date().toISOString();
   // Never replay an already purchased, delivered or closed supplier order.
   // A pending CJ order awaiting payment has a separate, explicit gated branch.
@@ -5859,6 +5852,13 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     (String(record.externalOrderId || "").trim() &&
       !["approval_required", "payment_required"].includes(String(record.status || "")))) {
     return { fulfillment: record, executed: false, manual: false };
+  }
+  const aliExpressBlocker = aliExpressQueueBlocker(record);
+  if (aliExpressBlocker) {
+    return {
+      fulfillment: { ...record, status: "connector_required", blocker: aliExpressBlocker },
+      executed: false, manual: false,
+    };
   }
   if (record.mode !== "autopilot") {
     const updated = {
