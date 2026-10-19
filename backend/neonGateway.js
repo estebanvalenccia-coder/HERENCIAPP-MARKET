@@ -1,4 +1,6 @@
 import { createAliExpressConnector } from "./aliexpressConnector.js";
+import { createAliExpressUnpaidRunner, pickAliExpressUnpaidCandidates } from "./aliexpressUnpaidOrderRunner.js";
+import Stripe from "stripe";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { isPrivateSupplierStorageKey } from "./supplierInternalStorageSecurity.js";
 import { normalizeCouponCode, settleCouponUse } from "./promoCodes.js";
@@ -92,6 +94,27 @@ function normalizeOrderRow(order){
 }
 async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
 const aliexpressConnector = createAliExpressConnector({read:readNeonStorageValue,write:upsertNeonStorageValue,requireAdmin:adminSession,saveDraft:saveNeonCommerceProduct});
+const aeStripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+async function verifyAliExpressCustomerStripePayment(order){
+  const id=String(order?.stripe_payment_intent_id||"");
+  if(!aeStripe||!id.startsWith("pi_")||!(Number(order.total)>0))return {verified:false};
+  try{
+    const payment=await aeStripe.paymentIntents.retrieve(id);
+    const cents=Math.round(Number(order.total)*100);
+    return {verified:payment.status==="succeeded"&&payment.livemode===true&&
+      String(payment.currency).toLowerCase()==="eur"&&
+      Number(payment.amount_received)>=cents&&Number(payment.amount)>=cents&&
+      payment.metadata?.orderId===String(order.id)};
+  }catch{return {verified:false};}
+}
+const aliexpressUnpaidRunner=createAliExpressUnpaidRunner({
+  read:readNeonStorageValue,mutate:mutateNeonStorageValue,
+  loadOrder:getNeonOrder,loadProduct:id=>getNeonCommerceProduct(id,{includeArchived:true}),
+  verifyStripePayment:verifyAliExpressCustomerStripePayment,
+  loadProviderProduct:aliexpressConnector.getProduct,
+  quoteFreight:aliexpressConnector.quoteFreight,
+  placeUnpaidOrder:aliexpressConnector.createUnpaidOrder,
+});
 async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>maxBytes){const error=new Error("Payload demasiado grande");error.statusCode=413;throw error;}chunks.push(c);}return Buffer.concat(chunks);}
 async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
 async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];let r;
@@ -191,6 +214,19 @@ child.on("error",error=>console.error("[legacy] spawn failed",error?.message||St
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
   if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
+  if(path==="/api/admin/integrations/aliexpress/automation-health"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const raw=await readNeonStorageValue("posOperations");
+    const ops=JSON.parse(raw||"{}");
+    return json(res,200,{provider:"aliexpress",
+      unpaidOrderCreationEnabled:process.env.ALIEXPRESS_LIVE_ORDER_CREATION_ENABLED==="true",
+      automaticUnpaidCreationEnabled:process.env.ALIEXPRESS_UNPAID_ORDER_AUTO_ENABLED==="true",
+      orderApiVerified:process.env.ALIEXPRESS_PROVIDER_ORDER_API_VERIFIED==="true",
+      addressTransferApproved:process.env.ALIEXPRESS_CUSTOMER_ADDRESS_TRANSFER_APPROVED==="true",
+      supplierPaymentImplemented:false,
+      eligibleQueueCandidates:pickAliExpressUnpaidCandidates(ops).length,
+      note:"La creación de órdenes sin pagar NO confirma el pago a AliExpress."});
+  }
   if(path==="/api/integrations/aliexpress/callback" || path.startsWith("/api/admin/integrations/aliexpress/")) {
     return await aliexpressConnector.handle(req,res,path);
   }
@@ -1577,6 +1613,13 @@ server.listen(publicPort,"0.0.0.0",async()=>{
   }
   console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
   aliexpressConnector.startAutomation();
+  if(process.env.ALIEXPRESS_UNPAID_ORDER_AUTO_ENABLED==="true"){
+    const aeTimer=setInterval(()=>void aliexpressUnpaidRunner.sweep()
+      .then(result=>console.log("[aliexpress.unpaid-runner]",result.status))
+      .catch(error=>console.warn("[aliexpress.unpaid-runner] unavailable",String(error?.statusCode||"ERROR"))),
+      5*60_000);
+    aeTimer.unref?.();
+  }
   if(hasR2){
     const status=await checkR2Connection({verifyWrite:true});
     if(status.ok) console.log(`[r2] read/write OK bucket=${status.bucket}`);

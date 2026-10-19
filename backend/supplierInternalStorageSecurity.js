@@ -21,6 +21,7 @@ const PRIVATE_SUPPLIER_PREFIXES=Object.freeze([
   "cjstockobserverlease:v1",
   "cjstockobservercursor:v1",
   "supplierwebhookdispatch:",
+  "aliexpressunpaidorderattempt:v1:",
   "aliexpressoauth:",
   "aliexpresscatalogtracked:",
   "aliexpresscatalogcursor:",
