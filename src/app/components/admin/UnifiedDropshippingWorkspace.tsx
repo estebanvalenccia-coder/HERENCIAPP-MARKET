@@ -70,6 +70,24 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const [importing,setImporting]=useState(false);
   const [notice,setNotice]=useState("");
   const [importError,setImportError]=useState("");
+  const [aliOrderId,setAliOrderId]=useState("");
+  const [aliOrderResult,setAliOrderResult]=useState<any>(null);
+  const [aliOrderBusy,setAliOrderBusy]=useState(false);
+  const [aliOrderError,setAliOrderError]=useState("");
+  const checkAliOrder=async()=>{
+    setAliOrderBusy(true);setAliOrderError("");setAliOrderResult(null);
+    try{
+      if(!/^[1-9][0-9]{7,21}$/.test(aliOrderId.trim()))
+        throw new Error("Pega un ID de pedido AliExpress válido.");
+      const response=await fetch("/api/admin/integrations/aliexpress/order?orderId="+encodeURIComponent(aliOrderId.trim()),{
+        credentials:"same-origin",cache:"no-store"});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(String(data.error||"La API AliExpress no pudo confirmar el pedido."));
+      setAliOrderResult(data);
+    }catch(error:any){setAliOrderError(String(error?.message||"No se pudo consultar AliExpress."));}
+    finally{setAliOrderBusy(false);}
+  };
+
   const [activationStatus,setActivationStatus]=useState<any>(null);
   const [activationLoading,setActivationLoading]=useState(false);
   const [activationError,setActivationError]=useState("");
@@ -249,6 +267,21 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         {PROVIDERS.filter(x=>x.id!=="all").map(x=><button key={x.id} onClick={()=>setProvider(x.id)} type="button"
           className="rounded-lg border bg-background p-3 text-left text-sm font-semibold">{x.name}
           <span className="block text-xs font-normal text-muted-foreground">Configurar / importar</span></button>)}
+      </div>}
+      {provider==="aliexpress"&&<div className="rounded-lg border border-border bg-background p-3 space-y-2">
+        <h4 className="font-bold text-sm">Verificar pedidos en AliExpress</h4>
+        <p className="text-xs text-muted-foreground">Comprueba un pedido existente por API OAuth. Consulta de solo lectura, no crea ni paga pedidos.</p>
+        <div className="flex flex-wrap gap-2">
+          <input value={aliOrderId} onChange={e=>setAliOrderId(e.target.value)}
+            aria-label="ID de pedido AliExpress" placeholder="ID del pedido en AliExpress"
+            className="min-w-0 flex-1 rounded-lg border bg-background px-3 py-2 text-sm"/>
+          <button type="button" disabled={aliOrderBusy||!aliOrderId.trim()}
+            onClick={()=>void checkAliOrder()} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">
+            {aliOrderBusy?"Consultando…":"Verificar pedido"}
+          </button>
+        </div>
+        {aliOrderError&&<p role="alert" className="text-xs text-red-700">{aliOrderError}</p>}
+        {aliOrderResult&&<p role="status" className="text-xs">Pedido {aliOrderResult.orderId} · Estado: {aliOrderResult.status} · Pago proveedor: {aliOrderResult.paymentStatus} · Sin cargos realizados.</p>}
       </div>}
       {provider==="aliexpress"&&<details className="rounded-lg border border-border bg-background p-3"><summary className="cursor-pointer text-sm font-semibold">Estado de conexión, catálogo y opciones avanzadas de AliExpress</summary><div className="mt-3"><AdminAliExpressConnection/></div></details>}
     </div>
