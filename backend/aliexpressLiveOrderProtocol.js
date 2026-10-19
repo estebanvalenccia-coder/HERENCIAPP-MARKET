@@ -28,7 +28,7 @@ export function parseAliExpressFreightResponse(raw) {
     const m=row?.freight;
     return row?.service_name && m?.currency_code==="EUR" &&
       Number.isFinite(Number(m?.amount)) && Number(m.amount)>=0 &&
-      row?.error_code===0;
+      (row?.error_code==null || String(row.error_code)==="0");
   }).map(row=>({service:field(row.service_name,120),shippingCostEur:Number(row.freight.amount),
     estimatedDelivery:String(row.estimated_delivery_time||"").slice(0,80)}));
 }
@@ -73,7 +73,7 @@ export function assertAliExpressFundedOrder(order,fulfillment){
   const amount=Number(order?.total);
   const md=order?.metadata||{};
   if(String(order?.status)!=="paid" || !(amount>0) ||
-     md.freeCouponOrder===true || amount<Number(md.discount||0)*0 ||
+     md.freeCouponOrder===true ||
      !String(order?.stripe_payment_intent_id||"").startsWith("pi_") ||
      String(order?.payment_method||"").toLowerCase()==="coupon")
       fail("No hay cobro Stripe positivo verificado; un cupón 100 % nunca autoriza compra al proveedor.");
