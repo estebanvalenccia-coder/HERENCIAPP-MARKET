@@ -234,6 +234,29 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
     const raw = await withSession("aliexpress.ds.product.get", { product_id: id, ship_to_country: "ES", target_currency: "EUR", target_language: "ES" });
     return extractAliExpressProduct(raw, id);
   }
+  // Official dropshipper order lookup, strictly read-only. Do not persist or
+  // expose the recipient address or full raw provider response in admin UI.
+  async function lookupBuyerOrder(orderId) {
+    if (!/^[1-9][0-9]{7,21}$/.test(String(orderId || "")))
+      throw Object.assign(new Error("Introduce un ID de pedido AliExpress válido."), { statusCode:422 });
+    const response=await withSession("aliexpress.trade.ds.order.get",{
+      single_order_query:JSON.stringify({order_id:String(orderId)}),
+    });
+    const root=response?.aliexpress_trade_ds_order_get_response ||
+      response?.aliexpress_ds_trade_order_get_response ||
+      response?.aliexpress_trade_ds_order_get_response;
+    const data=root?.result||root?.data||{};
+    const found=String(data?.order_id||data?.orderId||data?.id||"");
+    if(!found||found!==String(orderId))
+      throw Object.assign(new Error("AliExpress no confirmó la identidad del pedido."),{statusCode:502});
+    return {
+      orderId:found,
+      status:String(data.order_status||data.orderStatus||"unknown").slice(0,70),
+      paymentStatus:String(data.payment_status||data.paymentStatus||"unverified").slice(0,70),
+      checkedAt:new Date().toISOString(),readOnly:true,chargeAttempted:false,
+      note:"Consulta oficial sin creación ni pago. El estado debe cotejarse con el pedido de Herencia antes de automatizar.",
+    };
+  }
   async function readTracked() {
     try { return idList(JSON.parse(await read(ALIEXPRESS_TRACK_KEY) || "[]")); } catch { return []; }
   }
@@ -302,6 +325,13 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
         await refreshTokens(true);
         respond(res, 200, await readStatus());
         return true;
+      }
+      if (path === base + "/order" && req.method === "GET") {
+        const orderId=new URL(req.url,"http://localhost").searchParams.get("orderId")||"";
+        if(!/^[1-9][0-9]{7,21}$/.test(orderId)){
+          respond(res,422,{error:"ID de pedido AliExpress inválido."});return true;
+        }
+        respond(res,200,await lookupBuyerOrder(orderId));return true;
       }
       if (path === base + "/product" && req.method === "GET") {
         const input = new URL(req.url, "http://localhost").searchParams.get("input") || new URL(req.url, "http://localhost").searchParams.get("product_id") || "";
