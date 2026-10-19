@@ -44,6 +44,7 @@ import { printfulConnectionStatus, quotePrintfulShipping } from "./printfulShipp
 import { summarizeCjProductReviews, assessCjAutomatedProduct } from "./cjAutomatedReview.js";
 import { listPrintfulStores, listPrintfulSyncProducts, getPrintfulSyncProduct } from "./printfulCatalogSync.js";
 import { printfulLivePolicy } from "./printfulLivePolicy.js";
+import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget, validateUniversalSupplierBudget } from "./unifiedSupplierBudget.js";
 import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
 import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
 
@@ -502,6 +503,23 @@ const server=http.createServer(async(req,res)=>{try{
       pricingAssumptions:{vatRate,minMarginPercent:30,processingFeePercent:1.5,processingFixedEur:0.25,currencyBufferPercent:3},
       pricingWarning:"El cambio, IVA, comisiones y portes son estimaciones. Vuelve a cotizar usando la dirección y el código postal del cliente antes de enviar un pedido real.",
     });
+  }
+
+  // Universal provider engine budget, admin-only. This is a merchant configuration,
+  // NOT a mandate to spend and not a cross-provider transactional reservation ledger.
+  if(path==="/api/admin/suppliers/universal-budget"&&req.method==="GET"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const policy=parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+    return json(res,200,{ok:true,policy,canAutomaticallySpend:false,
+      message:"Presupuesto universal editable. Compras bloqueadas hasta integrar ledger compartido y mandatos por proveedor."});
+  }
+  if(path==="/api/admin/suppliers/universal-budget"&&req.method==="PUT"){
+    if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    const policy=validateUniversalSupplierBudget(body);
+    await upsertNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY,JSON.stringify(policy));
+    return json(res,200,{ok:true,policy,canAutomaticallySpend:false,
+      message:"Límites generales guardados. No se autorizó ningún pago."});
   }
 
   // Read-only financial activation diagnostics: never expose credentials or authorize charges.
