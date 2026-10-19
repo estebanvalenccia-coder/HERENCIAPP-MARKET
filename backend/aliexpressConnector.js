@@ -4,6 +4,7 @@
  * OAuth tokens are kept encrypted in private Neon storage.
  */
 import crypto from "node:crypto";
+import { AE_BUY_METHOD, AE_FREIGHT_METHOD, buildAliExpressFreightQuery, parseAliExpressFreightResponse, buildAliExpressUnpaidOrderRequest, parseAliExpressUnpaidCreation } from "./aliexpressLiveOrderProtocol.js";
 import { makeAliExpressUnpublishedDraft } from "./aliexpressDraftImporter.js";
 import { parseAliExpressProductId } from "./aliexpressProductLink.js";
 
@@ -234,6 +235,23 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
     const raw = await withSession("aliexpress.ds.product.get", { product_id: id, ship_to_country: "ES", target_currency: "EUR", target_language: "ES" });
     return extractAliExpressProduct(raw, id);
   }
+  // Official live freight quotation; read-only, constrained to Spain and one variant.
+  async function quoteFreight(params) {
+    const data=await withSession(AE_FREIGHT_METHOD,buildAliExpressFreightQuery(params));
+    return parseAliExpressFreightResponse(data);
+  }
+  // This method creates an UNPAID order only. The caller must verify a live
+  // Stripe payment, fresh provider quotation, hard spend caps and an atomic
+  // non-replay claim before calling it. Never infer permission from OAuth.
+  async function createUnpaidOrder(params) {
+    if(process.env.ALIEXPRESS_LIVE_ORDER_CREATION_ENABLED!=="true") {
+      const error=new Error("Creación de pedidos AliExpress desactivada.");
+      error.statusCode=409;throw error;
+    }
+    const request=buildAliExpressUnpaidOrderRequest(params);
+    const response=await withSession(AE_BUY_METHOD,request);
+    return parseAliExpressUnpaidCreation(response);
+  }
   // Official dropshipper order lookup, strictly read-only. Do not persist or
   // expose the recipient address or full raw provider response in admin UI.
   async function lookupBuyerOrder(orderId) {
@@ -274,6 +292,9 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
       trackedCount: (await readTracked()).length,
       catalogSyncEnabled: process.env.ALIEXPRESS_CATALOG_SYNC_ENABLED === "true",
       automaticPurchasesEnabled: false,
+      unpaidOrderCreationImplemented:true,
+      unpaidOrderCreationEnabled:process.env.ALIEXPRESS_LIVE_ORDER_CREATION_ENABLED==="true",
+      supplierPaymentImplemented:false,
       message: tokens && tokens.refreshExpiresAt > Date.now() ? "Cuenta conectada. Catalogo de solo lectura; compras y pagos bloqueados." : "Autoriza tu cuenta de AliExpress para conectar el catalogo.",
     };
   }
@@ -332,6 +353,15 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
           respond(res,422,{error:"ID de pedido AliExpress inválido."});return true;
         }
         respond(res,200,await lookupBuyerOrder(orderId));return true;
+      }
+      if(path === base + "/freight" && req.method === "GET") {
+        const query=new URL(req.url,"http://localhost").searchParams;
+        const products=await quoteFreight({
+          productId:query.get("productId"),skuId:query.get("skuId"),
+          quantity:1,country:"ES",
+        });
+        respond(res,200,{options:products,readOnly:true,quotePersisted:false});
+        return true;
       }
       if (path === base + "/product" && req.method === "GET") {
         const input = new URL(req.url, "http://localhost").searchParams.get("input") || new URL(req.url, "http://localhost").searchParams.get("product_id") || "";
@@ -410,5 +440,5 @@ export function createAliExpressConnector({ read, write, requireAdmin, saveDraft
     timer.unref?.();
     return timer;
   }
-  return { handle, sweep, startAutomation, readStatus };
+  return { handle, sweep, startAutomation, readStatus, getProduct, quoteFreight, createUnpaidOrder };
 }
