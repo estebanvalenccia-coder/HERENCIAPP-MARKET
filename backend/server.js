@@ -1942,7 +1942,8 @@ async function emitNeuralBusinessEvent(type, payload = {}) {
         "X-Neural-Admin-Token": adminToken,
       },
       body: JSON.stringify({ type, payload, meta: { source: "herencia_backend" } }),
-      signal: AbortSignal.timeout(5000),
+      // Allow Neural time to process events; never retry POST automatically.
+      signal: AbortSignal.timeout(15000),
     });
     if (!response.ok) throw new Error(`Neural event HTTP ${response.status}`);
     return { ok: true };
@@ -9722,7 +9723,8 @@ app.post("/api/ai/plant-description", async (req, res) => {
 Responde ÚNICAMENTE con el JSON, sin texto adicional.`;
 
   const aiResponse = await fetch(endpoint, {
-    signal:AbortSignal.timeout(24000),
+    // Stay below the gateway timeout while allowing slower Groq responses.
+    signal:AbortSignal.timeout(35000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
