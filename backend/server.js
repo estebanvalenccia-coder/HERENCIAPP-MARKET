@@ -5021,6 +5021,25 @@ function normalizeSupplierFulfillmentMode(value = "") {
   return String(value || "").toLowerCase() === "autopilot" ? "autopilot" : "manual";
 }
 
+// AliExpress OAuth/catalog permissions are NOT an order-placement mandate.
+// This diagnostic is also applied to historical rows created before these guards.
+function aliExpressQueueBlocker(record, order = null) {
+  const host = normalizeSupplierSourceHost(record?.sourceHost || "");
+  const isAliExpress = host === "aliexpress.com" ||
+    String(record?.supplierName || "").trim().toLowerCase() === "aliexpress" ||
+    String(record?.provider || "").trim().toLowerCase() === "aliexpress";
+  if (!isAliExpress) return "";
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const issues = ["El conector AliExpress actual es de consulta: no implementa crear ni pagar pedidos. Tramita manualmente solo después de verificar el proveedor."];
+  if (!items.length || items.some(item => !String(item?.supplierVariantId || "").trim() || !String(item?.supplierSku || "").trim()))
+    issues.push("Falta vincular y verificar el SKU/variante exacta del proveedor.");
+  if (!items.length || items.some(item => !(Number(item?.supplierCost) > 0)))
+    issues.push("Falta coste de proveedor verificado, incluido transporte e impuestos.");
+  if (order && (order?.metadata?.freeCouponOrder === true || Number(order?.total) === 0))
+    issues.push("Cupón del 100 %: el cliente no abonó fondos; requiere aprobación de gasto del comercio.");
+  return issues.join(" ");
+}
+
 async function readSupplierOperations() {
   const defaults = {
     giftCards: [],
@@ -5584,6 +5603,12 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
     const salePrice = normalizeMoney(item?.price ?? 0);
     const revenue = normalizeMoney(salePrice * quantity);
     const isCj = Boolean(supplier && supplierIntegrationType(supplier) === "cj");
+    // Resolve supplier identity from the EXACT catalog variant purchased, never
+    // a generic product-level SKU that may belong to a different color/size.
+    const selectedVariantName = String(item?.selectedVariant || "").trim();
+    const catalogMatches = (Array.isArray(product?.variants) ? product.variants : [])
+      .filter(variant => selectedVariantName && String(variant?.name || "").trim() === selectedVariantName);
+    const catalogVariant = catalogMatches.length === 1 ? catalogMatches[0] : null;
     // Refresh the precise customer-selected variant after payment, using read-only
     // CJ calls. The admin's product-level quote MUST NOT price another option.
     // Any failure keeps the supplier fulfillment in cost_required, not purchased.
@@ -5639,8 +5664,8 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       sourceProductUrl,
       sourceHost,
       supplierCost,
-      supplierVariantId: String(isCj ? (cjIdentity?.vid || "") : (metadata.supplierVariantId || metadata.cjVid || "")).trim().slice(0, 100),
-      supplierSku: String(isCj ? (cjIdentity?.sku || "") : (metadata.supplierSku || metadata.cjSku || "")).trim().slice(0, 100),
+      supplierVariantId: String(isCj ? (cjIdentity?.vid || "") : (catalogVariant?.supplierVariantId || (!selectedVariantName ? metadata.supplierVariantId : "") || "")).trim().slice(0, 100),
+      supplierSku: String(isCj ? (cjIdentity?.sku || "") : (catalogVariant?.supplierSku || catalogVariant?.sku || (!selectedVariantName ? metadata.supplierSku : "") || "")).trim().slice(0, 100),
       cjPreferredLogisticName: isCj ? (quoteVerified ? liveCjLogisticName.slice(0,120) : "") : String(metadata.cjPreferredLogisticName || "").trim().slice(0,120),
       cjPreferredLogisticCountry: isCj ? (quoteVerified ? "ES" : "") : String(metadata.cjPreferredLogisticCountry || "").trim().slice(0,2),
       cjPricingEstimate: quoteVerified ? quote : null,
@@ -5736,6 +5761,13 @@ async function buildSupplierFulfillmentsForOrder(order, { force = false, dryRun 
       status = "approval_required";
       blocker = "El pedido utiliza un descuento o cupón. El margen CJ se calculó sin ese descuento; revisa el cobro real antes de autorizar.";
     }
+    const aliExpressBlocker = aliExpressQueueBlocker({
+      supplierName: group.supplierName, sourceHost: group.sourceHost, items: group.items,
+    }, order);
+    if (aliExpressBlocker) {
+      status = "connector_required";
+      blocker = aliExpressBlocker;
+    }
     const record = {
       id: found?.id || crypto.randomUUID(),
       dedupeKey,
@@ -5812,6 +5844,13 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
     };
   }
 
+  const aliExpressBlocker = aliExpressQueueBlocker(record);
+  if (aliExpressBlocker) {
+    return {
+      fulfillment: { ...record, status: "connector_required", blocker: aliExpressBlocker },
+      executed: false, manual: false,
+    };
+  }
   const now = new Date().toISOString();
   // Never replay an already purchased, delivered or closed supplier order.
   // A pending CJ order awaiting payment has a separate, explicit gated branch.
@@ -6460,7 +6499,13 @@ app.get("/api/admin/supplier-fulfillments", requireAdmin, async (_req, res) => {
   try {
     const operations = await readSupplierOperations();
     res.json({
-      fulfillments: Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : [],
+      fulfillments: (Array.isArray(operations.supplierFulfillments) ? operations.supplierFulfillments : []).map(record => {
+        const terminal = ["ordered", "shipped", "delivered", "cancelled", "canceled", "closed", "refunded", "returned"]
+          .includes(String(record?.status || "").toLowerCase());
+        const blocker = !terminal && !String(record?.externalOrderId || "").trim()
+          ? aliExpressQueueBlocker(record) : "";
+        return blocker ? { ...record, status: "connector_required", blocker } : record;
+      }),
       suppliers: Array.isArray(operations.suppliers) ? operations.suppliers : [],
       autopilotConnectorConfigured: Boolean(String(process.env.SUPPLIER_AUTOPILOT_WEBHOOK_URL || "").trim() || cjConfigured()),
       cjConfigured: cjConfigured(),
