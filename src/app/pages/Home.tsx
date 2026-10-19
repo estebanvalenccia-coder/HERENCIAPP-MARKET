@@ -19,7 +19,14 @@ import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type Co
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
-const DEFAULT_HERO = "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86";
+const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
+
+function safeHeroImage(value: unknown): string {
+  const image = String(value || "").trim();
+  // The old bundled cover is truncated: its AVIF declares more bytes than exist on disk.
+  if (!image || image.split("?")[0].endsWith("/herencia-portada.avif")) return "";
+  return image;
+}
 
 function hexToRgb(hex: string, fallback = { r: 16, g: 43, b: 32 }) {
   const normalized = String(hex || "").trim().replace("#", "");
@@ -137,9 +144,9 @@ export function Home() {
   const heroDesign = heroBlock?.design;
   const heroMinHeight = Math.max(360, Number(heroDesign?.minHeight || 620));
   const heroImage =
-    String(heroBlock?.data?.imageUrl || "").trim() ||
-    market.home.heroImageUrl ||
-    site.hero.imageUrl ||
+    safeHeroImage(heroBlock?.data?.imageUrl) ||
+    safeHeroImage(market.home.heroImageUrl) ||
+    safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
 
   const featured = useMemo(() => {
@@ -197,6 +204,10 @@ export function Home() {
         style={{
           minHeight: `${heroMinHeight}px`,
           backgroundColor: heroDesign?.backgroundColor || undefined,
+          // The CSS background remains visible if a saved custom image fails to load.
+          backgroundImage: `url("${DEFAULT_HERO}")`,
+          backgroundSize: "cover",
+          backgroundPosition: heroDesign?.imagePosition || "center 15%",
           color: heroDesign?.textColor || undefined,
           borderRadius: `${Math.max(0, Number(heroDesign?.radius || 0))}px`,
           fontFamily:
