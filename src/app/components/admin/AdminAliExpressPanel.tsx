@@ -13,8 +13,14 @@ type Status = {
   trackedCount: number;
   catalogSyncEnabled: boolean;
   automaticPurchasesEnabled: boolean;
+  unpaidOrderCreationImplemented?:boolean;
+  unpaidOrderCreationEnabled?:boolean;
+  supplierPaymentImplemented?:boolean;
   message: string;
 };
+type AutomationHealth={unpaidOrderCreationEnabled:boolean;automaticUnpaidCreationEnabled:boolean;
+  orderApiVerified:boolean;addressTransferApproved:boolean;supplierPaymentImplemented:boolean;eligibleQueueCandidates:number;note:string};
+type FreightOption={service:string;shippingCostEur:number;estimatedDelivery:string};
 type Product = { productId: string; name: string; status: string; variants: Array<{variantId:string; sku:string; price:number|null; currency:string; stock:number|null; available:boolean; properties:Array<{name:string;value:string}>}>; checkedAt:string; note:string };
 
 async function request(path: string, options?: RequestInit) {
@@ -26,6 +32,9 @@ async function request(path: string, options?: RequestInit) {
 
 export function AdminAliExpressPanel() {
   const [status, setStatus] = useState<Status|null>(null);
+  const [health,setHealth]=useState<AutomationHealth|null>(null);
+  const [freight,setFreight]=useState<FreightOption[]>([]);
+  const [freightError,setFreightError]=useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [productId, setProductId] = useState("");
@@ -33,8 +42,9 @@ export function AdminAliExpressPanel() {
   const [trackedIds, setTrackedIds] = useState<string[]>([]);
   const refresh = async () => {
     try {
-      const [current, tracked] = await Promise.all([request("/status"), request("/tracked")]);
+      const [current, tracked, automation] = await Promise.all([request("/status"), request("/tracked"),request("/automation-health")]);
       setStatus(current as Status);
+      setHealth(automation as AutomationHealth);
       setTrackedIds(Array.isArray(tracked.ids) ? tracked.ids : []);
       setError("");
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudo verificar AliExpress"); }
@@ -46,6 +56,17 @@ export function AdminAliExpressPanel() {
     try { setProduct(await request("/product?product_id=" + encodeURIComponent(productId.trim())) as Product); }
     catch (err) { setError(err instanceof Error ? err.message : "No se pudo consultar el producto"); }
     finally { setBusy(false); }
+  };
+  const quote = async (variant: Product["variants"][number])=>{
+    if(!product)return;
+    setFreight([]);setFreightError("");setBusy(true);
+    try{
+      const args="?productId="+encodeURIComponent(product.productId)+"&skuId="+encodeURIComponent(variant.sku||variant.variantId);
+      const result=await request("/freight"+args);
+      setFreight(Array.isArray(result.options)?result.options:[]);
+      if(!result.options?.length)setFreightError("AliExpress no confirmó un transporte en EUR para esta variante y España.");
+    }catch(err){setFreightError(err instanceof Error?err.message:"No fue posible cotizar AliExpress");}
+    finally{setBusy(false);}
   };
   const addTracked = async () => {
     if (!product || trackedIds.includes(product.productId)) return;
@@ -81,6 +102,13 @@ export function AdminAliExpressPanel() {
     </p>
     {status && (!status.appKeyConfigured || !status.appSecretConfigured || !status.encryptionReady) &&
       <p className="text-sm text-amber-800">Comprueba las credenciales y la clave de cifrado del backend Railway.</p>}
+    {health && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950 space-y-1">
+      <p className="font-bold">Estado del motor de pedidos AliExpress</p>
+      <p>Creación sin pagar: {health.unpaidOrderCreationEnabled?"Habilitada":"Desactivada"}. Motor programado: {health.automaticUnpaidCreationEnabled?"Habilitado":"Desactivado"}.</p>
+      <p>Permiso API de compras: {health.orderApiVerified?"Confirmado por configuración":"Sin verificar"} · Transferencia de dirección: {health.addressTransferApproved?"Aprobada":"No aprobada"}.</p>
+      <p>Pago automático al proveedor: NO implementado. Pedidos candidatos: {health.eligibleQueueCandidates}.</p>
+      <p className="text-xs">{health.note}</p>
+    </div>}
     {status?.tokenError && <p className="text-sm text-amber-800">{status.tokenError}</p>}
     {status?.authorized && <p className="text-xs text-muted-foreground">Acceso hasta {status.accessExpiresAt ? new Date(status.accessExpiresAt).toLocaleString("es-ES") : "sin confirmar"}. Renovación automática con el token vigente.</p>}
     <div className="flex flex-wrap gap-2">
@@ -100,8 +128,14 @@ export function AdminAliExpressPanel() {
           {product.variants.slice(0, 30).map((variant, index) => <div key={variant.variantId + "-" + index} className="rounded border px-2 py-1">
             SKU: {variant.sku || "No reportado"} · {variant.properties.map((p) => p.name + ": " + p.value).join(", ") || variant.variantId}
             {" · "}{variant.price ?? "Precio sin confirmar"} {variant.currency} · {variant.stock == null ? "Stock desconocido" : variant.stock + " uds."}
+            <button type="button" disabled={busy||!(variant.sku||variant.variantId)}
+              onClick={()=>void quote(variant)} className="mt-1 rounded border px-2 py-1 text-xs disabled:opacity-50">
+              Cotizar envío a España
+            </button>
           </div>)}
         </div>
+        {freight.length>0&&<p className="rounded border p-2">Envíos verificados: {freight.map(x=>x.service+" · "+x.shippingCostEur.toFixed(2)+" €").join(" | ")}</p>}
+        {freightError&&<p role="alert" className="text-amber-800">{freightError}</p>}
         <button type="button" disabled={busy || trackedIds.includes(product.productId)} onClick={() => void addTracked()} className="rounded-lg border px-3 py-2 font-bold disabled:opacity-50">
           {trackedIds.includes(product.productId) ? "En seguimiento" : "Añadir a seguimiento automático"}
         </button>
@@ -110,6 +144,6 @@ export function AdminAliExpressPanel() {
     </div>}
     {status?.authorized && !status.catalogSyncEnabled && <p className="text-xs text-amber-800">El seguimiento programado requiere ALIEXPRESS_CATALOG_SYNC_ENABLED=true en Railway.</p>}
     {error && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">{error}</p>}
-    <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck size={16}/> El conector no crea pedidos, no cobra pagos y no publica artículos automáticamente.</p>
+    <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck size={16}/> El conector puede crear órdenes sin pagar solo cuando se autorice y verifique cada requisito. No puede pagar al proveedor automáticamente.</p>
   </section>;
 }
