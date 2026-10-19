@@ -38,7 +38,7 @@ import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "
 import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft, printfulExternalOrderId } from "./printfulOrderFulfillment.js";
 import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
 import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget } from "./unifiedSupplierBudget.js";
-import { universalDay, reserveUniversalBudgetAtomic, settleUniversalBudgetAtomic } from "./universalSupplierLedger.js";
+import { universalDay, universalLedgerKey, readUniversalLedger, reserveUniversalBudgetAtomic, settleUniversalBudgetAtomic } from "./universalSupplierLedger.js";
 import {
   normalizeSupplierIntegrationType, supplierIntegrationType as registeredSupplierIntegrationType,
   normalizeSupplierConnectorKey, resolveSupplierWebhookConnector,
@@ -6271,7 +6271,9 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
   const products=await loadAuthoritativeProducts({includeArchived:true});
   const payload=preparePrintfulDraft(order,products);
   const estimate=await estimatePrintfulOrder(payload);
-  const decision=assessPrintfulAutoConfirm({order,estimate,policy});
+  const universalPolicy=parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+  const effectivePolicy={...policy,minMarginPct:Math.max(policy.minMarginPct,Number(universalPolicy.minMarginPercent)||80)};
+  const decision=assessPrintfulAutoConfirm({order,estimate,policy:effectivePolicy});
   if(!decision.allowed)return {skipped:true,reason:decision.reason};
   const provider=await lookupPrintfulOrder(orderId);
   if(!provider||provider.externalId!==printfulExternalOrderId(orderId)||provider.id!==String(draft.externalOrderId))
@@ -6280,7 +6282,7 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
     return {skipped:true,reason:"supplier_order_not_draft",providerStatus:provider.status};
   // The global merchant budget is authoritative for ALL suppliers. Reject
   // unknown or unconfigured universal terms before any supplier debit.
-  const universal= parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+  const universal=universalPolicy;
   const universalDate=universalDay();
   if(!universal.providers.printful || !universal.perOrderMaxEur || !universal.minMarginPercent ||
      decision.costEur>universal.perOrderMaxEur ||
@@ -7389,6 +7391,23 @@ async function createCjAutopilotUnpaid(record,mandate,checks){
       throw cjManualError("Cash Guard: el gasto y las reservas CJ superan el límite diario.");
     return reservation.ledger;
   });
+  const globalPolicy=parseUniversalSupplierBudget(await readNeonStorageValue(UNIVERSAL_SUPPLIER_BUDGET_KEY));
+  if(!globalPolicy.providers.cj||!globalPolicy.perOrderMaxEur||!globalPolicy.minMarginPercent||
+     globalPolicy.minMarginPercent>Number(currentPolicy.minMarginPercent)){
+    await settleCjLiveBudget(live,date,"released",{remoteActionAttempted:false}).catch(()=>{});
+    throw cjManualError("CJ bloqueado: configura y autoriza el presupuesto universal antes de comprar.");
+  }
+  try{
+    await reserveUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:date,orderId:String(order.id),provider:"cj",amountEur:approvedEur,policy:globalPolicy,
+      paidOrderVerified:!preview.funding.storeFunded&&Boolean(order.stripe_payment_intent_id||order.stripePaymentIntentId),
+      providerQuoteVerified:checks.readOnly===true&&checks.eligibleForSupervisedTest===true,
+      marginVerified:Number(checks.estimatedMarginPercent)>=globalPolicy.minMarginPercent,
+    });
+  }catch(e){
+    await settleCjLiveBudget(live,date,"released",{remoteActionAttempted:false}).catch(()=>{});
+    throw cjManualError("No se pudo reservar presupuesto compartido: "+String(e?.message||"límite superado"));
+  }
   let claimed=false,operationId="",externalKey="";
   try{
     const fingerprint=cjManualSnapshot(live,order,supplier);
@@ -7463,6 +7482,8 @@ async function createCjAutopilotUnpaid(record,mandate,checks){
       validAmount?"created_unpaid":"creation_unknown",cjId).catch(()=>null);
     if(!validAmount){
       await settleCjLiveBudget(live,date,"uncertain").catch(()=>null);
+      await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+        day:date,orderId:String(order.id),status:"uncertain",remoteAttempted:true}).catch(()=>null);
       throw cjManualError("CJ no confirmó un importe aceptable. Pago bloqueado.");
     }
   }catch(error){
@@ -7471,9 +7492,13 @@ async function createCjAutopilotUnpaid(record,mandate,checks){
         status:"cj_creation_unknown",blocker:"Posible creación externa CJ. Conciliar antes de reintentar.",
       }).catch(()=>null);
       await settleCjLiveBudget(live,date,"uncertain").catch(()=>null);
+      await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+        day:date,orderId:String(order.id),status:"uncertain",remoteAttempted:true}).catch(()=>null);
     }else{
       await settleCjLiveBudget(live,date,"released",{
         remoteActionAttempted:false}).catch(()=>null);
+      await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+        day:date,orderId:String(order.id),status:"released",remoteAttempted:false}).catch(()=>null);
     }
     throw error;
   }
@@ -7498,6 +7523,10 @@ async function payCjAutopilotExisting(record,mandate){
     x.amountCents>=Math.round(Number(live.cjManualAuthorization.approvedCostEur)*100)))
     throw cjManualError("Cash Guard no confirma la reserva económica de esta compra.");
   await verifyCjCustomerFunding(order,classifyCjOrderFunding(order));
+  const globalDay=String(live.cjAutopilotBudgetDate);
+  const globalLedger=readUniversalLedger(await readNeonStorageValue(universalLedgerKey(globalDay)),globalDay);
+  if(!globalLedger.entries.some(e=>e.orderId===String(order.id)&&e.provider==="cj"&&e.status==="reserved"))
+    throw cjManualError("No consta reserva global para el pedido CJ. Pago bloqueado.");
   if(!live.externalOrderId)
     throw cjManualError("CJ no devolvió una referencia de orden válida para pagar.");
   const response=await cjRequest("/shopping/order/getOrderDetail",{
@@ -7542,6 +7571,8 @@ async function payCjAutopilotExisting(record,mandate){
     });
     await settleCjLiveBudget(live,budgetDate,"committed",{
       providerEvidence:true}).catch(()=>null);
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:globalDay,orderId:String(order.id),status:"committed",providerEvidence:true}).catch(()=>null);
     await recordCjExternalActionResult(ledgerKey,operationId,"paid",
       claimed.externalOrderId).catch(()=>null);
   }catch(error){
@@ -7550,6 +7581,8 @@ async function payCjAutopilotExisting(record,mandate){
       blocker:"El pago CJ pudo completarse. Conciliar antes de cualquier reintento.",
     }).catch(()=>null);
     await settleCjLiveBudget(live,budgetDate,"uncertain").catch(()=>null);
+    await settleUniversalBudgetAtomic(mutateNeonStorageValue,{
+      day:globalDay,orderId:String(order.id),status:"uncertain",remoteAttempted:true}).catch(()=>null);
     throw error;
   }
 }
