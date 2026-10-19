@@ -185,6 +185,11 @@ export function isPlantCareProduct(product: any) {
     ? declaredCollection
     : primaryCollectionOf(product);
   const category = String(product?.category || "").trim().toLowerCase();
+  // Some supplier imports were historically assigned to Plantas by default.
+  // A mislabeled garden tool must NEVER trigger botanical generation.
+  const title=String(product?.name||"").toLowerCase();
+  const nonBotanical=/\\b(pala|rastrillo|tijeras|podadora|azada|herramienta|fertilizante|fungicida|maceta|pulverizador|manguera|guantes|sustrato|cortacesped|cortacésped)\\b/i;
+  if(nonBotanical.test(title))return false;
   return collection === "plantas" && category !== "flores";
 }
 
