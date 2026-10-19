@@ -5030,7 +5030,7 @@ function aliExpressQueueBlocker(record, order = null) {
     String(record?.provider || "").trim().toLowerCase() === "aliexpress";
   if (!isAliExpress) return "";
   const items = Array.isArray(record?.items) ? record.items : [];
-  const issues = ["El conector AliExpress actual es de consulta: no implementa crear ni pagar pedidos. Tramita manualmente solo después de verificar el proveedor."];
+  const issues = ["AliExpress puede crear un pedido SIN PAGAR solo tras verificar cobro Stripe, coste, margen, variante y permisos API. El pago automático al proveedor no está implementado."];
   if (!items.length || items.some(item => !String(item?.supplierVariantId || "").trim() || !String(item?.supplierSku || "").trim()))
     issues.push("Falta vincular y verificar el SKU/variante exacta del proveedor.");
   if (!items.length || items.some(item => !(Number(item?.supplierCost) > 0)))
