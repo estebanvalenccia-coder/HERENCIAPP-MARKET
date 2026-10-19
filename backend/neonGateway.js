@@ -94,7 +94,15 @@ async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin
 const aliexpressConnector = createAliExpressConnector({read:readNeonStorageValue,write:upsertNeonStorageValue,requireAdmin:adminSession,saveDraft:saveNeonCommerceProduct});
 async function bodyBuffer(req,{maxBytes=8*1024*1024}={}){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>maxBytes){const error=new Error("Payload demasiado grande");error.statusCode=413;throw error;}chunks.push(c);}return Buffer.concat(chunks);}
 async function bodyJson(req){const raw=await bodyBuffer(req);if(!raw.length)return {};return JSON.parse(raw.toString("utf8"));}
-async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];const r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual"});const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}res.writeHead(r.status,responseHeaders);if(r.body){for await(const c of r.body)res.write(c);}res.end();}
+async function proxy(req,res){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers,host:`127.0.0.1:${legacyPort}`};delete headers["content-length"];let r;
+try {
+  r=await fetch(`${legacyUrl}${req.url}`,{method:req.method,headers,body:["GET","HEAD"].includes(req.method)?undefined:Buffer.concat(chunks),redirect:"manual",signal:AbortSignal.timeout(25_000)});
+} catch(error) {
+  const code=String(error?.cause?.code||error?.code||"");
+  console.warn("[legacy proxy] upstream unavailable",code||String(error?.name||"NETWORK_ERROR"));
+  if(!res.headersSent&&!res.writableEnded)return json(res,503,{error:"Servicio auxiliar temporalmente no disponible",code:"LEGACY_BACKEND_UNAVAILABLE",retryable:["GET","HEAD"].includes(req.method)});
+  return;
+}const responseHeaders=Object.fromEntries(r.headers.entries());delete responseHeaders["set-cookie"];const setCookies=typeof r.headers.getSetCookie==="function"?r.headers.getSetCookie():[];if(setCookies.length)responseHeaders["set-cookie"]=setCookies;else{const setCookie=r.headers.get("set-cookie");if(setCookie)responseHeaders["set-cookie"]=setCookie;}res.writeHead(r.status,responseHeaders);if(r.body){for await(const c of r.body)res.write(c);}res.end();}
 async function normalizeProductMedia(input={}){
   const next={...input};
   const sourceImages=Array.isArray(input.images)&&input.images.length?input.images:(input.image?[input.image]:[]);
@@ -129,7 +137,25 @@ async function normalizeProductMedia(input={}){
 }
 
 const child=spawn(process.execPath,["--import","./commerceCore.js","--import","./customerAccessRoutes.js","--import","./googleOAuthRoutes.js","--import","./fixCors.js","--import","./fixAdminEmail.js","--import","./fixAIBouquet.js","--import","./fixSalesAI.js","--import","./fixHerenciaAI.js","--import","./fixTTS.js","--import","./fixMapsShipping.js","server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
-child.on("exit",code=>{console.error(`Legacy backend exited (${code})`);process.exit(code??1);});
+// Keep the primary commerce gateway alive when the optional legacy API crashes.
+// Never replay requests automatically: POSTs may create orders or payments.
+let legacyChild=child;
+let legacyRestartTimer=null;
+let legacyRestartCount=0;
+function scheduleLegacyRestart(code){
+  console.error(`Legacy backend exited (${code}); primary commerce gateway remains available`);
+  if(legacyRestartTimer)return;
+  const delay=Math.min(30_000,1000*2**Math.min(legacyRestartCount++,5));
+  legacyRestartTimer=setTimeout(()=>{
+    legacyRestartTimer=null;
+    legacyChild=spawn(process.execPath,["--import","./commerceCore.js","--import","./customerAccessRoutes.js","--import","./googleOAuthRoutes.js","--import","./fixCors.js","--import","./fixAdminEmail.js","--import","./fixAIBouquet.js","--import","./fixSalesAI.js","--import","./fixHerenciaAI.js","--import","./fixTTS.js","--import","./fixMapsShipping.js","server.js"],{stdio:"inherit",env:{...process.env,PORT:String(legacyPort)}});
+    legacyChild.on("exit",scheduleLegacyRestart);
+    legacyChild.on("error",error=>console.error("[legacy] spawn failed",error?.message||String(error)));
+  },delay);
+  legacyRestartTimer.unref?.();
+}
+child.on("exit",scheduleLegacyRestart);
+child.on("error",error=>console.error("[legacy] spawn failed",error?.message||String(error)));
 
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
