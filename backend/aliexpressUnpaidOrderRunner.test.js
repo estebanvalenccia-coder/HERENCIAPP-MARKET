@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { isPrivateSupplierStorageKey } from "./supplierInternalStorageSecurity.js";
 import {aliExpressAttemptKey,pickAliExpressUnpaidCandidates,evaluateAliExpressCost,createAliExpressUnpaidRunner} from "./aliexpressUnpaidOrderRunner.js";
 const id="2624b5b9-ed7b-4f6e-a9ee-7642d9a7016c";
 const row={id,orderId:"c0130d64-f307-4704-bd58-d630bd54a579",supplierName:"AliExpress",
@@ -13,6 +14,7 @@ test("Only AliExpress autopilot rows can be considered; external/closed orders a
  ]};
  assert.deepEqual(pickAliExpressUnpaidCandidates(ops).map(x=>x.id),[id]);
  assert.ok(aliExpressAttemptKey(id).startsWith("aliexpressUnpaidOrderAttempt:v1:"));
+ assert.equal(isPrivateSupplierStorageKey(aliExpressAttemptKey(id)),true);
 });
 test("Budget assesses tax, processing fees and actual Stripe-funded sales",()=>{
  const result=evaluateAliExpressCost({order:{total:35},unitEur:8,freightEur:2,policy});
