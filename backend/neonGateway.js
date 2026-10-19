@@ -1453,7 +1453,7 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   return await proxy(req,res);
-}catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}const status=Number(error?.statusCode||500);return json(res,status,{error:status>=500?"Hybrid gateway error":"Solicitud no válida",message:error?.message||String(error)});}});
+}catch(error){console.error("Hybrid gateway error",error);if(res.headersSent||res.writableEnded){if(!res.writableEnded&&!res.destroyed)res.destroy(error);return;}const quota=/exceeded the quota|project has exceeded|compute quota|quota exceeded/i.test(String(error?.message||""));const status=quota?503:Number(error?.statusCode||500);return json(res,status,quota?{error:"Base de datos temporalmente bloqueada por cuota",code:"DATABASE_QUOTA_EXCEEDED",message:"La base de datos Neon ha superado su cuota. Revisa el plan y consumo del proyecto en Neon; no se han guardado los cambios del producto."}:{error:status>=500?"Hybrid gateway error":"Solicitud no válida",message:status>=500?"Error interno del servidor. Consulta el registro de Railway.":error?.message||String(error)});}});
 
 // Stock observation updates supplier snapshots only; no storefront stock,
  // orders or prices are modified. Small batches protect the shared CJ quota.
