@@ -148,6 +148,9 @@ export function AdminDashboard() {
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [totpRequired, setTotpRequired] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const loginPendingRef = useRef(false);
   const [currentSection, setCurrentSection] =
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -351,21 +354,23 @@ export function AdminDashboard() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loginPendingRef.current) return;
     if(previewOnly){toast.info("Esta preview no acepta credenciales reales.");return;}
 
     if (!backendApi.enabled) {
-      toast.error("Backend no disponible. Configura VITE_API_URL y vuelve a intentar.");
+      setLoginError("Backend no disponible. Revisa la conexión antes de iniciar sesión.");
       return;
     }
 
+    loginPendingRef.current = true;
+    setLoginSubmitting(true);
+    setLoginError("");
     try {
       await backendApi.adminLogin(username, password, otp);
       const session = await backendApi.adminSession();
 
       if (!session.authenticated) {
-        toast.error(
-          "Sesión no confirmada. Revisa cookies del backend en Railway."
-        );
+        setLoginError("El servidor aceptó las credenciales, pero la sesión no quedó confirmada. Revisa las cookies.");
         setIsAuthenticated(false);
         return;
       }
@@ -374,7 +379,14 @@ export function AdminDashboard() {
       setIsAuthenticated(true);
       toast.success("Bienvenido");
     } catch (error: any) {
-      toast.error(error?.message || "No se pudo iniciar sesión");
+      const message = String(error?.message || "No se pudo iniciar sesión");
+      setLoginError(message === "Código de verificación incorrecto"
+        ? "Código de verificación incorrecto. Introduce el código actual de la aplicación autenticadora vinculada a Herencia Market. Comprueba que la fecha y hora del móvil estén en automático."
+        : message);
+      if (message === "Código de verificación incorrecto") setOtp("");
+    } finally {
+      loginPendingRef.current = false;
+      setLoginSubmitting(false);
     }
   };
 
@@ -541,6 +553,9 @@ export function AdminDashboard() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-5">
+              {loginError && (
+                <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">{loginError}</p>
+              )}
               <>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
@@ -582,7 +597,7 @@ export function AdminDashboard() {
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setLoginError(""); }}
                       placeholder="000000"
                       required
                       disabled={!backendApi.enabled}
@@ -594,10 +609,10 @@ export function AdminDashboard() {
 
               <button
                 type="submit"
-                disabled={!backendApi.enabled}
+                disabled={!backendApi.enabled || loginSubmitting}
                 className="w-full py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl hover:shadow-lg hover:shadow-primary/20 transition-all font-medium"
               >
-                {backendApi.enabled ? "Iniciar Sesión" : "Backend no disponible"}
+                {!backendApi.enabled ? "Backend no disponible" : loginSubmitting ? "Verificando acceso…" : "Iniciar Sesión"}
               </button>
             </form>
 
