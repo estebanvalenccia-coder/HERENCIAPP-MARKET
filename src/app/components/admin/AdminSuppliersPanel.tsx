@@ -385,7 +385,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           importedFromUrl: true,
           fulfillmentType: "dropship",
           supplierId: supplier.id,
-          fulfillmentMode: supplier.integrationType === "cj" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual",
+          fulfillmentMode: supplier.integrationType === "cj" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : (supplier.integrationType === "api" && normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual"),
           sourceProductUrl: parsed.toString(),
           sourceCatalogUrl: changedSupplier ? parsed.toString() : metadata.sourceCatalogUrl || parsed.toString(),
           sourceHost,
@@ -434,8 +434,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const saveSupplier = async () => {
     if (!String(form.name || "").trim()) return toast.error("Escribe el nombre del proveedor");
     const selectedConnection = supplierConnectorStatuses.find(item => item.supplierId === String(form.id || ""));
+    const aliExpressPreparedMode = form.integrationType === "api" &&
+      normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com";
     if (form.fulfillmentMode === "autopilot" &&
-      form.integrationType !== "cj" &&
+      form.integrationType !== "cj" && !aliExpressPreparedMode &&
       (form.integrationType !== "webhook" || !selectedConnection?.automaticOrders)) {
       return toast.error("Primero conecta y verifica el webhook de este proveedor. CSV, API pendiente y manual no permiten compras automáticas.");
     }
@@ -460,7 +462,9 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         cjMaxPaymentUsd: 50,
         active: true,
       });
-      toast.success("Proveedor guardado");
+      toast.success(aliExpressPreparedMode && form.fulfillmentMode === "autopilot"
+        ? "AliExpress configurado en Autopilot pendiente. No se crearán ni pagarán pedidos hasta validar el conector."
+        : "Proveedor guardado");
     } catch (error: any) {
       toast.error(error?.message || "No se pudo guardar el proveedor");
     }
@@ -878,7 +882,10 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
     const supplier = suppliers.find((entry: any) => String(entry.id) === String(supplierId));
     if (!supplier) return toast.error("Proveedor no encontrado");
     const readiness = supplierConnectorStatuses.find(item => item.supplierId === String(supplier.id));
-    if (mode === "autopilot" && supplier.integrationType !== "cj" && !readiness?.automaticOrders) {
+    const aliExpressPreparedMode = supplier.integrationType === "api" &&
+      normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com";
+    if (mode === "autopilot" && supplier.integrationType !== "cj" &&
+      !aliExpressPreparedMode && !readiness?.automaticOrders) {
       return toast.error("Ese proveedor no tiene un conector de pedidos probado. Utiliza Manual hasta completar la integración.");
     }
 
@@ -911,7 +918,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         },
         trackInventory: false,
       });
-      toast.success(mode === "autopilot" ? "Producto conectado a Autopilot" : "Producto conectado en modo manual");
+      toast.success(mode === "autopilot" ? (aliExpressPreparedMode ? "Producto marcado Autopilot pendiente de validación de API, envío y pago." : "Producto conectado a Autopilot") : "Producto conectado en modo manual");
       await load();
     } catch (error: any) {
       toast.error(error?.message || "No se pudo asignar el proveedor");
