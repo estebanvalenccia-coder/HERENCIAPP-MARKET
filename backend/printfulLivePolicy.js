@@ -26,11 +26,19 @@ export function printfulLivePolicy(env=process.env) {
       !limitsValid?"explicit_euro_cost_daily_budget_and_margin_required":"ready",
   };
 }
+/** Local eligibility only; a Stripe pi_ reference is not proof of settlement. */
+export function printfulAutoConfirmOrderCandidate(order) {
+  if(order?.status!=="paid"||!String(order?.stripe_payment_intent_id||"").startsWith("pi_"))
+    return {eligible:false,reason:"stripe_paid_order_required"};
+  if(!(amount(order?.total)>0))
+    return {eligible:false,reason:"positive_paid_total_and_supplier_cost_required"};
+  return {eligible:true,reason:null};
+}
 export function assessPrintfulAutoConfirm({order,estimate,policy,now=Date.now()}) {
   const deny=reason=>({allowed:false,reason});
   if(!policy?.enabled)return deny(policy?.reason||"payment_mandate_not_configured");
-  if(order?.status!=="paid"||!String(order?.stripe_payment_intent_id||"").startsWith("pi_"))
-    return deny("stripe_paid_order_required");
+  const local=printfulAutoConfirmOrderCandidate(order);
+  if(!local.eligible)return deny(local.reason);
   const currency=String(estimate?.currency||"").toUpperCase();
   if(currency!=="EUR")return deny("quote_currency_must_be_eur");
   const cost=amount(estimate?.total);

@@ -36,7 +36,7 @@ import {
 } from "./cjManualApproval.js";
 import { preserveSupplierFulfillment, mergePreparedSupplierFulfillments } from "./cjSupplierQueue.js";
 import { preparePrintfulDraft, lookupPrintfulOrder, createPrintfulDraft, estimatePrintfulOrder, confirmPrintfulDraft, printfulExternalOrderId } from "./printfulOrderFulfillment.js";
-import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
+import { printfulLivePolicy, assessPrintfulAutoConfirm, printfulAutoConfirmOrderCandidate, printfulDailyBudgetKey, normalizePrintfulTracking } from "./printfulLivePolicy.js";
 import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget } from "./unifiedSupplierBudget.js";
 import { universalDay, universalLedgerKey, readUniversalLedger, reserveUniversalBudgetAtomic, settleUniversalBudgetAtomic } from "./universalSupplierLedger.js";
 import {
@@ -6307,6 +6307,10 @@ async function maybeAutoConfirmPrintfulOrder(orderId) {
   if(!hasNeon())return {skipped:true,reason:"database_required"};
   const order=await getOrderPrimary(orderId);
   if(!order)return {skipped:true,reason:"order_not_found"};
+  // Prevent repeat provider quotes for fully discounted or unsettled customer orders.
+  // This is only a local fast-fail; downstream budget and payment gates remain authoritative.
+  const localPreflight=printfulAutoConfirmOrderCandidate(order);
+  if(!localPreflight.eligible)return {skipped:true,reason:localPreflight.reason};
   const draft=JSON.parse((await readNeonStorageValue("printfulOrderDraft:v1:"+orderId))||"{}");
   if(!["created","reconciled"].includes(draft.status))
     return {skipped:true,reason:"supplier_draft_required"};
@@ -6444,7 +6448,19 @@ async function sweepPrintfulTracking() {
         }
       }
       checked++;
-      if(!autoConfirmationChecked&&printfulLivePolicy().enabled&&tracking.providerStatus==="draft"){
+      // A coupon-funded order has no captured Stripe payment. Keep its Printful
+      // draft for admin review without repeatedly querying shipping or charging.
+      if(tracking.providerStatus==="draft"&&order?.status==="paid"&&
+         Number(order?.total)===0&&String(order?.payment_method)==="coupon"){
+        await addAutomationNotification({
+          type:"printful_merchant_coupon_attention",
+          title:"Pedido Printful gratuito pendiente de autorización",
+          message:"Pedido #"+orderId.slice(0,8)+": descuento 100 %. Revisar financiación del coste de Printful antes de confirmar; no se ha cobrado al proveedor.",
+          entityType:"order",entityId:orderId,dedupeKey:"printful-merchant-coupon:"+orderId,
+        }).catch(()=>{});
+      }
+      if(!autoConfirmationChecked&&printfulLivePolicy().enabled&&
+         tracking.providerStatus==="draft"&&printfulAutoConfirmOrderCandidate(order).eligible){
         autoConfirmationChecked=true;
         const confirmation=await maybeAutoConfirmPrintfulOrder(orderId);
         if(confirmation?.skipped)console.info("[printful.auto-confirm] held",confirmation.reason);
