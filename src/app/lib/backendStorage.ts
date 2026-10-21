@@ -1267,6 +1267,10 @@ export const backendApi = {
     return request<{
       active:boolean;expiresAt:string|null;allowedSupplierIds:string[];
       perOrderMaxEur:number|null;dailyMaxEur:number|null;realMoneyCanBeSpent:boolean;
+      activationChecks?:{
+        budgetConfigured:boolean;eligibleSupplierConfigured:boolean;
+        supervisedRecordFound:boolean;liveFlagsEnabled:boolean;
+      };
     }>("/api/admin/suppliers/cj/live-mandate");
   },
 
