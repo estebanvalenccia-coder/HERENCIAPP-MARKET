@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  printfulLivePolicy,assessPrintfulAutoConfirm,printfulDailyBudgetKey,
+  printfulLivePolicy,assessPrintfulAutoConfirm,printfulAutoConfirmOrderCandidate,printfulDailyBudgetKey,
   normalizePrintfulTracking,
 } from "./printfulLivePolicy.js";
 const mandate=printfulLivePolicy({
@@ -34,6 +34,22 @@ test("only settled positive-margin EUR orders can authorize supplier charges",()
  assert.equal(assessPrintfulAutoConfirm({order,estimate:{...quote,total:50},policy:mandate,now}).allowed,false);
  assert.equal(assessPrintfulAutoConfirm({order,estimate:{...quote,checkedAt:new Date(now-11*60*1000).toISOString()},policy:mandate,now}).allowed,false);
  assert.equal(assessPrintfulAutoConfirm({order,estimate:quote,policy:printfulLivePolicy({}),now}).allowed,false);
+});
+test("local Printful preflight blocks coupon-funded and unverified Stripe orders without supplier calls",()=>{
+ const ok=printfulAutoConfirmOrderCandidate(order);
+ assert.equal(ok.eligible,true);
+ for(const unsafe of [
+  {...order,status:"confirmed"},
+  {...order,stripe_payment_intent_id:""},
+  {...order,total:0},
+  {...order,total:-1},
+  {...order,total:"not-a-number"},
+  {status:"paid",total:0,payment_method:"coupon"},
+ ])assert.equal(printfulAutoConfirmOrderCandidate(unsafe).eligible,false);
+ assert.equal(printfulAutoConfirmOrderCandidate({...order,total:0}).reason,
+  "positive_paid_total_and_supplier_cost_required");
+ assert.equal(printfulAutoConfirmOrderCandidate({...order,stripe_payment_intent_id:""}).reason,
+  "stripe_paid_order_required");
 });
 test("tracking normalization ignores unsafe links and keeps signed supplier data bounded",()=>{
  const result=normalizePrintfulTracking({
