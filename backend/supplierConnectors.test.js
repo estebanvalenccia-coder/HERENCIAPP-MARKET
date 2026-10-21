@@ -125,5 +125,5 @@ test("AliExpress can be configured for Autopilot pending verification without au
   const admin=readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx",import.meta.url),"utf8");
   assert.match(server,/aliExpressPreparedMode = integrationType === "api" && supplier\.sourceHost === "aliexpress.com"/);
   assert.match(admin,/aliExpressPreparedMode = form\.integrationType === "api"/);
-  assert.match(admin,/pendiente de validar el conector/);
+  assert.match(admin,/No se crearán ni pagarán pedidos hasta validar el conector/);
 });
