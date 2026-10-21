@@ -1,5 +1,6 @@
 import { createAliExpressConnector } from "./aliexpressConnector.js";
 import { createAliExpressUnpaidRunner, pickAliExpressUnpaidCandidates } from "./aliexpressUnpaidOrderRunner.js";
+import { summarizeAliExpressAutomation } from "./supplierAutomationDiagnostics.js";
 import Stripe from "stripe";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { isPrivateSupplierStorageKey } from "./supplierInternalStorageSecurity.js";
@@ -218,14 +219,33 @@ const server=http.createServer(async(req,res)=>{try{
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const raw=await readNeonStorageValue("posOperations");
     const ops=JSON.parse(raw||"{}");
-    return json(res,200,{provider:"aliexpress",
+    const flags={
       unpaidOrderCreationEnabled:process.env.ALIEXPRESS_LIVE_ORDER_CREATION_ENABLED==="true",
       automaticUnpaidCreationEnabled:process.env.ALIEXPRESS_UNPAID_ORDER_AUTO_ENABLED==="true",
       orderApiVerified:process.env.ALIEXPRESS_PROVIDER_ORDER_API_VERIFIED==="true",
       addressTransferApproved:process.env.ALIEXPRESS_CUSTOMER_ADDRESS_TRANSFER_APPROVED==="true",
-      supplierPaymentImplemented:false,
-      eligibleQueueCandidates:pickAliExpressUnpaidCandidates(ops).length,
-      note:"La creación de órdenes sin pagar NO confirma el pago a AliExpress."});
+    };
+    // Read-only: reveal the concrete cause of each blocked fulfillment without
+    // requesting a provider order, exposing tokens or returning customer details.
+    const candidates=pickAliExpressUnpaidCandidates(ops);
+    const ordersById={},productsById={};
+    await Promise.all(candidates.slice(0,20).map(async row=>{
+      const id=String(row.orderId||"");
+      if(id && !Object.hasOwn(ordersById,id)){
+        ordersById[id]=await getNeonOrder(id).catch(()=>null);
+      }
+      const productId=String(row.items?.[0]?.productId||"");
+      if(productId && !Object.hasOwn(productsById,productId)){
+        productsById[productId]=await getNeonCommerceProduct(productId,{includeArchived:true}).catch(()=>null);
+      }
+    }));
+    const queueDiagnostics=summarizeAliExpressAutomation(ops,ordersById,productsById,flags);
+    return json(res,200,{provider:"aliexpress",
+      ...flags,supplierPaymentImplemented:false,
+      eligibleQueueCandidates:candidates.length,
+      blockedQueueItems:queueDiagnostics.filter(row=>!row.localChecksPassed).length,
+      queueDiagnostics,
+      note:"La creación de órdenes sin pagar NO confirma el pago a AliExpress. El diagnóstico local no autoriza ninguna compra."});
   }
   if(path==="/api/integrations/aliexpress/callback" || path.startsWith("/api/admin/integrations/aliexpress/")) {
     return await aliexpressConnector.handle(req,res,path);
