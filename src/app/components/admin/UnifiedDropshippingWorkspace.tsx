@@ -25,9 +25,9 @@ const PROVIDERS:Array<{id:Provider;name:string;detail:string;target:string}>= [
 const STEPS=[
   {name:"Proveedores",detail:"Conectar y verificar",target:"supplier-registered",Icon:Link2},
   {name:"Importar",detail:"URL, catálogo o archivo",target:"supplier-import",Icon:PackagePlus},
-  {name:"Publicar",detail:"Revisar ficha, stock y margen",target:"supplier-catalog",Icon:Layers3},
-  {name:"Pedidos",detail:"Ventas y pago confirmado",target:"supplier-orders",Icon:ShoppingBag},
-  {name:"Envíos",detail:"Proveedor y seguimiento",target:"supplier-orders",Icon:Truck},
+  {name:"Vincular",detail:"Confirmar cada variante/SKU",target:"supplier-catalog",Icon:Link2},
+  {name:"Publicar",detail:"Precio, fotos, stock y margen",target:"supplier-catalog",Icon:Layers3},
+  {name:"Pedidos",detail:"Modo manual, automatización y envío",target:"supplier-orders",Icon:ShoppingBag},
 ];
 const ATTENTION=new Set(["supplier_required","supplier_disabled","cost_required","mapping_required","address_required",
   "connector_required","approval_required","action_required","payment_required","cj_creation_unknown","cj_payment_unknown",
@@ -70,6 +70,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const [importing,setImporting]=useState(false);
   const [notice,setNotice]=useState("");
   const [importError,setImportError]=useState("");
+  const [importedProductId,setImportedProductId]=useState("");
   const [aliOrderId,setAliOrderId]=useState("");
   const [aliOrderResult,setAliOrderResult]=useState<any>(null);
   const [aliOrderBusy,setAliOrderBusy]=useState(false);
@@ -139,7 +140,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const importProduct=async()=>{
     const input=sourceUrl.trim();
     if(!input)return;
-    setImporting(true);setNotice("");setImportError("");
+    setImporting(true);setNotice("");setImportError("");setImportedProductId("");
     try{
       let selected:Provider=provider;
       if(input.startsWith("https://")){
@@ -154,7 +155,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           body:JSON.stringify({productInput:input})});
         const result=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(String(result.error||"AliExpress no pudo importar el producto."));
-        setNotice("AliExpress vinculado: "+result.variants+" variantes. Borrador creado; falta revisar costes.");
+        setNotice("AliExpress importado: "+result.variants+" variantes. Abre el borrador y comprueba el SKU, las variantes y el coste antes de publicar.");
+        setImportedProductId(String(result.id||""));
         await onReload();
       }else if(selected==="printful"){
         let id=input;
@@ -171,7 +173,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           body:JSON.stringify({syncProductId:id})});
         const result=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(String(result.error||"Printful no pudo importar el producto."));
-        setNotice("Printful vinculado: "+result.variantCount+" variantes sincronizadas. Revisa la ficha antes de publicar.");
+        setNotice("Printful importado: "+result.variantCount+" variantes sincronizadas. Revisa la ficha antes de publicar.");
+        setImportedProductId(String(result.product?.id||result.productId||result.id||""));
         await onReload();
       }else if(selected==="cj"){
         const previewRes=await fetch("/api/admin/catalog/import-url/preview",{
@@ -190,7 +193,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         const imported=await importRes.json().catch(()=>({}));
         if(!importRes.ok||!imported.product?.id)throw new Error(String(imported.error||"No se pudo guardar el producto de CJ."));
         setNotice(imported.skipped?"El artículo CJ ya existe; revisa el producto vinculado.":
-          "CJ vinculado: "+product.variants.length+" variantes. Borrador creado; comprueba costes y logística.");
+          "CJ importado: "+product.variants.length+" variantes. Comprueba cada SKU, coste y transporte antes de publicar.");
+        setImportedProductId(String(imported.product.id));
         await onReload();
       }else{
         await onImportProductByUrl(input);
@@ -242,6 +246,10 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         </div>}
       </div>}
       {notice&&<p role="status" className="text-sm text-emerald-700">{notice}</p>}
+      {importedProductId&&<button type="button" onClick={()=>onOpenProduct(importedProductId)}
+        className="w-fit rounded-lg border border-primary px-4 py-2 text-sm font-bold text-primary">
+        Siguiente: revisar variantes y publicar <ArrowRight className="ml-1 inline h-4 w-4"/>
+      </button>}
       {importError&&<p role="alert" className="text-sm text-red-700">{importError}</p>}
       <p className="text-xs text-muted-foreground">Se guarda para revisión. Vincular no activa automáticamente pagos ni compras.</p>
     </div>

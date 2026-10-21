@@ -5856,10 +5856,15 @@ async function executeSupplierFulfillment(recordId, { force = false } = {}) {
   }
   const aliExpressBlocker = aliExpressQueueBlocker(record);
   if (aliExpressBlocker) {
-    return {
-      fulfillment: { ...record, status: "connector_required", blocker: aliExpressBlocker },
-      executed: false, manual: false,
+    // Persist the blocked state: the admin must see the same actionable reason
+    // after reloading, rather than a button that appears to do nothing.
+    const updated = {
+      ...record, status: "connector_required", blocker: aliExpressBlocker,
+      updatedAt: new Date().toISOString(),
     };
+    operations.supplierFulfillments[index] = updated;
+    await writeSupplierOperations(operations);
+    return { fulfillment: updated, executed: false, manual: false };
   }
   if (record.mode !== "autopilot") {
     const updated = {
@@ -6690,8 +6695,27 @@ app.get("/api/admin/suppliers/cj/live-mandate",requireAdmin,async (_req,res)=>{
     ]);
     const policy=readCjAutopilotPolicy(policyRaw);
     const mandate=validateCjLiveMandate(mandateRaw,{policy,suppliers:ops.suppliers||[]});
+    // Read-only prerequisites for the UI. Final approval independently checks
+    // the live Stripe capture and matching paid CJ order on POST.
+    const eligibleSuppliers=(ops.suppliers||[]).filter(s=>
+      s.integrationType==="cj"&&s.active!==false&&s.cjSandbox===false &&
+      (policy.allowedSupplierIds||[]).includes(String(s.id)));
+    const supervisedRecordFound=(ops.supplierFulfillments||[]).some(row=>
+      row.cjManualAuthorization?.approvedByAdminAt &&
+      row.cjManualAuthorization?.automatic!==true &&
+      row.paidAt && row.externalOrderId &&
+      ["ordered","shipped","delivered"].includes(String(row.status)));
+    const liveFlagsEnabled=["CJ_LIVE_AUTOPILOT_ENABLED",
+      "CJ_LIVE_ORDER_CREATION_ENABLED","CJ_LIVE_PAYMENT_ENABLED"]
+      .every(name=>process.env[name]==="true");
     res.setHeader("Cache-Control","no-store");
     res.json({active:Boolean(mandate),expiresAt:mandate?.expiresAt||null,
+      activationChecks:{
+        budgetConfigured:Boolean(policy.configured),
+        eligibleSupplierConfigured:eligibleSuppliers.length>0,
+        supervisedRecordFound:Boolean(supervisedRecordFound),
+        liveFlagsEnabled,
+      },
       allowedSupplierIds:mandate?.allowedSupplierIds||[],
       perOrderMaxEur:mandate?.perOrderMaxEur??null,
       dailyMaxEur:mandate?.dailyMaxEur??null,
