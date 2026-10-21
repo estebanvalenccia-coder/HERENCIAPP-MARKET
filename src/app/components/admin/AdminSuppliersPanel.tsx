@@ -385,7 +385,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           importedFromUrl: true,
           fulfillmentType: "dropship",
           supplierId: supplier.id,
-          fulfillmentMode: ((supplier.integrationType === "cj" || (supplier.integrationType === "api" && normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com")) && supplier.fulfillmentMode === "autopilot") ? "autopilot" : "manual",
+          fulfillmentMode: supplier.integrationType === "cj" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : (supplier.integrationType === "api" && normalizedSupplierDomain(String(supplier.sourceHost || "")) === "aliexpress.com" && supplier.fulfillmentMode === "autopilot" ? "autopilot" : "manual"),
           sourceProductUrl: parsed.toString(),
           sourceCatalogUrl: changedSupplier ? parsed.toString() : metadata.sourceCatalogUrl || parsed.toString(),
           sourceHost,
