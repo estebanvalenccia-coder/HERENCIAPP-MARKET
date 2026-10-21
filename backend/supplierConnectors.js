@@ -75,6 +75,11 @@ export function supplierConnectorReadiness(supplier = {}, env = process.env, cre
   if (type === "manual") return { type, state: "manual", automaticOrders: false, reason: "Tramitación manual." };
   if (type === "csv") return { type, state: "file_exchange", automaticOrders: false, reason: "Importación/exportación por archivos; sin sincronización automática." };
   if (type === "api") {
+    const sourceHost = String(supplier?.sourceHost || "").trim().toLowerCase().replace(/^www\./, "");
+    if (sourceHost === "aliexpress.com") {
+      return { type, state: "provider_order_unverified", automaticOrders: false,
+        reason: "AliExpress Autopilot configurado, pendiente de validar permisos de pedidos, variante, envío y pago. Ninguna compra automática está autorizada." };
+    }
     // Banggood uses its own dropship credentials, not the Affiliate API.
     // Merely saving credentials cannot certify API access or authorize buying.
     const host = String(supplier?.sourceHost || "").trim().toLowerCase().replace(/^www\./, "");
