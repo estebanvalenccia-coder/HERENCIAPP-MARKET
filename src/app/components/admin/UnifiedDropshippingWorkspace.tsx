@@ -1,4 +1,4 @@
-import {useMemo,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import {ArrowRight,Layers3,Link2,PackagePlus,ShoppingBag,Truck,Bot,AlertTriangle} from "lucide-react";
 import {AdminAliExpressConnection} from "./AdminAliExpressConnection";
 import {UniversalSupplierBudget} from "./UniversalSupplierBudget";
@@ -66,6 +66,7 @@ function productPublishable(product:any){
 export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduct,
   supplierConnectorStatuses,products,fulfillments,onImportProductByUrl,onReload}:Props){
   const [provider,setProvider]=useState<Provider>("all");
+  const [selectedStep,setSelectedStep]=useState(0);
   const [sourceUrl,setSourceUrl]=useState("");
   const [importing,setImporting]=useState(false);
   const [notice,setNotice]=useState("");
@@ -89,6 +90,25 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
     finally{setAliOrderBusy(false);}
   };
 
+  const [aliAutomationHealth,setAliAutomationHealth]=useState<any>(null);
+  const [aliHealthError,setAliHealthError]=useState("");
+  const [aliHealthBusy,setAliHealthBusy]=useState(false);
+  const checkAliHealth=async()=>{
+    setAliHealthBusy(true);setAliHealthError("");
+    try{
+      const response=await fetch("/api/admin/integrations/aliexpress/automation-health",{
+        credentials:"same-origin",cache:"no-store"});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(String(data.error||"No se pudo comprobar los pedidos AliExpress."));
+      setAliAutomationHealth(data);
+    }catch(error:any){setAliAutomationHealth(null);
+      setAliHealthError(String(error?.message||"El diagnóstico no está disponible."));}
+    finally{setAliHealthBusy(false);}
+  };
+  useEffect(()=>{
+    if(selectedStep===4&&(provider==="all"||provider==="aliexpress"))
+      void checkAliHealth();
+  },[selectedStep,provider]);
   const [activationStatus,setActivationStatus]=useState<any>(null);
   const [activationLoading,setActivationLoading]=useState(false);
   const [activationError,setActivationError]=useState("");
@@ -110,6 +130,10 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
   const current=PROVIDERS.find(item=>item.id===provider)!;
   const filteredProducts=useMemo(()=>products.filter((product:any)=>{
     if(product?.deletedAt||product?.status==="archived")return false;
+    const meta=product?.metadata&&typeof product.metadata==="object"?product.metadata:{};
+    // Keep nursery plants and other own-inventory products out of the dropshipping workflow.
+    if(!(meta.fulfillmentType==="dropship"||meta.sourceProvider||meta.sourceProductUrl||
+      meta.supplierId||meta.importedFromUrl||meta.importedByApi||meta.importedFromFile))return false;
     if(provider!=="all"&&supplierKind(product)!==provider)return false;
     const active=product?.status==="active"&&product?.active!==false;
     return productFilter==="all"||(productFilter==="published"?active:!active);
@@ -157,6 +181,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         if(!response.ok)throw new Error(String(result.error||"AliExpress no pudo importar el producto."));
         setNotice("AliExpress importado: "+result.variants+" variantes. Abre el borrador y comprueba el SKU, las variantes y el coste antes de publicar.");
         setImportedProductId(String(result.id||""));
+        setSelectedStep(2);
         await onReload();
       }else if(selected==="printful"){
         let id=input;
@@ -175,6 +200,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         if(!response.ok)throw new Error(String(result.error||"Printful no pudo importar el producto."));
         setNotice("Printful importado: "+result.variantCount+" variantes sincronizadas. Revisa la ficha antes de publicar.");
         setImportedProductId(String(result.product?.id||result.productId||result.id||""));
+        setSelectedStep(2);
         await onReload();
       }else if(selected==="cj"){
         const previewRes=await fetch("/api/admin/catalog/import-url/preview",{
@@ -195,6 +221,7 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         setNotice(imported.skipped?"El artículo CJ ya existe; revisa el producto vinculado.":
           "CJ importado: "+product.variants.length+" variantes. Comprueba cada SKU, coste y transporte antes de publicar.");
         setImportedProductId(String(imported.product.id));
+        setSelectedStep(2);
         await onReload();
       }else{
         await onImportProductByUrl(input);
@@ -221,6 +248,62 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         <span className="block font-bold text-sm">{item.name}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{item.detail}</span>
       </button>)}
+    </div>
+    <div className="space-y-3 rounded-2xl border border-border bg-background p-4" aria-label="Asistente de cinco pasos">
+      <div>
+        <h3 className="text-lg font-bold">Añade y vende productos en 5 pasos</h3>
+        <p className="text-xs text-muted-foreground">Plantas y productos propios siguen fuera del dropshipping. Cada proveedor requiere un conector real; registrar una API no autoriza compras.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="tablist" aria-label="Pasos para añadir un producto">
+        {STEPS.map((item,index)=><button key={item.name} type="button" role="tab"
+          aria-selected={selectedStep===index} onClick={()=>setSelectedStep(index)}
+          className={"rounded-xl border p-3 text-left "+(selectedStep===index?"border-primary bg-primary/10 ring-1 ring-primary":"bg-background hover:bg-muted/40")}>
+          <span className="flex items-center gap-1 text-xs font-bold"><item.Icon className="h-4 w-4"/>{index+1}. {item.name}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{item.detail}</span>
+        </button>)}
+      </div>
+      <div role="tabpanel" className="space-y-3 rounded-xl bg-muted/20 p-3 text-sm">
+        {selectedStep===0&&<>
+          <p><strong>Paso 1 — Conectar:</strong> selecciona el proveedor y verifica sus credenciales y permisos de catálogo, pedidos y envío. No confundas «API configurada» con «compras autorizadas».</p>
+          <button type="button" onClick={()=>go("supplier-registered")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Abrir conexiones de proveedores <ArrowRight className="inline h-4 w-4"/></button>
+        </>}
+        {selectedStep===1&&<>
+          <p><strong>Paso 2 — Importar:</strong> pega abajo el enlace del artículo o su ID. AliExpress, CJ y Printful se consultan por sus conectores existentes. Los demás necesitan adaptador autorizado o importación de archivo.</p>
+          <p className="text-xs text-muted-foreground">El producto se guardará en borrador; no se publicará automáticamente.</p>
+        </>}
+        {selectedStep===2&&<>
+          <p><strong>Paso 3 — Vincular:</strong> comprueba el ID del producto del proveedor y el SKU/variante exactos de cada opción. Sin esa relación la compra externa no se puede crear.</p>
+          {importedProductId&&<button type="button" onClick={()=>onOpenProduct(importedProductId)} className="rounded-lg border border-primary px-3 py-2 text-sm font-semibold">Revisar el producto que acabas de importar</button>}
+          {!importedProductId&&<button type="button" onClick={()=>go("supplier-catalog")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Abrir productos vinculados</button>}
+        </>}
+        {selectedStep===3&&<>
+          <p><strong>Paso 4 — Publicar:</strong> revisa imágenes, variantes, precio de venta, stock, coste de envío, impuestos, margen y requisitos legales antes de activar la ficha.</p>
+          <p className="text-xs font-semibold">Publicar una ficha no significa que el proveedor acepte automáticamente pedidos.</p>
+          <button type="button" onClick={()=>go("supplier-catalog")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Revisar y publicar productos</button>
+        </>}
+        {selectedStep===4&&<>
+          <p><strong>Paso 5 — Vender y automatizar:</strong> después de confirmar el cobro, cada artículo externo debe generar una tarea de proveedor con SKU, variante, costes y envío verificados. Las compras reales siguen sujetas a límites y autorización.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={()=>go("supplier-orders")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Abrir cola de pedidos</button>
+            {(provider==="all"||provider==="aliexpress")&&<button type="button" disabled={aliHealthBusy} onClick={()=>void checkAliHealth()} className="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+              {aliHealthBusy?"Comprobando…":"Diagnosticar AliExpress"}
+            </button>}
+          </div>
+          {aliHealthError&&<p role="alert" className="text-red-700">{aliHealthError}</p>}
+          {aliAutomationHealth&&(provider==="all"||provider==="aliexpress")&&<div className="space-y-2 rounded-lg border bg-background p-3" aria-label="Diagnóstico de pedidos AliExpress">
+            <p className="font-bold">AliExpress · {aliAutomationHealth.blockedQueueItems??0} pedidos con bloqueos identificados</p>
+            <p className="text-xs">Crear sin pagar: {aliAutomationHealth.unpaidOrderCreationEnabled?"Habilitado":"Desactivado"} · Ejecutor: {aliAutomationHealth.automaticUnpaidCreationEnabled?"Habilitado":"Desactivado"} · Pago automático al proveedor: no implementado.</p>
+            {(aliAutomationHealth.queueDiagnostics||[]).length===0?<p className="text-xs text-muted-foreground">No hay pedidos AliExpress candidatos en la cola.</p>:
+              (aliAutomationHealth.queueDiagnostics||[]).map((entry:any)=><div key={entry.fulfillmentId} className="rounded-lg border p-2">
+                <p className="font-semibold">Pedido {String(entry.orderId||"").slice(0,12)} · {entry.status}</p>
+                {entry.issues?.length?<ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
+                  {entry.issues.map((issue:string,index:number)=><li key={index}>{issue}</li>)}
+                </ul>:<p className="text-xs">Controles locales correctos; falta verificación LIVE antes de crear el pedido sin pagar.</p>}
+              </div>)}
+          </div>}
+          <p className="text-xs text-muted-foreground">CJ dispone de ejecutor de compras con mandato y topes. En AliExpress el flujo actual solo crea pedidos sin pagar: requiere completar el pago al proveedor.</p>
+        </>}
+      </div>
     </div>
     <div className="space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
       <div><h3 className="font-bold">Importar y vincular producto</h3>
@@ -292,15 +375,6 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
         {aliOrderResult&&<p role="status" className="text-xs">Pedido {aliOrderResult.orderId} · Estado: {aliOrderResult.status} · Pago proveedor: {aliOrderResult.paymentStatus} · Sin cargos realizados.</p>}
       </div>}
       {provider==="aliexpress"&&<details className="rounded-lg border border-border bg-background p-3"><summary className="cursor-pointer text-sm font-semibold">Estado de conexión, catálogo y opciones avanzadas de AliExpress</summary><div className="mt-3"><AdminAliExpressConnection/></div></details>}
-    </div>
-    <div>
-      <h3 className="font-bold">Las cinco etapas (para todos los proveedores)</h3>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {STEPS.map((item,index)=><button key={item.name} type="button" onClick={()=>go(item.target)}
-          className="rounded-xl border bg-background p-3 text-left hover:bg-muted/40">
-          <span className="flex items-center gap-2 text-xs font-bold text-primary"><item.Icon className="h-4 w-4"/>{index+1}. {item.name}</span>
-          <span className="mt-2 block text-xs text-muted-foreground">{item.detail}</span></button>)}
-      </div>
     </div>
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-2xl border border-border p-4 space-y-3">
@@ -383,8 +457,8 @@ export function UnifiedDropshippingWorkspace({onNavigate,onAdvanced,onOpenProduc
           <p className="mt-1 text-muted-foreground">Solo ante pago Stripe verificado, cotización y margen válidos.</p>
         </div>
         <div className="rounded-lg border p-3"><strong className="block text-sm">AliExpress</strong>
-          <p>Compras: No implementadas</p><p>Pagos: No implementados</p>
-          <p className="mt-1 text-muted-foreground">La conexión de catálogo no permite comprar.</p>
+          <p>Creación sin pagar: implementada, con autorización y controles previos</p><p>Pago automático al proveedor: no implementado</p>
+          <p className="mt-1 text-muted-foreground">La conexión de catálogo no autoriza compras. Comprueba el diagnóstico del paso 5.</p>
         </div>
       </div>}
     </div>
