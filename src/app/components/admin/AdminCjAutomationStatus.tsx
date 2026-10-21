@@ -26,6 +26,7 @@ export function AdminCjAutomationStatus(){
   const [liveMandate,setLiveMandate]=useState<LiveMandate|null>(null);
   const [confirmation,setConfirmation]=useState("");
   const [spendingConsent,setSpendingConsent]=useState(false);
+  const [activationError,setActivationError]=useState("");
   const reload=async()=>{
     const [value,limits,mandate]=await Promise.all([
       backendApi.getCjAutomationReadiness(),
@@ -78,7 +79,12 @@ export function AdminCjAutomationStatus(){
   const activateLive=async()=>{
     if(busy||!spendingConsent||confirmation!=="AUTORIZO COMPRAS AUTOMATICAS CJ"||
       !guardrails?.policy.configured)return;
-    setBusy("activate");setError("");
+    if(!liveMandate?.activationChecks ||
+      !Object.values(liveMandate.activationChecks).every(Boolean)){
+      setActivationError("Todavía faltan requisitos de CJ. Revisa la lista de comprobaciones antes de autorizar cargos.");
+      return;
+    }
+    setBusy("activate");setActivationError("");
     try{
       await backendApi.activateCjLiveMandate({
         confirmation,acknowledgeRealSupplierDebits:true,
@@ -89,7 +95,10 @@ export function AdminCjAutomationStatus(){
       });
       setConfirmation("");setSpendingConsent(false);
       await reload();
-    }catch(e:any){setError(String(e?.message||"No se pudo autorizar CJ real."));}
+    }catch(e:any){
+      setActivationError("Autorización CJ rechazada: "+String(e?.message||"Comprueba la compra supervisada y los permisos de la API."));
+      await reload().catch(()=>{});
+    }
     finally{setBusy("");}
   };
   const revokeLive=async()=>{
@@ -111,6 +120,13 @@ export function AdminCjAutomationStatus(){
     }catch(e:any){setError(String(e?.message||"La simulación no pudo validar el pedido."));}
     finally{setBusy("");}
   };
+  const activationChecks=liveMandate?.activationChecks;
+  const pendingChecks=[
+    !activationChecks?.budgetConfigured && "Guardar primero los límites de gasto y margen.",
+    !activationChecks?.eligibleSupplierConfigured && "Activar un proveedor CJ real y autorizado dentro de esos límites.",
+    !activationChecks?.supervisedRecordFound && "Completar y registrar una compra CJ real supervisada antes del piloto automático.",
+    !activationChecks?.liveFlagsEnabled && "Habilitar las tres protecciones de compras reales en el backend de Railway.",
+  ].filter((message):message is string=>Boolean(message));
   return <section id="supplier-cj-automation" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
     <p className="text-sm font-bold uppercase tracking-wide text-primary">CJdropshipping · Automatización segura</p>
     <h2 className="mt-1 text-xl font-black">Centro de control de pedidos CJ</h2>
@@ -313,6 +329,11 @@ export function AdminCjAutomationStatus(){
         </p>}
       </div>
       {!liveMandate?.active&&<>
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950" role="status">
+          <p className="font-bold">{pendingChecks.length ? "Activación bloqueada: completa estos requisitos" : "Comprobaciones preliminares completadas"}</p>
+          {pendingChecks.length>0 && <ul className="mt-2 list-disc space-y-1 pl-5">{pendingChecks.map(item=><li key={item}>{item}</li>)}</ul>}
+          <p className="mt-2">Incluso con estas comprobaciones superadas, la autorización verificará en directo el pago Stripe y la primera compra CJ supervisada. No se harán cargos al comprobar el estado.</p>
+        </div>
         <label className="mt-3 block text-xs font-semibold">
           Para autorizar compras reales, escribe: AUTORIZO COMPRAS AUTOMATICAS CJ
           <input type="text" value={confirmation} onChange={e=>setConfirmation(e.target.value)}
@@ -327,10 +348,11 @@ export function AdminCjAutomationStatus(){
         </label>
         <button type="button" onClick={()=>void activateLive()}
           disabled={Boolean(busy)||!guardrails?.policy.configured||!spendingConsent||
-            confirmation!=="AUTORIZO COMPRAS AUTOMATICAS CJ"}
+            confirmation!=="AUTORIZO COMPRAS AUTOMATICAS CJ"||pendingChecks.length>0}
           className="mt-3 rounded-xl border border-primary px-4 py-2.5 text-sm font-bold disabled:opacity-50">
           {busy==="activate"?"Comprobando condiciones…":"Autorizar CJ Autopilot real"}
         </button>
+        {activationError&&<p role="alert" className="mt-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-900">{activationError}</p>}
       </>}
       {liveMandate?.active&&<button type="button" onClick={()=>void revokeLive()}
         disabled={Boolean(busy)}
