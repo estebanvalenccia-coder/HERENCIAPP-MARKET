@@ -8192,7 +8192,10 @@ app.post("/api/pos/suppliers", requireAdmin, async (req, res) => {
     };
     if (!supplier.name) return res.status(400).json({ error: "El proveedor necesita un nombre" });
     if (supplier.email && !isValidEmail(supplier.email)) return res.status(400).json({ error: "Email de proveedor inválido" });
-    if (supplier.fulfillmentMode === "autopilot" && integrationType !== "cj") {
+    const aliExpressPreparedMode = integrationType === "api" && supplier.sourceHost === "aliexpress.com";
+    // Autopilot is a requested operating mode, NOT consent or readiness to make supplier purchases.
+    // The AliExpress-specific worker and provider guard remain fail-closed until separately verified.
+    if (supplier.fulfillmentMode === "autopilot" && integrationType !== "cj" && !aliExpressPreparedMode) {
       const status = supplierConnectorReadiness(supplier, process.env, crypto.createHash);
       if (!status.automaticOrders || integrationType !== "webhook") {
         return res.status(409).json({ error: "No se puede activar compra automática: " + status.reason });
