@@ -113,3 +113,17 @@ test("new webhook purchase dispatch verifies Stripe, reserves idempotency and fa
   assert.match(backend, /verifiedExternalId/);
   assert.match(queue, /supplier_dispatch_unknown/);
 });
+
+
+test("AliExpress can be configured for Autopilot pending verification without authorizing supplier purchases", () => {
+  const supplier={ integrationType:"api", sourceHost:"aliexpress.com", fulfillmentMode:"autopilot" };
+  const readiness=supplierConnectorReadiness(supplier, {ALIEXPRESS_APP_KEY:"test-key",ALIEXPRESS_LIVE_ORDER_CREATION_ENABLED:"true"}, crypto.createHash);
+  assert.equal(readiness.state,"provider_order_unverified");
+  assert.equal(readiness.automaticOrders,false);
+  assert.match(readiness.reason,/Ninguna compra automática está autorizada/);
+  const server=readFileSync(new URL("./server.js",import.meta.url),"utf8");
+  const admin=readFileSync(new URL("../src/app/components/admin/AdminSuppliersPanel.tsx",import.meta.url),"utf8");
+  assert.match(server,/aliExpressPreparedMode = integrationType === "api" && supplier\.sourceHost === "aliexpress.com"/);
+  assert.match(admin,/aliExpressPreparedMode = form\.integrationType === "api"/);
+  assert.match(admin,/pendiente de validar el conector/);
+});
