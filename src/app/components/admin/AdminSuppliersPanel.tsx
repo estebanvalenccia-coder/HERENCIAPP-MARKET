@@ -489,7 +489,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       cjMaxPaymentUsd: Number(supplier.cjMaxPaymentUsd || 0),
       active: supplier.active !== false,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.getElementById("supplier-new")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const testSupplierWebhook = async (supplierId: string) => {
@@ -1526,9 +1526,12 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           <select value={form.fulfillmentMode} onChange={(e) => setForm({ ...form, fulfillmentMode: e.target.value as SupplierMode })} className="rounded-xl border border-border bg-background p-3">
             <option value="manual">🖱️ Manual / 1 clic</option>
             <option value="autopilot" disabled={form.integrationType !== "cj" &&
+              !(form.integrationType === "api" && normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com") &&
               !(form.integrationType === "webhook" &&
                 supplierConnectorStatuses.some(item => item.supplierId === String(form.id || "") && item.automaticOrders))}>
-              🤖 Autopilot (conector verificado)
+              {form.integrationType === "api" && normalizedSupplierDomain(String(form.sourceHost || "")) === "aliexpress.com"
+                ? "🤖 Autopilot (pendiente de verificar API y pagos)"
+                : "🤖 Autopilot (conector verificado)"}
             </option>
           </select>
           <select value={form.integrationType}
