@@ -134,8 +134,7 @@ export function Home() {
   };
 
   const visibleHomeCategories = market.home.categories.filter(
-    (item) => collectionStatus[collectionIdForCard(item)] !== "draft" &&
-      collectionStatus[collectionIdForCard(item)] !== "archived"
+    (item) => !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
@@ -496,7 +495,7 @@ export function Home() {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
-        {[market.dulce, market.moda].map((promo, index) => (
+        {[market.dulce, market.moda].filter((promo) => !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo.href === "/dulce" ? "dulce" : "moda"])).map((promo) => (
           <Link
             key={promo.title}
             to={promo.href}
@@ -505,12 +504,12 @@ export function Home() {
             <img
               src={promo.imageUrl}
               alt=""
-              onError={(event) => imageFallback(event, index === 0 ? IMAGE_FALLBACKS.dulce : IMAGE_FALLBACKS.moda)}
+              onError={(event) => imageFallback(event, promo.href === "/dulce" ? IMAGE_FALLBACKS.dulce : IMAGE_FALLBACKS.moda)}
               className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
             />
             <div
               className={`absolute inset-0 ${
-                index === 0
+                promo.href === "/dulce"
                   ? "bg-gradient-to-r from-[#6b3327]/80 via-[#7d4030]/52 to-transparent"
                   : "bg-gradient-to-r from-[#173d2a]/88 via-[#173d2a]/50 to-transparent"
               }`}
