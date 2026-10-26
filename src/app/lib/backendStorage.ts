@@ -783,7 +783,7 @@ export const backendApi = {
   },
 
   async adminLogin(username: string, password: string, otp = "") {
-    return request<{ ok: boolean }>("/api/admin/login", {
+    return request<{ ok: boolean; mustChangePassword: boolean; username: string; role: string }>("/api/admin/login", {
       method: "POST",
       body: JSON.stringify({ username, password, otp }),
     });
@@ -794,7 +794,25 @@ export const backendApi = {
   },
 
   async adminSession() {
-    return request<{ authenticated: boolean }>("/api/admin/session");
+    return request<{ authenticated: boolean; username?: string | null; role?: string | null; mustChangePassword?: boolean }>("/api/admin/session");
+  },
+
+  async adminAccounts() {
+    return request<{ users: Array<{ id: string; username: string; role: string; state: string; legacy?: boolean; mustChangePassword?: boolean }> }>("/api/admin/accounts");
+  },
+
+  async adminCreateAccount(username: string, password: string) {
+    return request<{ ok: boolean }>("/api/admin/accounts", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
+  async adminChangePassword(currentPassword: string, newPassword: string) {
+    return request<{ ok: boolean }>("/api/admin/password/change", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
   },
 
   async sendAdminSmokeEmail(email = "") {
