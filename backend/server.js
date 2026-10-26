@@ -1,4 +1,6 @@
 import { registerSupportV2 } from "./supportV2.js";
+import { verifyAdminPassword } from "./adminAccounts.js";
+import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword } from "./adminAccountStore.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
@@ -353,16 +355,18 @@ function sign(value) {
   return crypto.createHmac("sha256", sessionSecret).update(value).digest("hex");
 }
 
-function createAdminToken() {
-  const payload = Buffer.from(
-    JSON.stringify({ role: "admin", iat: Date.now() })
-  ).toString("base64url");
-
+function createAdminToken(account = null) {
+  const claims = account ? {
+    role: account.mustChangePassword ? "admin-onboarding" : "admin",
+    iat: Date.now(), accountId: account.id, username: account.username,
+    sessionVersion: account.sessionVersion,
+  } : { role: "admin", iat: Date.now() };
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function isValidAdminToken(token) {
-  if (!token || !token.includes(".")) return false;
+function decodeAdminToken(token) {
+  if (!token || !token.includes(".")) return null;
 
   const [payload, signature] = token.split(".");
   const expected = sign(payload);
@@ -373,7 +377,7 @@ function isValidAdminToken(token) {
     receivedBuffer.length !== expectedBuffer.length ||
     !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
   ) {
-    return false;
+    return null;
   }
 
   try {
@@ -386,19 +390,31 @@ function isValidAdminToken(token) {
     const age = Date.now() - issuedAt;
 
     return (
-      decoded.role === "admin" &&
+      ["admin", "admin-onboarding"].includes(decoded.role) &&
       Number.isFinite(issuedAt) &&
       issuedAt > 0 &&
       age >= -5 * 60 * 1000 &&
       age < maxAgeMs
-    );
+    ) ? decoded : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
+function isValidAdminToken(token) {
+  return decodeAdminToken(token)?.role === "admin";
+}
+function currentAdminClaims(req) {
+  const decoded = decodeAdminToken(parseCookies(req).admin_session);
+  if (!decoded) return null;
+  if (decoded.accountId && (
+    !req.verifiedAdminAccount ||
+    req.verifiedAdminAccount.id !== decoded.accountId
+  )) return null;
+  return decoded;
+}
 function isAdmin(req) {
-  return isValidAdminToken(parseCookies(req).admin_session);
+  return currentAdminClaims(req)?.role === "admin";
 }
 
 function requireAdmin(req, res, next) {
@@ -1419,6 +1435,25 @@ app.use(express.json({ limit: "10mb" }));
 
 app.use(requireTrustedBrowserRequest(isAllowedOrigin));
 
+// Account-backed sessions are checked against current database state before any admin
+// middleware or protected storage route can accept the signed cookie.
+app.use(async (req, _res, next) => {
+  const claims = decodeAdminToken(parseCookies(req).admin_session);
+  if (!claims?.accountId) return next();
+  try {
+    const account = await findAdminById(claims.accountId);
+    if (account && account.state === "active" &&
+        account.username === claims.username &&
+        account.sessionVersion === claims.sessionVersion &&
+        claims.role === (account.mustChangePassword ? "admin-onboarding" : "admin")) {
+      req.verifiedAdminAccount = account;
+    }
+  } catch (error) {
+    console.warn("Admin session lookup unavailable:", error?.message || error);
+  }
+  next();
+});
+
 const authRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 12,
@@ -1577,44 +1612,33 @@ app.get("/api/admin/auth-config", (_req, res) => {
   res.json({ totpRequired: Boolean(adminTotpSecret) });
 });
 
-app.post("/api/admin/login", (req, res) => {
-  if (!adminAuthConfigured) {
-    return res.status(503).json({
-      error: "Acceso admin no configurado en el servidor",
-    });
-  }
-
+// Preserve the existing environment-based owner login during migration.
+app.post("/api/admin/login", async (req, res) => {
+  if (!adminAuthConfigured) return res.status(503).json({ error: "Acceso admin no configurado en el servidor" });
   const { username, password, otp } = req.body || {};
   const normalizedUsername = String(username || "").trim();
   const submittedPassword = String(password || "");
-
-  const usernameOk = normalizedUsername === adminUsername;
-  const passwordOk =
-    submittedPassword === adminPassword ||
-    submittedPassword.trim() === adminPassword.trim();
-
-  if (!usernameOk || !passwordOk) {
-    return res.status(401).json({
-      error: "Usuario o contraseña incorrectos",
-      field: !usernameOk ? "username" : "password",
-    });
+  const ownerValid = normalizedUsername === adminUsername &&
+    (submittedPassword === adminPassword || submittedPassword.trim() === adminPassword.trim());
+  if (ownerValid) {
+    if (!verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
+    res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(createAdminToken())}; ${cookieOptions(60 * 60 * 12)}`);
+    return res.json({ ok: true, mustChangePassword: false, username: adminUsername, role: "owner" });
   }
-
-  if (!verifyAdminTotp(otp)) {
-    return res.status(401).json({
-      error: "Código de verificación incorrecto",
-      field: "otp",
-    });
+  try {
+    // Seed is deliberately inert unless a separate production environment secret is provided.
+    if (normalizedUsername.toLowerCase() === "christian") await bootstrapChristianFromEnvironment();
+    const account = await findAdminByUsername(normalizedUsername);
+    if (!account || account.state !== "active" || !verifyAdminPassword(submittedPassword, account.passwordHash)) {
+      return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+    }
+    if (!verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
+    res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(createAdminToken(account))}; ${cookieOptions(60 * 60 * 12)}`);
+    return res.json({ ok: true, mustChangePassword: account.mustChangePassword, username: account.username, role: account.role });
+  } catch (error) {
+    console.error("Admin login database error:", error?.message || error);
+    return res.status(503).json({ error: "No se pudo consultar el acceso administrativo" });
   }
-
-  res.setHeader(
-    "Set-Cookie",
-    `admin_session=${encodeURIComponent(createAdminToken())}; ${cookieOptions(
-      60 * 60 * 12
-    )}`
-  );
-
-  res.json({ ok: true });
 });
 
 app.post("/api/admin/logout", (_req, res) => {
@@ -1623,7 +1647,57 @@ app.post("/api/admin/logout", (_req, res) => {
 });
 
 app.get("/api/admin/session", (req, res) => {
-  res.json({ authenticated: isAdmin(req) });
+  const claims = currentAdminClaims(req);
+  res.json({
+    authenticated: Boolean(claims),
+    mustChangePassword: claims?.role === "admin-onboarding",
+    username: claims?.username || (claims ? adminUsername : null),
+    role: claims ? (claims.accountId ? req.verifiedAdminAccount.role : "owner") : null,
+  });
+});
+
+app.get("/api/admin/accounts", requireAdmin, async (req, res) => {
+  try {
+    const users = await listAdminAccounts();
+    res.json({ users: [
+      { id: "legacy-owner", username: adminUsername, role: "owner", state: "active", legacy: true },
+      ...users,
+    ] });
+  } catch (error) {
+    res.status(503).json({ error: "No se pudieron cargar los administradores" });
+  }
+});
+
+app.post("/api/admin/accounts", requireAdmin, async (req, res) => {
+  try {
+    const { username, password, email } = req.body || {};
+    if (!password || typeof password !== "string") return res.status(400).json({ error: "Indica una contraseña provisional" });
+    if (String(username || "").trim() === adminUsername) return res.status(409).json({ error: "Este usuario ya existe" });
+    const user = await createAdminWithPassword({ username, password, role: "admin", email: email || null });
+    res.status(201).json({ ok: true, user });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo crear el administrador" });
+  }
+});
+
+app.post("/api/admin/password/change", authRateLimit, async (req, res) => {
+  const claims = currentAdminClaims(req);
+  if (!claims) return res.status(401).json({ error: "Inicia sesión para cambiar tu contraseña" });
+  if (!claims.accountId) return res.status(409).json({
+    error: "La contraseña del administrador principal se gestiona desde la configuración segura del servidor",
+  });
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 1024) {
+    return res.status(400).json({ error: "La contraseña nueva debe tener al menos 12 caracteres" });
+  }
+  if (newPassword === currentPassword) return res.status(400).json({ error: "Elige una contraseña distinta" });
+  try {
+    const changed = await updateAdminPassword(claims.accountId, currentPassword, newPassword);
+    res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(createAdminToken(changed))}; ${cookieOptions(60 * 60 * 12)}`);
+    res.json({ ok: true, mustChangePassword: false, username: changed.username, role: changed.role });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "No se pudo cambiar la contraseña" });
+  }
 });
 
 function serverGeminiKey() {
