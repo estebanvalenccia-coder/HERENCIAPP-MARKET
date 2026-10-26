@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
 import { Toaster } from "sonner";
-import { backendStorage } from "../lib/backendStorage";
+import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
   defaultSiteContent,
   isExternalHref,
@@ -22,6 +22,7 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [search, setSearch] = useState("");
@@ -155,7 +156,35 @@ export function Layout() {
     setSearch(params.get("buscar") || "");
   }, [location.pathname, location.search]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const result = await backendApi.listCommerceCollections({ includeArchived: true });
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const row of Array.isArray(result.collections) ? result.collections : []) {
+          next[String(row.id)] = String(row.status || "active");
+        }
+        setCollectionStatus(next);
+      } catch {
+        // Preserve navigation if collection service is temporarily unavailable.
+      }
+    };
+    void refresh();
+    window.addEventListener("backend-storage", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("backend-storage", refresh);
+    };
+  }, []);
+
   const market = useMemo(() => getMarketExperience(site), [site]);
+  const visibleNavigation = market.navigation.filter((item) => {
+    const path = String(item.href || "").split("?")[0].toLowerCase();
+    const collectionId = path === "/dulce" ? "dulce" : path === "/moda" ? "moda" : "";
+    return !collectionId || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionId]);
+  });
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -215,7 +244,7 @@ export function Layout() {
               </Link>
 
               <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
-                {market.navigation.map((item) =>
+                {visibleNavigation.map((item) =>
                   isPlantsNavigationItem(item) ? (
                     <PlantsNavMenu
                       key={item.href}
@@ -321,7 +350,7 @@ export function Layout() {
             </div>
 
             <nav className="flex items-center gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
-              {market.navigation.map((item) =>
+              {visibleNavigation.map((item) =>
                 isPlantsNavigationItem(item) ? (
                   <PlantsMobileNavMenu
                     key={item.href}
