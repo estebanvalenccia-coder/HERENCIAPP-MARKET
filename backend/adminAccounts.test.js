@@ -42,3 +42,17 @@ test("el usuario pendiente no inicia sesión y el primer acceso exige actualizar
   assert.equal(activated.mustChangePassword, true);
   assert.throws(() => activateAdminAccount(activated, "otra-frase-secreta"));
 });
+
+test("1234 solo es válida como contraseña temporal, no como clave definitiva", () => {
+  const pending = createPendingAdmin("christian", "admin");
+  assert.throws(() => hashAdminPassword("1234"));
+  const activated = activateAdminAccount(pending, "1234", { temporary: true });
+  assert.equal(verifyAdminPassword("1234", activated.passwordHash), true);
+  assert.equal(canAccessAdminSettings(activated), false);
+  assert.throws(() => changeAdminPassword(activated, "1234", "1234"));
+  const changed = changeAdminPassword(activated, "1234", "otra-clave-muy-segura-2026");
+  assert.equal(changed.mustChangePassword, false);
+  assert.equal(changed.sessionVersion, activated.sessionVersion + 1);
+  assert.equal(verifyAdminPassword("1234", changed.passwordHash), false);
+  assert.equal(canAccessAdminSettings(changed), true);
+});
