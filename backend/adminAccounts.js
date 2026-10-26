@@ -14,9 +14,9 @@ export function validateAdminRole(value) {
   return value;
 }
 
-export function hashAdminPassword(password) {
-  if (typeof password !== "string" || password.length < 12 || password.length > 1024) {
-    throw new Error("La contraseña debe contener entre 12 y 1024 caracteres");
+export function hashAdminPassword(password, { temporary = false } = {}) {
+  if (typeof password !== "string" || password.length < (temporary ? 4 : 12) || password.length > 1024) {
+    throw new Error(temporary ? "La contraseña provisional debe contener al menos 4 caracteres" : "La nueva contraseña debe contener entre 12 y 1024 caracteres");
   }
   const salt = crypto.randomBytes(24);
   const derived = crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
@@ -61,6 +61,7 @@ export function changeAdminPassword(account, currentPassword, nextPassword) {
     ...account,
     passwordHash: hashAdminPassword(nextPassword),
     passwordChangedAt: new Date().toISOString(),
+    mustChangePassword: false,
     sessionVersion: (account.sessionVersion || 0) + 1,
   };
 }
@@ -72,12 +73,12 @@ export function changeAdminPassword(account, currentPassword, nextPassword) {
 export function canAdminSignIn(account) {
   return Boolean(account && account.state === "active" && account.passwordHash);
 }
-export function activateAdminAccount(account, password) {
+export function activateAdminAccount(account, password, options = {}) {
   if (!account || account.state !== "pending") throw new Error("Cuenta no pendiente");
   return {
     ...account,
     state: "active",
-    passwordHash: hashAdminPassword(password),
+    passwordHash: hashAdminPassword(password, options),
     mustChangePassword: true,
     sessionVersion: (account.sessionVersion || 0) + 1,
   };
