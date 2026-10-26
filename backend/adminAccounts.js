@@ -64,3 +64,24 @@ export function changeAdminPassword(account, currentPassword, nextPassword) {
     sessionVersion: (account.sessionVersion || 0) + 1,
   };
 }
+
+/**
+ * Pending account lifecycle. An account may be listed but must never authenticate
+ * until it has completed credential enrollment through a trusted owner workflow.
+ */
+export function canAdminSignIn(account) {
+  return Boolean(account && account.state === "active" && account.passwordHash);
+}
+export function activateAdminAccount(account, password) {
+  if (!account || account.state !== "pending") throw new Error("Cuenta no pendiente");
+  return {
+    ...account,
+    state: "active",
+    passwordHash: hashAdminPassword(password),
+    mustChangePassword: true,
+    sessionVersion: (account.sessionVersion || 0) + 1,
+  };
+}
+export function canAccessAdminSettings(account) {
+  return canAdminSignIn(account) && !account.mustChangePassword;
+}
