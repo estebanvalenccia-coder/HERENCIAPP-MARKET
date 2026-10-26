@@ -1,0 +1,119 @@
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { backendApi } from "../../lib/backendStorage";
+
+type AdminUser = {
+  id: string; username: string; role: string; state: string;
+  email?: string | null; legacy?: boolean; mustChangePassword?: boolean;
+};
+
+export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boolean }) {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const reload = async () => {
+    if (previewOnly) return;
+    setLoading(true);
+    try { setUsers((await backendApi.adminAccounts()).users); }
+    catch (e: any) { setError(e?.message || "No se pudieron consultar las cuentas"); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void reload(); }, [previewOnly]);
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (previewOnly) return;
+    setCreating(true); setError("");
+    try {
+      await backendApi.adminCreateAccount(username, password);
+      setUsername(""); setPassword("");
+      toast.success("Cuenta creada. La contraseña debe cambiarse en el primer acceso.");
+      await reload();
+    } catch (e: any) { setError(e?.message || "No se pudo crear la cuenta"); }
+    finally { setCreating(false); }
+  };
+  return <div className="max-w-4xl space-y-6">
+    <header>
+      <h3 className="text-xl font-bold">Usuarios y permisos</h3>
+      <p className="text-sm text-muted-foreground mt-1">Cada administrador tiene un usuario y contraseña independientes.</p>
+    </header>
+    {previewOnly && <p role="status">En la vista de demostración no se pueden gestionar cuentas.</p>}
+    {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-rose-900">{error}</p>}
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <h4 className="font-semibold mb-4">Administradores existentes</h4>
+      {loading ? <p>Cargando cuentas…</p> : (
+        <div className="space-y-3">
+          {users.map((user) => <div key={user.id} className="flex items-center justify-between gap-3 border-b border-border/60 py-3 last:border-0">
+            <div><p className="font-medium">{user.username}</p>
+              <p className="text-xs text-muted-foreground">{user.role === "owner" ? "Administrador principal" : "Administrador"} · {user.mustChangePassword ? "Cambio de contraseña pendiente" : "Activo"}</p>
+            </div>
+            <span className="text-xs rounded-lg bg-muted px-3 py-1">{user.legacy ? "Cuenta principal" : user.state}</span>
+          </div>)}
+        </div>
+      )}
+    </section>
+    <form onSubmit={create} className="space-y-4 rounded-2xl border border-border bg-card p-5">
+      <h4 className="font-semibold">Dar de alta un administrador</h4>
+      <label className="block text-sm font-medium">Nombre de usuario
+        <input autoComplete="off" required minLength={3} maxLength={32} pattern="[a-zA-Z][a-zA-Z0-9._-]*" value={username} onChange={(e) => setUsername(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
+      </label>
+      <label className="block text-sm font-medium">Contraseña provisional
+        <input autoComplete="new-password" type="password" required minLength={4} value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
+      </label>
+      <p className="text-xs text-muted-foreground">La contraseña provisional solo permite configurar una nueva contraseña. Si hay verificación en dos pasos, también se solicitará al entrar.</p>
+      <button disabled={creating || previewOnly} type="submit" className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50">
+        {creating ? "Creando…" : "Crear administrador"}
+      </button>
+    </form>
+  </div>;
+}
+
+export function AdminPasswordChange({ mandatory = false, onChanged, onLogout, legacy = false }: {
+  mandatory?: boolean; onChanged: () => void; onLogout?: () => void; legacy?: boolean;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [repeatedPassword, setRepeatedPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  if (legacy) return <div className="max-w-xl rounded-2xl border border-border bg-card p-6">
+    <h3 className="font-bold text-lg">Contraseña de la cuenta principal</h3>
+    <p className="mt-3 text-sm text-muted-foreground">Esta cuenta todavía utiliza las credenciales seguras configuradas en el servidor. Cambia ADMIN_PASSWORD desde la configuración privada del backend.</p>
+  </div>;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (newPassword !== repeatedPassword) return setError("Las contraseñas nuevas no coinciden.");
+    if (newPassword.length < 12) return setError("La nueva contraseña debe tener al menos 12 caracteres.");
+    setSubmitting(true);
+    try {
+      await backendApi.adminChangePassword(currentPassword, newPassword);
+      setCurrentPassword(""); setNewPassword(""); setRepeatedPassword("");
+      toast.success("Contraseña cambiada correctamente");
+      onChanged();
+    } catch (e: any) { setError(e?.message || "No se pudo cambiar la contraseña"); }
+    finally { setSubmitting(false); }
+  };
+  return <div className="mx-auto max-w-xl rounded-2xl border border-border bg-card p-6 shadow-sm">
+    <h3 className="text-xl font-bold">{mandatory ? "Configura tu contraseña para continuar" : "Cambiar contraseña"}</h3>
+    <p className="mb-5 mt-2 text-sm text-muted-foreground">{mandatory ? "Por seguridad, debes sustituir la contraseña provisional antes de usar el panel." : "Actualiza la contraseña de tu cuenta."}</p>
+    <form onSubmit={submit} className="space-y-4">
+      {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+      <label className="block text-sm font-medium">Contraseña actual o provisional
+        <input autoComplete="current-password" type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
+      </label>
+      <label className="block text-sm font-medium">Nueva contraseña (mínimo 12 caracteres)
+        <input autoComplete="new-password" type="password" minLength={12} required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
+      </label>
+      <label className="block text-sm font-medium">Confirmar nueva contraseña
+        <input autoComplete="new-password" type="password" minLength={12} required value={repeatedPassword} onChange={e => setRepeatedPassword(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
+      </label>
+      <button disabled={submitting} type="submit" className="w-full rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50">
+        {submitting ? "Guardando…" : "Guardar nueva contraseña"}
+      </button>
+    </form>
+    {mandatory && onLogout && <button onClick={onLogout} className="mt-4 w-full text-sm text-muted-foreground underline">Cerrar sesión</button>}
+  </div>;
+}

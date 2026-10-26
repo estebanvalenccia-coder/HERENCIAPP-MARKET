@@ -53,6 +53,7 @@ import { AdminOffers } from "../components/admin/AdminOffers";
 import { AdminPublications } from "../components/admin/AdminPublications";
 import { AdminContent } from "../components/admin/AdminContent";
 import { AdminSettings } from "../components/admin/AdminSettings";
+import { AdminUsersManager, AdminPasswordChange } from "../components/admin/AdminAccountAccess";
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
 import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
@@ -119,6 +120,8 @@ type AdminSection =
   | "inventory-locations"
   | "inventory-lots"
   | "support"
+  | "admin-users"
+  | "admin-profile"
   | "settings";
 
 type AdminOrderAlert = {
@@ -141,6 +144,9 @@ export function AdminDashboard() {
   const previewOnly=typeof window!=="undefined"&&NEURAL_PREVIEW_HOST.test(window.location.hostname);
 
   const [isAuthenticated, setIsAuthenticated] = useState(previewOnly);
+  const [sessionUsername, setSessionUsername] = useState(previewOnly ? "demo" : "");
+  const [sessionRole, setSessionRole] = useState(previewOnly ? "owner" : "");
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   const [isCheckingSession, setIsCheckingSession] = useState(!previewOnly);
 
@@ -197,8 +203,11 @@ export function AdminDashboard() {
 
     backendApi
       .adminSession()
-      .then(({ authenticated }) => {
+      .then(({ authenticated, username: accountName, role, mustChangePassword: mustChange }) => {
         setIsAuthenticated(Boolean(authenticated));
+        setSessionUsername(accountName || "");
+        setSessionRole(role || "");
+        setMustChangePassword(Boolean(mustChange));
       })
       .catch(() => {
         setIsAuthenticated(false);
@@ -223,7 +232,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if(previewOnly)return;
-    if (!isAuthenticated || !backendApi.enabled) {
+    if (!isAuthenticated || mustChangePassword || !backendApi.enabled) {
       setRealtimeConnected(false);
       return;
     }
@@ -350,7 +359,7 @@ export function AdminDashboard() {
       eventSource?.close();
       if (fallbackTimer) window.clearInterval(fallbackTimer);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, mustChangePassword]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -375,9 +384,12 @@ export function AdminDashboard() {
         return;
       }
 
-      await backendStorage.refresh();
+      setSessionUsername(session.username || "");
+      setSessionRole(session.role || "");
+      setMustChangePassword(Boolean(session.mustChangePassword));
+      if (!session.mustChangePassword) await backendStorage.refresh();
       setIsAuthenticated(true);
-      toast.success("Bienvenido");
+      toast.success(session.mustChangePassword ? "Cambia tu contraseña para activar tu cuenta" : "Bienvenido");
     } catch (error: any) {
       const message = String(error?.message || "No se pudo iniciar sesión");
       setLoginError(message === "Código de verificación incorrecto"
@@ -394,6 +406,9 @@ export function AdminDashboard() {
     if(previewOnly){navigate("/");return;}
     await backendApi.adminLogout().catch(() => null);
     setIsAuthenticated(false);
+    setMustChangePassword(false);
+    setSessionUsername("");
+    setSessionRole("");
     setUsername("");
     setPassword("");
     setOtp("");
@@ -454,6 +469,7 @@ export function AdminDashboard() {
     { id: "activity-log" as AdminSection, label: "Registro de actividad", icon: History, badge: "AUDIT" },
     { id: "inventory-locations" as AdminSection, label: "Ubicaciones / Transferencias", icon: Warehouse, badge: "STOCK" },
     { id: "inventory-lots" as AdminSection, label: "Lotes / Caducidad / Escáner", icon: ScanLine, badge: "PRO" },
+    { id: "admin-users" as AdminSection, label: "Usuarios y permisos", icon: Users },
     { id: "settings" as AdminSection, label: "Configuración", icon: Settings },
   ];
 
@@ -627,6 +643,19 @@ export function AdminDashboard() {
     );
   }
 
+  if (mustChangePassword && !previewOnly) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-5">
+        <AdminPasswordChange mandatory onLogout={handleLogout} onChanged={async () => {
+          const session = await backendApi.adminSession();
+          setMustChangePassword(Boolean(session.mustChangePassword));
+          setSessionUsername(session.username || "");
+          await backendStorage.refresh();
+        }} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex">
       <aside
@@ -655,18 +684,20 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          <div className="p-6 border-b border-border/50">
+          <button type="button" onClick={() => { setCurrentSection("admin-profile"); setSidebarOpen(false); }}
+            title="Mi perfil · Cambiar contraseña"
+            className="w-full text-left p-6 border-b border-border/50 hover:bg-muted/60 transition-colors">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">D</span>
+                <span className="text-white font-bold text-lg">{(sessionUsername || "A").slice(0,1).toUpperCase()}</span>
               </div>
 
               <div>
-                <p className="font-semibold text-foreground">Daniel</p>
-                <p className="text-xs text-muted-foreground">Administrador</p>
+                <p className="font-semibold text-foreground">{sessionUsername || "Administrador"}</p>
+                <p className="text-xs text-muted-foreground">{sessionRole === "owner" ? "Administrador principal" : "Administrador"} · Mi perfil</p>
               </div>
             </div>
-          </div>
+          </button>
 
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 mb-2">
@@ -1022,6 +1053,8 @@ export function AdminDashboard() {
           {currentSection === "inventory-lots" && <AdminInventoryLots />}
 
           {currentSection === "settings" && <AdminSettings />}
+          {currentSection === "admin-users" && <AdminUsersManager previewOnly={previewOnly} />}
+          {currentSection === "admin-profile" && <AdminPasswordChange legacy={previewOnly || sessionRole === "owner"} onChanged={() => { toast.success("Tu perfil está actualizado"); setCurrentSection("dashboard"); }} />}
         </main>
       </div>
 
