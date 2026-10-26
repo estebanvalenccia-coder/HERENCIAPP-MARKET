@@ -259,6 +259,15 @@ if (!adminAuthConfigured) {
   );
 }
 
+// Provision the requested account when (and only when) a temporary credential
+// has been explicitly configured in the private deployment environment.
+// This never modifies the existing environment-based owner account.
+if (process.env.ADMIN_CHRISTIAN_INITIAL_PASSWORD) {
+  void bootstrapChristianFromEnvironment().catch((error) => {
+    console.error("No se pudo preparar el administrador christian:", error?.message || error);
+  });
+}
+
 const publicKeys = new Set([
   "chatboxSettings",
   "herenciaSettings",
