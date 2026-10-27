@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   ArrowRight,
+  Bot,
   HeartHandshake,
   Leaf,
   ShieldCheck,
@@ -78,6 +79,7 @@ export function Home() {
     return () => window.clearInterval(interval);
   }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
 
@@ -85,6 +87,11 @@ export function Home() {
     const load = () => {
       if (!isEmbeddedAdminPreview()) setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       setColombiaDelivery(parseColombiaDeliverySettings(backendStorage.getItem("internationalDeliverySettings")));
+      try {
+        setAssistantEnabled(Boolean(JSON.parse(backendStorage.getItem("herenciaSettings") || "{}").enabled));
+      } catch {
+        setAssistantEnabled(false);
+      }
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         setCatalog(
@@ -153,7 +160,7 @@ export function Home() {
     [site]
   );
   const heroDesign = heroBlock?.design;
-  const heroMinHeight = Math.max(360, Number(heroDesign?.minHeight || 620));
+  const heroMinHeight = Math.max(340, Math.min(760, Number(heroDesign?.minHeight || 460)));
   const heroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
@@ -269,7 +276,14 @@ export function Home() {
             Math.min(100, Number(heroDesign?.overlayWidth ?? market.home.heroOverlayWidth ?? 72))
           );
           const overlayMid = Math.round(overlayWidth * 0.58);
-          const color = hexToRgb(heroDesign?.overlayColor || market.home.heroOverlayColor || "#102b20");
+          // Default showroom uses the reference's warm light overlay. An explicitly
+          // customized color in the visual builder still takes precedence.
+          const chosen = heroDesign?.overlayColor && heroDesign.overlayColor !== "#102b20"
+            ? heroDesign.overlayColor
+            : market.home.heroOverlayColor && market.home.heroOverlayColor !== "#102b20"
+              ? market.home.heroOverlayColor
+              : "#efe8dc";
+          const color = hexToRgb(chosen);
           return (
             <div
               className="absolute inset-0"
@@ -295,7 +309,7 @@ export function Home() {
           <div
             className="max-w-2xl"
             style={{
-              color: heroDesign?.textColor || "#ffffff",
+              color: heroDesign?.textColor && heroDesign.textColor !== "#ffffff" ? heroDesign.textColor : "#173d2a",
               textAlign:
                 heroDesign?.alignment === "center"
                   ? "center"
@@ -306,13 +320,13 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
-            <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
+            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
               {market.home.title}
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-white/88 sm:text-lg">
+            <p className="mt-6 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
               {market.home.description}
             </p>
             <div
@@ -336,13 +350,24 @@ export function Home() {
               </Link>}
               {site.hero.secondaryButton.visible !== false && isWithinPublicationWindow(site.hero.secondaryButton.schedule, scheduleNow) && <Link
                 to={site.hero.secondaryButton.href || "/servicios"}
-                className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/10 px-6 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-md border border-[#668772]/70 bg-white/75 px-6 py-3.5 font-semibold text-[#173d2a] backdrop-blur transition hover:bg-white"
               >
                 {site.hero.secondaryButton.label || "Nuestros servicios"}
               </Link>}
             </div>
           </div>
         </div>
+        {assistantEnabled && site.navigation.herencia.visible !== false &&
+          <Link to={site.navigation.herencia.href || "/herencia"}
+            className="absolute right-5 top-6 hidden max-w-[285px] items-center gap-3 rounded-2xl border border-white/75 bg-[#fffdf9]/95 p-4 text-[#173d2a] shadow-[0_12px_40px_rgba(0,0,0,.12)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[#e5ede3] text-[#244c32]"><Bot className="h-8 w-8"/></span>
+            <span className="flex flex-col">
+              <span className="font-serif text-xl">Herenc(IA)</span>
+              <span className="mt-0.5 text-xs text-[#4d6352]">¿En qué puedo ayudarte hoy?</span>
+              <span className="mt-2 inline-flex text-xs font-semibold text-[#234b35]">Hablar con Herenc(IA) <ArrowRight className="ml-1 h-3 w-3"/></span>
+            </span>
+          </Link>
+        }
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
