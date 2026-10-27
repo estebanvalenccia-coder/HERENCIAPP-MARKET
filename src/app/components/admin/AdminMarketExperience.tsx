@@ -677,6 +677,7 @@ export function AdminMarketExperience({
                 multiline
               />
               <div className="rounded-xl border border-[#dce6dc] bg-[#f5f8f3] p-4">
+                <label className="mb-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={market.home.referenceHero !== false} onChange={(e) => patchHome({referenceHero:e.target.checked})}/> Activar banner visual de referencia</label>
                 <h4 className="mb-2 font-bold">Hero del diseño de referencia</h4>
                 <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y textos del banner cuando el modo visual de referencia está activo; no alteran el banner anterior.</p>
                 <Field label="URL de fotografía botánica" value={market.home.referenceHeroImageUrl || ""}
