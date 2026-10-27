@@ -10,19 +10,27 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
+import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 
 const ids = ["asesoria", "jardineria", "decoracion", "limpieza", "floral", "huerto-urbano"];
 
 export function Services() {
   const location = useLocation();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [sellableServices, setSellableServices] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
     const refreshSite = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      !isEmbeddedAdminPreview() && setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     };
 
     const loadServices = async () => {
