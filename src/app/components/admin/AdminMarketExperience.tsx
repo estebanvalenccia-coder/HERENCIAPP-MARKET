@@ -660,6 +660,10 @@ export function AdminMarketExperience({
                 value={market.home.categoriesTitle}
                 onChange={(categoriesTitle) => patchHome({ categoriesTitle })}
               />
+              <label className="block text-xs font-bold">
+                Categorías mostradas en la cuadrícula (0 = todas)
+                <input type="number" min="0" max="100" value={market.home.categoryGridLimit} onChange={(event) => patchHome({ categoryGridLimit: Math.max(0, Math.min(100, Number(event.target.value) || 0)) })} className="mt-2 block w-full rounded-xl border p-3 text-sm" />
+              </label>
               <Field
                 label="Título de servicios"
                 value={market.home.servicesTitle}
@@ -670,6 +674,10 @@ export function AdminMarketExperience({
                 value={market.home.featuredTitle}
                 onChange={(featuredTitle) => patchHome({ featuredTitle })}
               />
+              <label className="block text-xs font-bold">
+                Cantidad de productos destacados
+                <input type="number" min="1" max="48" value={market.home.featuredLimit} onChange={(event) => patchHome({ featuredLimit: Math.max(1, Math.min(48, Number(event.target.value) || 1)) })} className="mt-2 block w-full rounded-xl border p-3 text-sm" />
+              </label>
               <Field
                 label="Texto de productos destacados"
                 value={market.home.featuredSubtitle}
