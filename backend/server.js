@@ -399,7 +399,7 @@ function decodeAdminToken(token) {
     const age = Date.now() - issuedAt;
 
     return (
-      ["admin", "admin-onboarding"].includes(decoded.role) &&
+      ["admin", "employee", "admin-onboarding"].includes(decoded.role) &&
       Number.isFinite(issuedAt) &&
       issuedAt > 0 &&
       age >= -5 * 60 * 1000 &&
