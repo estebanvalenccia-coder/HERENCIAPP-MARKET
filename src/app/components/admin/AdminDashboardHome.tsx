@@ -137,70 +137,98 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
   const [errorMessage, setErrorMessage] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [period, setPeriod] = useState("7");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
 
-  const loadDashboard = useCallback(async (refreshBackend = true) => {
+
+  const loadDashboard = useCallback(async () => {
     setIsRefreshing(true);
     setErrorMessage("");
-
     try {
-      if (refreshBackend && backendApi.enabled) {
-        await backendStorage.refresh();
-      }
-
-      const products = safeProducts();
-      const activeProducts = products.filter((p: any) => p.active !== false);
-      const productsOnSale = products.filter((p: any) => p.onSale === true);
+      // Read the authoritative commerce catalogue, never cached adminProducts.
+      const [productsResult, ordersResult] = await Promise.allSettled([
+        backendApi.listCommerceProducts({ includeArchived: true }),
+        backendApi.listOrders(),
+      ]);
+      const errors: string[] = [];
+      let products: any[] = [];
       let nextOrders: any[] = [];
-      let nextStatus: ConnectionStatus = backendApi.enabled ? "backend" : "local";
-
-      if (backendApi.enabled) {
-        try {
-          const response = await backendApi.listOrders();
-          const backendOrders = Array.isArray(response.orders) ? response.orders : [];
-          nextOrders = backendOrders.filter((order: any) => !isFloresAdminRequest(order));
-          nextStatus = "backend";
-        } catch (error: any) {
-          nextStatus = "error";
-          setErrorMessage(
-            error?.message ||
-              "No se pudieron leer los pedidos reales. Revisa VITE_API_URL, Railway, CORS, Supabase o la sesión admin."
-          );
-        }
+      if (productsResult.status === "fulfilled") {
+        products = Array.isArray(productsResult.value.products) ? productsResult.value.products : [];
+      } else {
+        errors.push("Productos: " + String(productsResult.reason?.message || productsResult.reason));
       }
-
-      const paidOrders = nextOrders.filter((order: any) => isPaidLike(order.status));
+      if (ordersResult.status === "fulfilled") {
+        nextOrders = (Array.isArray(ordersResult.value.orders) ? ordersResult.value.orders : [])
+          .filter((order: any) => !isFloresAdminRequest(order));
+      } else {
+        errors.push("Pedidos: " + String(ordersResult.reason?.message || ordersResult.reason));
+      }
+      if (errors.length) {
+        // Partial results are never presented as complete business totals.
+        setConnectionStatus("error");
+        setErrorMessage(errors.join(" · "));
+        setStats(emptyStats);
+        setOrders([]);
+        return;
+      }
+      const activeProducts = products.filter((p: any) => p.active !== false && !["archived", "inactive", "draft"].includes(String(p.status || "").toLowerCase()));
+      const productsOnSale = products.filter((p: any) => p.onSale === true);
+      const paidOrders = nextOrders.filter((order: any) => isPaidLike(String(order.status || "").toLowerCase()));
       const totalRevenue = paidOrders.reduce((sum: number, order: any) => sum + Number(order.total || 0), 0);
-      const pendingOrders = nextOrders.filter((order: any) => isPendingLike(order.status)).length;
-
+      const pendingOrders = nextOrders.filter((order: any) => isPendingLike(String(order.status || "").toLowerCase())).length;
       setOrders(nextOrders);
       setStats({
-        totalProducts: products.length,
-        activeProducts: activeProducts.length,
-        productsOnSale: productsOnSale.length,
-        totalOrders: nextOrders.length,
-        pendingOrders,
-        paidOrders: paidOrders.length,
-        totalRevenue,
+        totalProducts: products.length, activeProducts: activeProducts.length,
+        productsOnSale: productsOnSale.length, totalOrders: nextOrders.length,
+        pendingOrders, paidOrders: paidOrders.length, totalRevenue,
       });
-      setConnectionStatus(nextStatus);
+      setConnectionStatus("backend");
       setLastUpdated(new Date());
+    } catch (error: any) {
+      setConnectionStatus("error");
+      setErrorMessage(error?.message || "No se pudo sincronizar el dashboard.");
+      setStats(emptyStats);
+      setOrders([]);
     } finally {
       setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadDashboard(true);
-
-    const syncFromStorage = () => loadDashboard(false);
-    window.addEventListener("backend-storage", syncFromStorage);
-    window.addEventListener("storage", syncFromStorage);
-
+    void loadDashboard();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadDashboard();
+    }, 30000);
+    const onReturn = () => { if (document.visibilityState === "visible") void loadDashboard(); };
+    const onChange = () => { void loadDashboard(); };
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("commerce-products-changed", onChange);
+    window.addEventListener("orders-changed", onChange);
     return () => {
-      window.removeEventListener("backend-storage", syncFromStorage);
-      window.removeEventListener("storage", syncFromStorage);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("commerce-products-changed", onChange);
+      window.removeEventListener("orders-changed", onChange);
     };
   }, [loadDashboard]);
+
+  const isWithinPeriod = (order: any) => {
+    const key = orderDateKey(order);
+    if (!key) return false;
+    if (period === "all") return true;
+    if (period === "custom") return Boolean(customStart && customEnd && key >= customStart && key <= customEnd);
+    const days = Number(period);
+    const first = new Date();
+    first.setHours(0, 0, 0, 0);
+    first.setDate(first.getDate() - (days - 1));
+    return key >= first.toISOString().slice(0, 10);
+  };
+  const periodOrders = orders.filter(isWithinPeriod);
+  const periodPaidOrders = periodOrders.filter((order) => isPaidLike(String(order.status || "").toLowerCase()));
+  const periodRevenue = periodPaidOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const periodPending = periodOrders.filter((order) => isPendingLike(String(order.status || "").toLowerCase())).length;
 
   const statsCards = [
     {
@@ -219,17 +247,17 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
     },
     {
       label: "Pedidos Pendientes",
-      value: stats.pendingOrders.toString(),
+      value: periodPending.toString(),
       icon: Tag,
-      trend: stats.pendingOrders > 0 ? "Atender" : "0 pendientes",
+      trend: periodPending > 0 ? "Atender" : "0 pendientes",
       actionSection: "orders",
       actionLabel: "Ver pedidos pendientes",
     },
     {
       label: "Ingresos Pagados",
-      value: `€${stats.totalRevenue.toFixed(2)}`,
+      value: `€${periodRevenue.toFixed(2)}`,
       icon: DollarSign,
-      trend: `${stats.paidOrders} pagados`,
+      trend: `${periodPaidOrders.length} pagados`,
     },
   ];
 
@@ -237,7 +265,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
     const date = new Date();
     date.setDate(date.getDate() - (6 - index));
     const dateKey = date.toISOString().slice(0, 10);
-    const ventas = orders
+    const ventas = periodPaidOrders
       .filter((order) => isPaidLike(order.status))
       .filter((order) => orderDateKey(order) === dateKey)
       .reduce((sum, order) => sum + Number(order.total || 0), 0);
@@ -245,8 +273,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
   });
 
   const categoryMap = new Map<string, number>();
-  orders
-    .filter((order) => isPaidLike(order.status))
+  periodPaidOrders
     .forEach((order) => {
       (order.items || []).forEach((item: any) => {
         const category = itemCategory(item);
@@ -312,7 +339,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
             {statusData.label}
           </div>
           <button
-            onClick={() => loadDashboard(true)}
+            onClick={() => void loadDashboard()}
             disabled={isRefreshing}
             className="flex w-fit items-center gap-2 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 text-sm font-bold text-slate-800 shadow-sm backdrop-blur-xl transition-colors hover:bg-emerald-50 disabled:opacity-60"
           >
@@ -343,6 +370,17 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-3">
+        <label className="text-sm font-semibold">Período de pedidos e ingresos</label>
+        <select aria-label="Período" value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded-lg border p-2 text-sm">
+          <option value="1">Hoy</option><option value="7">7 días</option><option value="30">30 días</option><option value="all">Todo el histórico</option><option value="custom">Personalizado</option>
+        </select>
+        {period === "custom" && <>
+          <input aria-label="Fecha inicial" type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border p-2" />
+          <input aria-label="Fecha final" type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="rounded-lg border p-2" />
+        </>}
+        <span className="text-xs text-slate-500">{lastUpdated ? `Sincronización correcta: ${lastUpdated.toLocaleString("es-ES")}` : "Sin sincronización correcta todavía"} · comprobación automática cada 30 segundos</span>
+      </div>
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {statsCards.map((stat, index) => {
           const style = KPI_STYLES[index];
@@ -397,7 +435,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
               <div className="rounded-2xl bg-emerald-100 p-2 text-emerald-700">
                 <BarChart3 className="h-5 w-5" />
               </div>
-              <h2 className="text-xl font-black text-slate-950">Ventas reales últimos 7 días</h2>
+              <h2 className="text-xl font-black text-slate-950">Ventas reales últimos 7 días (según período seleccionado)</h2>
             </div>
             <div className="flex w-fit items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">
               <Clock className="h-4 w-4 text-emerald-700" />
