@@ -518,9 +518,14 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
       <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
-        {[market.dulce, market.moda].filter((promo) => promo.enabled !== false && isWithinPublicationWindow(promo.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo === market.dulce ? "dulce" : "moda"])).map((promo) => (
+        {[market.dulce, market.moda, ...market.home.campaigns].filter((promo) => {
+          if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow)) return false;
+          const dest = String(promo.href || "").split("?")[0];
+          const related = dest === "/dulce" ? "dulce" : dest === "/moda" ? "moda" : "";
+          return !related || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[related]);
+        }).map((promo, index) => (
           <Link
-            key={promo.title}
+            key={("id" in promo && promo.id) || `${promo.title}-${index}`}
             to={promo.href}
             className="group relative min-h-[300px] overflow-hidden rounded-[2rem] border border-[#ded9cd]"
             style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))), borderRadius: Math.max(0, Math.min(48, Number(promo.design?.radius ?? 32))) }}
@@ -542,7 +547,7 @@ export function Home() {
             />
             <div className={`relative flex min-h-[300px] max-w-md flex-col justify-center p-8 text-white ${promo.design?.textAlign === "center" ? "mx-auto items-center text-center" : promo.design?.textAlign === "right" ? "ml-auto items-end text-right" : "items-start text-left"}`}
               style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))) }}>
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-white/75">{promo.kicker}</p>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-white/75">{"kicker" in promo ? promo.kicker : "HERENCIA"}</p>
               <h2 className="mt-3 text-4xl font-medium">{promo.title}</h2>
               <p className="mt-3 text-sm leading-6 text-white/88">{promo.subtitle}</p>
               <span className="mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-black text-[#193325]">
