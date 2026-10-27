@@ -452,7 +452,6 @@ export function ProductDetail() {
       personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
-    trackTikTokCommerceEvent("AddToCart", [{ id: product.id, price: effectivePrice, quantity }]);
     toast.success("Producto añadido al carrito");
   };
 
