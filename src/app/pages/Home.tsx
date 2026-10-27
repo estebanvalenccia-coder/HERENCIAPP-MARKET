@@ -18,6 +18,7 @@ import { getMarketExperience } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
 const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
@@ -206,7 +207,7 @@ export function Home() {
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
-      {sections.hero && (
+      <StorefrontComponentBoundary id="home.hero" controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
       <section
         className="relative overflow-hidden"
         style={{
@@ -318,9 +319,9 @@ export function Home() {
             </div>
           </div>
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.delivery && colombiaDelivery.enabled && (
+      <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
         <section className="border-b border-[#d9e1d9] bg-[#edf4ee]">
           <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
             <div className="flex items-start gap-4">
@@ -336,9 +337,9 @@ export function Home() {
             </Link>
           </div>
         </section>
-      )}
+      </StorefrontComponentBoundary>
 
-      {sections.categoryStrip && (
+      <StorefrontComponentBoundary id="home.categoryStrip" controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section className="border-b border-[#e5e1d8] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
           <div className="grid grid-cols-4 gap-5 md:grid-cols-8">
@@ -354,9 +355,9 @@ export function Home() {
             ))}
           </div>
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.plantCta && (<div className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
+      <StorefrontComponentBoundary id="home.plantCta" controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
         <Link
           to="/catalogo/plantas"
           className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
@@ -364,11 +365,11 @@ export function Home() {
           Descubre nuestras plantas
           <ArrowRight className="h-4 w-4" />
         </Link>
-      </div>)}
+      </div></StorefrontComponentBoundary>
 
-      {sections.feed && <StorefrontFeed />}
+      <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><StorefrontFeed /></StorefrontComponentBoundary>
 
-      {sections.categoriesGrid && (
+      <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -411,9 +412,9 @@ export function Home() {
             </Link>
           ))}
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.services && (
+      <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
       <section className="bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="flex items-end justify-between gap-4">
@@ -454,9 +455,9 @@ export function Home() {
             ))}
           </div>
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.featured && (
+      <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -505,9 +506,9 @@ export function Home() {
             );
           })}
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.promotions && (
+      <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
       <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
         {[market.dulce, market.moda].filter((promo) => promo.enabled !== false && isWithinPublicationWindow(promo.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo === market.dulce ? "dulce" : "moda"])).map((promo) => (
           <Link
@@ -538,9 +539,9 @@ export function Home() {
             </div>
           </Link>
         ))}
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.trust && (
+      <StorefrontComponentBoundary id="home.trust" controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
@@ -558,9 +559,9 @@ export function Home() {
             );
           })}
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
 
-      {sections.bottomCta && (
+      <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
           <Sparkles className="absolute right-8 top-8 h-20 w-20 text-white/5" />
@@ -576,7 +577,7 @@ export function Home() {
             {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
           </Link>}
         </div>
-      </section>)}
+      </section></StorefrontComponentBoundary>
     </div>
   );
 }
