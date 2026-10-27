@@ -108,9 +108,28 @@ export const defaultMarketExperience: MarketExperienceContent = {
   announcement: "Envíos en Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada",
   navigation: [
     { label: "Inicio", href: "/" },
-    { label: "Plantas", href: "/productos?coleccion=plantas" },
+    { label: "Plantas", href: "/productos?coleccion=plantas", children: [
+      { label: "Ver todas las plantas", href: "/productos?coleccion=plantas" },
+      { label: "Interior", href: "/productos?coleccion=plantas&categoria=plantas-interior" },
+      { label: "Exterior", href: "/productos?coleccion=plantas&categoria=plantas-exterior" },
+      { label: "Cactus y suculentas", href: "/productos?coleccion=plantas&categoria=cactus-suculentas" },
+      { label: "Orquídeas", href: "/productos?coleccion=plantas&categoria=orquideas" },
+      { label: "Exóticas", href: "/productos?coleccion=plantas&categoria=plantas-exoticas" },
+    ] },
     { label: "Tienda", href: "/productos" },
-    { label: "Jardinería", href: "/productos?coleccion=jardineria" },
+    { label: "Jardinería", href: "/productos?coleccion=jardineria", children: [
+      { label: "Artículos de jardinería", href: "/productos?coleccion=jardineria" },
+      { label: "Huerto urbano", href: "/productos?coleccion=jardineria&categoria=huerto-urbano" },
+      { label: "Herramientas", href: "/productos?coleccion=jardineria&categoria=herramientas" },
+      { label: "Riego", href: "/productos?coleccion=jardineria&categoria=riego" },
+      { label: "Fertilizantes", href: "/productos?coleccion=jardineria&categoria=fertilizantes" },
+      { label: "Accesorios", href: "/productos?coleccion=jardineria&categoria=accesorios-jardin" },
+      { label: "Fungicidas", href: "/productos?coleccion=jardineria&categoria=fungicidas" },
+      { label: "Acaricidas", href: "/productos?coleccion=jardineria&categoria=acaricidas" },
+      { label: "Insecticidas", href: "/productos?coleccion=jardineria&categoria=insecticidas" },
+      { label: "Otros fitosanitarios", href: "/productos?coleccion=jardineria&categoria=tratamientos-fitosanitarios" },
+      { label: "Servicios de huerto urbano", href: "/servicios#huerto-urbano" },
+    ] },
     { label: "Servicios", href: "/servicios" },
     { label: "Dulce", href: "/dulce" },
     { label: "Moda", href: "/moda" },
@@ -326,8 +345,12 @@ function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown):
 }
 
 function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
-  // Administrators own this list, including order, removals and empty state.
-  return mergeList(base, incoming);
+  if (!Array.isArray(incoming)) return JSON.parse(JSON.stringify(base));
+  // Match by href rather than position. Reordering must not attach Plantas children to another link.
+  return incoming.map((item: SiteLink) => {
+    const defaults = base.find((entry) => entry.href === item.href);
+    return { ...(defaults || {}), ...(item || {}) };
+  });
 }
 
 function isDisabledSalesAction(item: any) {
