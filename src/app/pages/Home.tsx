@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
+import { primaryCollectionOf } from "../lib/commerceCatalog";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
 import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
@@ -165,7 +166,7 @@ export function Home() {
     );
     return rows.filter((item) => {
       if (!item?.image || Number(item?.onSale && item?.salePrice ? item.salePrice : item?.price || 0) <= 0) return false;
-      if (!isMarketDestinationEnabled(market, `/productos?coleccion=${String(item.collection || item.category || "").toLowerCase()}`)) return false;
+      if (!isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(item)}`)) return false;
       if (item?.trackInventory === false) return true;
       if (Number(item?.stock || 0) > 0) return true;
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
