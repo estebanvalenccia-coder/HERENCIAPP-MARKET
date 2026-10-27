@@ -153,6 +153,7 @@ export function AdminDashboard() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [trustDevice, setTrustDevice] = useState(false);
   const [totpRequired, setTotpRequired] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginSubmitting, setLoginSubmitting] = useState(false);
@@ -375,7 +376,7 @@ export function AdminDashboard() {
     setLoginSubmitting(true);
     setLoginError("");
     try {
-      await backendApi.adminLogin(username, password, otp);
+      await backendApi.adminLogin(username, password, otp, trustDevice);
       const session = await backendApi.adminSession();
 
       if (!session.authenticated) {
