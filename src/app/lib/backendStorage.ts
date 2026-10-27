@@ -302,9 +302,29 @@ export const backendApi = {
     }>(`/api/admin/analytics?days=${safeDays}`);
   },
 
+  async getSitePublicationAudit(limit = 35) {
+    return request<{ items: Array<{ id: string; at: string; actor: string; action: string; previousRevision?: string; nextRevision?: string; subject?: string }> }>(
+      `/api/admin/site-content/audit?limit=${Math.max(1, Math.min(100, Number(limit)||35))}`
+    );
+  },
+
+  async listSiteEditorRestrictions() {
+    return request<{ items: Array<{ username: string; canPublish: boolean; canRestore: boolean; canViewAudit: boolean }> }>(
+      "/api/admin/site-content/permissions"
+    );
+  },
+
+  async setSiteEditorRestrictions(username: string, restrictions: { canPublish: boolean; canRestore: boolean; canViewAudit: boolean }) {
+    return request<{ username: string; canPublish: boolean; canRestore: boolean; canViewAudit: boolean }>(
+      "/api/admin/site-content/permissions",
+      { method: "PUT", body: JSON.stringify({ username, restrictions }) }
+    );
+  },
+
   async publishSiteContent(payload: {
     nextRaw: string;
     expectedRaw: string | null;
+    action?: "publish" | "restore";
     auxiliary?: Record<string, string>;
   }) {
     // Atomic compare-and-swap on the backend: never write content optimistically.
