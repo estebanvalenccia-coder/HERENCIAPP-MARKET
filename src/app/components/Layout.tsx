@@ -431,7 +431,11 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="mt-10 flex flex-col gap-4 border-t border-white/12 pt-6 text-xs text-white/58 sm:flex-row sm:items-center sm:justify-between">
+          </div>
+        </footer></StorefrontComponentBoundary>
+        <footer aria-label="Información legal y privacidad" className="border-t border-white/15 bg-[#173d2a] px-5 pb-5 text-white sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col gap-4 border-t border-white/12 pt-4 text-xs text-white/58 sm:flex-row sm:items-center sm:justify-between">
               <p>{site.footer.copyright}</p>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <FooterLink href={site.footer.privacyHref}>{site.footer.privacyLabel}</FooterLink>
@@ -440,7 +444,7 @@ export function Layout() {
               </div>
             </div>
           </div>
-        </footer></StorefrontComponentBoundary>
+        </footer>
       </div>
 
       <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
