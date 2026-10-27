@@ -255,21 +255,16 @@ export function AdminContent({
       const publishableSite = syncLegacyToBuilder(synchronizedSite);
       const validationErrors = validateSitePublication(publishableSite);
       if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
-      const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(publishableSite)),
-        backendStorage.setItem("siteContentDraft", JSON.stringify(publishableSite)),
-        publishableSite.hero.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: publishableSite.hero.imageUrl }))
-          : backendStorage.removeItem("heroBanner"),
-        publishableSite.cta.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: publishableSite.cta.imageUrl }))
-          : backendStorage.removeItem("ctaBanner"),
-      ]);
-
-      if (results.some((result) => !result.ok)) {
-        throw new Error(results.find((result) => !result.ok)?.error || "No se pudo sincronizar todo");
-      }
-
+      const nextRaw = JSON.stringify(publishableSite);
+      // Compare-and-swap and revision history are committed together on Neon.
+      await backendApi.publishSiteContent({
+        nextRaw,
+        expectedRaw: publishedRawAtLoadRef.current,
+        auxiliary: {
+          heroBanner: publishableSite.hero.imageUrl ? JSON.stringify({ imageUrl: publishableSite.hero.imageUrl }) : "",
+          ctaBanner: publishableSite.cta.imageUrl ? JSON.stringify({ imageUrl: publishableSite.cta.imageUrl }) : "",
+        },
+      });
       publishedRawAtLoadRef.current = JSON.stringify(publishableSite);
       setSite(publishableSite);
       toast.success("Contenido guardado en el backend y publicado");
