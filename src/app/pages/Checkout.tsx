@@ -1,5 +1,5 @@
-import { trackTikTokConfirmedPurchase } from "../lib/tiktokPixel";
-import { useEffect, useMemo, useState } from "react";
+import { trackTikTokCommerceEvent, trackTikTokConfirmedPurchase } from "../lib/tiktokPixel";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
@@ -304,6 +304,18 @@ export function Checkout() {
   const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
+  // A checkout can also be entered directly, without the cart page button.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || !cartItems.length) return;
+    if (shippingCatalogPending || (hasPhysicalItems && shippingLoading)) return;
+    checkoutTracked.current = true;
+    trackTikTokCommerceEvent("InitiateCheckout", cartItems.map((item: any) => ({
+      id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity
+    })), total);
+  }, [cartItems, total, shippingCatalogPending, hasPhysicalItems, shippingLoading]);
+
+
   const handleChange = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -384,6 +396,7 @@ export function Checkout() {
 
   const orderMetadata = {
     source: "frontend_checkout",
+    tiktokConsent: (() => { try { return localStorage.getItem("herencia_cookie_consent") === "accepted"; } catch { return false; } })(),
     herenciaSales: salesAttribution.enabled,
     salesConversationId: salesAttribution.conversationId || null,
     salesAttributedItems: salesAttribution.itemCount,
