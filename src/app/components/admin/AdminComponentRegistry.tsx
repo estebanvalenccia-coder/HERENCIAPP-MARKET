@@ -8,6 +8,7 @@ import {
   type StorefrontComponentKey,
 } from "../../lib/componentRegistry";
 import type { MarketExperienceContent } from "../../lib/marketExperience";
+import { AdminUniversalDesignFields } from "./AdminUniversalDesignFields";
 import { AdminScheduleFields } from "./AdminElementControls";
 
 type LegacyHomeSection = keyof MarketExperienceContent["home"]["sections"];
@@ -160,6 +161,7 @@ export function AdminComponentRegistry({
               </div>
               <div className="mt-3">
                 <AdminScheduleFields label={item.name} value={control.schedule} onChange={(schedule) => updateControl(item.id, { schedule })} />
+                <AdminUniversalDesignFields label={item.name} design={control.design} onChange={(design) => updateControl(item.id, { design })} />
               </div>
               <button type="button" onClick={() => scrollToEditor(item)} className="mt-2 rounded-lg border border-[#cbd9ce] bg-white px-3 py-1.5 text-xs font-bold text-[#315b42]">
                 Ir a configuración
