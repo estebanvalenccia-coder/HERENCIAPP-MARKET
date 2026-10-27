@@ -133,6 +133,12 @@ export type MarketExperienceContent = {
     imageUrl: string;
     values: Array<{ title: string; description: string }>;
   };
+  whatsapp: {
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
+    message: string;
+  };
   support: {
     position: "left" | "right";
     bottomOffset: number;
@@ -358,6 +364,12 @@ export const defaultMarketExperience: MarketExperienceContent = {
       { title: "Barcelona", description: "Nuestra referencia de servicio y comunicación local es Barcelona." },
     ],
   },
+  whatsapp: {
+    position: "left",
+    bottomOffset: 24,
+    buttonColor: "#25D366",
+    message: "Hola, vengo de Herencia Market y necesito ayuda con un producto.",
+  },
   support: {
     position: "right",
     bottomOffset: 96,
@@ -450,6 +462,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const aboutIncoming = incoming.about || {};
   const salesIncoming = incoming.sales || {};
   const supportIncoming = incoming.support || {};
+  const whatsappIncoming = incoming.whatsapp || {};
   const savedHeroImageUrl = String((homeIncoming as any).heroImageUrl || "").trim();
   const invalidDataUrl = savedHeroImageUrl.startsWith("data:") && !savedHeroImageUrl.startsWith("data:image/");
   const resolvedHeroImageUrl =
@@ -483,6 +496,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...aboutIncoming,
       values: mergeList(defaultMarketExperience.about.values, aboutIncoming.values),
     },
+    whatsapp: { ...defaultMarketExperience.whatsapp, ...whatsappIncoming },
     support: { ...defaultMarketExperience.support, ...supportIncoming },
     sales: {
       ...defaultMarketExperience.sales,
