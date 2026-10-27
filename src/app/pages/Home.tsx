@@ -188,6 +188,7 @@ export function Home() {
   const visibleHomeCategories = market.home.categories.filter(
     (item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && isMarketDestinationEnabled(market, item.href) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
+  const shopFirst = market.home.shopFirst === true;
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
     [site]
@@ -203,8 +204,9 @@ export function Home() {
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
   const referenceMode = market.home.referenceHero !== false;
-  const heroImage = referenceMode
-    ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
+  // A new sales layout must NEVER swap the administrator's saved hero photo.
+  const heroImage = shopFirst ? originalHeroImage
+    : referenceMode ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
     : originalHeroImage;
   const displayHeroTitle = referenceMode
     ? market.home.referenceHeroTitle || market.home.title
@@ -226,7 +228,6 @@ export function Home() {
     }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
   }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
 
-  const shopFirst = market.home.shopFirst === true;
   const productDisplay = market.home.productDisplay!;
   const productTags = (product: any) => [
     product.name, product.category, product.subcategory, product.collection,
@@ -704,13 +705,15 @@ export function Home() {
               <article
                 key={product.id}
                 className="group relative overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                style={shopFirst ? {borderRadius: `${productDisplay.cardRadius}px`} : undefined}
               >
                 <button type="button" onClick={() => void toggleFavorite(product.id)}
                   aria-label={favorites.includes(String(product.id)) ? `Quitar ${product.name} de favoritos` : `Guardar ${product.name} en favoritos`}
                   className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#294a35] shadow-sm transition hover:bg-[#e8f2e7]">
                   <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
                 </button>
-                <Link to={`/producto/${product.id}`} className="block aspect-[4/4.3] overflow-hidden bg-[#f1eee7]">
+                <Link to={`/producto/${product.id}`}
+                  className={`block overflow-hidden bg-[#f1eee7] ${shopFirst && productDisplay.imageAspect === "square" ? "aspect-square" : "aspect-[4/4.3]"}`}>
                   <img
                     src={product.image}
                     alt={product.name}
