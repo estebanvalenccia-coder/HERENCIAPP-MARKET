@@ -52,6 +52,17 @@ export function validateSitePublication(site) {
   checkArray("Menú principal", market.navigation);
   checkArray("Categorías", market.home?.categories);
   checkArray("Servicios", market.home?.services);
+  checkArray("Campañas", market.home?.campaigns);
+  if (Array.isArray(market.home?.campaigns)) {
+    market.home.campaigns.forEach((campaign, index) => {
+      if (campaign?.enabled !== false) {
+        if (!String(campaign?.title || "").trim()) problems.push(`Campaña ${index + 1}: falta título`);
+        if (!String(campaign?.href || "").trim()) problems.push(`Campaña ${index + 1}: falta destino`);
+        if (!String(campaign?.imageUrl || "").trim()) problems.push(`Campaña ${index + 1}: falta imagen`);
+      }
+    });
+  }
+
   checkArray("Beneficios", market.home?.trust);
   checkHref("Banner Dulce", market.dulce);
   checkHref("Banner Moda", market.moda);
