@@ -84,6 +84,31 @@ export async function bootstrapChristianFromEnvironment() {
     throw error;
   }
 }
+/** Owner-only account lifecycle updates; invalidate sessions after every change. */
+export async function manageAdminAccount(id, action, value) {
+  await initializeAdminAccounts();
+  const client = await neonPool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query("select * from herencia_admin_accounts where id=$1 for update", [id]);
+    if (!result.rows.length) throw new Error("Administrador no encontrado");
+    if (action === "status") {
+      if (!["active", "disabled"].includes(value)) throw new Error("Estado no válido");
+      await client.query("update herencia_admin_accounts set state=$2, session_version=session_version+1 where id=$1", [id,value]);
+    } else if (action === "role") {
+      if (!["admin","employee"].includes(value)) throw new Error("Rol no permitido");
+      await client.query("update herencia_admin_accounts set role=$2, session_version=session_version+1 where id=$1", [id,value]);
+    } else if (action === "reset_password") {
+      const hash = hashAdminPassword(value, { temporary: true });
+      await client.query("update herencia_admin_accounts set password_hash=$2,must_change_password=true,session_version=session_version+1 where id=$1", [id,hash]);
+    } else throw new Error("Acción desconocida");
+    const updated=await client.query("select * from herencia_admin_accounts where id=$1",[id]);
+    await client.query("commit");
+    return sanitizeAdminAccount(asAccount(updated.rows[0]));
+  } catch(error) { await client.query("rollback"); throw error; }
+  finally { client.release(); }
+}
+
 export async function updateAdminPassword(accountId, currentPassword, nextPassword) {
   await initializeAdminAccounts();
   const client = await neonPool.connect();
