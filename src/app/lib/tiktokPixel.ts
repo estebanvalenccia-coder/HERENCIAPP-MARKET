@@ -101,3 +101,39 @@ export function trackTikTokConfirmedPurchase(orderId: string, paymentIntentId: s
     localStorage.setItem(key, "1");
   } catch { /* Analytics must never interrupt checkout. */ }
 }
+
+/**
+ * Detect real increases in persisted cart lines, regardless of the UI route
+ * (home, product list, product detail, AI assistant or bouquet builder).
+ * No events are sent for removals, quantity decreases, checkout cart clearing,
+ * or restoring the same cart content from the backend.
+ */
+export function trackTikTokCartDifference(beforeJson: string | null, afterJson: string): void {
+  let before: any[], after: any[];
+  try {
+    before = JSON.parse(beforeJson || "[]");
+    after = JSON.parse(afterJson);
+    if (!Array.isArray(before) || !Array.isArray(after)) return;
+  } catch { return; }
+  const keyOf = (line: any) => String(line?.lineKey || [line?.id, line?.selectedVariant || "", line?.personalization?.dedication || ""].join("::"));
+  const quantities = new Map<string, number>();
+  for (const line of before) {
+    if (line?.id == null) continue;
+    const key = keyOf(line);
+    quantities.set(key, (quantities.get(key) || 0) + Math.max(1, Number(line.quantity || 1)));
+  }
+  const added: Array<{id: string; price: number; quantity: number}> = [];
+  for (const line of after) {
+    if (line?.id == null) continue;
+    const key = keyOf(line);
+    const previous = quantities.get(key) || 0;
+    const current = Math.max(1, Number(line.quantity || 1));
+    const delta = Math.max(0, current - previous);
+    quantities.set(key, Math.max(0, previous - current)); // Account for split lines of one variant.
+    if (!delta) continue;
+    const price = Number(line.unitPrice ?? line.price);
+    if (!Number.isFinite(price) || price < 0) continue;
+    added.push({id:String(line.id), price, quantity:delta});
+  }
+  if (added.length) trackTikTokCommerceEvent("AddToCart", added);
+}
