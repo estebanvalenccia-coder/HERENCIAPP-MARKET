@@ -390,8 +390,10 @@ export function Products() {
     setSort("relevance");
   }
 
+  const market = getMarketExperience(site);
   return (
     <div className="min-h-screen">
+      <StorefrontComponentBoundary id="products.intro" controls={market.componentControls} now={scheduleNow}>
       <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <p className="mb-2 text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
@@ -399,8 +401,10 @@ export function Products() {
           <p className="max-w-2xl leading-7 text-[#66736b]">{selectedCollection === "jardineria" ? "Huerto urbano, herramientas, riego, fertilizantes y productos para el cuidado de las plantas." : site.productsPage.subtitle}</p>
         </div>
       </div>
+      </StorefrontComponentBoundary>
 
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <StorefrontComponentBoundary id="products.filters" controls={market.componentControls} now={scheduleNow}>
         <div className="mb-8 space-y-5">
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
@@ -526,7 +530,9 @@ export function Products() {
             {site.productsPage.showFavorites !== false && <span>{favorites.length} favoritos</span>}
           </div>
         </div>
+        </StorefrontComponentBoundary>
 
+        <StorefrontComponentBoundary id="products.grid" controls={market.componentControls} now={scheduleNow}>
         {catalogLoading ? (
           <div className={`grid gap-6 ${gridClass}`}>
             {Array.from({ length: 8 }).map((_, index) => (
@@ -622,6 +628,7 @@ export function Products() {
             })}
           </div>
         )}
+        </StorefrontComponentBoundary>
       </div>
     </div>
   );
