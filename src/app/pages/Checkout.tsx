@@ -396,7 +396,7 @@ export function Checkout() {
 
   const orderMetadata = {
     source: "frontend_checkout",
-    tiktokConsent: (() => { try { return localStorage.getItem("herencia_cookie_consent") === "accepted"; } catch { return false; } })(),
+    tiktokConsent: (() => { try { return localStorage.getItem("herencia_cookie_consent") === "accepted" && localStorage.getItem("herencia_ads_consent_v1") === "accepted"; } catch { return false; } })(),
     herenciaSales: salesAttribution.enabled,
     salesConversationId: salesAttribution.conversationId || null,
     salesAttributedItems: salesAttribution.itemCount,
