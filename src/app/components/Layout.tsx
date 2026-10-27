@@ -265,7 +265,7 @@ export function Layout() {
           } as CSSProperties}
         >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex min-h-[76px] items-center gap-5">
+            <div className="flex min-h-[88px] items-center gap-6">
               <Link to="/" className="shrink-0">
                 <img
                   src={site.brand.logoUrl || logo}
@@ -275,7 +275,7 @@ export function Layout() {
                 />
               </Link>
 
-              <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
+              <nav className="hidden flex-1 flex-wrap items-center justify-center gap-x-1 gap-y-2 lg:flex">
                 {visibleNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
                   item.children?.length ? (
                     <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} active={isPathActive(location.pathname, item.href)} />
@@ -293,10 +293,10 @@ export function Layout() {
                 </StorefrontComponentBoundary>
               </nav>
 
-              <div className="ml-auto flex items-center gap-1.5">
+              <div className="ml-auto flex items-center gap-2">
                 <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                   <div className="group relative hidden lg:block">
-                    <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#315b42]/30 bg-white px-4 text-sm font-black text-[#315b42] transition hover:bg-[#f1f6f2]">
+                    <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md border border-[#d4dfd2] bg-[#f1f5ee] px-4 text-sm font-semibold text-[#315b42] transition hover:bg-[#e8f0e8]">
                       <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
                     </button>
                     <div className="pointer-events-none absolute right-0 top-full z-[90] w-72 pt-3 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
