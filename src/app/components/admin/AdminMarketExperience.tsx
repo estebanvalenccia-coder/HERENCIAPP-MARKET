@@ -676,6 +676,16 @@ export function AdminMarketExperience({
                 onChange={(description) => patchHome({ description })}
                 multiline
               />
+              <div className="rounded-xl border border-[#dce6dc] bg-[#f5f8f3] p-4">
+                <h4 className="mb-2 font-bold">Hero del diseño de referencia</h4>
+                <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y textos del banner cuando el modo visual de referencia está activo; no alteran el banner anterior.</p>
+                <Field label="URL de fotografía botánica" value={market.home.referenceHeroImageUrl || ""}
+                  onChange={(referenceHeroImageUrl) => patchHome({referenceHeroImageUrl})} />
+                <Field label="Título del banner" value={market.home.referenceHeroTitle || ""}
+                  onChange={(referenceHeroTitle) => patchHome({referenceHeroTitle})} />
+                <Field label="Descripción del banner" value={market.home.referenceHeroDescription || ""}
+                  onChange={(referenceHeroDescription) => patchHome({referenceHeroDescription})} multiline />
+              </div>
               <Field
                 label="Título de categorías"
                 value={market.home.categoriesTitle}
