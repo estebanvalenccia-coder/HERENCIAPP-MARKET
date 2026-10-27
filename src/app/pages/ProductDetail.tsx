@@ -506,10 +506,12 @@ export function ProductDetail() {
     serviceProduct && product.leadTimeDays !== null && product.leadTimeDays !== undefined && { icon: PackageCheck, label: "Antelación", value: `${product.leadTimeDays} días` },
   ].filter(Boolean) as any[];
 
+  const market = getMarketExperience(site);
   return <div className="min-h-screen bg-background">
     <motion.div style={{ opacity, scale }} className="sticky top-0 z-40 bg-card/80 backdrop-blur-lg border-b border-border"><div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-4"><button onClick={() => navigate("/productos")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground"><ArrowLeft className="w-5 h-5" />Volver a productos</button></div></motion.div>
     <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-14">
+        <StorefrontComponentBoundary id="productDetail.gallery" controls={market.componentControls} now={scheduleNow}>
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} className="relative">
           <div className="sticky top-24">
             <div
@@ -553,6 +555,8 @@ export function ProductDetail() {
             )}
           </div>
         </motion.div>
+        </StorefrontComponentBoundary>
+        <StorefrontComponentBoundary id="productDetail.info" controls={market.componentControls} now={scheduleNow}>
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
           <div>
             <h1 className="text-4xl md:text-5xl font-bold mb-3">{product.name}</h1>
@@ -664,6 +668,7 @@ export function ProductDetail() {
           {detailConfig.showCare !== false && plantLike && aiData && <Link to={`/cuidados/${product.id}`} className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-semibold text-primary hover:bg-primary/10"><Leaf className="h-5 w-5"/>Ver pasaporte y QR de cuidados</Link>}
           {detailConfig.showWaitlist !== false && trackInventory && stock <= 0 && <div className="rounded-2xl border border-border bg-card p-4"><p className="font-semibold">Avísame cuando vuelva</p><div className="mt-3 flex gap-2"><input type="email" value={waitlistEmail} onChange={(e)=>setWaitlistEmail(e.target.value)} placeholder="tu@email.com" className="flex-1 rounded-xl border border-border bg-background px-3 py-2" /><button onClick={() => void joinWaitlist()} className="rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground">Avisarme</button></div></div>}
         </motion.div>
+        </StorefrontComponentBoundary>
       </div>
 
       {plantLike && aiData ? (
@@ -694,6 +699,7 @@ export function ProductDetail() {
         ) : null
       )}
 
+      <StorefrontComponentBoundary id="productDetail.related" controls={market.componentControls} now={scheduleNow}>
       {detailConfig.showRelated !== false && (
         <section className="mt-14">
           <div className="mb-5"><h2 className="text-3xl font-bold">{detailConfig.relatedTitle}</h2><p className="mt-1 text-muted-foreground">{detailConfig.relatedSubtitle}</p></div>
@@ -702,7 +708,9 @@ export function ProductDetail() {
           </div>
         </section>
       )}
+      </StorefrontComponentBoundary>
 
+      <StorefrontComponentBoundary id="productDetail.reviews" controls={market.componentControls} now={scheduleNow}>
       {detailConfig.showReviews !== false && (
       <section className="mt-14 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
@@ -724,7 +732,9 @@ export function ProductDetail() {
         </div>
       </section>
       )}
+      </StorefrontComponentBoundary>
 
+      <StorefrontComponentBoundary id="productDetail.questions" controls={market.componentControls} now={scheduleNow}>
       {detailConfig.showQuestions !== false && (
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
@@ -737,6 +747,7 @@ export function ProductDetail() {
         </div>
       </section>
       )}
+      </StorefrontComponentBoundary>
     </div>
   </div>;
 }
