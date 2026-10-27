@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
@@ -109,6 +109,9 @@ function CollectionPage({ kind }: { kind: Kind }) {
     kind === "dulce"
       ? ["Desayunos sorpresa", "Postres por encargo", "Decoración de ambientes"]
       : ["Camisas", "Delantales", "Guantes"];
+
+  // The admin switch controls the whole public collection, not only its banner.
+  if (content.enabled === false) return <Navigate to="/productos" replace />;
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">

@@ -13,6 +13,7 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { isEmbeddedAdminPreview, useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { isComponentAllowed } from "../lib/componentRegistry";
@@ -201,11 +202,13 @@ export function Layout() {
 
   const market = useMemo(() => getMarketExperience(site), [site]);
   const visibleNavigation = market.navigation.filter((item) => {
-    if (item.visible === false || !isWithinPublicationWindow(item.schedule, scheduleNow)) return false;
+    if (item.visible === false || !isWithinPublicationWindow(item.schedule, scheduleNow) || !isMarketDestinationEnabled(market, item.href)) return false;
     const path = String(item.href || "").split("?")[0].toLowerCase();
     const collectionId = path === "/dulce" ? "dulce" : path === "/moda" ? "moda" : "";
     return !collectionId || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionId]);
-  });
+  }).map((item) => item.children?.length
+    ? { ...item, children: item.children.filter((child) => isMarketDestinationEnabled(market, child.href)) }
+    : item);
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -412,12 +415,12 @@ export function Layout() {
 
               <FooterColumn
                 title={site.footer.productsTitle}
-                links={site.footer.productLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
+                links={site.footer.productLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && isMarketDestinationEnabled(market, item.href) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
               />
 
               <FooterColumn
                 title={site.footer.servicesTitle}
-                links={site.footer.serviceLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow))}
+                links={site.footer.serviceLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && isMarketDestinationEnabled(market, item.href))}
               />
 
               <div>

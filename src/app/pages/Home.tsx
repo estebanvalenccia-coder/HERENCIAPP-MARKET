@@ -13,8 +13,10 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
+import { primaryCollectionOf } from "../lib/commerceCatalog";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
+import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { isEmbeddedAdminPreview, useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
@@ -144,7 +146,7 @@ export function Home() {
   };
 
   const visibleHomeCategories = market.home.categories.filter(
-    (item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
+    (item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && isMarketDestinationEnabled(market, item.href) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
@@ -164,11 +166,12 @@ export function Home() {
     );
     return rows.filter((item) => {
       if (!item?.image || Number(item?.onSale && item?.salePrice ? item.salePrice : item?.price || 0) <= 0) return false;
+      if (!isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(item)}`)) return false;
       if (item?.trackInventory === false) return true;
       if (Number(item?.stock || 0) > 0) return true;
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
     }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
-  }, [catalog, market.home.featuredLimit]);
+  }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -519,7 +522,7 @@ export function Home() {
       <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
       <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
         {[market.dulce, market.moda, ...market.home.campaigns].filter((promo) => {
-          if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow)) return false;
+          if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow) || !isMarketDestinationEnabled(market, promo.href)) return false;
           const dest = String(promo.href || "").split("?")[0];
           const related = dest === "/dulce" ? "dulce" : dest === "/moda" ? "moda" : "";
           return !related || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[related]);

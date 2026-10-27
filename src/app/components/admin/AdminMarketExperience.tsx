@@ -1026,7 +1026,8 @@ export function AdminMarketExperience({
                 <Icon className="h-5 w-5 text-primary" />
                 <h4 className="font-black">{kind === "dulce" ? "Dulce" : "Moda"} · portada y banner</h4>
               </div>
-              <label className="mb-4 flex items-center gap-2 rounded-xl bg-[#f2f5ef] p-3 text-sm font-bold"><input type="checkbox" checked={promo.enabled !== false} onChange={(event) => patchPromo(kind, { enabled: event.target.checked })} /> Mostrar banner de {kind === "dulce" ? "Dulce" : "Moda"}</label>
+              <label className="mb-4 flex items-center gap-2 rounded-xl bg-[#f2f5ef] p-3 text-sm font-bold"><input type="checkbox" checked={promo.enabled !== false} onChange={(event) => patchPromo(kind, { enabled: event.target.checked })} /> Mostrar sección {kind === "dulce" ? "Dulce" : "Moda"} en la tienda</label>
+              <p className="mb-4 text-xs text-muted-foreground">Al desactivarla se ocultan el menú, las tarjetas de inicio, los banners y la página pública. Puedes seguir editándola aquí sin perder su contenido. Pulsa Guardar y publicar para aplicar el cambio.</p>
               <AdminScheduleFields label={promo.title} value={promo.schedule} onChange={(schedule) => patchPromo(kind, { schedule })} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4">
