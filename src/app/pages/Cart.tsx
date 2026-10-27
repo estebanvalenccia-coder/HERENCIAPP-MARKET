@@ -1,3 +1,4 @@
+import { trackTikTokCommerceEvent } from "../lib/tiktokPixel";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { ArrowRight, Clock3, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
@@ -211,6 +212,7 @@ export function Cart() {
     if (!cjComposition.valid) return toast.error(cjComposition.message);
     if (containsCj && !["tarjeta","bizum"].includes(paymentMethod))
       return toast.error("Por ahora los pedidos CJ deben pagarse con tarjeta o Bizum verificado antes de su preparación.");
+    trackTikTokCommerceEvent("InitiateCheckout", cartItems.map((item) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), Math.max(0, subtotal - calculatedDiscount + effectiveShipping));
     navigate("/checkout", {
       state: {
         paymentMethod,
