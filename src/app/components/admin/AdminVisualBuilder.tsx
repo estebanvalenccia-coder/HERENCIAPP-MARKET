@@ -800,6 +800,40 @@ export function AdminVisualBuilder({
     }
   }
 
+  async function revertLatestPublication() {
+    const latest = versions[0];
+    if (!latest) {
+      toast.info("Todavía no hay publicaciones anteriores para recuperar");
+      return;
+    }
+    if (!window.confirm("¿Revertir a la publicación anterior ahora? Se descartará el borrador actual y la reversión se publicará inmediatamente. Esta operación también quedará en el historial.")) return;
+    setPublishing(true);
+    try {
+      const restored = parseSiteContent(latest.content);
+      const nextRaw = JSON.stringify(restored);
+      const outcome = await backendApi.publishSiteContent({
+        expectedRaw: publishedRawAtOpenRef.current,
+        nextRaw,
+        auxiliary: {
+          heroBanner: restored.hero.imageUrl ? JSON.stringify({ imageUrl: restored.hero.imageUrl }) : "",
+          ctaBanner: restored.cta.imageUrl ? JSON.stringify({ imageUrl: restored.cta.imageUrl }) : "",
+        },
+      });
+      publishedRawAtOpenRef.current = nextRaw;
+      setSite(restored);
+      setPublishedSite(restored);
+      setVersions(JSON.parse(outcome.history || "[]"));
+      setUndoStack([]);
+      setRedoStack([]);
+      toast.success("Publicación anterior recuperada y publicada");
+      onPublished?.();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo revertir la publicación");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   function restoreVersion(version: StoredVersion) {
     if (!window.confirm("¿Cargar esta versión en el editor? No se publicará hasta que pulses Publicar.")) return;
     try {
@@ -903,6 +937,15 @@ export function AdminVisualBuilder({
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100"
           >
             <SlidersHorizontal className="h-4 w-4" /> <span className="hidden sm:inline">Controles ON/OFF</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void revertLatestPublication()}
+            disabled={publishing || versions.length === 0}
+            title="Recuperar y publicar inmediatamente la versión anterior"
+            className="hidden items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 disabled:opacity-40 lg:flex"
+          >
+            <RotateCcw className="h-4 w-4" /> Deshacer publicación
           </button>
           <button
             type="button"
