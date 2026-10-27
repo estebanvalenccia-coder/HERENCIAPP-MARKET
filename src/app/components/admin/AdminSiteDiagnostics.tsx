@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, ClipboardList } from "lucide-react";
 import type { SiteContent } from "../../lib/siteContent";
 import type { MarketExperienceContent } from "../../lib/marketExperience";
 import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
+import { diagnoseMarketSite } from "../../lib/siteDiagnosticRules.mjs";
+import { STOREFRONT_COMPONENT_REGISTRY } from "../../lib/componentRegistry";
 
 /** Static configuration diagnostics. This does not fetch URLs or attest live availability. */
 export function AdminSiteDiagnostics({
@@ -14,32 +16,7 @@ export function AdminSiteDiagnostics({
 }) {
   const { errors, warnings } = useMemo(() => {
     const errors = validateSitePublication(site);
-    const warnings: string[] = [];
-    const seenLinks = new Map<string, string>();
-    for (const item of market.navigation.filter((link) => link.visible !== false)) {
-      const href = String(item.href || "").trim();
-      if (!href) warnings.push(`Menú «${item.label}»: no tiene enlace`);
-      else if (seenLinks.has(href)) warnings.push(`Menú: «${item.label}» y «${seenLinks.get(href)}» comparten destino ${href}`);
-      else seenLinks.set(href, item.label);
-    }
-    market.home.categories.forEach((item) => {
-      if (item.visible === false) return;
-      if (!String(item.title || "").trim()) warnings.push("Hay una tarjeta de categoría sin título");
-      if (!String(item.imageUrl || "").trim()) warnings.push(`Categoría «${item.title}»: sin imagen`);
-      if (!String(item.href || "").trim()) warnings.push(`Categoría «${item.title}»: sin enlace`);
-    });
-    market.home.services.forEach((item) => {
-      if (item.visible === false) return;
-      if (!String(item.href || "").trim()) warnings.push(`Servicio «${item.title}»: sin destino`);
-    });
-    for (const promo of [market.dulce, market.moda]) {
-      if (promo.enabled !== false && !String(promo.imageUrl || "").trim()) warnings.push(`Banner «${promo.title}»: sin imagen`);
-    }
-    for (const [id, control] of Object.entries(market.componentControls || {})) {
-      if (control.mobile === false && control.tablet === false && control.desktop === false && control.enabled !== false) {
-        warnings.push(`«${id}» está activado pero oculto en todos los dispositivos`);
-      }
-    }
+    const warnings = diagnoseMarketSite(site, market, STOREFRONT_COMPONENT_REGISTRY.map((component) => component.id));
     return { errors, warnings };
   }, [market, site]);
 
@@ -49,7 +26,7 @@ export function AdminSiteDiagnostics({
         <ClipboardList className="h-5 w-5 text-[#315b42]" />
         <div className="flex-1">
           <h4 className="font-black">Diagnóstico antes de publicar</h4>
-          <p className="text-xs text-muted-foreground">Verificación local de enlaces y configuración; no comprueba si las webs externas responden.</p>
+          <p className="text-xs text-muted-foreground">Validación local de enlaces, imágenes, contraste, accesibilidad y registro; no comprueba URLs externas ni posiciones reales en Google.</p>
         </div>
         {errors.length === 0 && warnings.length === 0 ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" /> Sin incidencias detectadas</span>
