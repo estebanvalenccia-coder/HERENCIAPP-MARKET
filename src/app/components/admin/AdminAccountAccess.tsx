@@ -124,6 +124,7 @@ export function AdminPasswordChange({ mandatory = false, onChanged, onLogout, le
   return <div className="mx-auto max-w-xl rounded-2xl border border-border bg-card p-6 shadow-sm">
     <h3 className="text-xl font-bold">{mandatory ? "Configura tu contraseña para continuar" : "Cambiar contraseña"}</h3>
     <p className="mb-5 mt-2 text-sm text-muted-foreground">{mandatory ? "Por seguridad, debes sustituir la contraseña provisional antes de usar el panel." : "Actualiza la contraseña de tu cuenta."}</p>
+    {!mandatory && <button type="button" onClick={async()=>{ try { await backendApi.adminRevokeTrustedDevice(); toast.success("Este dispositivo volverá a solicitar OTP al iniciar sesión"); } catch(e:any) { toast.error(e?.message || "No se pudo revocar el dispositivo"); } }} className="mb-4 rounded-lg border border-border px-4 py-2 text-sm">Revocar confianza de este dispositivo</button>}
     <form onSubmit={submit} className="space-y-4">
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
       <label className="block text-sm font-medium">Contraseña actual o provisional
