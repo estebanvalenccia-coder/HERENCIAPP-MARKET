@@ -180,7 +180,7 @@ export function Home() {
     safeHeroImage(market.home.heroImageUrl) ||
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
-  const referenceMode = market.home.referenceCategories !== false;
+  const referenceMode = market.home.referenceHero !== false;
   const heroImage = referenceMode
     ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
     : originalHeroImage;
