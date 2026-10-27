@@ -873,6 +873,7 @@ export function AdminVisualBuilder({
       const nextRaw = JSON.stringify(restored);
       const outcome = await backendApi.publishSiteContent({
         expectedRaw: publishedRawAtOpenRef.current,
+        action: "restore",
         nextRaw,
         auxiliary: {
           heroBanner: restored.hero.imageUrl ? JSON.stringify({ imageUrl: restored.hero.imageUrl }) : "",
