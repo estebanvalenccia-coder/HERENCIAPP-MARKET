@@ -7,7 +7,7 @@ type AdminUser = {
   email?: string | null; legacy?: boolean; mustChangePassword?: boolean;
 };
 
-export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boolean }) {
+export function AdminUsersManager({ previewOnly = false, ownerOnly = false }: { previewOnly?: boolean; ownerOnly?: boolean }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -27,7 +27,7 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
   useEffect(() => { void reload(); }, [previewOnly]);
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (previewOnly) return;
+    if (previewOnly || !ownerOnly) return;
     setCreating(true); setError("");
     try {
       await backendApi.adminCreateAccount(username, password);
@@ -38,7 +38,7 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
     finally { setCreating(false); }
   };
   const manage = async (user: AdminUser, action: "status" | "role" | "reset_password", value: string) => {
-    if (previewOnly || user.legacy || busyId) return;
+    if (previewOnly || !ownerOnly || user.legacy || busyId) return;
     setBusyId(user.id); setError("");
     try {
       await backendApi.adminManageAccount(user.id, action, value);
@@ -53,6 +53,7 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
       <h3 className="text-xl font-bold">Usuarios y permisos</h3>
       <p className="text-sm text-muted-foreground mt-1">Cada administrador tiene un usuario y contraseña independientes.</p>
     </header>
+    {!ownerOnly && !previewOnly && <p role="status">Solo el propietario puede gestionar cuentas.</p>}
     {previewOnly && <p role="status">En la vista de demostración no se pueden gestionar cuentas.</p>}
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-rose-900">{error}</p>}
     <section className="rounded-2xl border border-border bg-card p-5">
@@ -65,7 +66,7 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs rounded-lg bg-muted px-3 py-1">{user.legacy ? "Cuenta principal" : user.state}</span>
-              {!user.legacy && !previewOnly && <>
+              {!user.legacy && !previewOnly && ownerOnly && <>
                 <select aria-label={`Rol de ${user.username}`} disabled={busyId===user.id} value={user.role} onChange={e=>void manage(user,"role",e.target.value)} className="rounded-lg border p-2 text-sm bg-background">
                   <option value="admin">Administrador</option><option value="employee">Empleado</option>
                 </select>
@@ -87,7 +88,7 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
         <input autoComplete="new-password" type="password" required minLength={4} value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 block w-full rounded-lg border border-border bg-background p-3" />
       </label>
       <p className="text-xs text-muted-foreground">La contraseña provisional solo permite configurar una nueva contraseña. Si hay verificación en dos pasos, también se solicitará al entrar.</p>
-      <button disabled={creating || previewOnly} type="submit" className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50">
+      <button disabled={creating || previewOnly || !ownerOnly} type="submit" className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50">
         {creating ? "Creando…" : "Crear administrador"}
       </button>
     </form>
