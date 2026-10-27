@@ -225,119 +225,28 @@ export function Home() {
   return (
     <div className="flex flex-col bg-[#fffdf9] text-[#173126]">
       <StorefrontComponentBoundary id="home.hero" controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
-      <section
-        className="relative overflow-hidden"
-        style={{
-          order: sectionOrder("hero"),
-          minHeight: `${heroMinHeight}px`,
-          backgroundColor: heroDesign?.backgroundColor || undefined,
-          // The CSS background remains visible if a saved custom image fails to load.
-          backgroundImage: `url("${DEFAULT_HERO}")`,
-          backgroundSize: "cover",
-          backgroundPosition: heroDesign?.imagePosition || "center 15%",
-          color: heroDesign?.textColor || undefined,
-          borderRadius: `${Math.max(0, Number(heroDesign?.radius || 0))}px`,
-          fontFamily:
-            heroDesign?.fontFamily && heroDesign.fontFamily !== "inherit"
-              ? heroDesign.fontFamily
-              : undefined,
-        }}
-      >
-        <img
-          src={heroImage}
-          alt=""
-          onError={(event) => imageFallback(event, IMAGE_FALLBACKS.hero)}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{
-            objectPosition: heroDesign?.imagePosition || "center 15%",
-            transform: `scale(${Math.max(100, Number(heroDesign?.imageZoom || 100)) / 100})`,
-          }}
-        />
-        {(() => {
-          const overlayOpacity = Math.max(
-            0,
-            Math.min(100, Number(heroDesign?.overlay ?? market.home.heroOverlayOpacity ?? 90))
-          ) / 100;
-          const overlayWidth = Math.max(
-            25,
-            Math.min(100, Number(heroDesign?.overlayWidth ?? market.home.heroOverlayWidth ?? 72))
-          );
-          const overlayMid = Math.round(overlayWidth * 0.58);
-          const color = hexToRgb(heroDesign?.overlayColor || market.home.heroOverlayColor || "#102b20");
-          return (
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(90deg,
-                  rgba(${color.r}, ${color.g}, ${color.b}, ${overlayOpacity}) 0%,
-                  rgba(${color.r}, ${color.g}, ${color.b}, ${overlayOpacity * 0.69}) ${overlayMid}%,
-                  rgba(${color.r}, ${color.g}, ${color.b}, 0) ${overlayWidth}%
-                )`,
-              }}
-            />
-          );
-        })()}
-        <div
-          className="relative mx-auto flex items-center px-5 sm:px-8 lg:px-10"
-          style={{
-            minHeight: `${heroMinHeight}px`,
-            maxWidth: `${Math.max(760, Number(heroDesign?.maxWidth || 1280))}px`,
-            paddingTop: `${Math.max(16, Number(heroDesign?.paddingY || 64))}px`,
-            paddingBottom: `${Math.max(16, Number(heroDesign?.paddingY || 64))}px`,
-          }}
-        >
-          <div
-            className="max-w-2xl"
-            style={{
-              color: heroDesign?.textColor || "#ffffff",
-              textAlign:
-                heroDesign?.alignment === "center"
-                  ? "center"
-                  : heroDesign?.alignment === "right"
-                    ? "right"
-                    : "left",
-              marginLeft: heroDesign?.alignment === "right" ? "auto" : undefined,
-              marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
-            }}
-          >
-            <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
-              {market.home.kicker}
-            </p>
-            <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
-              {market.home.title}
-            </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-white/88 sm:text-lg">
-              {market.home.description}
-            </p>
-            <div
-              className="mt-8 flex flex-wrap"
-              style={{
-                gap: `${Math.max(0, Number(heroDesign?.gap || 12))}px`,
-                justifyContent:
-                  heroDesign?.alignment === "center"
-                    ? "center"
-                    : heroDesign?.alignment === "right"
-                      ? "flex-end"
-                      : "flex-start",
-              }}
-            >
-              {site.hero.primaryButton.visible !== false && isWithinPublicationWindow(site.hero.primaryButton.schedule, scheduleNow) && <Link
-                to={site.hero.primaryButton.href || "/productos"}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#254932] px-6 py-3.5 font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#173d2a]"
-              >
-                {site.hero.primaryButton.label || "Explorar tienda"}
-                <ArrowRight className="h-4 w-4" />
-              </Link>}
-              {site.hero.secondaryButton.visible !== false && isWithinPublicationWindow(site.hero.secondaryButton.schedule, scheduleNow) && <Link
-                to={site.hero.secondaryButton.href || "/servicios"}
-                className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/10 px-6 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white/20"
-              >
-                {site.hero.secondaryButton.label || "Nuestros servicios"}
-              </Link>}
+        <section className="bg-[#f1f1e8] px-4 py-5 sm:px-8 sm:py-8 lg:px-10 lg:py-11" style={{ order: sectionOrder("hero"), backgroundColor: heroDesign?.backgroundColor || undefined }}>
+          <div className="mx-auto grid max-w-7xl overflow-hidden rounded-[1.5rem] border border-[#e1e3d9] bg-[#e8ecdf] shadow-sm lg:grid-cols-[0.9fr_1.1fr]" style={{ borderRadius: Math.max(0, Number(heroDesign?.radius ?? 24)) }}>
+            <div className="flex flex-col justify-center px-7 py-14 sm:px-12 lg:px-14 lg:py-20" style={{ minHeight: Math.max(420, Number(heroDesign?.minHeight || heroMinHeight) - 80), textAlign: heroDesign?.alignment || "left", fontFamily: heroDesign?.fontFamily && heroDesign.fontFamily !== "inherit" ? heroDesign.fontFamily : undefined, color: heroDesign?.textColor && heroDesign.textColor !== "#ffffff" ? heroDesign.textColor : "#1c3f2c" }}>
+              <p className="mb-6 text-xs font-bold uppercase tracking-[0.27em] text-[#6a816d]">{market.home.kicker}</p>
+              <h1 className="max-w-[650px] font-serif text-[clamp(2.8rem,5vw,5.4rem)] font-normal leading-[1.07] tracking-[-0.04em]">{market.home.title}</h1>
+              <p className="mt-6 max-w-lg text-base leading-8 text-[#536356] sm:text-lg">{market.home.description}</p>
+              <div className="mt-9 flex flex-wrap gap-3" style={{ justifyContent: heroDesign?.alignment === "right" ? "flex-end" : heroDesign?.alignment === "center" ? "center" : "flex-start" }}>
+                {site.hero.primaryButton.visible !== false && isWithinPublicationWindow(site.hero.primaryButton.schedule, scheduleNow) && <Link to={site.hero.primaryButton.href || "/productos"} className="inline-flex items-center gap-2 rounded-lg bg-[#234b35] px-7 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#153524]">{site.hero.primaryButton.label || "Explorar tienda"} <ArrowRight className="h-4 w-4" /></Link>}
+                {site.hero.secondaryButton.visible !== false && isWithinPublicationWindow(site.hero.secondaryButton.schedule, scheduleNow) && <Link to={site.hero.secondaryButton.href || "/servicios"} className="inline-flex items-center gap-2 rounded-lg border border-[#728c75] px-7 py-3.5 text-sm font-semibold text-[#234b35] transition hover:bg-white/70">{site.hero.secondaryButton.label || "Nuestros servicios"}</Link>}
+              </div>
+              <div className="mt-12 flex flex-wrap gap-6 border-t border-[#d0dacd] pt-6 text-xs font-medium text-[#526a56]">
+                <span className="inline-flex items-center gap-2"><Leaf className="h-4 w-4" /> Naturaleza y diseño</span>
+                <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Compra segura</span>
+              </div>
+            </div>
+            <div className="relative min-h-[340px] bg-[#dce3d4] lg:min-h-[550px]">
+              <img src={heroImage} alt="Colección de Herencia Market" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.hero)} className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: heroDesign?.imagePosition || "center", transform: `scale(${Math.max(100, Number(heroDesign?.imageZoom || 100)) / 100})` }} />
+              <div className="absolute bottom-5 left-5 rounded-lg border border-white/70 bg-[#fffdf7]/90 px-5 py-3 text-sm font-medium text-[#21412d] shadow-sm backdrop-blur-md sm:bottom-8 sm:left-8">HERENCIA MARKET · Naturaleza con identidad</div>
             </div>
           </div>
-        </div>
-      </section></StorefrontComponentBoundary>
+        </section>
+      </StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
         <section style={{ order: sectionOrder("delivery") }} className="border-b border-[#d9e1d9] bg-[#edf4ee]">
