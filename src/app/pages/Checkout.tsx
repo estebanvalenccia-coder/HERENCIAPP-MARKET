@@ -1,3 +1,4 @@
+import { trackTikTokConfirmedPurchase } from "../lib/tiktokPixel";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -677,6 +678,7 @@ export function Checkout() {
               onCancel={() => setShowStripe(false)}
               onSuccess={({ orderId, paymentIntentId, status }) => {
                 if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
+                if (status === "succeeded" && paymentIntentId) trackTikTokConfirmedPurchase(orderId, paymentIntentId, cartItems.map((item: any) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), total);
                 if (status === "succeeded") {
                   toast.success(onlyServices ? "Reserva pagada correctamente 🌿" : "Pago realizado correctamente 🌿");
                 } else {
