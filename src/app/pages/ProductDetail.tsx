@@ -1,3 +1,4 @@
+import { trackTikTokCommerceEvent } from "../lib/tiktokPixel";
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router";
 import { motion, useScroll, useTransform } from "motion/react";
@@ -111,6 +112,7 @@ export function ProductDetail() {
 
   useEffect(() => {
     if (!product) return;
+    trackTikTokCommerceEvent("ViewContent", [{ id: product.id, price: product.price, quantity: 1 }]);
     const previousTitle = document.title;
     document.title = `${product.seoTitle || product.name} | Herencia`;
 
@@ -450,6 +452,7 @@ export function ProductDetail() {
       personalization: dedication.trim() ? { dedication: dedication.trim() } : undefined });
     void backendStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("storage"));
+    trackTikTokCommerceEvent("AddToCart", [{ id: product.id, price: effectivePrice, quantity }]);
     toast.success("Producto añadido al carrito");
   };
 
