@@ -1049,6 +1049,45 @@ export function AdminMarketExperience({
 
         <AdminCampaigns campaigns={market.home.campaigns} onChange={(campaigns) => patchHome({ campaigns })} />
 
+
+        <div className="rounded-2xl border border-[#dce6dc] bg-white p-5">
+          <h4 className="mb-3 font-black">WhatsApp · botón flotante</h4>
+          <p className="mb-4 text-xs text-muted-foreground">El número de teléfono se administra en el pie de página. Aquí puedes ocultar el botón, ajustar posición, color y texto inicial.</p>
+          <label className="mb-4 flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox"
+              checked={market.componentControls["floating.whatsapp"]?.enabled !== false}
+              onChange={(event) => setMarket({ ...market, componentControls: {
+                ...market.componentControls, "floating.whatsapp": { ...market.componentControls["floating.whatsapp"], enabled: event.target.checked },
+              } })} />
+            ON/OFF · Mostrar botón de WhatsApp
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Mensaje inicial" value={market.whatsapp.message}
+              onChange={(message) => setMarket({ ...market, whatsapp: { ...market.whatsapp, message } })} />
+            <label className="block text-xs font-bold">
+              Posición
+              <select className="mt-2 block w-full rounded-lg border bg-white p-3"
+                value={market.whatsapp.position}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, position: event.target.value as "left" | "right" } })}>
+                <option value="left">Inferior izquierda</option>
+                <option value="right">Inferior derecha</option>
+              </select>
+            </label>
+            <label className="block text-xs font-bold">
+              Separación inferior: {market.whatsapp.bottomOffset}px
+              <input type="range" min="12" max="240" className="mt-3 block w-full"
+                value={market.whatsapp.bottomOffset}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-xs font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer"
+                value={market.whatsapp.buttonColor}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, buttonColor: event.target.value } })} />
+            </label>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-[#dce6dc] bg-white p-5">
           <h4 className="mb-3 font-black">Atención al cliente · botón flotante</h4>
           <p className="mb-4 text-xs text-muted-foreground">Estos ajustes afectan al acceso visual al soporte. La mensajería y los datos privados no se modifican.</p>
