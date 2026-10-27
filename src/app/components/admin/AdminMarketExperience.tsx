@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem } from "./AdminElementControls";
 import { AdminComponentRegistry } from "./AdminComponentRegistry";
 import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
+import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -810,6 +811,9 @@ export function AdminMarketExperience({
                       patchHome({ categories });
                     }}
                   />
+                  <AdminCardDesignFields label={category.title} value={category.design}
+                    onChange={(design) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, design } : current) })}
+                  />
                   <button
                     type="button"
                     onClick={() => setManagedCategory({ title: category.title, key: categoryKey(category.title, category.href) })}
@@ -888,6 +892,9 @@ export function AdminMarketExperience({
                       );
                       patchHome({ services });
                     }}
+                  />
+                  <AdminCardDesignFields label={service.title} value={service.design}
+                    onChange={(design) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, design } : current) })}
                   />
                 </div>
               ))}
@@ -1020,7 +1027,10 @@ export function AdminMarketExperience({
                   <Field label="Texto del botón" value={promo.buttonLabel} onChange={(buttonLabel) => patchPromo(kind, { buttonLabel })} />
                   <Field label="Destino" value={promo.href} onChange={(href) => patchPromo(kind, { href })} />
                 </div>
-                <ImageField label="Imagen · URL" value={promo.imageUrl} onChange={(imageUrl) => patchPromo(kind, { imageUrl })} />
+                <div className="space-y-3">
+                  <ImageField label="Imagen · URL" value={promo.imageUrl} onChange={(imageUrl) => patchPromo(kind, { imageUrl })} />
+                  <AdminPromoDesignFields value={promo.design} onChange={(design) => patchPromo(kind, { design })} />
+                </div>
               </div>
             </div>
           );
