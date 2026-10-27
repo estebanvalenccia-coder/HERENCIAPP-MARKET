@@ -42,6 +42,7 @@ import {
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
 import { getMarketExperience } from "../../lib/marketExperience";
+import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
 import { STOREFRONT_COMPONENT_REGISTRY, isComponentAllowed } from "../../lib/componentRegistry";
 import { AdminMarketExperience } from "./AdminMarketExperience";
 import {
@@ -732,6 +733,8 @@ export function AdminVisualBuilder({
     setPublishing(true);
     try {
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
+      const validationErrors = validateSitePublication(nextPublished);
+      if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
       const previousRaw = backendStorage.getItem("siteContent") || "";
       if (previousRaw !== publishedRawAtOpenRef.current) {
         throw new Error("La tienda ha recibido cambios publicados desde que abriste este editor. Sal del editor, recarga los datos y revisa las modificaciones antes de publicar.");
