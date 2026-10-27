@@ -509,6 +509,8 @@ export function AdminVisualBuilder({
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
   const siteRef = useRef(site);
+  // Detect content changed elsewhere since opening this editor. Backend must still enforce atomic concurrency in a later phase.
+  const publishedRawAtOpenRef = useRef(backendStorage.getItem("siteContent") || "");
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const market = useMemo(() => getMarketExperience(site), [site]);
@@ -729,7 +731,10 @@ export function AdminVisualBuilder({
     setPublishing(true);
     try {
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
-      const previousRaw = backendStorage.getItem("siteContent");
+      const previousRaw = backendStorage.getItem("siteContent") || "";
+      if (previousRaw !== publishedRawAtOpenRef.current) {
+        throw new Error("La tienda ha recibido cambios publicados desde que abriste este editor. Sal del editor, recarga los datos y revisa las modificaciones antes de publicar.");
+      }
       const previous = previousRaw ? parseSiteContent(previousRaw) : publishedSite;
       let nextHistory: StoredVersion[] = [
         {
@@ -766,6 +771,7 @@ export function AdminVisualBuilder({
       const failed = results.find((result) => !result.ok);
       if (failed) throw new Error(failed.error || "No se pudo publicar");
 
+      publishedRawAtOpenRef.current = JSON.stringify(nextPublished);
       setSite(nextPublished);
       setPublishedSite(nextPublished);
       setVersions(nextHistory);
