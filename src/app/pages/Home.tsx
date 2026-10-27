@@ -15,6 +15,7 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
 
@@ -65,6 +66,12 @@ function money(value: unknown) {
 export function Home() {
   const navigate=useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
@@ -134,7 +141,7 @@ export function Home() {
   };
 
   const visibleHomeCategories = market.home.categories.filter(
-    (item) => item.visible !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
+    (item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
@@ -422,7 +429,7 @@ export function Home() {
           </div>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {market.home.services.filter((service) => service.visible !== false).map((service) => (
+            {market.home.services.filter((service) => service.visible !== false && isWithinPublicationWindow(service.schedule, scheduleNow)).map((service) => (
               <Link
                 key={service.title}
                 to={service.href}
@@ -502,7 +509,7 @@ export function Home() {
 
       {sections.promotions && (
       <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
-        {[market.dulce, market.moda].filter((promo) => promo.enabled !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo === market.dulce ? "dulce" : "moda"])).map((promo) => (
+        {[market.dulce, market.moda].filter((promo) => promo.enabled !== false && isWithinPublicationWindow(promo.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo === market.dulce ? "dulce" : "moda"])).map((promo) => (
           <Link
             key={promo.title}
             to={promo.href}
@@ -536,7 +543,7 @@ export function Home() {
       {sections.trust && (
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
-          {market.home.trust.filter((item) => item.visible !== false).map((item, index) => {
+          {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
             const Icon = trustIcons[index % trustIcons.length];
             return (
               <div key={item.title} className="flex gap-3">
