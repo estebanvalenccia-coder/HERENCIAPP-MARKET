@@ -483,7 +483,7 @@ export function Layout() {
       </div>
 
       <StorefrontComponentBoundary id="floating.herenciaIA" controls={market.componentControls} now={scheduleNow}
-        enabled={herenciaEnabled && site.navigation.herencia.visible !== false && !/^\\/(?:checkout|pago)/.test(location.pathname)}>
+        enabled={herenciaEnabled && site.navigation.herencia.visible !== false && !location.pathname.startsWith("/checkout") && !location.pathname.startsWith("/pago")}}>
         <Link to={site.navigation.herencia.href || "/herencia"}
           aria-label="Abrir asistente Herenc(IA)"
           className="group fixed bottom-[260px] right-4 z-[95] inline-flex items-center gap-2 rounded-full border border-[#b3c8b5] bg-[#fffdf9] px-3 py-2.5 text-sm font-semibold text-[#173d2a] shadow-[0_6px_24px_rgba(9,42,20,.18)] transition duration-300 hover:-translate-y-1 hover:border-[#5b8464] hover:shadow-[0_12px_30px_rgba(9,42,20,.22)] sm:right-6">
