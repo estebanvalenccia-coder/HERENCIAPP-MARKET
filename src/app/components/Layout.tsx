@@ -12,6 +12,7 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
@@ -22,6 +23,12 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -181,7 +188,7 @@ export function Layout() {
 
   const market = useMemo(() => getMarketExperience(site), [site]);
   const visibleNavigation = market.navigation.filter((item) => {
-    if (item.visible === false) return false;
+    if (item.visible === false || !isWithinPublicationWindow(item.schedule, scheduleNow)) return false;
     const path = String(item.href || "").split("?")[0].toLowerCase();
     const collectionId = path === "/dulce" ? "dulce" : path === "/moda" ? "moda" : "";
     return !collectionId || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionId]);
@@ -411,12 +418,12 @@ export function Layout() {
 
               <FooterColumn
                 title={site.footer.productsTitle}
-                links={site.footer.productLinks.filter((item) => item.visible !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
+                links={site.footer.productLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
               />
 
               <FooterColumn
                 title={site.footer.servicesTitle}
-                links={market.home.services.filter((item) => item.visible !== false).map((item) => ({
+                links={market.home.services.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item) => ({
                   label: item.title,
                   href: item.href,
                 }))}
