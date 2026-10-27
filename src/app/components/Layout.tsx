@@ -15,6 +15,7 @@ import { getMarketExperience } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
+import { MarketNavigationMenu } from "./MarketNavigationMenu";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
@@ -252,23 +253,13 @@ export function Layout() {
               </Link>
 
               <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
-                {visibleNavigation.map((item) =>
-                  isPlantsNavigationItem(item) ? (
-                    <PlantsNavMenu
-                      key={item.href}
-                      active={location.pathname === "/productos"}
-                    />
-                  ) : isGardeningNavigationItem(item) ? (
-                    <GardeningNavMenu
-                      key={item.href}
-                      active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
-                    />
+                {visibleNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
+                  item.children?.length ? (
+                    <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} active={isPathActive(location.pathname, item.href)} />
                   ) : (
-                    <MarketNavLink
-                      key={item.href}
-                      href={item.href}
-                      label={item.label}
-                      active={isPathActive(location.pathname, item.href)}
+                    <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
+                  )
+                )}
                     />
                   )
                 )}
@@ -358,23 +349,13 @@ export function Layout() {
             </div>
 
             <nav className="flex items-center gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
-              {visibleNavigation.map((item) =>
-                isPlantsNavigationItem(item) ? (
-                  <PlantsMobileNavMenu
-                    key={item.href}
-                    active={location.pathname === "/productos"}
-                  />
-                ) : isGardeningNavigationItem(item) ? (
-                  <GardeningMobileNavMenu
-                    key={item.href}
-                    active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
-                  />
+              {visibleNavigation.filter((item) => item.showMobile !== false).map((item, index) =>
+                item.children?.length ? (
+                  <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} mobile active={isPathActive(location.pathname, item.href)} />
                 ) : (
-                  <MarketNavLink
-                    key={item.href}
-                    href={item.href}
-                    label={item.label}
-                    active={isPathActive(location.pathname, item.href)}
+                  <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
+                )
+              )}
                     mobile
                   />
                 )
