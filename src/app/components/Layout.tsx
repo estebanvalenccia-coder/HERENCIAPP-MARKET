@@ -29,6 +29,32 @@ import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  // Progressive scroll reveals: only existing public sections, no extra data or admin changes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const root = document.querySelector(".herencia-marketfront main");
+    if (!root) return;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("hm-revealed");
+          observer.unobserve(entry.target);
+        }
+      }
+    }, { threshold: 0.08, rootMargin: "0px 0px 40px 0px" });
+    const register = () => {
+      root.querySelectorAll(":scope > div > section, :scope > div > div > section, :scope > section").forEach((element) => {
+        if (element.hasAttribute("data-hm-reveal")) return;
+        element.setAttribute("data-hm-reveal", "");
+        observer.observe(element);
+      });
+    };
+    register();
+    const mutations = new MutationObserver(register);
+    mutations.observe(root, { childList: true, subtree: true });
+    return () => { mutations.disconnect(); observer.disconnect(); };
+  }, [location.pathname]);
+
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   useAdminPreviewSite(setSite);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
