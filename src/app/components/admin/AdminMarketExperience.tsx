@@ -680,8 +680,20 @@ export function AdminMarketExperience({
                 <label className="mb-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={market.home.referenceHero !== false} onChange={(e) => patchHome({referenceHero:e.target.checked})}/> Activar banner visual de referencia</label>
                 <h4 className="mb-2 font-bold">Hero del diseño de referencia</h4>
                 <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y textos del banner cuando el modo visual de referencia está activo; no alteran el banner anterior.</p>
-                <Field label="URL de fotografía botánica" value={market.home.referenceHeroImageUrl || ""}
-                  onChange={(referenceHeroImageUrl) => patchHome({referenceHeroImageUrl})} />
+                <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox"
+                    checked={market.home.referenceUseOriginalHeroImage !== false}
+                    onChange={(event) => patchHome({ referenceUseOriginalHeroImage: event.target.checked })}/>
+                  Conservar fotografía original del banner (recomendado)
+                </label>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  La imagen que tenías anteriormente sigue en la configuración de portada.
+                  Desmarca la casilla únicamente si quieres sustituirla por otra foto.
+                </p>
+                {market.home.referenceUseOriginalHeroImage === false && (
+                  <Field label="URL de fotografía alternativa" value={market.home.referenceHeroImageUrl || ""}
+                    onChange={(referenceHeroImageUrl) => patchHome({referenceHeroImageUrl})} />
+                )}
                 <Field label="Título del banner" value={market.home.referenceHeroTitle || ""}
                   onChange={(referenceHeroTitle) => patchHome({referenceHeroTitle})} />
                 <Field label="Descripción del banner" value={market.home.referenceHeroDescription || ""}
