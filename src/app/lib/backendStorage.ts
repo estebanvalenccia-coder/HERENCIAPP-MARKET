@@ -2283,7 +2283,10 @@ export const backendApi = {
 if (typeof window !== "undefined") {
   window.addEventListener("herencia:cart-updated", (event: Event) => {
     const detail = (event as CustomEvent<{before?: string | null; after?: string}>).detail;
-    if (typeof detail?.after === "string") trackTikTokCartDifference(detail.before ?? null, detail.after);
+    if (typeof detail?.after === "string") {
+      cache.set("cart", detail.after);
+      trackTikTokCartDifference(detail.before ?? null, detail.after);
+    }
   });
 }
 
