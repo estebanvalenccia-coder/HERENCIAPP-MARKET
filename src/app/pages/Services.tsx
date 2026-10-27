@@ -118,6 +118,7 @@ export function Services() {
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
+      <StorefrontComponentBoundary id="services.hero" controls={market.componentControls} now={scheduleNow}>
       <section className="relative min-h-[440px] overflow-hidden">
         <img
           src={market.home.services[1]?.imageUrl || market.home.services[0]?.imageUrl}
@@ -155,7 +156,9 @@ export function Services() {
           </div>
         </div>
       </section>
+      </StorefrontComponentBoundary>
 
+      <StorefrontComponentBoundary id="services.cards" controls={market.componentControls} now={scheduleNow}>
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="text-center">
           <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">
@@ -216,9 +219,11 @@ export function Services() {
           </article>
         </div>
       </section>
+      </StorefrontComponentBoundary>
 
       {sellableServices.length > 0 && (
-        <section className="border-t border-[#ded9cd] bg-white">
+        <StorefrontComponentBoundary id="services.booking" controls={market.componentControls} now={scheduleNow}>
+      <section className="border-t border-[#ded9cd] bg-white">
           <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -261,8 +266,10 @@ export function Services() {
             </div>
           </div>
         </section>
+      </StorefrontComponentBoundary>
       )}
 
+      <StorefrontComponentBoundary id="services.process" controls={market.componentControls} now={scheduleNow}>
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
           <div className="grid gap-5 md:grid-cols-3">
@@ -287,6 +294,7 @@ export function Services() {
           </div>
         </div>
       </section>
+      </StorefrontComponentBoundary>
     </div>
   );
 }
