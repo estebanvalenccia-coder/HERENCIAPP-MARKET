@@ -689,9 +689,9 @@ export function Checkout() {
                 requestedPaymentMethod: paymentMethod,
               }}
               onCancel={() => setShowStripe(false)}
-              onSuccess={({ orderId, paymentIntentId, status }) => {
+              onSuccess={({ orderId, paymentIntentId, status, paidTotal }) => {
                 if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
-                if (status === "succeeded" && paymentIntentId) trackTikTokConfirmedPurchase(orderId, paymentIntentId, cartItems.map((item: any) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), total);
+                if (status === "succeeded" && paymentIntentId) trackTikTokConfirmedPurchase(orderId, paymentIntentId, cartItems.map((item: any) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), Number(paidTotal || 0));
                 if (status === "succeeded") {
                   toast.success(onlyServices ? "Reserva pagada correctamente 🌿" : "Pago realizado correctamente 🌿");
                 } else {
