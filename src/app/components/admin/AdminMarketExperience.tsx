@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Edit3, Home, Layers3, MapPin, PackagePlus, Search, Shirt, Sparkles, Store, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
-import { AdminElementControls, AdminAddElement, reorderItem } from "./AdminElementControls";
+import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem } from "./AdminElementControls";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -502,6 +502,7 @@ export function AdminMarketExperience({
                     onDuplicate={() => patch({ navigation: [...market.navigation.slice(0, index + 1), { ...item }, ...market.navigation.slice(index + 1)] })}
                     onRemove={() => patch({ navigation: market.navigation.filter((_, i) => i !== index) })}
                   />
+                  <AdminScheduleFields label={item.label} value={item.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label={`Enlace ${index + 1} · texto`}
                     value={item.label}
@@ -698,6 +699,7 @@ export function AdminMarketExperience({
                     onDuplicate={() => patchHome({ categories: [...market.home.categories.slice(0, index + 1), { ...category }, ...market.home.categories.slice(index + 1)] })}
                     onRemove={() => patchHome({ categories: market.home.categories.filter((_, i) => i !== index) })}
                   />
+                  <AdminScheduleFields label={category.title} value={category.schedule} onChange={(schedule) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Nombre"
                     value={category.title}
@@ -765,6 +767,7 @@ export function AdminMarketExperience({
                     onDuplicate={() => patchHome({ services: [...market.home.services.slice(0, index + 1), { ...service }, ...market.home.services.slice(index + 1)] })}
                     onRemove={() => patchHome({ services: market.home.services.filter((_, i) => i !== index) })}
                   />
+                  <AdminScheduleFields label={service.title} value={service.schedule} onChange={(schedule) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Servicio"
                     value={service.title}
@@ -835,6 +838,7 @@ export function AdminMarketExperience({
                     onDuplicate={() => patchHome({ trust: [...market.home.trust.slice(0, index + 1), { ...item }, ...market.home.trust.slice(index + 1)] })}
                     onRemove={() => patchHome({ trust: market.home.trust.filter((_, i) => i !== index) })}
                   />
+                  <AdminScheduleFields label={item.title} value={item.schedule} onChange={(schedule) => patchHome({ trust: market.home.trust.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Título"
                     value={item.title}
@@ -935,6 +939,7 @@ export function AdminMarketExperience({
                 <h4 className="font-black">{kind === "dulce" ? "Dulce" : "Moda"} · portada y banner</h4>
               </div>
               <label className="mb-4 flex items-center gap-2 rounded-xl bg-[#f2f5ef] p-3 text-sm font-bold"><input type="checkbox" checked={promo.enabled !== false} onChange={(event) => patchPromo(kind, { enabled: event.target.checked })} /> Mostrar banner de {kind === "dulce" ? "Dulce" : "Moda"}</label>
+              <AdminScheduleFields label={promo.title} value={promo.schedule} onChange={(schedule) => patchPromo(kind, { schedule })} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4">
                   <Field label="Texto pequeño" value={promo.kicker} onChange={(kicker) => patchPromo(kind, { kicker })} />
