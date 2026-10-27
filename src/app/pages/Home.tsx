@@ -678,15 +678,19 @@ export function Home() {
       <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="relative overflow-hidden rounded-xl border border-[#e4dfd3] bg-[#ece5d8] px-7 py-12 text-[#173d2a] sm:px-10">
-          <Sparkles className="absolute right-8 top-8 h-20 w-20 text-[#315b42]/15" />
+          {site.cta.imageUrl && <>
+            <img src={site.cta.imageUrl} alt="" className="pointer-events-none absolute inset-y-0 right-0 h-full w-full object-cover opacity-70 md:w-[44%]" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#ece5d8] via-[#ece5d8]/95 to-[#ece5d8]/15" />
+          </>}
+          <Sparkles className="pointer-events-none absolute right-8 top-8 h-20 w-20 text-[#315b42]/15" />
           <p className="text-xs font-black uppercase tracking-[0.24em] text-[#315b42]/70">HERENCIA</p>
-          <h2 className="mt-2 max-w-2xl text-3xl font-medium sm:text-4xl">
+          <h2 className="relative mt-2 max-w-2xl font-serif text-3xl font-medium sm:text-4xl">
             {site.cta.title}
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#4b6453]">{site.cta.subtitle}</p>
+          <p className="relative mt-3 max-w-2xl text-sm leading-6 text-[#4b6453]">{site.cta.subtitle}</p>
           {site.cta.button.visible !== false && isWithinPublicationWindow(site.cta.button.schedule, scheduleNow) && <Link
             to={site.cta.button.href || "/productos"}
-            className="mt-6 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white"
+            className="relative mt-6 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white"
           >
             {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
           </Link>}
