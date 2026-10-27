@@ -115,7 +115,7 @@ export async function publishNeonSiteContent({ expectedRaw, nextRaw, actor, auxi
       );
     }
     await client.query("COMMIT");
-    return { ok: true, revision: plan.revision, previousRevision: plan.previousRevision, versionCount: plan.versionCount };
+    return { ok: true, revision: plan.revision, previousRevision: plan.previousRevision, versionCount: plan.versionCount, history: plan.history };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
