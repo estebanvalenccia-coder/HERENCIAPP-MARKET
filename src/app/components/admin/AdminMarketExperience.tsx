@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Edit3, Home, Layers3, MapPin, PackagePlus, Search, Shirt, Sparkles, Store, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
+import { AdminElementControls, AdminAddElement, reorderItem } from "./AdminElementControls";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -431,6 +432,10 @@ export function AdminMarketExperience({
     setMarket({ ...market, home: { ...market.home, ...value } });
   };
 
+  const patchLayout = (key: keyof MarketExperienceContent["layout"], enabled: boolean) => {
+    patch({ layout: { ...market.layout, [key]: enabled } });
+  };
+
   const patchPromo = (
     kind: "dulce" | "moda",
     value: Partial<MarketExperienceContent["dulce"]>
@@ -489,6 +494,14 @@ export function AdminMarketExperience({
             <div className="grid gap-3 md:grid-cols-2">
               {market.navigation.map((item, index) => (
                 <div key={index} className="rounded-xl border border-border bg-[#fbfaf6] p-3">
+                  <AdminElementControls label={item.title || item.label || "Elemento"} visible={item.visible !== false}
+                    onToggle={(visible) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patch({ navigation: reorderItem(market.navigation, index, index - 1) })}
+                    onMoveDown={() => patch({ navigation: reorderItem(market.navigation, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.navigation.length - 1}
+                    onDuplicate={() => patch({ navigation: [...market.navigation.slice(0, index + 1), { ...item }, ...market.navigation.slice(index + 1)] })}
+                    onRemove={() => patch({ navigation: market.navigation.filter((_, i) => i !== index) })}
+                  />
                   <Field
                     label={`Enlace ${index + 1} · texto`}
                     value={item.label}
@@ -514,6 +527,7 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <div className="mt-3"><AdminAddElement label="Añadir enlace" onAdd={() => patch({ navigation: [...market.navigation, { label: "Nuevo enlace", href: "/productos", visible: false }] })} /></div>
           </div>
         </div>
 
@@ -645,6 +659,14 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.categories.map((category, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={category.title || category.label || "Elemento"} visible={category.visible !== false}
+                    onToggle={(visible) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ categories: reorderItem(market.home.categories, index, index - 1) })}
+                    onMoveDown={() => patchHome({ categories: reorderItem(market.home.categories, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.categories.length - 1}
+                    onDuplicate={() => patchHome({ categories: [...market.home.categories.slice(0, index + 1), { ...category }, ...market.home.categories.slice(index + 1)] })}
+                    onRemove={() => patchHome({ categories: market.home.categories.filter((_, i) => i !== index) })}
+                  />
                   <Field
                     label="Nombre"
                     value={category.title}
@@ -703,6 +725,14 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {market.home.services.map((service, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={service.title || service.label || "Elemento"} visible={service.visible !== false}
+                    onToggle={(visible) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ services: reorderItem(market.home.services, index, index - 1) })}
+                    onMoveDown={() => patchHome({ services: reorderItem(market.home.services, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.services.length - 1}
+                    onDuplicate={() => patchHome({ services: [...market.home.services.slice(0, index + 1), { ...service }, ...market.home.services.slice(index + 1)] })}
+                    onRemove={() => patchHome({ services: market.home.services.filter((_, i) => i !== index) })}
+                  />
                   <Field
                     label="Servicio"
                     value={service.title}
@@ -764,6 +794,14 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.trust.map((item, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={item.title || item.label || "Elemento"} visible={item.visible !== false}
+                    onToggle={(visible) => patchHome({ trust: market.home.trust.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ trust: reorderItem(market.home.trust, index, index - 1) })}
+                    onMoveDown={() => patchHome({ trust: reorderItem(market.home.trust, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.trust.length - 1}
+                    onDuplicate={() => patchHome({ trust: [...market.home.trust.slice(0, index + 1), { ...item }, ...market.home.trust.slice(index + 1)] })}
+                    onRemove={() => patchHome({ trust: market.home.trust.filter((_, i) => i !== index) })}
+                  />
                   <Field
                     label="Título"
                     value={item.title}
@@ -862,6 +900,7 @@ export function AdminMarketExperience({
                 <Icon className="h-5 w-5 text-primary" />
                 <h4 className="font-black">{kind === "dulce" ? "Dulce" : "Moda"} · portada y banner</h4>
               </div>
+              <label className="mb-4 flex items-center gap-2 rounded-xl bg-[#f2f5ef] p-3 text-sm font-bold"><input type="checkbox" checked={promo.enabled !== false} onChange={(event) => patchPromo(kind, { enabled: event.target.checked })} /> Mostrar banner de {kind === "dulce" ? "Dulce" : "Moda"}</label>
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4">
                   <Field label="Texto pequeño" value={promo.kicker} onChange={(kicker) => patchPromo(kind, { kicker })} />
@@ -923,6 +962,7 @@ export function AdminMarketExperience({
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {market.sales.quickActions.map((action, index) => (
               <div key={action.id} className="rounded-xl border border-border bg-[#fbfaf6] p-3">
+                <label className="mb-2 flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={action.enabled !== false} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, quickActions: market.sales.quickActions.map((current, i) => i === index ? { ...current, enabled: event.target.checked } : current) } })} /> ON/OFF · Acción rápida</label>
                 <Field
                   label={`Acción ${index + 1}`}
                   value={action.label}
