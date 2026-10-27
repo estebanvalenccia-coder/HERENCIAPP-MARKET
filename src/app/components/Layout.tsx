@@ -1,3 +1,4 @@
+import { trackTikTokPageView } from "../lib/tiktokPixel";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
@@ -99,6 +100,7 @@ export function Layout() {
 
   useEffect(() => {
     if (cookieConsent !== "accepted") return;
+    trackTikTokPageView();
 
     let sessionId = "";
     try {
