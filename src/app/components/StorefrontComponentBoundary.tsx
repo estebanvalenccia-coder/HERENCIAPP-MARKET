@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 import {
   componentDeviceClasses,
   isComponentAllowed,
@@ -21,7 +22,16 @@ export function StorefrontComponentBoundary({
 }) {
   if (!enabled || !isComponentAllowed(controls, id, now)) return null;
   return (
-    <div className={componentDeviceClasses(controls, id)} data-storefront-component={id}>
+    <div
+      className={componentDeviceClasses(controls, id)}
+      data-storefront-component={id}
+      onClickCapture={(event) => {
+        if (!isEmbeddedAdminPreview()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        window.parent.postMessage({ type: "herencia:preview:select", componentId: id }, window.location.origin);
+      }}
+    >
       {children}
     </div>
   );
