@@ -50,6 +50,8 @@ export type BuilderBlock = {
   design: BuilderBlockDesign;
 };
 
+export type BuilderTemplate = { id: string; name: string; createdAt: string; block: BuilderBlock };
+
 export type SiteContent = {
   brand: {
     name: string;
@@ -191,6 +193,7 @@ export type SiteContent = {
     helpItems: string[];
   };
   builder: {
+    templates: BuilderTemplate[];
     blocks: BuilderBlock[];
     blocksInitialized?: boolean;
     headerStyle: {
@@ -396,6 +399,7 @@ export const defaultSiteContent: SiteContent = {
     ],
   },
   builder: {
+    templates: [],
     blocks: [],
     blocksInitialized: false,
     headerStyle: {
@@ -851,6 +855,9 @@ export function parseSiteContent(raw: string | null): SiteContent {
         ),
       },
       builder: {
+        templates: Array.isArray(parsed.builder?.templates)
+          ? parsed.builder.templates.filter((item: any) => item && typeof item.name === "string" && item.block && typeof item.block.type === "string").slice(0, 30)
+          : [],
         blocks: Array.isArray(parsed.builder?.blocks) ? parsed.builder.blocks : [],
         blocksInitialized: parsed.builder?.blocksInitialized === true,
         headerStyle: {

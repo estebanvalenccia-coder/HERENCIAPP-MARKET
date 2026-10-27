@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { neonPool } from "./neonDb.js";
 import { validateSitePublication } from "./sitePublicationValidation.mjs";
+import { ensureSiteEditorAuditTables, recordSitePublicationAudit } from "./siteEditorAudit.js";
 
 export class SitePublicationConflict extends Error {
   constructor() {
@@ -85,8 +86,9 @@ export function planSiteContentPublication({
  * An advisory lock on siteContent makes compare-and-swap conflict detection atomic.
  * The public content, draft snapshot and versions are committed or rolled back together.
  */
-export async function publishNeonSiteContent({ expectedRaw, nextRaw, actor, auxiliary }) {
+export async function publishNeonSiteContent({ expectedRaw, nextRaw, actor, auxiliary, action = "publish" }) {
   if (!neonPool) throw Object.assign(new Error("Neon no está configurado."), { statusCode: 503 });
+  await ensureSiteEditorAuditTables();
   const client = await neonPool.connect();
   try {
     await client.query("BEGIN");
@@ -114,6 +116,11 @@ export async function publishNeonSiteContent({ expectedRaw, nextRaw, actor, auxi
         [key, value]
       );
     }
+    await recordSitePublicationAudit(client, {
+      actor, action,
+      previousRevision: plan.previousRevision,
+      nextRevision: plan.revision,
+    });
     await client.query("COMMIT");
     return { ok: true, revision: plan.revision, previousRevision: plan.previousRevision, versionCount: plan.versionCount, history: plan.history };
   } catch (error) {

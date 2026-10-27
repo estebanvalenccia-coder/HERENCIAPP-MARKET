@@ -1,0 +1,26 @@
+
+/* Generic storefront styling is applied only to managed, explicitly customized elements.
+   display: contents preserves homepage CSS order and existing responsive layouts. */
+.market-component-design[data-design-background="true"] > :first-child { background-color: var(--market-design-background) !important; }
+.market-component-design[data-design-text="true"] > :first-child { color: var(--market-design-text) !important; }
+.market-component-design[data-design-radius="true"] > :first-child { border-radius: var(--market-design-radius) !important; overflow: clip; }
+.market-component-design[data-design-padding="true"] > :first-child { padding-top: var(--market-design-padding) !important; padding-bottom: var(--market-design-padding) !important; }
+.market-component-design[data-design-margin="true"] > :first-child { margin-top: var(--market-design-margin) !important; margin-bottom: var(--market-design-margin) !important; }
+.market-component-design[data-design-height="true"] > :first-child { min-height: var(--market-design-height) !important; }
+.market-component-design[data-design-width="true"] > :first-child { max-width: var(--market-design-width) !important; width: 100%; margin-left: auto; margin-right: auto; }
+.market-component-design[data-design-heading="true"] > :first-child h1,
+.market-component-design[data-design-heading="true"] > :first-child h2,
+.market-component-design[data-design-heading="true"] > :first-child h3 { font-size: var(--market-design-heading) !important; }
+.market-component-design[data-design-font="serif"] > :first-child { font-family: Georgia, 'Times New Roman', serif !important; }
+.market-component-design[data-design-font="sans"] > :first-child { font-family: Arial, sans-serif !important; }
+.market-component-design[data-design-shadow="none"] > :first-child { box-shadow: none !important; }
+.market-component-design[data-design-shadow="small"] > :first-child { box-shadow: 0 3px 12px rgba(0,0,0,.08) !important; }
+.market-component-design[data-design-shadow="medium"] > :first-child { box-shadow: 0 8px 28px rgba(0,0,0,.14) !important; }
+.market-component-design[data-design-shadow="large"] > :first-child { box-shadow: 0 16px 42px rgba(0,0,0,.2) !important; }
+.market-component-design[data-design-animation="fade-in"] > :first-child { animation: market-managed-fade .65s ease-out both; }
+.market-component-design[data-design-animation="slide-up"] > :first-child { animation: market-managed-rise .65s ease-out both; }
+@keyframes market-managed-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes market-managed-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .market-component-design > :first-child { animation: none !important; transition-duration: .01ms !important; }
+}

@@ -10,14 +10,22 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
+import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 
 export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    const load = () => !isEmbeddedAdminPreview() && setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     load();
     window.addEventListener("storage", load);
     window.addEventListener("backend-storage", load);
@@ -46,6 +54,7 @@ export function Contact() {
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
       <section className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[.9fr_1.1fr] lg:px-10 lg:py-16">
+        <StorefrontComponentBoundary id="contact.intro" controls={market.componentControls} now={scheduleNow}>
         <div>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-[#718076]">
             CONTACTO
@@ -93,7 +102,9 @@ export function Contact() {
             </div>
           </div>
         </div>
+        </StorefrontComponentBoundary>
 
+        <StorefrontComponentBoundary id="contact.form" controls={market.componentControls} now={scheduleNow}>
         <div className="rounded-[2rem] border border-[#dfdbd1] bg-white p-6 shadow-sm sm:p-8">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">
             ESCRÍBENOS
@@ -139,8 +150,10 @@ export function Contact() {
             </button>
           </form>
         </div>
+        </StorefrontComponentBoundary>
       </section>
 
+      <StorefrontComponentBoundary id="contact.hours" controls={market.componentControls} now={scheduleNow}>
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
           <h2 className="text-2xl font-medium">Horario de atención</h2>
@@ -154,6 +167,7 @@ export function Contact() {
           </div>
         </div>
       </section>
+      </StorefrontComponentBoundary>
     </div>
   );
 }

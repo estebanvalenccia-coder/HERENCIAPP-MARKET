@@ -7,6 +7,8 @@ import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
 import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
 import { AdminCampaigns } from "./AdminCampaigns";
 import { AdminComponentAnalytics } from "./AdminComponentAnalytics";
+import { AdminSiteAuditPanel } from "./AdminSiteAuditPanel";
+import { AdminNestedMenuEditor } from "./AdminNestedMenuEditor";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -494,6 +496,7 @@ export function AdminMarketExperience({
         <AdminComponentRegistry market={market} onChange={setMarket} />
         <AdminSiteDiagnostics site={site} market={market} />
         <AdminComponentAnalytics />
+        <AdminSiteAuditPanel />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
@@ -537,23 +540,11 @@ export function AdminMarketExperience({
                     <label className="flex items-center gap-2"><input type="checkbox" checked={item.showMobile !== false} onChange={(event) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, showMobile: event.target.checked } : entry) })} /> Móvil</label>
                   </div>
                   <details className="my-2 rounded-xl border border-[#dce6dc] bg-white p-3">
-                    <summary className="cursor-pointer text-xs font-black">Submenú · {(item.children || []).length} enlaces</summary>
-                    <div className="mt-3 space-y-3">
-                      {(item.children || []).map((child, childIndex) => (
-                        <div key={childIndex} className="space-y-2 rounded-xl border bg-[#fafcf9] p-3">
-                          <AdminElementControls label={child.label} visible={child.visible !== false}
-                            onToggle={(visible) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, visible } : link) } : entry) })}
-                            onMoveUp={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex - 1) } : entry) })}
-                            onMoveDown={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex + 1) } : entry) })}
-                            moveUpDisabled={childIndex === 0} moveDownDisabled={childIndex === (item.children || []).length - 1}
-                            onRemove={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).filter((_, j) => j !== childIndex) } : entry) })}
-                          />
-                          <Field label="Título" value={child.label} onChange={(label) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, label } : link) } : entry) })} />
-                          <Field label="Destino" value={child.href} onChange={(href) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, href } : link) } : entry) })} />
-                          <AdminScheduleFields label={child.label} value={child.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, schedule } : link) } : entry) })} />
-                        </div>
-                      ))}
-                      <AdminAddElement label="Añadir subenlace" onAdd={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: [...(entry.children || []), { label: "Nuevo subenlace", href: "/productos", visible: false }] } : entry) })} />
+                    <summary className="cursor-pointer text-xs font-black">Submenú jerárquico · {(item.children || []).length} enlaces</summary>
+                    <div className="mt-3">
+                      <AdminNestedMenuEditor links={item.children || []} onChange={(children) => patch({
+                        navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children } : entry),
+                      })} />
                     </div>
                   </details>
 
