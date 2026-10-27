@@ -1046,7 +1046,7 @@ export function SalesChatWidget() {
             {messages.length <= 1 ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
-                  {sales.quickActions.map((action) => {
+                  {sales.quickActions.filter((action) => action.enabled !== false).map((action) => {
                     const Icon = iconByAction[action.id] || Sparkles;
                     return (
                       <button
