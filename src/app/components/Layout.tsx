@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
 import { Toaster } from "sonner";
@@ -245,6 +245,13 @@ export function Layout() {
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
             site.builder?.headerStyle?.sticky !== false ? "sticky top-0" : "relative"
           } ${isScrolled ? "shadow-[0_10px_30px_rgba(39,61,45,0.08)] backdrop-blur-xl" : ""}`}
+          style={{
+            backgroundColor: site.builder.headerStyle.backgroundColor || "#fffdf9",
+            borderColor: site.builder.headerStyle.borderColor || "#e8e2d8",
+            "--market-nav-text": site.builder.headerStyle.textColor || "#526158",
+            "--market-nav-active": site.builder.headerStyle.activeColor || "#244a35",
+            "--market-nav-bg": site.builder.headerStyle.activeBackground || "#eef2eb",
+          } as CSSProperties}
         >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex min-h-[76px] items-center gap-5">
@@ -252,7 +259,8 @@ export function Layout() {
                 <img
                   src={site.brand.logoUrl || logo}
                   alt={site.brand.logoAlt || site.brand.name}
-                  className="h-14 w-auto object-contain sm:h-16"
+                  className="w-auto object-contain"
+                  style={{ height: Math.max(28, Math.min(120, Number(site.builder.headerStyle.logoHeight) || 56)) }}
                 />
               </Link>
 
@@ -376,8 +384,8 @@ export function Layout() {
           <Outlet />
         </main>
 
-        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}><footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
-          <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
+        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}><footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white" style={{ backgroundColor: site.builder.footerStyle.backgroundColor || "#173d2a", color: site.builder.footerStyle.textColor || "#ffffff", borderColor: site.builder.footerStyle.borderColor || "#d9ddd6", "--market-footer-heading": site.builder.footerStyle.headingColor || "#ffffff", "--market-footer-text": site.builder.footerStyle.textColor || "#ffffff" } as CSSProperties}>
+          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10" style={{ paddingTop: Math.max(12, Math.min(130, Number(site.builder.footerStyle.paddingY) || 48)), paddingBottom: Math.max(12, Math.min(130, Number(site.builder.footerStyle.paddingY) || 48)) }}>
             <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
               <div>
                 <img
@@ -766,7 +774,7 @@ function MarketNavLink({
 
   if (isExternalHref(href)) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+      <a href={href} target="_blank" rel="noopener noreferrer" className={className} style={{ color: active ? "var(--market-nav-active, #244a35)" : "var(--market-nav-text, #526158)", backgroundColor: active ? "var(--market-nav-bg, #eef2eb)" : undefined }}>
         {icon}
         {label}
       </a>
@@ -774,7 +782,7 @@ function MarketNavLink({
   }
 
   return (
-    <Link to={href || "/"} className={className}>
+    <Link to={href || "/"} className={className} style={{ color: active ? "var(--market-nav-active, #244a35)" : "var(--market-nav-text, #526158)", backgroundColor: active ? "var(--market-nav-bg, #eef2eb)" : undefined }}>
       {icon}
       {label}
     </Link>
@@ -790,7 +798,7 @@ function FooterColumn({
 }) {
   return (
     <div>
-      <h4 className="font-black text-white">{title}</h4>
+      <h4 className="font-black text-white" style={{ color: "var(--market-footer-heading, #ffffff)" }}>{title}</h4>
       <ul className="mt-4 space-y-2.5 text-sm text-white/72">
         {links.map((item, index) => (
           <li key={`${item.href}-${index}`}>
