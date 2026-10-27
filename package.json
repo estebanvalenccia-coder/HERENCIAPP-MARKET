@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "npm run test:admin && npm run test:pos && npm run test:security && npm run test:delivery && npm run test:release && vite build",
-    "test:admin": "node --test backend/publicationSchedule.test.js backend/componentPolicy.test.js backend/sitePublicationValidation.test.js backend/siteContentPublication.test.js backend/visualEditorSecurity.test.js",
+    "test:admin": "node --test backend/publicationSchedule.test.js backend/marketCollectionVisibility.test.js backend/componentPolicy.test.js backend/sitePublicationValidation.test.js backend/siteContentPublication.test.js backend/visualEditorSecurity.test.js",
     "test:pos": "node --test backend/posEngine.test.js",
     "test:security": "node --test backend/security.test.js backend/previewAccess.test.js backend/aliexpressConnector.test.js backend/adminAccounts.test.js backend/tiktokEventsApi.test.js",
     "test:delivery": "node --test backend/deliveryCapacity.test.js backend/shippingPolicy.test.js",
