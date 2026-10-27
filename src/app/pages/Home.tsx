@@ -393,18 +393,20 @@ export function Home() {
               key={item.title}
               to={item.href}
               className="group overflow-hidden rounded-3xl border border-[#e5e1d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+              style={{ backgroundColor: item.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(item.design?.radius ?? 24))) }}
             >
-              <div className="h-44 overflow-hidden bg-[#efece4]">
+              <div className="h-44 overflow-hidden bg-[#efece4]" style={{ height: `${Math.max(100, Math.min(300, Number(item.design?.imageHeight ?? 176))) }px` }}>
                 <img
                   src={item.imageUrl}
                   alt={item.title}
                   onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
                   className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  style={{ objectPosition: item.design?.imagePosition || "center" }}
                 />
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
-                  <p className="font-black">{item.title}</p>
+                  <p className="font-black" style={{ color: item.design?.textColor || undefined }}>{item.title}</p>
                   <p className="mt-1 text-xs text-[#718076]">{item.subtitle}</p>
                 </div>
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1efe8]">
@@ -437,17 +439,19 @@ export function Home() {
                 key={service.title}
                 to={service.href}
                 className="group overflow-hidden rounded-3xl border border-[#ded9cd] bg-[#fffdf9] shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                style={{ backgroundColor: service.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(service.design?.radius ?? 24))) }}
               >
-                <div className="h-40 overflow-hidden">
+                <div className="h-40 overflow-hidden" style={{ height: `${Math.max(100, Math.min(300, Number(service.design?.imageHeight ?? 160)))}px` }}>
                   <img
                     src={service.imageUrl}
                     alt=""
                     onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
                     className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    style={{ objectPosition: service.design?.imagePosition || "center" }}
                   />
                 </div>
                 <div className="p-4">
-                  <h3 className="text-lg font-black leading-tight">{service.title}</h3>
+                  <h3 className="text-lg font-black leading-tight" style={{ color: service.design?.textColor || undefined }}>{service.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-[#6c786f]">{service.subtitle}</p>
                   <span className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
                     {service.ctaLabel} <ArrowRight className="h-4 w-4" />
@@ -517,21 +521,25 @@ export function Home() {
             key={promo.title}
             to={promo.href}
             className="group relative min-h-[300px] overflow-hidden rounded-[2rem] border border-[#ded9cd]"
+            style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))), borderRadius: Math.max(0, Math.min(48, Number(promo.design?.radius ?? 32))) }}
           >
             <img
               src={promo.imageUrl}
               alt=""
               onError={(event) => imageFallback(event, promo.href === "/dulce" ? IMAGE_FALLBACKS.dulce : IMAGE_FALLBACKS.moda)}
               className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
+              style={{ objectPosition: promo.design?.imagePosition || "center" }}
             />
             <div
+              style={{ opacity: Math.max(0, Math.min(100, Number(promo.design?.overlayOpacity ?? 100))) / 100 }}
               className={`absolute inset-0 ${
                 promo.href === "/dulce"
                   ? "bg-gradient-to-r from-[#6b3327]/80 via-[#7d4030]/52 to-transparent"
                   : "bg-gradient-to-r from-[#173d2a]/88 via-[#173d2a]/50 to-transparent"
               }`}
             />
-            <div className="relative flex min-h-[300px] max-w-md flex-col justify-center p-8 text-white">
+            <div className={`relative flex min-h-[300px] max-w-md flex-col justify-center p-8 text-white ${promo.design?.textAlign === "center" ? "mx-auto items-center text-center" : promo.design?.textAlign === "right" ? "ml-auto items-end text-right" : "items-start text-left"}`}
+              style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))) }}>
               <p className="text-xs font-black uppercase tracking-[0.24em] text-white/75">{promo.kicker}</p>
               <h2 className="mt-3 text-4xl font-medium">{promo.title}</h2>
               <p className="mt-3 text-sm leading-6 text-white/88">{promo.subtitle}</p>
