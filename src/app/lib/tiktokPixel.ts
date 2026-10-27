@@ -82,3 +82,22 @@ export function trackTikTokCommerceEvent(event: "ViewContent" | "AddToCart" | "I
 function trackTikTokPageViewOnce(): void {
   if (!initialized) trackTikTokPageView();
 }
+
+/** Record a confirmed Stripe payment once per browser/order; never mark pending as purchased. */
+export function trackTikTokConfirmedPurchase(orderId: string, paymentIntentId: string, items: Array<{id: unknown; price: unknown; quantity?: unknown}>, paidTotal: number): void {
+  if (!orderId || !/^pi_/.test(paymentIntentId) || !Number.isFinite(paidTotal) || paidTotal <= 0) return;
+  if (typeof window === "undefined") return;
+  try {
+    if (localStorage.getItem("herencia_cookie_consent") !== "accepted") return;
+    const key = "herencia_tiktok_purchase_" + orderId;
+    if (localStorage.getItem(key)) return;
+    const contents = items.map(item => ({
+      content_id: String(item.id ?? ""), content_type: "product",
+      price: Number(item.price), quantity: Math.max(1, Number(item.quantity || 1))
+    })).filter(item => item.content_id && Number.isFinite(item.price) && item.price >= 0);
+    if (!contents.length) return;
+    trackTikTokPageViewOnce();
+    window.ttq?.track?.("Purchase", { contents, currency: "EUR", value: paidTotal, order_id: orderId }, { event_id: "purchase_" + orderId });
+    localStorage.setItem(key, "1");
+  } catch { /* Analytics must never interrupt checkout. */ }
+}
