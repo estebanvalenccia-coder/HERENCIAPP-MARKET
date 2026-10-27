@@ -365,7 +365,17 @@ function mergeObject<T extends Record<string, any>>(base: T, incoming: unknown):
 function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown): T[] {
   // An explicitly empty list means "no items"; never repopulate removed items.
   if (!Array.isArray(incoming)) return JSON.parse(JSON.stringify(base));
-  return incoming.map((item, index) => ({ ...(base[index] || {}), ...(item || {}) })) as T[];
+  return incoming.map((item, index) => {
+    const data = item && typeof item === "object" ? item : {};
+    const match = base.find((candidate) =>
+      (typeof data.href === "string" && data.href === candidate.href) ||
+      (!data.href && typeof data.title === "string" && data.title === candidate.title)
+    );
+    // Old partial records can fall back by index, but explicit removal/reordering
+    // must never attach unrelated default fields to a different identified item.
+    const fallback = match || ((data.href || data.title) ? {} : (base[index] || {}));
+    return { ...fallback, ...data } as T;
+  });
 }
 
 function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
