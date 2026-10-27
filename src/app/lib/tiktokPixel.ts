@@ -63,3 +63,22 @@ export function trackTikTokPageView(): void {
 function wPage(): void {
   window.ttq?.page?.();
 }
+
+/** Send only consented browser events with validated EUR commerce fields. */
+export function trackTikTokCommerceEvent(event: "ViewContent" | "AddToCart" | "InitiateCheckout", items: Array<{id: unknown; price: unknown; quantity?: unknown}>, total?: number): void {
+  if (typeof window === "undefined") return;
+  try { if (window.localStorage.getItem("herencia_cookie_consent") !== "accepted") return; } catch { return; }
+  trackTikTokPageViewOnce();
+  const contents = items.map(item => ({
+    content_id: String(item.id ?? ""),
+    content_type: "product",
+    price: Number(item.price),
+    quantity: Math.max(1, Number(item.quantity || 1)),
+  })).filter(item => item.content_id && Number.isFinite(item.price) && item.price >= 0);
+  if (!contents.length) return;
+  const value = typeof total === "number" && Number.isFinite(total) ? total : contents.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  window.ttq?.track?.(event, { contents, currency: "EUR", value });
+}
+function trackTikTokPageViewOnce(): void {
+  if (!initialized) trackTikTokPageView();
+}
