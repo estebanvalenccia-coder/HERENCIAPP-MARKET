@@ -429,6 +429,23 @@ export function AdminMarketExperience({
   const productDisplay = market.home.productDisplay!;
   const [managedCategory, setManagedCategory] = useState<{ title: string; key: string } | null>(null);
   const [draggedSection, setDraggedSection] = useState<MarketHomeSectionId | null>(null);
+  const [products3D, setProducts3D] = useState<Array<{id: string | number; name: string; image?: string; status?: string; active?: boolean; deletedAt?: unknown}>>([]);
+  const [search3D, setSearch3D] = useState("");
+  const [loading3D, setLoading3D] = useState(false);
+  const reloadProducts3D = async () => {
+    setLoading3D(true);
+    try {
+      const result = await backendApi.listCommerceProducts({includeArchived: true});
+      setProducts3D(Array.isArray(result.products) ? result.products : []);
+    } catch {
+      try {
+        const cached = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
+        setProducts3D(Array.isArray(cached) ? cached : []);
+      } catch { setProducts3D([]); }
+    } finally { setLoading3D(false); }
+  };
+  useEffect(() => { void reloadProducts3D(); }, []);
+
 
   const setMarket = (next: MarketExperienceContent) => {
     onChange(withMarketExperience(site, next));
@@ -741,6 +758,105 @@ export function AdminMarketExperience({
               )}
               <p className="text-xs text-[#526c55]">Los precios, fotos, existencias, carrito y favoritos siguen conectados al catálogo original. No se publicarán artículos ficticios para rellenar huecos.</p>
             </div>
+
+            <section className="mb-5 rounded-2xl border border-[#bdd2be] bg-white p-4" aria-label="Gestionar escaparate Creaciones 3D">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-lg font-black text-[#1e4932]">Creaciones 3D · Escaparate</h4>
+                  <p className="text-xs text-[#66776b]">Selecciona productos del catálogo existente. Quitarlos de esta sección no los elimina de la tienda.</p>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-bold">
+                  <input type="checkbox" checked={market.home.sections.creations3d}
+                    onChange={(event) => patchHome({sections: {...market.home.sections, creations3d: event.target.checked}})}/>
+                  {market.home.sections.creations3d ? "ON · Visible" : "OFF · Oculto"}
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Título" value={market.home.creations3D.title}
+                  onChange={(title) => patchHome({creations3D: {...market.home.creations3D, title}})}/>
+                <Field label="Texto del botón" value={market.home.creations3D.buttonLabel}
+                  onChange={(buttonLabel) => patchHome({creations3D: {...market.home.creations3D, buttonLabel}})}/>
+                <Field label="Descripción" value={market.home.creations3D.subtitle}
+                  onChange={(subtitle) => patchHome({creations3D: {...market.home.creations3D, subtitle}})} multiline/>
+                <div className="space-y-3">
+                  <Field label="Enlace de la colección" value={market.home.creations3D.href}
+                    onChange={(href) => patchHome({creations3D: {...market.home.creations3D, href}})}/>
+                  <Field label="Imagen principal (URL opcional)" value={market.home.creations3D.imageUrl}
+                    onChange={(imageUrl) => patchHome({creations3D: {...market.home.creations3D, imageUrl}})}/>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-bold">
+                  Productos del escaparate
+                  <select className="mt-1 block w-full rounded-lg border border-[#d3e0d2] bg-white p-2.5 text-sm"
+                    value={market.home.creations3D.mode}
+                    onChange={(event) => patchHome({creations3D: {...market.home.creations3D, mode: event.target.value as "automatic" | "manual"}})}>
+                    <option value="automatic">Automáticos: productos identificados como 3D</option>
+                    <option value="manual">Elegidos por mí</option>
+                  </select>
+                </label>
+                <label className="text-xs font-bold">
+                  Número de productos
+                  <input type="number" min={1} max={12} value={market.home.creations3D.limit}
+                    onChange={(event) => patchHome({creations3D: {...market.home.creations3D, limit: Math.max(1, Math.min(12, Number(event.target.value) || 1))}})}
+                    className="mt-1 block w-full rounded-lg border border-[#d3e0d2] p-2.5 text-sm"/>
+                </label>
+              </div>
+              {market.home.creations3D.mode === "manual" && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-bold">Productos seleccionados · {market.home.creations3D.productIds.length}</p>
+                    <button type="button" onClick={() => void reloadProducts3D()} disabled={loading3D}
+                      className="rounded-lg border border-[#cfdecf] px-3 py-2 text-xs font-bold disabled:opacity-50">
+                      {loading3D ? "Actualizando…" : "Actualizar catálogo"}
+                    </button>
+                  </div>
+                  {market.home.creations3D.productIds.map((id, index) => {
+                    const selected = products3D.find(product => String(product.id) === id);
+                    const swap = (direction: -1 | 1) => {
+                      const ids = [...market.home.creations3D.productIds];
+                      const dest = index + direction;
+                      if (dest < 0 || dest >= ids.length) return;
+                      [ids[index], ids[dest]] = [ids[dest], ids[index]];
+                      patchHome({creations3D: {...market.home.creations3D, productIds: ids}});
+                    };
+                    return (
+                      <div key={id} className="flex items-center gap-2 rounded-xl border border-[#e1e9df] px-3 py-2 text-sm">
+                        {selected?.image ? <img src={selected.image} alt="" className="h-11 w-11 rounded-lg object-cover"/> : <span className="grid h-11 w-11 place-items-center rounded-lg bg-[#e8eee6]">3D</span>}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-bold">{selected?.name || "Producto no encontrado (" + id + ")"}</p>
+                          <p className="text-xs text-[#657669]">{selected?.deletedAt ? "Archivado" : selected?.status || "Catálogo existente"}</p>
+                        </div>
+                        <button type="button" onClick={() => swap(-1)} disabled={index === 0} aria-label={"Subir " + (selected?.name || id)} className="rounded-md border px-2 py-1 disabled:opacity-40">↑</button>
+                        <button type="button" onClick={() => swap(1)} disabled={index === market.home.creations3D.productIds.length - 1} aria-label={"Bajar " + (selected?.name || id)} className="rounded-md border px-2 py-1 disabled:opacity-40">↓</button>
+                        <button type="button" onClick={() => patchHome({creations3D: {...market.home.creations3D, productIds: market.home.creations3D.productIds.filter(value => value !== id)}})}
+                          className="rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700">Quitar</button>
+                      </div>
+                    );
+                  })}
+                  <input value={search3D} onChange={(event) => setSearch3D(event.target.value)}
+                    placeholder="Buscar producto por nombre..." aria-label="Buscar productos para Creaciones 3D"
+                    className="w-full rounded-lg border border-[#c9d9cb] px-3 py-2.5 text-sm"/>
+                  <div className="max-h-56 space-y-1 overflow-y-auto">
+                    {products3D.filter(product => !product.deletedAt &&
+                      !market.home.creations3D.productIds.includes(String(product.id)) &&
+                      (!search3D || (product.name || "").toLowerCase().includes(search3D.toLowerCase()))
+                    ).slice(0, 24).map(product => (
+                      <div key={product.id} className="flex items-center gap-3 rounded-lg border border-[#e2e9e1] p-2">
+                        {product.image && <img src={product.image} alt="" className="h-10 w-10 rounded-md object-cover"/>}
+                        <span className="flex-1 truncate text-sm">{product.name}</span>
+                        <button type="button" onClick={() => patchHome({creations3D: {...market.home.creations3D,
+                            productIds: [...market.home.creations3D.productIds, String(product.id)]
+                          }})} className="rounded-lg bg-[#28533a] px-3 py-1.5 text-xs font-bold text-white">
+                          Añadir
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="mt-4 text-xs text-[#657669]">Para crear un artículo nuevo, usa la gestión de Productos que ya existe en Administración. Después selecciónalo aquí. Las modificaciones siguen el flujo Guardar borrador → Guardar y publicar.</p>
+            </section>
             <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
               className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">
               <Sparkles className="h-4 w-4" /> Aplicar orden del boceto de Herencia
@@ -751,7 +867,7 @@ export function AdminMarketExperience({
                 const names: Record<MarketHomeSectionId, string> = {
                   hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías redondas",
                   plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Colecciones y banners de portada",
-                  services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales",
+                  services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales", creations3d: "Creaciones 3D",
                   trust: "Beneficios", bottomCta: "Banner CTA inferior",
                 };
                 return (
