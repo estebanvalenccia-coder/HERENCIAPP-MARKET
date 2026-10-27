@@ -180,7 +180,8 @@ export function Home() {
       ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ").toLowerCase();
     return product.active !== false && !product.deletedAt && !["draft", "archived", "inactive"].includes(String(product.status || "active"))
       && /(?:impresi[oó]n\s*3d|creaciones?\s*3d|maceta\s*3d|dise[nñ]o\s*3d|3d\s*print)/i.test(text)
-      && Boolean(product.image) && Number(product.price || 0) > 0;
+      && Boolean(product.image) && Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0) > 0
+      && (product.trackInventory === false || Number(product.stock || 0) > 0 || (Array.isArray(product.variants) && product.variants.some((variant: any) => Number(variant.stock || 0) > 0)));
   }).slice(0, 4), [catalog]);
 
   const addToCart = (product: any) => {
