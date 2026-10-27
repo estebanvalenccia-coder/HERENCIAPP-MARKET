@@ -286,7 +286,7 @@ export function Layout() {
                     </div>
                   </div>
                 </StorefrontComponentBoundary>
-                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}> onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
+                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}><form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718076]" />
                   <input
                     value={search}
@@ -297,7 +297,7 @@ export function Layout() {
                 </form></StorefrontComponentBoundary>
 
                 <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}>
-                  type="button"
+                  <button type="button"
                   onClick={() => {
                     const query = window.prompt("¿Qué quieres buscar en Herencia?", search);
                     if (query === null) return;
@@ -311,7 +311,7 @@ export function Layout() {
                 </button></StorefrontComponentBoundary>
 
                 <StorefrontComponentBoundary id="header.account" controls={market.componentControls} now={scheduleNow} enabled={market.layout.account}>
-                  to={site.headerActions.profileHref || "/perfil"}
+                  <Link to={site.headerActions.profileHref || "/perfil"}
                   className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Mi cuenta"
                 >
@@ -319,7 +319,7 @@ export function Layout() {
                 </Link></StorefrontComponentBoundary>
 
                 <StorefrontComponentBoundary id="header.favorites" controls={market.componentControls} now={scheduleNow} enabled={market.layout.favorites}>
-                  to="/perfil"
+                  <Link to="/perfil"
                   className="relative hidden h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7] sm:grid"
                   aria-label="Favoritos"
                 >
@@ -332,7 +332,7 @@ export function Layout() {
                 </Link></StorefrontComponentBoundary>
 
                 <StorefrontComponentBoundary id="header.cart" controls={market.componentControls} now={scheduleNow} enabled={market.layout.cart}>
-                  to={site.headerActions.cartHref || "/carrito"}
+                  <Link to={site.headerActions.cartHref || "/carrito"}
                   className="relative grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Carrito"
                 >
@@ -373,7 +373,7 @@ export function Layout() {
           <Outlet />
         </main>
 
-        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}> className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
+        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}><footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
           <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
             <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
               <div>
