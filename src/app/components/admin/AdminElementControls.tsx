@@ -66,3 +66,45 @@ export function reorderItem<T>(items: T[], from: number, to: number): T[] {
   reordered.splice(to, 0, item);
   return reordered;
 }
+
+export type AdminPublicationWindow = { startAt?: string; endAt?: string };
+
+function toLocalInput(iso?: string) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+export function AdminScheduleFields({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: AdminPublicationWindow;
+  onChange: (value: AdminPublicationWindow) => void;
+}) {
+  const setTime = (key: keyof AdminPublicationWindow, input: string) => {
+    const parsed = input ? new Date(input) : null;
+    if (input && (!parsed || Number.isNaN(parsed.getTime()))) return;
+    onChange({ ...(value || {}), [key]: parsed ? parsed.toISOString() : undefined });
+  };
+  return (
+    <details className="rounded-lg border border-dashed border-[#dde4da] p-2">
+      <summary className="cursor-pointer text-xs font-bold text-[#3b5c47]">Programar publicación de {label}</summary>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <label className="text-xs font-medium">Desde
+          <input type="datetime-local" value={toLocalInput(value?.startAt)} onChange={(event) => setTime("startAt", event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
+        </label>
+        <label className="text-xs font-medium">Hasta
+          <input type="datetime-local" value={toLocalInput(value?.endAt)} onChange={(event) => setTime("endAt", event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
+        </label>
+      </div>
+      <p className="mt-2 text-[11px] text-[#607365]">Usa la hora local de este dispositivo; se guarda con zona horaria para que sea igual para todos los visitantes.</p>
+      {value?.startAt && value?.endAt && Date.parse(value.startAt) >= Date.parse(value.endAt) ? (
+        <p role="alert" className="mt-1 text-xs font-bold text-red-700">La fecha final debe ser posterior a la inicial. Este elemento no se publicará mientras las fechas sean inválidas.</p>
+      ) : null}
+    </details>
+  );
+}
