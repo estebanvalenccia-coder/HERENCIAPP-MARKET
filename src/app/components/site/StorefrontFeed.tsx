@@ -59,13 +59,13 @@ function Media({ post, className = "" }: { post: StorefrontPost; className?: str
 function StandardCard({ post }: { post: StorefrontPost }) {
   const story = post.layout === "story";
   return (
-    <article className={`overflow-hidden rounded-[1.7rem] border border-[#e3ded4] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${story ? "min-h-[470px]" : ""}`}>
-      <Media post={post} className={story ? "h-[330px] w-full" : "h-56 w-full"} />
-      <div className="p-5">
-        <span className="inline-flex rounded-full bg-[#edf4ee] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#315b42]">
+    <article className={`overflow-hidden rounded-xl border border-[#e8e3d8] bg-white transition hover:-translate-y-1 hover:shadow-lg ${story ? "min-h-[450px]" : ""}`}>
+      <Media post={post} className={story ? "h-[300px] w-full" : "h-44 w-full"} />
+      <div className="p-4">
+        <span className="inline-flex text-[10px] font-semibold uppercase tracking-[0.18em] text-[#315b42]">
           {post.label || storefrontPostTypeLabel(post.type)}
         </span>
-        <h3 className="mt-3 text-xl font-black leading-tight text-[#173126]">{post.title}</h3>
+        <h3 className="mt-2 font-serif text-lg font-medium leading-snug text-[#173126]">{post.title}</h3>
         {post.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#69766d]">{post.description}</p>}
         {post.ctaLabel && post.ctaHref && (
           <PostLink href={post.ctaHref} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
@@ -145,12 +145,12 @@ export function StorefrontFeed() {
   const cards = visible.filter((post) => post.layout !== "banner" && post.layout !== "feature");
 
   return (
-    <section className="border-y border-[#e5e1d8] bg-[#fffdf9]">
-      <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+    <section className="bg-[#fffdf9]">
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
         <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">Actualidad Herencia</p>
-            <h2 className="mt-2 text-3xl font-medium text-[#173126] sm:text-4xl">Descubre en Herencia</h2>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">Guías y novedades</p>
+            <h2 className="mt-2 font-serif text-3xl font-normal text-[#173126] sm:text-4xl">Inspiración y consejos</h2>
           </div>
           <p className="max-w-xl text-sm leading-6 text-[#6c786f]">Ofertas, novedades, inspiración, campañas y selecciones destacadas publicadas directamente desde nuestro equipo.</p>
         </div>
@@ -160,7 +160,7 @@ export function StorefrontFeed() {
         </div>
 
         {cards.length > 0 && (
-          <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {cards.map((post) => <StandardCard key={post.id} post={post} />)}
           </div>
         )}
