@@ -8,6 +8,7 @@ import type { SiteContent } from "../../lib/siteContent";
 import {
   getMarketExperience,
   type MarketExperienceContent,
+  type MarketHomeSectionId,
   withMarketExperience,
 } from "../../lib/marketExperience";
 
@@ -420,6 +421,7 @@ export function AdminMarketExperience({
 }) {
   const market = getMarketExperience(site);
   const [managedCategory, setManagedCategory] = useState<{ title: string; key: string } | null>(null);
+  const [draggedSection, setDraggedSection] = useState<MarketHomeSectionId | null>(null);
 
   const setMarket = (next: MarketExperienceContent) => {
     onChange(withMarketExperience(site, next));
@@ -606,18 +608,38 @@ export function AdminMarketExperience({
           </div>
 
           <div className="mb-5 rounded-xl border border-[#e0e9dd] bg-[#f5f9f5] p-4">
-            <p className="mb-3 font-black">ON/OFF de cada sección de Inicio</p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {([
-                ["hero", "Portada principal"], ["delivery", "Envíos a Colombia"], ["categoryStrip", "Categorías redondas"], ["feed", "Contenido dinámico"],
-                ["plantCta", "Botón descubrir plantas"], ["bottomCta", "Banner CTA inferior"], ["categoriesGrid", "Tarjetas de categorías"],
-                ["services", "Servicios"], ["featured", "Productos destacados"], ["promotions", "Banners promocionales"], ["trust", "Beneficios"],
-              ] as Array<[keyof MarketExperienceContent["home"]["sections"], string]>).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 rounded-lg bg-white p-2 text-sm font-semibold">
-                  <input type="checkbox" checked={market.home.sections[key]} onChange={(event) => patchHome({ sections: { ...market.home.sections, [key]: event.target.checked } })} />
-                  {label}
-                </label>
-              ))}
+            <p className="mb-2 font-black">ON/OFF y posición de las secciones de Inicio</p>
+            <p className="mb-4 text-xs text-muted-foreground">Arrastra las tarjetas o utiliza las flechas para cambiar el orden real de aparición en la tienda.</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {market.home.sectionOrder.map((key, index) => {
+                const names: Record<MarketHomeSectionId, string> = {
+                  hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías redondas",
+                  plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Tarjetas de categorías",
+                  services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales",
+                  trust: "Beneficios", bottomCta: "Banner CTA inferior",
+                };
+                return (
+                  <div key={key} draggable onDragStart={() => setDraggedSection(key)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnd={() => setDraggedSection(null)}
+                    onDrop={() => {
+                      if (draggedSection) {
+                        const from = market.home.sectionOrder.indexOf(draggedSection);
+                        patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, from, index) });
+                      }
+                      setDraggedSection(null);
+                    }}
+                    className={`rounded-xl border bg-white p-2 ${draggedSection === key ? "border-emerald-600 opacity-60" : "border-[#dce6dc]"}`}>
+                    <p className="mb-2 text-xs font-black">{index + 1}. {names[key]}</p>
+                    <AdminElementControls label={names[key]} visible={market.home.sections[key]}
+                      onToggle={(visible) => patchHome({ sections: { ...market.home.sections, [key]: visible } })}
+                      onMoveUp={() => patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, index, index - 1) })}
+                      onMoveDown={() => patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, index, index + 1) })}
+                      moveUpDisabled={index === 0} moveDownDisabled={index === market.home.sectionOrder.length - 1}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="grid gap-5 lg:grid-cols-2">
