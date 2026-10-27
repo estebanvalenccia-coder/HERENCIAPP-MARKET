@@ -26,6 +26,9 @@ import { StorefrontFeed } from "../components/site/StorefrontFeed";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
+// Preview artwork cropped from the user-provided reference; replaced automatically
+// when a real Creaciones 3D photograph is configured in the existing admin.
+const REFERENCE_3D_VISUAL = "data:image/webp;base64,UklGRsgDAABXRUJQVlA4ILwDAACQGACdASpgAFUAPxV0sVOspiQirjUMAZAiiWMAyYDNA+3Ds8nsHWv2Ju94LlHSRur5VnBxmLTYhIP++4FqbgBINGOIeKmCHuW7zXr7ampaL89rSock7GNtYoUSDs+vFdNkbgFs78NlmFG0h/oXJh0c33MJLl+gBSEZEW1IFBnL4OhkC0Ksrjr1X0RKKZEQ2NbNBFpZrTyl8/73mTziI2FqisR4l1u9gemnxdhWv4908gC0yqb4ox7jGY7K/mK1QfoXK/XJFR7HpZruXDAAAP7LPp/FzUTZKA82VoasbVW/9cSK4SCW3bdBbxq/W1PUY6pkSXYRlhk7cJ+kPYZY7i0wK+LvK4uqjKsBfmOfr3o0QWDWxkw4A4tVp6PXRX4FA3EtShewHzPotJrQ4qgCI80xuPJFoqy2ASIkDDl/XL0CKdTEsdggZ1Q5Bf4JjlzOT/f7dES+Ohf8kWnXSJE25+fewU8h7HHRdKuiT2Qg9VLBX6IbyLvGdih/ZQ0nf3Bc4JmQlixE2zhM3uZD75ZjCWzXyrRPJeP/VxUVTBR98L12yjAk4r0GC28/OplnTquo3EuiJ+k1uQ9JTyUPGo8AeKgPeKRwYNkNgYZz2zYQn+Ob9gXG67QLBBLDHRj2NJM6fHyKnJ3OlYaCFnDtRoX4jcxXr2VLw0OBaV5M42OR9RJm3b03ZCojnJuTWOx1aYAqlo/cxfRF2FLOEcoGA2qG0Twqp07pkd2SEz0b7pwa4Kh5K/vV00vVA9z8oVanzGVpkzEwGEvUn3l8J4wWn4Cp4GOz7eCs1f8MZBAhobLGeK29BsRih29us2M7rNekkeyXtnwaYUvIRVFF1dKHih4Yo/l+1mSJD/x2c51GTbTHs5GxSsjGUuBgV2+bqYPMKHuiuRgcC2xXHsQHikWwM47IIsTiSpgKPQ80us2nGzsjPxN1xTOth9VVBA91+OLDWyJDo5MczH7BSzHO0ZyNt99qK/kgCjqAVDInTkoxi90CMuS6ghf3AmshbPYJYVA+6XDuh9srEKGwCwIZs1ocWbm2hv3d9+G141vH2/sNuQpYuH6B8cuO8+9WnZN/sSEmCUQkXWayoL73LWxJaQ7khoR2fJs++YBJW6iCr0DWwcIRJObZC5UxrA272Oy3GMKvrI2DjQhRebfr3NRMqSEFhB7wtq6xtsFS/rIeeDmb+6k26288XDW1T7XR+8axmEHCKvoS+n7XNA3aRWhp7hTZDZZ6UMUgH6DoynO/TVr6QC/0v3hN2RZsjYsFFLVctWWQAA==";
 const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
 
 function safeHeroImage(value: unknown): string {
@@ -214,7 +217,7 @@ export function Home() {
     editorial3D || {
       title: "Creaciones 3D",
       subtitle: "Macetas, diseños y detalles personalizados",
-      imageUrl: creations3D[0]?.image || site.cta.imageUrl || "",
+      imageUrl: creations3D[0]?.image || site.cta.imageUrl || REFERENCE_3D_VISUAL,
       href: creations3D[0] ? `/producto/${creations3D[0].id}` :
         assistantEnabled ? (site.navigation.herencia.href || "/herencia") : "/productos?buscar=3D",
     },
