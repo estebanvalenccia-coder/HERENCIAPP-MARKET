@@ -617,6 +617,18 @@ export function AdminMarketExperience({
           <div className="mb-5 rounded-xl border border-[#e0e9dd] bg-[#f5f9f5] p-4">
             <p className="mb-2 font-black">ON/OFF y posición de las secciones de Inicio</p>
             <p className="mb-4 text-xs text-muted-foreground">Arrastra las tarjetas o utiliza las flechas para cambiar el orden real de aparición en la tienda.</p>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-xl border border-[#dce6dc] bg-white px-4 py-3 text-sm font-semibold">
+                <input type="checkbox" checked={market.home.referenceNavigation !== false}
+                  onChange={(e) => patchHome({ referenceNavigation: e.target.checked })}/>
+                Menú comercial como el boceto
+              </label>
+              <label className="flex items-center gap-2 rounded-xl border border-[#dce6dc] bg-white px-4 py-3 text-sm font-semibold">
+                <input type="checkbox" checked={market.home.referenceCategories !== false}
+                  onChange={(e) => patchHome({ referenceCategories: e.target.checked })}/>
+                Siete categorías circulares del boceto
+              </label>
+            </div>
             <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
               className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">
               <Sparkles className="h-4 w-4" /> Aplicar orden del boceto de Herencia
@@ -664,6 +676,17 @@ export function AdminMarketExperience({
                 onChange={(description) => patchHome({ description })}
                 multiline
               />
+              <div className="rounded-xl border border-[#dce6dc] bg-[#f5f8f3] p-4">
+                <label className="mb-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={market.home.referenceHero !== false} onChange={(e) => patchHome({referenceHero:e.target.checked})}/> Activar banner visual de referencia</label>
+                <h4 className="mb-2 font-bold">Hero del diseño de referencia</h4>
+                <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y textos del banner cuando el modo visual de referencia está activo; no alteran el banner anterior.</p>
+                <Field label="URL de fotografía botánica" value={market.home.referenceHeroImageUrl || ""}
+                  onChange={(referenceHeroImageUrl) => patchHome({referenceHeroImageUrl})} />
+                <Field label="Título del banner" value={market.home.referenceHeroTitle || ""}
+                  onChange={(referenceHeroTitle) => patchHome({referenceHeroTitle})} />
+                <Field label="Descripción del banner" value={market.home.referenceHeroDescription || ""}
+                  onChange={(referenceHeroDescription) => patchHome({referenceHeroDescription})} multiline />
+              </div>
               <Field
                 label="Título de categorías"
                 value={market.home.categoriesTitle}

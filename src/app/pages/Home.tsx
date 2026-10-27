@@ -26,6 +26,9 @@ import { StorefrontFeed } from "../components/site/StorefrontFeed";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
+// Preview artwork cropped from the user-provided reference; replaced automatically
+// when a real Creaciones 3D photograph is configured in the existing admin.
+const REFERENCE_3D_VISUAL = "data:image/webp;base64,UklGRsgDAABXRUJQVlA4ILwDAACQGACdASpgAFUAPxV0sVOspiQirjUMAZAiiWMAyYDNA+3Ds8nsHWv2Ju94LlHSRur5VnBxmLTYhIP++4FqbgBINGOIeKmCHuW7zXr7ampaL89rSock7GNtYoUSDs+vFdNkbgFs78NlmFG0h/oXJh0c33MJLl+gBSEZEW1IFBnL4OhkC0Ksrjr1X0RKKZEQ2NbNBFpZrTyl8/73mTziI2FqisR4l1u9gemnxdhWv4908gC0yqb4ox7jGY7K/mK1QfoXK/XJFR7HpZruXDAAAP7LPp/FzUTZKA82VoasbVW/9cSK4SCW3bdBbxq/W1PUY6pkSXYRlhk7cJ+kPYZY7i0wK+LvK4uqjKsBfmOfr3o0QWDWxkw4A4tVp6PXRX4FA3EtShewHzPotJrQ4qgCI80xuPJFoqy2ASIkDDl/XL0CKdTEsdggZ1Q5Bf4JjlzOT/f7dES+Ohf8kWnXSJE25+fewU8h7HHRdKuiT2Qg9VLBX6IbyLvGdih/ZQ0nf3Bc4JmQlixE2zhM3uZD75ZjCWzXyrRPJeP/VxUVTBR98L12yjAk4r0GC28/OplnTquo3EuiJ+k1uQ9JTyUPGo8AeKgPeKRwYNkNgYZz2zYQn+Ob9gXG67QLBBLDHRj2NJM6fHyKnJ3OlYaCFnDtRoX4jcxXr2VLw0OBaV5M42OR9RJm3b03ZCojnJuTWOx1aYAqlo/cxfRF2FLOEcoGA2qG0Twqp07pkd2SEz0b7pwa4Kh5K/vV00vVA9z8oVanzGVpkzEwGEvUn3l8J4wWn4Cp4GOz7eCs1f8MZBAhobLGeK29BsRih29us2M7rNekkeyXtnwaYUvIRVFF1dKHih4Yo/l+1mSJD/x2c51GTbTHs5GxSsjGUuBgV2+bqYPMKHuiuRgcC2xXHsQHikWwM47IIsTiSpgKPQ80us2nGzsjPxN1xTOth9VVBA91+OLDWyJDo5MczH7BSzHO0ZyNt99qK/kgCjqAVDInTkoxi90CMuS6ghf3AmshbPYJYVA+6XDuh9srEKGwCwIZs1ocWbm2hv3d9+G141vH2/sNuQpYuH6B8cuO8+9WnZN/sSEmCUQkXWayoL73LWxJaQ7khoR2fJs++YBJW6iCr0DWwcIRJObZC5UxrA272Oy3GMKvrI2DjQhRebfr3NRMqSEFhB7wtq6xtsFS/rIeeDmb+6k26288XDW1T7XR+8axmEHCKvoS+n7XNA3aRWhp7hTZDZZ6UMUgH6DoynO/TVr6QC/0v3hN2RZsjYsFFLVctWWQAA==";
 const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
 
 function safeHeroImage(value: unknown): string {
@@ -172,11 +175,21 @@ export function Home() {
   // shorter editorial banner, but continue to honor other admin-set sizes.
   const heroConfiguredHeight = Number(heroDesign?.minHeight || 460);
   const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 460 : heroConfiguredHeight));
-  const heroImage =
+  const originalHeroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
+  const referenceMode = market.home.referenceHero !== false;
+  const heroImage = referenceMode
+    ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
+    : originalHeroImage;
+  const displayHeroTitle = referenceMode
+    ? market.home.referenceHeroTitle || market.home.title
+    : market.home.title;
+  const displayHeroDescription = referenceMode
+    ? market.home.referenceHeroDescription || market.home.description
+    : market.home.description;
 
   const featured = useMemo(() => {
     const rows = [...catalog].sort(
@@ -214,7 +227,7 @@ export function Home() {
     editorial3D || {
       title: "Creaciones 3D",
       subtitle: "Macetas, diseños y detalles personalizados",
-      imageUrl: creations3D[0]?.image || site.cta.imageUrl || "",
+      imageUrl: creations3D[0]?.image || site.cta.imageUrl || REFERENCE_3D_VISUAL,
       href: creations3D[0] ? `/producto/${creations3D[0].id}` :
         assistantEnabled ? (site.navigation.herencia.href || "/herencia") : "/productos?buscar=3D",
     },
@@ -225,6 +238,40 @@ export function Home() {
       href: "/colombia",
     } : null),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  // Seven circular shelves follow the design reference. Every link resolves to
+  // the existing catalog, Colombia flow, or assistant; admin category entries
+  // override the displayed art and can disable individual destinations.
+  const shelfDefinitions = [
+    {title:"Plantas de interior", match:/interior/i, href:"/productos?coleccion=plantas&categoria=plantas-interior", image:"https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=320&q=85"},
+    {title:"Plantas de exterior", match:/exterior/i, href:"/productos?coleccion=plantas&categoria=plantas-exterior", image:"https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=320&q=85"},
+    {title:"Macetas", match:/macetas?/i, href:"/productos?buscar=macetas", image:"https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=320&q=85"},
+    {title:"Creaciones 3D", match:/3d|impresi[oó]n/i, href:"/productos?buscar=3D", image:"https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=320&q=85"},
+    {title:"Accesorios", match:/jardiner|accesorios/i, href:"/productos?coleccion=jardineria", image:"https://images.unsplash.com/photo-1617576683096-00fc8eecb3af?auto=format&fit=crop&w=320&q=85"},
+    {title:"Regalos de Colombia", match:/colombia|regalos/i, href:"/colombia", image:colombiaDelivery.heroImageUrl},
+    {title:"Detalles personalizados", match:/personaliz|detalles/i, href:"/productos?buscar=personalizados", image:"https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=320&q=85"},
+  ];
+  const referenceHomeCategories = shelfDefinitions.flatMap((definition) => {
+    if (definition.href === "/colombia" && !colombiaDelivery.enabled) return [];
+    const configured = market.home.categories.find((c) => definition.match.test(c.title));
+    if (configured && !visibleHomeCategories.includes(configured)) return [];
+    const plants = visibleHomeCategories.find((c) => /plantas?/i.test(c.title));
+    const fallback = definition.title.startsWith("Plantas") ? plants : undefined;
+    const category = configured || fallback;
+    const matchingProduct = catalog.find((p) =>
+      p.active !== false && !p.deletedAt && Boolean(p.image) &&
+      (definition.match.test(String(p.name || "")) || definition.match.test(String(p.category || "")))
+    );
+    const href = configured?.href || definition.href;
+    if (!isMarketDestinationEnabled(market, href)) return [];
+    return [{
+      title: configured?.title || definition.title,
+      subtitle: configured?.subtitle || "",
+      href,
+      imageUrl: configured?.imageUrl || matchingProduct?.image || category?.imageUrl || definition.image,
+    }];
+  });
+  const displayedHomeCategories = market.home.referenceCategories === false ? visibleHomeCategories : referenceHomeCategories;
 
   const toggleFavorite = async (productId: unknown) => {
     const id = String(productId);
@@ -364,14 +411,14 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
-            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
-              {market.home.title}
+              {displayHeroTitle}
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
-              {market.home.description}
+            <p className="mt-3 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
+              {displayHeroDescription}
             </p>
             <div
               className="mt-8 flex flex-wrap"
@@ -434,14 +481,14 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.categoryStrip" controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
-        <div className="mx-auto max-w-7xl px-5 py-9 sm:px-8 lg:px-10">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 lg:grid-cols-7">
-            {visibleHomeCategories.map((item) => (
+        <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
+            {displayedHomeCategories.map((item) => (
               <Link key={item.title} to={item.href} className="group text-center">
-                <div className="mx-auto h-24 w-24 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2eee6] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md">
+                <div className="mx-auto h-20 w-20 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2e6d5] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md sm:h-24 sm:w-24">
                   <img src={item.imageUrl} alt="" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />
                 </div>
-                <p className="mt-2 text-xs font-black leading-tight text-[#1f3b2d] sm:text-sm">
+                <p className="mx-auto mt-2 max-w-32 font-serif text-sm font-medium leading-tight text-[#1f3b2d] sm:text-base">
                   {item.title}
                 </p>
               </Link>
@@ -463,17 +510,22 @@ export function Home() {
       <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
-      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 pt-5 pb-3 sm:px-8 lg:px-10">
         {spotlightCollections.length > 0 && (
-          <div className="mb-10 grid gap-5 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             {spotlightCollections.map((collection) => (
-              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[265px] items-end overflow-hidden rounded-xl border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[340px]">
-                {collection.imageUrl
+              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[215px] items-end overflow-hidden rounded-lg border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[245px] xl:min-h-[260px]">
+                {collection.imageUrl === REFERENCE_3D_VISUAL ? (
+                  <>
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,#6b8e59,#183e29_68%)]"/>
+                    <img src={REFERENCE_3D_VISUAL} alt="" className="absolute right-0 top-0 h-full w-[44%] object-cover object-center opacity-95 transition-transform duration-700 group-hover:scale-105" />
+                  </>
+                ) : collection.imageUrl
                   ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
                   : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
                 }
                 <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#102b20]/50 to-transparent" />
-                <div className="relative max-w-[78%] p-7 sm:p-9">
+                <div className="relative max-w-[78%] p-5 sm:p-7">
                   <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">{collection.title}</h2>
                   <p className="mt-3 text-sm leading-6 text-white/90">{collection.subtitle}</p>
                   <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[#173d2a]">Explorar colección <ArrowRight className="h-4 w-4" /></span>
@@ -482,49 +534,8 @@ export function Home() {
             ))}
           </div>
         )}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
-              Nuestras categorías
-            </p>
-            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">
-              {market.home.categoriesTitle}
-            </h2>
-          </div>
-          <Link to="/productos" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
-            Ver toda la tienda <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        {spotlightCollections.length === 0 && <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
-            <Link
-              key={item.title}
-              to={item.href}
-              className="group overflow-hidden rounded-[1.25rem] border border-[#e8e5da] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
-              style={{ backgroundColor: item.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(item.design?.radius ?? 24))) }}
-            >
-              <div className="h-44 overflow-hidden bg-[#efece4]" style={{ height: `${Math.max(100, Math.min(300, Number(item.design?.imageHeight ?? 176))) }px` }}>
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                  style={{ objectPosition: item.design?.imagePosition || "center" }}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 px-5 py-5">
-                <div>
-                  <p className="font-black" style={{ color: item.design?.textColor || undefined }}>{item.title}</p>
-                  <p className="mt-1 text-xs text-[#718076]">{item.subtitle}</p>
-                </div>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1efe8]">
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>}
+        {/* Existing category cards remain in admin; the homepage uses the reference's
+            compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
@@ -573,12 +584,10 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
-      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
-              Selección Herencia
-            </p>
+            <p className="sr-only">Selección Herencia</p>
             <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{market.home.featuredTitle}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
               {market.home.featuredSubtitle}
@@ -605,7 +614,7 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-8 grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {featured.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
