@@ -660,7 +660,20 @@ export function AdminMarketExperience({
               </div>
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" checked={market.home.shopFirst === true}
-                  onChange={(event) => patchHome({ shopFirst: event.target.checked })}/>
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    patchHome(enabled
+                      ? {
+                          shopFirst: true,
+                          shopFirstPreviousSectionOrder: [...market.home.sectionOrder],
+                          sectionOrder: [...PLANT_SHOP_HOME_SECTION_ORDER],
+                        }
+                      : {
+                          shopFirst: false,
+                          sectionOrder: market.home.shopFirstPreviousSectionOrder || market.home.sectionOrder,
+                          shopFirstPreviousSectionOrder: undefined,
+                        });
+                  }}/>
                 Mostrar escaparate comercial de plantas
               </label>
               <div className="grid gap-3 sm:grid-cols-3">
