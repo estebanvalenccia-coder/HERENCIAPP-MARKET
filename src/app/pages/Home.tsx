@@ -302,14 +302,14 @@ export function Home() {
                       : "flex-start",
               }}
             >
-              {site.hero.primaryButton.visible !== false && <Link
+              {site.hero.primaryButton.visible !== false && isWithinPublicationWindow(site.hero.primaryButton.schedule, scheduleNow) && <Link
                 to={site.hero.primaryButton.href || "/productos"}
                 className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
               >
                 {site.hero.primaryButton.label || "Explorar tienda"}
                 <ArrowRight className="h-4 w-4" />
               </Link>}
-              {site.hero.secondaryButton.visible !== false && <Link
+              {site.hero.secondaryButton.visible !== false && isWithinPublicationWindow(site.hero.secondaryButton.schedule, scheduleNow) && <Link
                 to={site.hero.secondaryButton.href || "/servicios"}
                 className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/10 px-6 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white/20"
               >
@@ -366,7 +366,7 @@ export function Home() {
         </Link>
       </div>)}
 
-      <StorefrontFeed />
+      {sections.feed && <StorefrontFeed />}
 
       {sections.categoriesGrid && (
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
@@ -560,6 +560,7 @@ export function Home() {
         </div>
       </section>)}
 
+      {sections.bottomCta && (
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
           <Sparkles className="absolute right-8 top-8 h-20 w-20 text-white/5" />
@@ -568,14 +569,14 @@ export function Home() {
             {site.cta.title}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/78">{site.cta.subtitle}</p>
-          <Link
+          {site.cta.button.visible !== false && isWithinPublicationWindow(site.cta.button.schedule, scheduleNow) && <Link
             to={site.cta.button.href || "/productos"}
             className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
           >
             {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
-          </Link>
+          </Link>}
         </div>
-      </section>
+      </section>)}
     </div>
   );
 }
