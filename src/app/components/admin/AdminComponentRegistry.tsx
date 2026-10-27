@@ -77,6 +77,9 @@ export function AdminComponentRegistry({
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("all");
+  const [notice, setNotice] = useState("");
+  const knownIds = useMemo(() => new Set(STOREFRONT_COMPONENT_REGISTRY.map((item) => item.id)), []);
+  const unknownControls = Object.keys(market.componentControls || {}).filter((id) => !knownIds.has(id));
 
   const visible = useMemo(
     () => STOREFRONT_COMPONENT_REGISTRY.filter((item) =>
@@ -96,7 +99,8 @@ export function AdminComponentRegistry({
   };
   const scrollToEditor = (item: StorefrontComponentDefinition) => {
     const target = document.getElementById(`market-editor-${item.editingSection}`);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target) { setNotice(""); target.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    else setNotice("Este componente se controla en el inventario universal. Su editor de contenido independiente todavía no está conectado a esta pantalla.");
   };
 
   return (
@@ -108,6 +112,12 @@ export function AdminComponentRegistry({
           <p className="text-xs text-muted-foreground">Controles compatibles con móvil, tablet, ordenador y publicación programada. Los cambios se publican al guardar el contenido.</p>
         </div>
       </div>
+      {unknownControls.length > 0 && (
+        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+          {unknownControls.length} configuración(es) guardada(s) sin componente registrado: {unknownControls.join(", ")}. No se borrarán automáticamente.
+        </p>
+      )}
+      {notice && <p role="status" className="mb-3 rounded-lg border border-[#cddfce] bg-[#f2f8f2] p-3 text-xs font-medium">{notice}</p>}
       <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_190px]">
         <label className="relative">
           <span className="sr-only">Buscar componentes</span>
@@ -125,7 +135,8 @@ export function AdminComponentRegistry({
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visible.map((item) => {
           const control = getComponentControl(market.componentControls, item.id);
-          const enabled = baseEnabled(market, item.id) && isComponentAllowed(market.componentControls, item.id);
+          const enabled = baseEnabled(market, item.id) && control.enabled !== false;
+          const currentlyVisible = enabled && isComponentAllowed(market.componentControls, item.id);
           return (
             <div key={item.id} className="rounded-xl border border-[#e1e7df] bg-[#fbfcfa] p-3">
               <div className="mb-2 flex items-start justify-between gap-3">
@@ -138,6 +149,7 @@ export function AdminComponentRegistry({
                   {enabled ? "ON" : "OFF"}
                 </label>
               </div>
+              {enabled && !currentlyVisible && <p className="mb-2 text-xs font-bold text-amber-800">Programado: no visible en este momento</p>}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
                 {(["desktop", "tablet", "mobile"] as const).map((device) => (
                   <label key={device} className="flex items-center gap-1">
