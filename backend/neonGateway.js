@@ -93,7 +93,15 @@ function normalizeOrderRow(order){
     entregaEstimada:order.entrega_estimada||null,
   };
 }
-async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
+async function adminSession(req){
+  try{
+    const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)},signal:AbortSignal.timeout(5000)});
+    if(!r.ok)return false;
+    const session=await r.json();
+    return session?.authenticated===true && session?.mustChangePassword!==true &&
+      ["owner","admin"].includes(String(session?.role||""));
+  }catch{return false;}
+}
 async function siteEditorActor(req){
   try {
     const response=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)},signal:AbortSignal.timeout(5000)});
