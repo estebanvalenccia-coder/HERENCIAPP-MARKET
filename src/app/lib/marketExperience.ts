@@ -3,14 +3,26 @@ import type { StorefrontComponentControl } from "./componentRegistry";
 
 export type PublicationWindow = { startAt?: string; endAt?: string };
 
+// Visual storefront preset: matches the reference composition while leaving the
+// section order fully editable in the existing administration builder.
 export const DEFAULT_HOME_SECTION_ORDER = [
+  "hero", "categoryStrip", "categoriesGrid", "featured", "trust", "feed",
+  "bottomCta", "delivery", "plantCta", "services", "promotions",
+] as const;
+const LEGACY_HOME_SECTION_ORDER = [
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
   "services", "featured", "promotions", "trust", "bottomCta",
-] as const;
+];
 export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
 
 export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionId[] {
   if (!Array.isArray(incoming)) return [...DEFAULT_HOME_SECTION_ORDER];
+  // Earlier installs persisted the previous factory order, even when the
+  // administrator never customized it. Migrate only that exact untouched order.
+  if (incoming.length === LEGACY_HOME_SECTION_ORDER.length &&
+      incoming.every((id, index) => id === LEGACY_HOME_SECTION_ORDER[index])) {
+    return [...DEFAULT_HOME_SECTION_ORDER];
+  }
   const allowed = new Set<string>(DEFAULT_HOME_SECTION_ORDER);
   const selected = incoming.filter((id): id is MarketHomeSectionId => typeof id === "string" && allowed.has(id));
   const unique = [...new Set(selected)];

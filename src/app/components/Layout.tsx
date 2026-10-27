@@ -1,7 +1,7 @@
 import { trackTikTokPageView } from "../lib/tiktokPixel";
 import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
+import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User, Truck, Leaf, ShieldCheck, Headphones } from "lucide-react";
 import { Toaster } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
@@ -29,6 +29,32 @@ import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  // Progressive scroll reveals: only existing public sections, no extra data or admin changes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const root = document.querySelector(".herencia-marketfront main");
+    if (!root) return;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("hm-revealed");
+          observer.unobserve(entry.target);
+        }
+      }
+    }, { threshold: 0.08, rootMargin: "0px 0px 40px 0px" });
+    const register = () => {
+      root.querySelectorAll(":scope > div > section, :scope > div > div > section, :scope > section").forEach((element) => {
+        if (element.hasAttribute("data-hm-reveal")) return;
+        element.setAttribute("data-hm-reveal", "");
+        observer.observe(element);
+      });
+    };
+    register();
+    const mutations = new MutationObserver(register);
+    mutations.observe(root, { childList: true, subtree: true });
+    return () => { mutations.disconnect(); observer.disconnect(); };
+  }, [location.pathname]);
+
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   useAdminPreviewSite(setSite);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
@@ -248,9 +274,16 @@ export function Layout() {
           Saltar al contenido principal
         </a>
 
-        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}><div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
-          {market.announcement}
-        </div></StorefrontComponentBoundary>
+        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}>
+          <div className="bg-[#173d2a] px-4 py-2 text-[11px] font-medium text-white/95 sm:text-xs">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 overflow-x-auto whitespace-nowrap px-1 sm:px-4">
+              {market.announcement.split(" · ").filter(Boolean).map((part, index) => {
+                const BenefitIcon = [Truck, Leaf, ShieldCheck, Headphones][index % 4];
+                return <span key={index} className="inline-flex shrink-0 items-center gap-2"><BenefitIcon className="h-3.5 w-3.5"/>{part}</span>;
+              })}
+            </div>
+          </div>
+        </StorefrontComponentBoundary>
 
         <header
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
@@ -475,6 +508,15 @@ export function Layout() {
         </footer>
       </div>
 
+      <StorefrontComponentBoundary id="floating.herenciaIA" controls={market.componentControls} now={scheduleNow}
+        enabled={herenciaEnabled && site.navigation.herencia.visible !== false && !location.pathname.startsWith("/checkout") && !location.pathname.startsWith("/pago")}>
+        <Link to={site.navigation.herencia.href || "/herencia"}
+          aria-label="Abrir asistente Herenc(IA)"
+          className="group fixed bottom-[260px] right-4 z-[95] inline-flex items-center gap-2 rounded-full border border-[#b3c8b5] bg-[#fffdf9] px-3 py-2.5 text-sm font-semibold text-[#173d2a] shadow-[0_6px_24px_rgba(9,42,20,.18)] transition duration-300 hover:-translate-y-1 hover:border-[#5b8464] hover:shadow-[0_12px_30px_rgba(9,42,20,.22)] sm:right-6">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e2efdf] text-[#28573b]"><Bot className="h-6 w-6"/></span>
+          <span className="hidden sm:inline">{site.navigation.herencia.label || "Herenc(IA)"}</span>
+        </Link>
+      </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
         <SalesChatWidget />
       </StorefrontComponentBoundary>

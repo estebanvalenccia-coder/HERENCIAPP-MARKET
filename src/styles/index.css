@@ -85,3 +85,50 @@
     letter-spacing: -.035em;
   }
 }
+
+
+/* Motion layer: progressive enhancement, only on the public storefront. */
+@media (hover: hover) and (pointer: fine) {
+  .herencia-marketfront main a[class*="bg-[#"],
+  .herencia-marketfront main button[class*="bg-[#"] {
+    transition: transform 220ms ease, filter 220ms ease, box-shadow 220ms ease;
+  }
+  .herencia-marketfront main a[class*="bg-[#"]:hover,
+  .herencia-marketfront main button[class*="bg-[#"]:hover {
+    filter: brightness(1.11);
+    box-shadow: 0 9px 22px rgba(26, 69, 42, .16);
+    transform: translateY(-2px);
+  }
+  .herencia-marketfront main article:hover img,
+  .herencia-marketfront main a.group:hover > img,
+  .herencia-marketfront main a.group:hover img {
+    transform: scale(1.045);
+  }
+  .herencia-marketfront main article img,
+  .herencia-marketfront main a.group img {
+    transition: transform 520ms cubic-bezier(.2,.75,.25,1);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .herencia-marketfront [data-hm-reveal] {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity 680ms ease, transform 680ms cubic-bezier(.2,.7,.2,1);
+  }
+  .herencia-marketfront [data-hm-reveal].hm-revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .herencia-marketfront header {
+    transition: box-shadow 250ms ease, background-color 250ms ease;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .herencia-marketfront *,
+  .herencia-marketfront *::before,
+  .herencia-marketfront *::after {
+    animation-duration: .01ms !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}

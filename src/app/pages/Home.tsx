@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   ArrowRight,
+  Bot,
+  Heart,
   HeartHandshake,
   Leaf,
   ShieldCheck,
@@ -78,6 +80,8 @@ export function Home() {
     return () => window.clearInterval(interval);
   }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
 
@@ -85,6 +89,17 @@ export function Home() {
     const load = () => {
       if (!isEmbeddedAdminPreview()) setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       setColombiaDelivery(parseColombiaDeliverySettings(backendStorage.getItem("internationalDeliverySettings")));
+      try {
+        setAssistantEnabled(Boolean(JSON.parse(backendStorage.getItem("herenciaSettings") || "{}").enabled));
+      } catch {
+        setAssistantEnabled(false);
+      }
+      try {
+        const wishlist = JSON.parse(backendStorage.getItem("wishlist") || "[]");
+        setFavorites(Array.isArray(wishlist) ? wishlist.map(String) : []);
+      } catch {
+        setFavorites([]);
+      }
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
         setCatalog(
@@ -153,7 +168,10 @@ export function Home() {
     [site]
   );
   const heroDesign = heroBlock?.design;
-  const heroMinHeight = Math.max(360, Number(heroDesign?.minHeight || 620));
+  // The legacy builder shipped with a 650px hero. Match the reference's
+  // shorter editorial banner, but continue to honor other admin-set sizes.
+  const heroConfiguredHeight = Number(heroDesign?.minHeight || 460);
+  const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 460 : heroConfiguredHeight));
   const heroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
@@ -183,6 +201,45 @@ export function Home() {
       && Boolean(product.image) && Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0) > 0
       && (product.trackInventory === false || Number(product.stock || 0) > 0 || (Array.isArray(product.variants) && product.variants.some((variant: any) => Number(variant.stock || 0) > 0)));
   }).slice(0, 4), [catalog]);
+
+  // Curated storefront collections are derived from the real, administrator-controlled cards.
+  // Disabled collections remain disabled; no demo products or invented prices.
+  const editorial3D = visibleHomeCategories.find((item) =>
+    /(?:3d|impresi[oó]n)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
+  );
+  const editorialColombia = visibleHomeCategories.find((item) =>
+    /(?:colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
+  );
+  const spotlightCollections = [
+    editorial3D || {
+      title: "Creaciones 3D",
+      subtitle: "Macetas, diseños y detalles personalizados",
+      imageUrl: creations3D[0]?.image || site.cta.imageUrl || "",
+      href: creations3D[0] ? `/producto/${creations3D[0].id}` :
+        assistantEnabled ? (site.navigation.herencia.href || "/herencia") : "/productos?buscar=3D",
+    },
+    editorialColombia || (colombiaDelivery.enabled ? {
+      title: "Regalos de Colombia",
+      subtitle: colombiaDelivery.description,
+      imageUrl: colombiaDelivery.heroImageUrl,
+      href: "/colombia",
+    } : null),
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  const toggleFavorite = async (productId: unknown) => {
+    const id = String(productId);
+    const next = favorites.includes(id) ? favorites.filter((entry) => entry !== id) : [...favorites, id];
+    setFavorites(next);
+    try {
+      await backendStorage.setItem("wishlist", JSON.stringify(next));
+      window.dispatchEvent(new Event("backend-storage"));
+      void backendApi.customerSaveWishlist(next).catch(() => null);
+      toast.success(next.includes(id) ? "Añadido a favoritos" : "Eliminado de favoritos");
+    } catch {
+      setFavorites(favorites);
+      toast.error("No se pudieron guardar los favoritos");
+    }
+  };
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -263,7 +320,14 @@ export function Home() {
             Math.min(100, Number(heroDesign?.overlayWidth ?? market.home.heroOverlayWidth ?? 72))
           );
           const overlayMid = Math.round(overlayWidth * 0.58);
-          const color = hexToRgb(heroDesign?.overlayColor || market.home.heroOverlayColor || "#102b20");
+          // Default showroom uses the reference's warm light overlay. An explicitly
+          // customized color in the visual builder still takes precedence.
+          const chosen = heroDesign?.overlayColor && heroDesign.overlayColor !== "#102b20"
+            ? heroDesign.overlayColor
+            : market.home.heroOverlayColor && market.home.heroOverlayColor !== "#102b20"
+              ? market.home.heroOverlayColor
+              : "#efe8dc";
+          const color = hexToRgb(chosen);
           return (
             <div
               className="absolute inset-0"
@@ -289,7 +353,7 @@ export function Home() {
           <div
             className="max-w-2xl"
             style={{
-              color: heroDesign?.textColor || "#ffffff",
+              color: heroDesign?.textColor && heroDesign.textColor !== "#ffffff" ? heroDesign.textColor : "#173d2a",
               textAlign:
                 heroDesign?.alignment === "center"
                   ? "center"
@@ -300,13 +364,13 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
-            <p className="mb-5 text-xs font-black uppercase tracking-[0.28em] text-white/75">
+            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
               {market.home.title}
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-white/88 sm:text-lg">
+            <p className="mt-6 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
               {market.home.description}
             </p>
             <div
@@ -330,13 +394,24 @@ export function Home() {
               </Link>}
               {site.hero.secondaryButton.visible !== false && isWithinPublicationWindow(site.hero.secondaryButton.schedule, scheduleNow) && <Link
                 to={site.hero.secondaryButton.href || "/servicios"}
-                className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/10 px-6 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-md border border-[#668772]/70 bg-white/75 px-6 py-3.5 font-semibold text-[#173d2a] backdrop-blur transition hover:bg-white"
               >
                 {site.hero.secondaryButton.label || "Nuestros servicios"}
               </Link>}
             </div>
           </div>
         </div>
+        {assistantEnabled && site.navigation.herencia.visible !== false &&
+          <Link to={site.navigation.herencia.href || "/herencia"}
+            className="absolute right-5 top-6 hidden max-w-[285px] items-center gap-3 rounded-2xl border border-white/75 bg-[#fffdf9]/95 p-4 text-[#173d2a] shadow-[0_12px_40px_rgba(0,0,0,.12)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[#e5ede3] text-[#244c32]"><Bot className="h-8 w-8"/></span>
+            <span className="flex flex-col">
+              <span className="font-serif text-xl">Herenc(IA)</span>
+              <span className="mt-0.5 text-xs text-[#4d6352]">¿En qué puedo ayudarte hoy?</span>
+              <span className="mt-2 inline-flex text-xs font-semibold text-[#234b35]">Hablar con Herenc(IA) <ArrowRight className="ml-1 h-3 w-3"/></span>
+            </span>
+          </Link>
+        }
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
@@ -389,6 +464,24 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
       <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+        {spotlightCollections.length > 0 && (
+          <div className="mb-10 grid gap-5 md:grid-cols-2">
+            {spotlightCollections.map((collection) => (
+              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[265px] items-end overflow-hidden rounded-xl border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[340px]">
+                {collection.imageUrl
+                  ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
+                  : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
+                }
+                <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#102b20]/50 to-transparent" />
+                <div className="relative max-w-[78%] p-7 sm:p-9">
+                  <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">{collection.title}</h2>
+                  <p className="mt-3 text-sm leading-6 text-white/90">{collection.subtitle}</p>
+                  <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[#173d2a]">Explorar colección <ArrowRight className="h-4 w-4" /></span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
@@ -403,7 +496,7 @@ export function Home() {
           </Link>
         </div>
 
-        <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {spotlightCollections.length === 0 && <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
             <Link
               key={item.title}
@@ -431,7 +524,7 @@ export function Home() {
               </div>
             </Link>
           ))}
-        </div>
+        </div>}
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
@@ -496,7 +589,7 @@ export function Home() {
           </Link>
         </div>
 
-        {creations3D.length > 0 && (
+        {creations3D.length > 0 && !spotlightCollections.some((item) => /3d/i.test(item.title)) && (
           <div className="mt-8 overflow-hidden rounded-2xl border border-[#dfdccc] bg-[#eaf0e6] md:flex md:items-center">
             <div className="flex-1 px-7 py-8 md:px-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#57705c]">Diseño y creatividad</p>
@@ -512,14 +605,19 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-8 grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
           {featured.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
               <article
                 key={product.id}
-                className="group overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                className="group relative overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
               >
+                <button type="button" onClick={() => void toggleFavorite(product.id)}
+                  aria-label={favorites.includes(String(product.id)) ? `Quitar ${product.name} de favoritos` : `Guardar ${product.name} en favoritos`}
+                  className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#294a35] shadow-sm transition hover:bg-[#e8f2e7]">
+                  <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
+                </button>
                 <Link to={`/producto/${product.id}`} className="block aspect-[4/4.3] overflow-hidden bg-[#f1eee7]">
                   <img
                     src={product.image}
@@ -532,6 +630,13 @@ export function Home() {
                     {product.name}
                   </Link>
                   <p className="mt-2 text-base font-black text-[#315b42]">{money(price)}</p>
+                  {Number(product.rating || product.averageRating || 0) > 0 && (
+                    <p className="mt-1 text-xs text-[#bd871c]" aria-label={`Valoración ${Number(product.rating || product.averageRating).toFixed(1)} de 5`}>
+                      {"★".repeat(Math.max(0, Math.min(5, Math.round(Number(product.rating || product.averageRating)))))}
+                      {Number(product.reviewCount || product.reviewsCount || 0) > 0 &&
+                        <span className="ml-1 text-[#718076]">({Number(product.reviewCount || product.reviewsCount)})</span>}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => addToCart(product)}
@@ -589,8 +694,8 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.trust" controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
-      <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ded9cd] bg-[#f4f1e8]">
-        <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
+      <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ebe7df] bg-[#faf9f5]">
+        <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
             const Icon = trustIcons[index % trustIcons.length];
             return (
@@ -610,16 +715,20 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
-        <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
-          <Sparkles className="absolute right-8 top-8 h-20 w-20 text-white/5" />
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">HERENCIA</p>
-          <h2 className="mt-2 max-w-2xl text-3xl font-medium sm:text-4xl">
+        <div className="relative overflow-hidden rounded-xl border border-[#e4dfd3] bg-[#ece5d8] px-7 py-12 text-[#173d2a] sm:px-10">
+          {site.cta.imageUrl && <>
+            <img src={site.cta.imageUrl} alt="" className="pointer-events-none absolute inset-y-0 right-0 h-full w-full object-cover opacity-70 md:w-[44%]" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#ece5d8] via-[#ece5d8]/95 to-[#ece5d8]/15" />
+          </>}
+          <Sparkles className="pointer-events-none absolute right-8 top-8 h-20 w-20 text-[#315b42]/15" />
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#315b42]/70">HERENCIA</p>
+          <h2 className="relative mt-2 max-w-2xl font-serif text-3xl font-medium sm:text-4xl">
             {site.cta.title}
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/78">{site.cta.subtitle}</p>
+          <p className="relative mt-3 max-w-2xl text-sm leading-6 text-[#4b6453]">{site.cta.subtitle}</p>
           {site.cta.button.visible !== false && isWithinPublicationWindow(site.cta.button.schedule, scheduleNow) && <Link
             to={site.cta.button.href || "/productos"}
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
+            className="relative mt-6 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white"
           >
             {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
           </Link>}

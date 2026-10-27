@@ -5,7 +5,7 @@ export type StorefrontComponentKey =
   | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.delivery" | "home.categoryStrip"
   | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
   | "home.featured" | "home.promotions" | "home.trust" | "home.bottomCta"
-  | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
+  | "floating.herenciaIA" | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
 export type StorefrontComponentControl = {
   enabled?: boolean;
@@ -46,6 +46,7 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Banners Dulce y Moda" },
   { id:"home.trust", name:"Ventajas de Herencia", location:"home", editingSection:"portada", description:"Beneficios de compra y asistencia" },
   { id:"home.bottomCta", name:"Banner inferior", location:"home", editingSection:"promociones", description:"Llamada a la acción de la portada" },
+  { id:"floating.herenciaIA", name:"Herenc(IA) flotante", location:"floating", editingSection:"navegacion", description:"Asistente de IA en botón flotante, sujeto a disponibilidad y controles de visibilidad" },
   { id:"floating.sales", name:"Herencia Sales", location:"floating", editingSection:"sales", description:"Chat y botón comercial flotante" },
   { id:"floating.support", name:"Atención al cliente", location:"floating", editingSection:"sales", description:"Centro de soporte flotante" },
   { id:"floating.whatsapp", name:"WhatsApp", location:"floating", editingSection:"sales", description:"Botón de contacto por WhatsApp" },
