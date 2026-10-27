@@ -31,3 +31,13 @@ test("validates nested menu links and scheduled component controls", () => {
   assert.ok(errors.some((value) => value.includes("Componente home.hero")));
   assert.equal(validateSitePublication({ marketExperience: { navigation: [{ label: "Inicio", href: "/" }] } }).length, 0);
 });
+
+test("requires legal links when publishing configured footer", () => {
+  const problems = validateSitePublication({ footer: {
+    privacyHref: "", cookiesHref: "/cookies", termsHref: "/terminos",
+  } });
+  assert.ok(problems.some((message) => message.includes("Footer.privacyHref")));
+  assert.equal(validateSitePublication({ footer: {
+    privacyHref: "/privacidad", cookiesHref: "/cookies", termsHref: "/terminos",
+  } }).length, 0);
+});
