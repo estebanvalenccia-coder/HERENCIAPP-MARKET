@@ -588,8 +588,8 @@ export function AdminMarketExperience({
             <p className="mb-3 font-black">ON/OFF de cada sección de Inicio</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {([
-                ["hero", "Portada principal"], ["delivery", "Envíos a Colombia"], ["categoryStrip", "Categorías redondas"],
-                ["plantCta", "Botón descubrir plantas"], ["categoriesGrid", "Tarjetas de categorías"],
+                ["hero", "Portada principal"], ["delivery", "Envíos a Colombia"], ["categoryStrip", "Categorías redondas"], ["feed", "Contenido dinámico"],
+                ["plantCta", "Botón descubrir plantas"], ["bottomCta", "Banner CTA inferior"], ["categoriesGrid", "Tarjetas de categorías"],
                 ["services", "Servicios"], ["featured", "Productos destacados"], ["promotions", "Banners promocionales"], ["trust", "Beneficios"],
               ] as Array<[keyof MarketExperienceContent["home"]["sections"], string]>).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 rounded-lg bg-white p-2 text-sm font-semibold">
