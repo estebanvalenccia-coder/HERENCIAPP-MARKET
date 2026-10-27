@@ -5,6 +5,7 @@ import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
+import { AdminScheduleFields } from "./AdminElementControls";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -106,6 +107,13 @@ function LinkEditor({
     <div className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-2">
       <Field label={`${title} · texto`} value={value.label} onChange={(label) => onChange({ ...value, label })} />
       <Field label={`${title} · destino/URL`} value={value.href} onChange={(href) => onChange({ ...value, href })} placeholder="/productos o https://..." />
+      <label className="flex items-center gap-2 text-sm font-bold md:col-span-2">
+        <input type="checkbox" checked={value.visible !== false} onChange={(event) => onChange({ ...value, visible: event.target.checked })} />
+        ON/OFF · Mostrar este enlace o botón
+      </label>
+      <div className="md:col-span-2">
+        <AdminScheduleFields label={title} value={value.schedule} onChange={(schedule) => onChange({ ...value, schedule })} />
+      </div>
     </div>
   );
 }
