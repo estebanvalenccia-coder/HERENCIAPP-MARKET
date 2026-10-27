@@ -10,14 +10,22 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
+import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 
 export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    const load = () => !isEmbeddedAdminPreview() && setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     load();
     window.addEventListener("storage", load);
     window.addEventListener("backend-storage", load);
