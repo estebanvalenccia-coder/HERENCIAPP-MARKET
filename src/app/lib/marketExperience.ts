@@ -3,6 +3,21 @@ import type { StorefrontComponentControl } from "./componentRegistry";
 
 export type PublicationWindow = { startAt?: string; endAt?: string };
 
+export const DEFAULT_HOME_SECTION_ORDER = [
+  "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
+  "services", "featured", "promotions", "trust", "bottomCta",
+] as const;
+export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
+
+export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionId[] {
+  if (!Array.isArray(incoming)) return [...DEFAULT_HOME_SECTION_ORDER];
+  const allowed = new Set<string>(DEFAULT_HOME_SECTION_ORDER);
+  const selected = incoming.filter((id): id is MarketHomeSectionId => typeof id === "string" && allowed.has(id));
+  const unique = [...new Set(selected)];
+  for (const id of DEFAULT_HOME_SECTION_ORDER) if (!unique.includes(id)) unique.push(id);
+  return unique;
+}
+
 export type MarketCard = {
   visible?: boolean;
   schedule?: PublicationWindow;
@@ -48,6 +63,7 @@ export type MarketExperienceContent = {
     footer: boolean;
   };
   home: {
+    sectionOrder: MarketHomeSectionId[];
     sections: {
       hero: boolean;
       delivery: boolean;
@@ -152,6 +168,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     footer: true,
   },
   home: {
+    sectionOrder: [...DEFAULT_HOME_SECTION_ORDER],
     sections: {
       hero: true,
       delivery: true,
@@ -403,6 +420,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...defaultMarketExperience.home,
       ...homeIncoming,
       sections: { ...defaultMarketExperience.home.sections, ...(homeIncoming.sections || {}) },
+      sectionOrder: normalizeHomeSectionOrder(homeIncoming.sectionOrder),
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
       services: mergeList(defaultMarketExperience.home.services, homeIncoming.services),
