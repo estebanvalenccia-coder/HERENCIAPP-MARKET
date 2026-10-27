@@ -33,7 +33,7 @@ export type MarketHomeProductDisplay = {
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
   title: "Nuestra selección de plantas",
   subtitle: "Plantas naturales disponibles para tu hogar.",
-  mode: "featured",
+  mode: "plants",
   limit: 16,
   columns: 8,
   imageAspect: "portrait",
@@ -380,7 +380,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     ],
     featuredTitle: "Productos destacados",
     featuredLimit: 6,
-    shopFirst: false,
+    shopFirst: true,
     productDisplay: DEFAULT_HOME_PRODUCT_DISPLAY,
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
     trust: [
@@ -514,6 +514,17 @@ function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): Market
 export function getMarketExperience(site: SiteContent): MarketExperienceContent {
   const incoming = (site as SiteContent & { marketExperience?: Partial<MarketExperienceContent> }).marketExperience || {};
   const homeIncoming = incoming.home || {};
+  // Migration is *read-only*: legacy stored settings remain untouched.
+  // Missing opt-in field means the new commerce presentation is the default
+  // while saving the full previous section order for one-click restoration.
+  const hasExplicitShopChoice = typeof homeIncoming.shopFirst === "boolean";
+  const previousHomeOrder = normalizeHomeSectionOrder(homeIncoming.sectionOrder);
+  const initialShopOrder = hasExplicitShopChoice
+    ? previousHomeOrder
+    : [...PLANT_SHOP_HOME_SECTION_ORDER];
+  const previousShopOrder = Array.isArray(homeIncoming.shopFirstPreviousSectionOrder)
+    ? normalizeHomeSectionOrder(homeIncoming.shopFirstPreviousSectionOrder)
+    : previousHomeOrder;
   const dulceIncoming = incoming.dulce || {};
   const modaIncoming = incoming.moda || {};
   const aboutIncoming = incoming.about || {};
@@ -539,7 +550,11 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...defaultMarketExperience.home,
       ...homeIncoming,
       sections: { ...defaultMarketExperience.home.sections, ...(homeIncoming.sections || {}) },
-      sectionOrder: normalizeHomeSectionOrder(homeIncoming.sectionOrder),
+      shopFirst: hasExplicitShopChoice ? homeIncoming.shopFirst : true,
+      sectionOrder: initialShopOrder,
+      shopFirstPreviousSectionOrder: hasExplicitShopChoice
+        ? homeIncoming.shopFirstPreviousSectionOrder
+        : previousShopOrder,
       productDisplay: {
         ...DEFAULT_HOME_PRODUCT_DISPLAY,
         ...(homeIncoming.productDisplay || {}),
