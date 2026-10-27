@@ -260,9 +260,6 @@ export function Layout() {
                     <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
                 )}
-                    />
-                  )
-                )}
                 {herenciaEnabled && site.navigation.herencia.visible !== false ? (
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
@@ -354,10 +351,6 @@ export function Layout() {
                   <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} mobile active={isPathActive(location.pathname, item.href)} />
                 ) : (
                   <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
-                )
-              )}
-                    mobile
-                  />
                 )
               )}
               {herenciaEnabled ? (
