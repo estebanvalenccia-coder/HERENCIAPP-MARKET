@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Copy, Edit3, Home, Layers3, MapPin, PackagePlus, Search, Shirt, Sparkles, Store, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem } from "./AdminElementControls";
-import { AdminComponentRegistry } from "./AdminComponentRegistry";
+import { AdminComponentRegistry, AdminVisibilityOverview } from "./AdminComponentRegistry";
 import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
 import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
 import { AdminCampaigns } from "./AdminCampaigns";
@@ -494,6 +494,7 @@ export function AdminMarketExperience({
       </div>
 
       <div className="space-y-8 p-6">
+        <AdminVisibilityOverview market={market} onChange={setMarket} />
         <AdminComponentRegistry market={market} onChange={setMarket} />
         <AdminSiteDiagnostics site={site} market={market} />
         <AdminComponentAnalytics />
