@@ -28,7 +28,7 @@ export function MarketNavigationMenu({
         <summary className={`list-none cursor-pointer ${baseClass}`} aria-label={`Abrir menú ${item.label}`}>
           {item.label} <ChevronDown className="h-3.5 w-3.5" />
         </summary>
-        <div className="absolute left-0 top-full z-[85] mt-2 max-h-[65vh] w-[min(340px,85vw)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-xl">
+        <div className="fixed left-4 right-4 top-[148px] z-[85] max-h-[calc(100vh-166px)] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-xl">
           <Link to={item.href} className="block rounded-xl bg-[#edf4ee] px-3 py-2.5 text-sm font-black text-[#244a35]">Ver todos · {item.label}</Link>
           {links.map((link, index) => (
             <Link key={`${link.href}-${index}`} to={link.href} className="mt-1 block rounded-xl px-3 py-2.5 text-sm font-semibold text-[#244a35] hover:bg-[#eef2eb]">
