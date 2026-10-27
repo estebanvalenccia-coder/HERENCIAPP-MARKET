@@ -42,9 +42,9 @@
 ## Pendiente — siguientes fases del prompt maestro
 
 ### P1: Persistencia y seguridad reforzadas
-- Versionado centralizado de contenidos, migración de esquemas y conflictos de escritura optimistas (ETag/versión).
+- Migración de esquemas de contenidos, permisos administrativos de granularidad fina por acción (más allá de los roles existentes) y publicación de contratos de componentes nuevos.
 - Auditoría permanente de quién modificó cada elemento, permisos backend por rol.
-- Historial de publicaciones servidor y restauración transaccional; el historial del editor ya existente no equivale a un historial servidor seguro.
+- El historial de publicaciones se guarda junto con el contenido publicado en una transacción Neon; queda pendiente verificar recuperación y migración de versiones antiguas con datos reales.
 
 ### P2: Editor universal de estilos
 - Registro declarativo de componentes que nuevos desarrollos deberán implementar.
@@ -79,7 +79,7 @@
 - Modelo `marketExperience.componentControls` persistido con el resto del contenido. Los controles anteriores de cabecera, portada y Sales permanecen sincronizados.
 - Orden de las 11 secciones completas de la portada guardado en `home.sectionOrder`, reordenable con arrastre o flechas y aplicado con flex order en la tienda.
 - Resumen del orden/estado de secciones en la previsualización del constructor (esquema visual, **no** reproducción fiel de todas las secciones de Home).
-- Protección preventiva en `AdminContent` y `AdminVisualBuilder` ante cambios detectados en la copia publicada durante la edición. **No es bloqueo transaccional: falta control de versión atómico en backend**.
+- Los editores publican mediante el endpoint atómico `/api/admin/site-content/publish`. PostgreSQL bloquea la clave de contenido, compara la versión y guarda contenido, borrador e historial en una transacción. Conflictos concurrentes devuelven HTTP 409.
 - Las listas vacías de bloques, categorías y ventajas legacy permanecen vacías cuando se eliminan explícitamente; el constructor utiliza la marca `blocksInitialized` para distinguir tiendas antiguas de una eliminación intencionada.
 - Pruebas `backend/componentPolicy.test.js` para OFF, calendario y 8 combinaciones de dispositivo.
 
@@ -96,7 +96,7 @@
 - `sitePublicationValidation.mjs` valida protocolos de enlaces, submenús, fechas ISO con zona horaria y enlaces legales obligatorios antes de publicar en ambos editores.
 - `AdminSiteDiagnostics` avisa de enlaces duplicados, imágenes ausentes, componentes sin destino y secciones activadas pero ocultas en todos los dispositivos. No hace peticiones externas ni asegura que un enlace remoto funcione.
 - Incluso con el pie de página opcional desactivado se conserva una zona legal con privacidad, cookies, términos y copyright.
-- El publicador comprueba si su copia publicada local difiere de la que abrió inicialmente y, de ser así, impide sobrescribirla de forma inadvertida. Sigue pendiente el bloqueo optimista *atómico* en servidor.
+- La detección previa en cliente ahora se complementa con una comprobación transaccional en el servidor y autenticación de roles administrativos. Un administrador no puede sobrescribir la publicación posterior de otro.
 - `ensureBuilderBlocks` distingue el estado legado de una lista de bloques intencionadamente vacía mediante `blocksInitialized`.
 - `marketExperience.home.sectionOrder` controla el orden de once secciones reales sin reescribir los componentes. Las tarjetas y servicios mantienen controles independientes.
 - Las pruebas de publicación se amplían con `sitePublicationValidation.test.js` y casos de calendario ambiguo.
@@ -114,4 +114,35 @@
 
 - Validación visual manual en móviles pequeños, tablets y escritorios (colores, espacios, stacking de widgets, orden CSS, teclado y foco).
 - Estructura de componentes de registro para cualquier desarrollo nuevo no incluido entre los 21 elementos actuales.
-- Versionado/publicación transaccional y control de roles del backend, campañas/plantillas, analítica y cuadro completo de propiedades para el resto de componentes.
+- Se implementaron publicación transaccional, roles del gateway, plantillas de campañas estacionales y analítica agregada de clics. Sigue pendiente QA real de navegadores y estilos avanzados para componentes aún no integrados.
+
+## Avance de integración final — octubre de 2026
+
+### Publicación, roles y reversión
+- Endpoint seguro `POST /api/admin/site-content/publish` en el gateway Neon; comparación del contenido publicado original mediante transacción y bloqueo PostgreSQL, respuesta HTTP 409 si otra cuenta publicó antes.
+- Guarda contenido, borrador, historial y ajustes visuales auxiliares en la misma transacción, sin sobrescribir optimistamente el navegador.
+- Ambos editores utilizan el nuevo endpoint. La ruta genérica PUT de `siteContent` se rechaza para forzar la publicación con control de versiones.
+- El acceso administrativo del gateway verifica rol `admin` o `owner` y rechaza sesiones incompletas de alta de usuario.
+- Botón para deshacer la última publicación desde el constructor visual; mantiene una nueva entrada de historial al revertir.
+- Tests de colisión de versiones, contenido no válido, configuración auxiliar y límites de historial.
+
+### Editor sobre el frontend real
+- Vista previa de la portada mediante iframe del mismo origen, aislada de la publicación; recibe el contenido actual como mensaje temporal.
+- Los elementos `StorefrontComponentBoundary` pueden seleccionarse haciendo clic: abre un inspector contextual con ON/OFF, dispositivo, programación y orden.
+- El inspector remite al panel completo cuando se necesitan propiedades específicas.
+- Editar enlaces globales de la cabecera en el constructor sincroniza los cambios con el menú que usa el frontend.
+
+### Promociones, estadísticas y asistencia
+- Campañas estacionales independientes de Dulce/Moda, inicialmente ocultas, con plantillas Navidad, San Valentín y temporada; imágenes, diseños, orden y fechas independientes.
+- Agregación de clics de componentes; se registra exclusivamente cuando el visitante aceptó medición. El tablero es agregado, no incluye datos personales ni pretende atribuir compras.
+- Editor de apariencia para cabecera y footer conectado con `site.builder` y renderizado real.
+- Posición, color, distancia y etiqueta del botón de atención al cliente; evita solapamientos con Herencia Sales.
+
+### Bloqueadores del último paso a producción
+- No se ha ejecutado una prueba E2E en una implementación temporal. La creación del preview en Vercel fue rechazada por falta de autorización para el equipo (403); requiere aprobación del propietario.
+- Completar pruebas reales de ratón y teclado, móvil/tablet/escritorio, campañas y recuperación de publicación, con dos cuentas administrativas simultáneas.
+- Revisar integridad de productos, pagos, pedidos y devoluciones después del despliegue.
+- Revisar nuevas incorporaciones al registro de componentes y su compatibilidad con los trabajos paralelos.
+- No fusionar la PR a `main` ni activar producción hasta resolver estos puntos.
+
+**Alcance:** base operativa del editor visual y su publicación segura, no garantía de personalización de código arbitrario no registrado.
