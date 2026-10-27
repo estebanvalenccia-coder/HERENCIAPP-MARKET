@@ -12,12 +12,15 @@ export function StorefrontComponentBoundary({
   controls,
   now,
   enabled = true,
+  order,
   children,
 }: {
   id: StorefrontComponentKey;
   controls: Record<string, StorefrontComponentControl> | undefined;
   now: number;
   enabled?: boolean;
+  /** Flex order belongs to this wrapper, not to its nested section. */
+  order?: number;
   children: ReactNode;
 }) {
   if (!enabled || !isComponentAllowed(controls, id, now)) return null;
@@ -25,6 +28,7 @@ export function StorefrontComponentBoundary({
     <div
       className={componentDeviceClasses(controls, id)}
       data-storefront-component={id}
+      style={order === undefined ? undefined : { order }}
       onClickCapture={(event) => {
         if (!isEmbeddedAdminPreview()) {
           // Analytics is opt-in. A section impression or ordinary scrolling is not a click.
