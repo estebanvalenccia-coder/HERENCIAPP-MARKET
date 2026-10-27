@@ -462,7 +462,7 @@ export function Layout() {
         <SalesChatWidget />
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.support" controls={market.componentControls} now={scheduleNow}>
-        <FloatingCustomerSupportV2 salesButtonVisible={market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow)} salesPosition={market.sales.position} salesBottomOffset={market.sales.bottomOffset} />
+        <FloatingCustomerSupportV2 salesButtonVisible={market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow)} salesPosition={market.sales.position} salesBottomOffset={market.sales.bottomOffset} position={market.support.position} bottomOffset={market.support.bottomOffset} buttonColor={market.support.buttonColor} buttonLabel={market.support.buttonLabel} />
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.accessibility" controls={market.componentControls} now={scheduleNow}>
         <AccessibilityPanel />
