@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Edit3, Home, Layers3, MapPin, PackagePlus, Search, Shirt, Sparkles, Store, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
+import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem } from "./AdminElementControls";
+import { AdminComponentRegistry } from "./AdminComponentRegistry";
+import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
+import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
+import { AdminCampaigns } from "./AdminCampaigns";
+import { AdminComponentAnalytics } from "./AdminComponentAnalytics";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
   getMarketExperience,
   type MarketExperienceContent,
+  type MarketHomeSectionId,
   withMarketExperience,
 } from "../../lib/marketExperience";
 
@@ -418,6 +425,7 @@ export function AdminMarketExperience({
 }) {
   const market = getMarketExperience(site);
   const [managedCategory, setManagedCategory] = useState<{ title: string; key: string } | null>(null);
+  const [draggedSection, setDraggedSection] = useState<MarketHomeSectionId | null>(null);
 
   const setMarket = (next: MarketExperienceContent) => {
     onChange(withMarketExperience(site, next));
@@ -428,7 +436,30 @@ export function AdminMarketExperience({
   };
 
   const patchHome = (value: Partial<MarketExperienceContent["home"]>) => {
-    setMarket({ ...market, home: { ...market.home, ...value } });
+    const controls = { ...market.componentControls };
+    if (value.sections) {
+      for (const [key, enabled] of Object.entries(value.sections)) {
+        const id = `home.${key}`;
+        controls[id] = { ...(controls[id] || {}), enabled };
+      }
+    }
+    setMarket({
+      ...market,
+      home: { ...market.home, ...value },
+      componentControls: controls,
+    });
+  };
+
+  const patchLayout = (key: keyof MarketExperienceContent["layout"], enabled: boolean) => {
+    const id = key === "footer" ? "footer.main" : `header.${key}`;
+    setMarket({
+      ...market,
+      layout: { ...market.layout, [key]: enabled },
+      componentControls: {
+        ...market.componentControls,
+        [id]: { ...(market.componentControls[id] || {}), enabled },
+      },
+    });
   };
 
   const patchPromo = (
@@ -460,6 +491,9 @@ export function AdminMarketExperience({
       </div>
 
       <div className="space-y-8 p-6">
+        <AdminComponentRegistry market={market} onChange={setMarket} />
+        <AdminSiteDiagnostics site={site} market={market} />
+        <AdminComponentAnalytics />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
@@ -481,7 +515,7 @@ export function AdminMarketExperience({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-white p-5">
+          <div id="market-editor-navegacion" className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
               <Store className="h-5 w-5 text-primary" />
               Menú principal
@@ -489,6 +523,40 @@ export function AdminMarketExperience({
             <div className="grid gap-3 md:grid-cols-2">
               {market.navigation.map((item, index) => (
                 <div key={index} className="rounded-xl border border-border bg-[#fbfaf6] p-3">
+                  <AdminElementControls label={item.label || "Enlace"} visible={item.visible !== false}
+                    onToggle={(visible) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patch({ navigation: reorderItem(market.navigation, index, index - 1) })}
+                    onMoveDown={() => patch({ navigation: reorderItem(market.navigation, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.navigation.length - 1}
+                    onDuplicate={() => patch({ navigation: [...market.navigation.slice(0, index + 1), { ...item }, ...market.navigation.slice(index + 1)] })}
+                    onRemove={() => patch({ navigation: market.navigation.filter((_, i) => i !== index) })}
+                  />
+                  <AdminScheduleFields label={item.label} value={item.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, schedule } : current) })} />
+                  <div className="my-2 flex flex-wrap items-center gap-4 text-xs font-bold">
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={item.showDesktop !== false} onChange={(event) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, showDesktop: event.target.checked } : entry) })} /> Ordenador</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={item.showMobile !== false} onChange={(event) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, showMobile: event.target.checked } : entry) })} /> Móvil</label>
+                  </div>
+                  <details className="my-2 rounded-xl border border-[#dce6dc] bg-white p-3">
+                    <summary className="cursor-pointer text-xs font-black">Submenú · {(item.children || []).length} enlaces</summary>
+                    <div className="mt-3 space-y-3">
+                      {(item.children || []).map((child, childIndex) => (
+                        <div key={childIndex} className="space-y-2 rounded-xl border bg-[#fafcf9] p-3">
+                          <AdminElementControls label={child.label} visible={child.visible !== false}
+                            onToggle={(visible) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, visible } : link) } : entry) })}
+                            onMoveUp={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex - 1) } : entry) })}
+                            onMoveDown={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex + 1) } : entry) })}
+                            moveUpDisabled={childIndex === 0} moveDownDisabled={childIndex === (item.children || []).length - 1}
+                            onRemove={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).filter((_, j) => j !== childIndex) } : entry) })}
+                          />
+                          <Field label="Título" value={child.label} onChange={(label) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, label } : link) } : entry) })} />
+                          <Field label="Destino" value={child.href} onChange={(href) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, href } : link) } : entry) })} />
+                          <AdminScheduleFields label={child.label} value={child.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, schedule } : link) } : entry) })} />
+                        </div>
+                      ))}
+                      <AdminAddElement label="Añadir subenlace" onAdd={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: [...(entry.children || []), { label: "Nuevo subenlace", href: "/productos", visible: false }] } : entry) })} />
+                    </div>
+                  </details>
+
                   <Field
                     label={`Enlace ${index + 1} · texto`}
                     value={item.label}
@@ -514,10 +582,27 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <div className="mt-3"><AdminAddElement label="Añadir enlace" onAdd={() => patch({ navigation: [...market.navigation, { label: "Nuevo enlace", href: "/productos", visible: false }] })} /></div>
           </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-white p-5">
+          <h4 className="mb-3 font-black">Cabecera y pie de página · ON/OFF</h4>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              ["announcement", "Franja superior"], ["search", "Buscador"], ["account", "Mi cuenta"],
+              ["favorites", "Favoritos"], ["cart", "Carrito"], ["deliverySelector", "Selector de entrega"],
+              ["footer", "Pie de página"],
+            ] as Array<[keyof MarketExperienceContent["layout"], string]>).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 rounded-xl bg-[#f5f8f3] p-3 text-sm font-bold">
+                <input type="checkbox" checked={market.layout[key]} onChange={(event) => patchLayout(key, event.target.checked)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div id="market-editor-portada" className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
           <div className="mb-5 flex items-center gap-2">
             <Home className="h-5 w-5 text-primary" />
             <div>
@@ -528,6 +613,41 @@ export function AdminMarketExperience({
             </div>
           </div>
 
+          <div className="mb-5 rounded-xl border border-[#e0e9dd] bg-[#f5f9f5] p-4">
+            <p className="mb-2 font-black">ON/OFF y posición de las secciones de Inicio</p>
+            <p className="mb-4 text-xs text-muted-foreground">Arrastra las tarjetas o utiliza las flechas para cambiar el orden real de aparición en la tienda.</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {market.home.sectionOrder.map((key, index) => {
+                const names: Record<MarketHomeSectionId, string> = {
+                  hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías redondas",
+                  plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Tarjetas de categorías",
+                  services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales",
+                  trust: "Beneficios", bottomCta: "Banner CTA inferior",
+                };
+                return (
+                  <div key={key} draggable onDragStart={() => setDraggedSection(key)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnd={() => setDraggedSection(null)}
+                    onDrop={() => {
+                      if (draggedSection) {
+                        const from = market.home.sectionOrder.indexOf(draggedSection);
+                        patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, from, index) });
+                      }
+                      setDraggedSection(null);
+                    }}
+                    className={`rounded-xl border bg-white p-2 ${draggedSection === key ? "border-emerald-600 opacity-60" : "border-[#dce6dc]"}`}>
+                    <p className="mb-2 text-xs font-black">{index + 1}. {names[key]}</p>
+                    <AdminElementControls label={names[key]} visible={market.home.sections[key]}
+                      onToggle={(visible) => patchHome({ sections: { ...market.home.sections, [key]: visible } })}
+                      onMoveUp={() => patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, index, index - 1) })}
+                      onMoveDown={() => patchHome({ sectionOrder: reorderItem(market.home.sectionOrder, index, index + 1) })}
+                      moveUpDisabled={index === 0} moveDownDisabled={index === market.home.sectionOrder.length - 1}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-4">
               <Field label="Texto pequeño" value={market.home.kicker} onChange={(kicker) => patchHome({ kicker })} />
@@ -543,6 +663,10 @@ export function AdminMarketExperience({
                 value={market.home.categoriesTitle}
                 onChange={(categoriesTitle) => patchHome({ categoriesTitle })}
               />
+              <label className="block text-xs font-bold">
+                Categorías mostradas en la cuadrícula (0 = todas)
+                <input type="number" min="0" max="100" value={market.home.categoryGridLimit} onChange={(event) => patchHome({ categoryGridLimit: Math.max(0, Math.min(100, Number(event.target.value) || 0)) })} className="mt-2 block w-full rounded-xl border p-3 text-sm" />
+              </label>
               <Field
                 label="Título de servicios"
                 value={market.home.servicesTitle}
@@ -553,6 +677,10 @@ export function AdminMarketExperience({
                 value={market.home.featuredTitle}
                 onChange={(featuredTitle) => patchHome({ featuredTitle })}
               />
+              <label className="block text-xs font-bold">
+                Cantidad de productos destacados
+                <input type="number" min="1" max="48" value={market.home.featuredLimit} onChange={(event) => patchHome({ featuredLimit: Math.max(1, Math.min(48, Number(event.target.value) || 1)) })} className="mt-2 block w-full rounded-xl border p-3 text-sm" />
+              </label>
               <Field
                 label="Texto de productos destacados"
                 value={market.home.featuredSubtitle}
@@ -645,6 +773,15 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.categories.map((category, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={category.title || "Categoría"} visible={category.visible !== false}
+                    onToggle={(visible) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ categories: reorderItem(market.home.categories, index, index - 1) })}
+                    onMoveDown={() => patchHome({ categories: reorderItem(market.home.categories, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.categories.length - 1}
+                    onDuplicate={() => patchHome({ categories: [...market.home.categories.slice(0, index + 1), { ...category }, ...market.home.categories.slice(index + 1)] })}
+                    onRemove={() => patchHome({ categories: market.home.categories.filter((_, i) => i !== index) })}
+                  />
+                  <AdminScheduleFields label={category.title} value={category.schedule} onChange={(schedule) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Nombre"
                     value={category.title}
@@ -685,6 +822,9 @@ export function AdminMarketExperience({
                       patchHome({ categories });
                     }}
                   />
+                  <AdminCardDesignFields label={category.title} value={category.design}
+                    onChange={(design) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, design } : current) })}
+                  />
                   <button
                     type="button"
                     onClick={() => setManagedCategory({ title: category.title, key: categoryKey(category.title, category.href) })}
@@ -696,13 +836,23 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir categoría" onAdd={() => patchHome({ categories: [...market.home.categories, { title: "Nueva categoría", subtitle: "", href: "/productos", imageUrl: "", visible: false }] })} />
           </div>
 
-          <div className="mt-6">
+          <div id="market-editor-servicios" className="mt-6 scroll-mt-6">
             <p className="mb-3 font-black">Servicios visibles en Inicio</p>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {market.home.services.map((service, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={service.title || "Servicio"} visible={service.visible !== false}
+                    onToggle={(visible) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ services: reorderItem(market.home.services, index, index - 1) })}
+                    onMoveDown={() => patchHome({ services: reorderItem(market.home.services, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.services.length - 1}
+                    onDuplicate={() => patchHome({ services: [...market.home.services.slice(0, index + 1), { ...service }, ...market.home.services.slice(index + 1)] })}
+                    onRemove={() => patchHome({ services: market.home.services.filter((_, i) => i !== index) })}
+                  />
+                  <AdminScheduleFields label={service.title} value={service.schedule} onChange={(schedule) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Servicio"
                     value={service.title}
@@ -754,9 +904,13 @@ export function AdminMarketExperience({
                       patchHome({ services });
                     }}
                   />
+                  <AdminCardDesignFields label={service.title} value={service.design} defaultImageHeight={160} defaultBackgroundColor="#fffdf9"
+                    onChange={(design) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, design } : current) })}
+                  />
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir servicio" onAdd={() => patchHome({ services: [...market.home.services, { title: "Nuevo servicio", subtitle: "", href: "/servicios", imageUrl: "", ctaLabel: "Saber más", visible: false }] })} />
           </div>
 
           <div className="mt-6">
@@ -764,6 +918,15 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.trust.map((item, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
+                  <AdminElementControls label={item.title || "Beneficio"} visible={item.visible !== false}
+                    onToggle={(visible) => patchHome({ trust: market.home.trust.map((current, i) => i === index ? { ...current, visible } : current) })}
+                    onMoveUp={() => patchHome({ trust: reorderItem(market.home.trust, index, index - 1) })}
+                    onMoveDown={() => patchHome({ trust: reorderItem(market.home.trust, index, index + 1) })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === market.home.trust.length - 1}
+                    onDuplicate={() => patchHome({ trust: [...market.home.trust.slice(0, index + 1), { ...item }, ...market.home.trust.slice(index + 1)] })}
+                    onRemove={() => patchHome({ trust: market.home.trust.filter((_, i) => i !== index) })}
+                  />
+                  <AdminScheduleFields label={item.title} value={item.schedule} onChange={(schedule) => patchHome({ trust: market.home.trust.map((current, i) => i === index ? { ...current, schedule } : current) })} />
                   <Field
                     label="Título"
                     value={item.title}
@@ -788,6 +951,7 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir beneficio" onAdd={() => patchHome({ trust: [...market.home.trust, { title: "Nuevo beneficio", description: "", visible: false }] })} />
           </div>
         </div>
 
@@ -857,11 +1021,13 @@ export function AdminMarketExperience({
           const promo = market[kind];
           const Icon = kind === "dulce" ? Sparkles : Shirt;
           return (
-            <div key={kind} className="rounded-2xl border border-border bg-white p-5">
+            <div key={kind} id={kind === "dulce" ? "market-editor-promociones" : undefined} className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
               <div className="mb-5 flex items-center gap-2">
                 <Icon className="h-5 w-5 text-primary" />
                 <h4 className="font-black">{kind === "dulce" ? "Dulce" : "Moda"} · portada y banner</h4>
               </div>
+              <label className="mb-4 flex items-center gap-2 rounded-xl bg-[#f2f5ef] p-3 text-sm font-bold"><input type="checkbox" checked={promo.enabled !== false} onChange={(event) => patchPromo(kind, { enabled: event.target.checked })} /> Mostrar banner de {kind === "dulce" ? "Dulce" : "Moda"}</label>
+              <AdminScheduleFields label={promo.title} value={promo.schedule} onChange={(schedule) => patchPromo(kind, { schedule })} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4">
                   <Field label="Texto pequeño" value={promo.kicker} onChange={(kicker) => patchPromo(kind, { kicker })} />
@@ -872,14 +1038,97 @@ export function AdminMarketExperience({
                   <Field label="Texto del botón" value={promo.buttonLabel} onChange={(buttonLabel) => patchPromo(kind, { buttonLabel })} />
                   <Field label="Destino" value={promo.href} onChange={(href) => patchPromo(kind, { href })} />
                 </div>
-                <ImageField label="Imagen · URL" value={promo.imageUrl} onChange={(imageUrl) => patchPromo(kind, { imageUrl })} />
+                <div className="space-y-3">
+                  <ImageField label="Imagen · URL" value={promo.imageUrl} onChange={(imageUrl) => patchPromo(kind, { imageUrl })} />
+                  <AdminPromoDesignFields value={promo.design} onChange={(design) => patchPromo(kind, { design })} />
+                </div>
               </div>
             </div>
           );
         })}
 
+        <AdminCampaigns campaigns={market.home.campaigns} onChange={(campaigns) => patchHome({ campaigns })} />
+
+
+        <div className="rounded-2xl border border-[#dce6dc] bg-white p-5">
+          <h4 className="mb-3 font-black">WhatsApp · botón flotante</h4>
+          <p className="mb-4 text-xs text-muted-foreground">El número de teléfono se administra en el pie de página. Aquí puedes ocultar el botón, ajustar posición, color y texto inicial.</p>
+          <label className="mb-4 flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox"
+              checked={market.componentControls["floating.whatsapp"]?.enabled !== false}
+              onChange={(event) => setMarket({ ...market, componentControls: {
+                ...market.componentControls, "floating.whatsapp": { ...market.componentControls["floating.whatsapp"], enabled: event.target.checked },
+              } })} />
+            ON/OFF · Mostrar botón de WhatsApp
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Mensaje inicial" value={market.whatsapp.message}
+              onChange={(message) => setMarket({ ...market, whatsapp: { ...market.whatsapp, message } })} />
+            <label className="block text-xs font-bold">
+              Posición
+              <select className="mt-2 block w-full rounded-lg border bg-white p-3"
+                value={market.whatsapp.position}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, position: event.target.value as "left" | "right" } })}>
+                <option value="left">Inferior izquierda</option>
+                <option value="right">Inferior derecha</option>
+              </select>
+            </label>
+            <label className="block text-xs font-bold">
+              Separación inferior: {market.whatsapp.bottomOffset}px
+              <input type="range" min="12" max="240" className="mt-3 block w-full"
+                value={market.whatsapp.bottomOffset}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-xs font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer"
+                value={market.whatsapp.buttonColor}
+                onChange={(event) => setMarket({ ...market, whatsapp: { ...market.whatsapp, buttonColor: event.target.value } })} />
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#dce6dc] bg-white p-5">
+          <h4 className="mb-3 font-black">Atención al cliente · botón flotante</h4>
+          <p className="mb-4 text-xs text-muted-foreground">Estos ajustes afectan al acceso visual al soporte. La mensajería y los datos privados no se modifican.</p>
+          <label className="mb-4 flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox"
+              checked={market.componentControls["floating.support"]?.enabled !== false}
+              onChange={(event) => setMarket({ ...market, componentControls: {
+                ...market.componentControls, "floating.support": { ...market.componentControls["floating.support"], enabled: event.target.checked },
+              } })} />
+            ON/OFF · Mostrar atención al cliente
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Texto del botón" value={market.support.buttonLabel}
+              onChange={(buttonLabel) => setMarket({ ...market, support: { ...market.support, buttonLabel } })} />
+            <label className="block text-xs font-bold">
+              Posición
+              <select className="mt-2 block w-full rounded-lg border bg-white p-3"
+                value={market.support.position}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, position: event.target.value as "left" | "right" } })}>
+                <option value="right">Inferior derecha</option>
+                <option value="left">Inferior izquierda</option>
+              </select>
+            </label>
+            <label className="block text-xs font-bold">
+              Separación inferior: {market.support.bottomOffset}px
+              <input type="range" min="12" max="240" className="mt-3 block w-full"
+                value={market.support.bottomOffset}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-xs font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer"
+                value={market.support.buttonColor}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, buttonColor: event.target.value } })} />
+            </label>
+          </div>
+        </div>
+
+
         <div className="rounded-2xl border border-border bg-white p-5">
-          <div className="mb-5 flex items-center gap-2">
+          <div id="market-editor-sales" className="mb-5 flex items-center gap-2 scroll-mt-6">
             <WandSparkles className="h-5 w-5 text-primary" />
             <div>
               <h4 className="font-black">HERENCIA SALES · “Crear con Herencia”</h4>
@@ -893,11 +1142,30 @@ export function AdminMarketExperience({
               type="checkbox"
               checked={market.sales.enabled}
               onChange={(event) =>
-                setMarket({ ...market, sales: { ...market.sales, enabled: event.target.checked } })
+                setMarket({ ...market, sales: { ...market.sales, enabled: event.target.checked }, componentControls: {
+                  ...market.componentControls, "floating.sales": { ...(market.componentControls["floating.sales"] || {}), enabled: event.target.checked },
+                } })
               }
             />
             Mostrar “Crear con Herencia”
           </label>
+          <div className="mb-5 grid gap-4 rounded-xl border border-[#dce6dc] bg-[#f5f9f5] p-4 sm:grid-cols-3">
+            <label className="block text-sm font-bold">
+              Posición del botón
+              <select value={market.sales.position} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, position: event.target.value as "left" | "right" } })} className="mt-2 w-full rounded-lg border bg-white p-2">
+                <option value="left">Abajo a la izquierda</option>
+                <option value="right">Abajo a la derecha</option>
+              </select>
+            </label>
+            <label className="block text-sm font-bold">
+              Distancia al borde inferior: {market.sales.bottomOffset}px
+              <input className="mt-3 w-full" type="range" min="12" max="200" value={market.sales.bottomOffset} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-sm font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer" value={market.sales.buttonColor} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, buttonColor: event.target.value } })} />
+            </label>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Field
               label="Texto del botón flotante"
@@ -923,6 +1191,7 @@ export function AdminMarketExperience({
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {market.sales.quickActions.map((action, index) => (
               <div key={action.id} className="rounded-xl border border-border bg-[#fbfaf6] p-3">
+                <label className="mb-2 flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={action.enabled !== false} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, quickActions: market.sales.quickActions.map((current, i) => i === index ? { ...current, enabled: event.target.checked } : current) } })} /> ON/OFF · Acción rápida</label>
                 <Field
                   label={`Acción ${index + 1}`}
                   value={action.label}

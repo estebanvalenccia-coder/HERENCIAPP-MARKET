@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-import { WhatsAppFloatingButton } from "./components/WhatsAppFloatingButton";
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { toast } from "sonner";
@@ -89,5 +88,5 @@ export default function App() {
     };
   }, []);
 
-  return <><RouterProvider router={router} /><WhatsAppFloatingButton /></>;
+  return <RouterProvider router={router} />;
 }

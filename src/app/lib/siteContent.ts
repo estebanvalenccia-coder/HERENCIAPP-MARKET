@@ -1,6 +1,12 @@
 export type SiteLink = {
   label: string;
   href: string;
+  visible?: boolean;
+  schedule?: { startAt?: string; endAt?: string };
+  showDesktop?: boolean;
+  showMobile?: boolean;
+  description?: string;
+  children?: SiteLink[];
 };
 
 export type BuilderBlockType =
@@ -186,6 +192,7 @@ export type SiteContent = {
   };
   builder: {
     blocks: BuilderBlock[];
+    blocksInitialized?: boolean;
     headerStyle: {
       backgroundColor: string;
       textColor: string;
@@ -390,6 +397,7 @@ export const defaultSiteContent: SiteContent = {
   },
   builder: {
     blocks: [],
+    blocksInitialized: false,
     headerStyle: {
       backgroundColor: "#ffffff",
       textColor: "#475569",
@@ -411,10 +419,10 @@ export const defaultSiteContent: SiteContent = {
 
 function mergeLinks(defaults: SiteLink[], incoming: unknown): SiteLink[] {
   if (!Array.isArray(incoming)) return defaults;
-  return defaults.map((item, index) => ({
-    ...item,
-    ...(incoming[index] && typeof incoming[index] === "object" ? incoming[index] : {}),
-  }));
+  return incoming.map((item, index) => ({
+    ...(defaults[index] || {}),
+    ...(item && typeof item === "object" ? item : {}),
+  })) as SiteLink[];
 }
 
 function copy<T>(value: T): T {
@@ -615,7 +623,7 @@ export function createBuilderBlock(
 
 export function ensureBuilderBlocks(site: SiteContent): BuilderBlock[] {
   const incoming = site.builder?.blocks;
-  if (Array.isArray(incoming) && incoming.length > 0) {
+  if (Array.isArray(incoming) && (incoming.length > 0 || site.builder?.blocksInitialized === true)) {
     return incoming.map((block: any) => ({
       ...block,
       id: String(block.id || makeBuilderId(block.type || "section")),
@@ -698,7 +706,7 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
     };
   }
 
-  next.builder = { ...next.builder, blocks: copy(blocks) };
+  next.builder = { ...next.builder, blocks: copy(blocks), blocksInitialized: true };
   return next;
 }
 
@@ -787,20 +795,16 @@ export function parseSiteContent(raw: string | null): SiteContent {
           ...(parsed.hero?.secondaryButton || {}),
         },
       },
-      features: defaultSiteContent.features.map((item, index) => ({
-        ...item,
-        ...(Array.isArray(parsed.features) && parsed.features[index] ? parsed.features[index] : {}),
-      })),
+      features: Array.isArray(parsed.features)
+        ? parsed.features.map((item: any, index: number) => ({ ...(defaultSiteContent.features[index] || {}), ...(item || {}) }))
+        : copy(defaultSiteContent.features),
       categoriesHeading: String(parsed.categoriesHeading || defaultSiteContent.categoriesHeading),
       categoriesDescription: String(
         parsed.categoriesDescription || defaultSiteContent.categoriesDescription
       ),
-      categories: defaultSiteContent.categories.map((item, index) => ({
-        ...item,
-        ...(Array.isArray(parsed.categories) && parsed.categories[index]
-          ? parsed.categories[index]
-          : {}),
-      })),
+      categories: Array.isArray(parsed.categories)
+        ? parsed.categories.map((item: any, index: number) => ({ ...(defaultSiteContent.categories[index] || {}), ...(item || {}) }))
+        : copy(defaultSiteContent.categories),
       cta: {
         ...defaultSiteContent.cta,
         ...(parsed.cta || {}),
@@ -848,6 +852,7 @@ export function parseSiteContent(raw: string | null): SiteContent {
       },
       builder: {
         blocks: Array.isArray(parsed.builder?.blocks) ? parsed.builder.blocks : [],
+        blocksInitialized: parsed.builder?.blocksInitialized === true,
         headerStyle: {
           ...defaultSiteContent.builder.headerStyle,
           ...(parsed.builder?.headerStyle || {}),

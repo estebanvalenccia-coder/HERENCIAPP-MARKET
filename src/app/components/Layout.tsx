@@ -1,5 +1,5 @@
 import { trackTikTokPageView } from "../lib/tiktokPixel";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
 import { Toaster } from "sonner";
@@ -13,9 +13,15 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
+import { isEmbeddedAdminPreview, useAdminPreviewSite } from "../lib/useAdminPreviewSite";
+import { isComponentAllowed } from "../lib/componentRegistry";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
+import { MarketNavigationMenu } from "./MarketNavigationMenu";
+import { StorefrontComponentBoundary } from "./StorefrontComponentBoundary";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
+import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 
@@ -23,6 +29,13 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -48,7 +61,7 @@ export function Layout() {
 
   useEffect(() => {
     const load = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      if (!isEmbeddedAdminPreview()) setSite(parseSiteContent(backendStorage.getItem("siteContent")));
 
       try {
         const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
@@ -99,7 +112,7 @@ export function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (cookieConsent !== "accepted") return;
+    if (cookieConsent !== "accepted" || isEmbeddedAdminPreview()) return;
     trackTikTokPageView();
 
     let sessionId = "";
@@ -183,6 +196,7 @@ export function Layout() {
 
   const market = useMemo(() => getMarketExperience(site), [site]);
   const visibleNavigation = market.navigation.filter((item) => {
+    if (item.visible === false || !isWithinPublicationWindow(item.schedule, scheduleNow)) return false;
     const path = String(item.href || "").split("?")[0].toLowerCase();
     const collectionId = path === "/dulce" ? "dulce" : path === "/moda" ? "moda" : "";
     return !collectionId || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionId]);
@@ -226,14 +240,21 @@ export function Layout() {
           Saltar al contenido principal
         </a>
 
-        <div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
+        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}><div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
           {market.announcement}
-        </div>
+        </div></StorefrontComponentBoundary>
 
         <header
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
             site.builder?.headerStyle?.sticky !== false ? "sticky top-0" : "relative"
           } ${isScrolled ? "shadow-[0_10px_30px_rgba(39,61,45,0.08)] backdrop-blur-xl" : ""}`}
+          style={{
+            backgroundColor: site.builder.headerStyle.backgroundColor || "#fffdf9",
+            borderColor: site.builder.headerStyle.borderColor || "#e8e2d8",
+            "--market-nav-text": site.builder.headerStyle.textColor || "#526158",
+            "--market-nav-active": site.builder.headerStyle.activeColor || "#244a35",
+            "--market-nav-bg": site.builder.headerStyle.activeBackground || "#eef2eb",
+          } as CSSProperties}
         >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex min-h-[76px] items-center gap-5">
@@ -241,43 +262,31 @@ export function Layout() {
                 <img
                   src={site.brand.logoUrl || logo}
                   alt={site.brand.logoAlt || site.brand.name}
-                  className="h-14 w-auto object-contain sm:h-16"
+                  className="w-auto object-contain"
+                  style={{ height: Math.max(28, Math.min(120, Number(site.builder.headerStyle.logoHeight) || 56)) }}
                 />
               </Link>
 
               <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
-                {visibleNavigation.map((item) =>
-                  isPlantsNavigationItem(item) ? (
-                    <PlantsNavMenu
-                      key={item.href}
-                      active={location.pathname === "/productos"}
-                    />
-                  ) : isGardeningNavigationItem(item) ? (
-                    <GardeningNavMenu
-                      key={item.href}
-                      active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
-                    />
+                {visibleNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
+                  item.children?.length ? (
+                    <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} active={isPathActive(location.pathname, item.href)} />
                   ) : (
-                    <MarketNavLink
-                      key={item.href}
-                      href={item.href}
-                      label={item.label}
-                      active={isPathActive(location.pathname, item.href)}
-                    />
+                    <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
                 )}
-                {herenciaEnabled ? (
+                <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
                     label={site.navigation.herencia.label || "Herenc(IA)"}
                     active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                     icon={<Bot className="h-3.5 w-3.5" />}
                   />
-                ) : null}
+                </StorefrontComponentBoundary>
               </nav>
 
               <div className="ml-auto flex items-center gap-1.5">
-                {colombiaEnabled ? (
+                <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                   <div className="group relative hidden lg:block">
                     <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#315b42]/30 bg-white px-4 text-sm font-black text-[#315b42] transition hover:bg-[#f1f6f2]">
                       <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
@@ -290,8 +299,8 @@ export function Layout() {
                       </div>
                     </div>
                   </div>
-                ) : null}
-                <form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
+                </StorefrontComponentBoundary>
+                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}><form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718076]" />
                   <input
                     value={search}
@@ -299,10 +308,10 @@ export function Layout() {
                     placeholder="Buscar plantas, productos, servicios..."
                     className="h-11 w-full rounded-full border border-[#ded9cd] bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#315b42] focus:ring-2 focus:ring-[#315b42]/10"
                   />
-                </form>
+                </form></StorefrontComponentBoundary>
 
-                <button
-                  type="button"
+                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}>
+                  <button type="button"
                   onClick={() => {
                     const query = window.prompt("¿Qué quieres buscar en Herencia?", search);
                     if (query === null) return;
@@ -313,18 +322,18 @@ export function Layout() {
                   aria-label="Buscar"
                 >
                   <Search className="h-5 w-5" />
-                </button>
+                </button></StorefrontComponentBoundary>
 
-                <Link
-                  to={site.headerActions.profileHref || "/perfil"}
+                <StorefrontComponentBoundary id="header.account" controls={market.componentControls} now={scheduleNow} enabled={market.layout.account}>
+                  <Link to={site.headerActions.profileHref || "/perfil"}
                   className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Mi cuenta"
                 >
                   <User className="h-5 w-5" />
-                </Link>
+                </Link></StorefrontComponentBoundary>
 
-                <Link
-                  to="/perfil"
+                <StorefrontComponentBoundary id="header.favorites" controls={market.componentControls} now={scheduleNow} enabled={market.layout.favorites}>
+                  <Link to="/perfil"
                   className="relative hidden h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7] sm:grid"
                   aria-label="Favoritos"
                 >
@@ -334,10 +343,10 @@ export function Layout() {
                       {wishlistCount}
                     </span>
                   ) : null}
-                </Link>
+                </Link></StorefrontComponentBoundary>
 
-                <Link
-                  to={site.headerActions.cartHref || "/carrito"}
+                <StorefrontComponentBoundary id="header.cart" controls={market.componentControls} now={scheduleNow} enabled={market.layout.cart}>
+                  <Link to={site.headerActions.cartHref || "/carrito"}
                   className="relative grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Carrito"
                 >
@@ -347,43 +356,29 @@ export function Layout() {
                       {cartCount}
                     </span>
                   ) : null}
-                </Link>
+                </Link></StorefrontComponentBoundary>
               </div>
             </div>
 
             <nav className="flex items-center gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
-              {visibleNavigation.map((item) =>
-                isPlantsNavigationItem(item) ? (
-                  <PlantsMobileNavMenu
-                    key={item.href}
-                    active={location.pathname === "/productos"}
-                  />
-                ) : isGardeningNavigationItem(item) ? (
-                  <GardeningMobileNavMenu
-                    key={item.href}
-                    active={location.pathname === "/productos" && new URLSearchParams(location.search).get("coleccion") === "jardineria"}
-                  />
+              {visibleNavigation.filter((item) => item.showMobile !== false).map((item, index) =>
+                item.children?.length ? (
+                  <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} mobile active={isPathActive(location.pathname, item.href)} />
                 ) : (
-                  <MarketNavLink
-                    key={item.href}
-                    href={item.href}
-                    label={item.label}
-                    active={isPathActive(location.pathname, item.href)}
-                    mobile
-                  />
+                  <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
                 )
               )}
-              {herenciaEnabled ? (
+              <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
                   label={site.navigation.herencia.label || "Herenc(IA)"}
                   active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                   mobile
                 />
-              ) : null}
-              {colombiaEnabled ? (
+              </StorefrontComponentBoundary>
+              <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                 <MarketNavLink href="/colombia" label="🇨🇴 Cali" active={location.pathname === "/colombia"} mobile />
-              ) : null}
+              </StorefrontComponentBoundary>
             </nav>
           </div>
         </header>
@@ -392,8 +387,8 @@ export function Layout() {
           <Outlet />
         </main>
 
-        <footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
-          <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
+        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}><footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white" style={{ backgroundColor: site.builder.footerStyle.backgroundColor || "#173d2a", color: site.builder.footerStyle.textColor || "#ffffff", borderColor: site.builder.footerStyle.borderColor || "#d9ddd6", "--market-footer-heading": site.builder.footerStyle.headingColor || "#ffffff", "--market-footer-text": site.builder.footerStyle.textColor || "#ffffff" } as CSSProperties}>
+          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10" style={{ paddingTop: Math.max(12, Math.min(130, Number(site.builder.footerStyle.paddingY) || 48)), paddingBottom: Math.max(12, Math.min(130, Number(site.builder.footerStyle.paddingY) || 48)) }}>
             <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
               <div>
                 <img
@@ -411,22 +406,13 @@ export function Layout() {
               </div>
 
               <FooterColumn
-                title="Tienda"
-                links={[
-                  { label: "Todos los productos", href: "/productos" },
-                  { label: "Plantas y jardín", href: "/productos?categoria=plantas-interior" },
-                  { label: "Semillas", href: "/productos?categoria=semillas" },
-                  { label: "Dulce", href: "/dulce" },
-                  { label: "Moda", href: "/moda" },
-                ]}
+                title={site.footer.productsTitle}
+                links={site.footer.productLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
               />
 
               <FooterColumn
-                title="Servicios"
-                links={market.home.services.slice(0, 5).map((item) => ({
-                  label: item.title,
-                  href: item.href,
-                }))}
+                title={site.footer.servicesTitle}
+                links={site.footer.serviceLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow))}
               />
 
               <div>
@@ -459,7 +445,11 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="mt-10 flex flex-col gap-4 border-t border-white/12 pt-6 text-xs text-white/58 sm:flex-row sm:items-center sm:justify-between">
+          </div>
+        </footer></StorefrontComponentBoundary>
+        <footer aria-label="Información legal y privacidad" className="border-t border-white/15 bg-[#173d2a] px-5 pb-5 text-white sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col gap-4 border-t border-white/12 pt-4 text-xs text-white/58 sm:flex-row sm:items-center sm:justify-between">
               <p>{site.footer.copyright}</p>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <FooterLink href={site.footer.privacyHref}>{site.footer.privacyLabel}</FooterLink>
@@ -471,9 +461,43 @@ export function Layout() {
         </footer>
       </div>
 
-      <SalesChatWidget />
-      <FloatingCustomerSupportV2 />
-      <AccessibilityPanel />
+      <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
+        <SalesChatWidget />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.whatsapp" controls={market.componentControls} now={scheduleNow}>
+        <WhatsAppFloatingButton
+          phone={normalizeWhatsAppPhone(site.footer.whatsappPhone) || "34624239598"}
+          message={market.whatsapp.message}
+          position={market.whatsapp.position}
+          color={market.whatsapp.buttonColor}
+          bottomOffset={(() => {
+            const position = market.whatsapp.position;
+            const salesBottom = Math.max(12, Math.min(200, Number(market.sales.bottomOffset) || 24));
+            const supportDesired = Math.max(12, Math.min(240, Number(market.support.bottomOffset) || 96));
+            const salesVisible = market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow);
+            const supportVisible = isComponentAllowed(market.componentControls, "floating.support", scheduleNow);
+            const supportBottom = salesVisible && market.sales.position === market.support.position && Math.abs(salesBottom - supportDesired) < 68
+              ? salesBottom + 68 : supportDesired;
+            const otherButtons = [
+              { visible: salesVisible, position: market.sales.position, bottom: salesBottom },
+              { visible: supportVisible, position: market.support.position, bottom: supportBottom },
+            ];
+            let bottom = Math.max(12, Math.min(300, Number(market.whatsapp.bottomOffset) || 24));
+            for (let i = 0; i < otherButtons.length + 1; i++) {
+              for (const item of otherButtons) {
+                if (item.visible && item.position === position && Math.abs(item.bottom - bottom) < 70) bottom = item.bottom + 74;
+              }
+            }
+            return bottom;
+          })()}
+        />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.support" controls={market.componentControls} now={scheduleNow}>
+        <FloatingCustomerSupportV2 salesButtonVisible={market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow)} salesPosition={market.sales.position} salesBottomOffset={market.sales.bottomOffset} position={market.support.position} bottomOffset={market.support.bottomOffset} buttonColor={market.support.buttonColor} buttonLabel={market.support.buttonLabel} />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.accessibility" controls={market.componentControls} now={scheduleNow}>
+        <AccessibilityPanel />
+      </StorefrontComponentBoundary>
 
       {!cookieConsent ? (
         <div className="fixed bottom-4 left-4 right-4 z-[120] mx-auto max-w-3xl rounded-2xl border border-[#ded9cd] bg-[#fffdf9] p-4 text-[#173126] shadow-2xl">
@@ -781,7 +805,7 @@ function MarketNavLink({
 
   if (isExternalHref(href)) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+      <a href={href} target="_blank" rel="noopener noreferrer" className={className} style={{ color: active ? "var(--market-nav-active, #244a35)" : "var(--market-nav-text, #526158)", backgroundColor: active ? "var(--market-nav-bg, #eef2eb)" : undefined }}>
         {icon}
         {label}
       </a>
@@ -789,7 +813,7 @@ function MarketNavLink({
   }
 
   return (
-    <Link to={href || "/"} className={className}>
+    <Link to={href || "/"} className={className} style={{ color: active ? "var(--market-nav-active, #244a35)" : "var(--market-nav-text, #526158)", backgroundColor: active ? "var(--market-nav-bg, #eef2eb)" : undefined }}>
       {icon}
       {label}
     </Link>
@@ -805,7 +829,7 @@ function FooterColumn({
 }) {
   return (
     <div>
-      <h4 className="font-black text-white">{title}</h4>
+      <h4 className="font-black text-white" style={{ color: "var(--market-footer-heading, #ffffff)" }}>{title}</h4>
       <ul className="mt-4 space-y-2.5 text-sm text-white/72">
         {links.map((item, index) => (
           <li key={`${item.href}-${index}`}>

@@ -50,6 +50,7 @@ import { UNIVERSAL_SUPPLIER_BUDGET_KEY, parseUniversalSupplierBudget, validateUn
 import { universalDay, universalLedgerKey, readUniversalLedger } from "./universalSupplierLedger.js";
 import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
 import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
+import { publishNeonSiteContent } from "./siteContentPublication.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -92,7 +93,24 @@ function normalizeOrderRow(order){
     entregaEstimada:order.entrega_estimada||null,
   };
 }
-async function adminSession(req){try{const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)}});return r.ok&&Boolean((await r.json()).authenticated);}catch{return false;}}
+async function adminSession(req){
+  try{
+    const r=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)},signal:AbortSignal.timeout(5000)});
+    if(!r.ok)return false;
+    const session=await r.json();
+    return session?.authenticated===true && session?.mustChangePassword!==true &&
+      ["owner","admin"].includes(String(session?.role||""));
+  }catch{return false;}
+}
+async function siteEditorActor(req){
+  try {
+    const response=await fetch(`${legacyUrl}/api/admin/session`,{headers:{cookie:cookies(req)},signal:AbortSignal.timeout(5000)});
+    if(!response.ok)return null;
+    const session=await response.json();
+    if(!session?.authenticated||session?.mustChangePassword||!["owner","admin"].includes(String(session.role||"")))return null;
+    return String(session.username||"administrador").slice(0,80);
+  }catch{return null;}
+}
 const aliexpressConnector = createAliExpressConnector({read:readNeonStorageValue,write:upsertNeonStorageValue,requireAdmin:adminSession,saveDraft:saveNeonCommerceProduct});
 const aeStripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 async function verifyAliExpressCustomerStripePayment(order){
@@ -264,6 +282,7 @@ const server=http.createServer(async(req,res)=>{try{
     const allowedEvents=new Set([
       "pageview",
       "space_preview",
+      "storefront_click",
       "sales_open",
       "sales_message",
       "sales_recommendation",
@@ -373,8 +392,30 @@ const server=http.createServer(async(req,res)=>{try{
     if(isPrivateSupportStorageKey(key) || isPrivateSupplierStorageKey(key)) return json(res,403,{error:"Acceso no permitido"});
     const isAdmin=await adminSession(req);if(protectedKeys.has(key)&&!publicKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});const dbKey=storageKey(req,res,key);
     if(req.method==="GET"){const value=await readNeonStorageValue(dbKey);return json(res,200,{value:sanitize(key,value,isAdmin),source:"neon"});}
-    if(req.method==="PUT"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});if(!protectedKeys.has(key)&&key!=="cart"&&key!=="user")return json(res,403,{error:"Clave no permitida"});const body=await bodyJson(req);await upsertNeonStorageValue(dbKey,body.value);return json(res,200,{ok:true,source:"neon"});}
+    if(req.method==="PUT"){if(key==="siteContent")return json(res,409,{error:"Publica el contenido mediante el editor con control de versiones",code:"SITE_CONTENT_VERSION_REQUIRED"});if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});if(!protectedKeys.has(key)&&key!=="cart"&&key!=="user")return json(res,403,{error:"Clave no permitida"});const body=await bodyJson(req);await upsertNeonStorageValue(dbKey,body.value);return json(res,200,{ok:true,source:"neon"});}
     if(req.method==="DELETE"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});await deleteNeonStorageValue(dbKey);return json(res,200,{ok:true,source:"neon"});}
+  }
+
+  if(path==="/api/admin/site-content/publish"&&req.method==="POST"){
+    if(String(req.headers["sec-fetch-site"]||"")==="cross-site")return json(res,403,{error:"Origen no permitido"});
+    const origin=String(req.headers.origin||"");
+    if(origin){
+      try{const supplied=new URL(origin).host;const actual=String(req.headers["x-forwarded-host"]||req.headers.host||"").split(",")[0].trim();if(supplied!==actual)return json(res,403,{error:"Origen no permitido"});}
+      catch{return json(res,403,{error:"Origen no permitido"});}
+    }
+    const actor=await siteEditorActor(req);
+    if(!actor)return json(res,403,{error:"Solo administradores autorizados pueden publicar el contenido."});
+    try{
+      const body=await bodyJson(req);
+      if(!body || typeof body!=="object" || typeof body.nextRaw!=="string" || !("expectedRaw" in body)){
+        return json(res,400,{error:"Faltan contenido o versión anterior"});
+      }
+      const result=await publishNeonSiteContent({expectedRaw:body.expectedRaw,nextRaw:body.nextRaw,actor,auxiliary:body.auxiliary||{}});
+      return json(res,200,result);
+    }catch(error){
+      const status=[400,409,413,422].includes(Number(error?.statusCode))?Number(error.statusCode):503;
+      return json(res,status,{error:String(error?.message||"No se pudo publicar"),code:String(error?.code||"SITE_CONTENT_PUBLISH_FAILED")});
+    }
   }
 
   // Read-only CJ shipping-rate estimate: no order creation or payment.

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Image as ImageIcon, Monitor, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
+import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
+import { AdminScheduleFields, AdminElementControls, AdminAddElement, reorderItem } from "./AdminElementControls";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -106,6 +108,13 @@ function LinkEditor({
     <div className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-2">
       <Field label={`${title} · texto`} value={value.label} onChange={(label) => onChange({ ...value, label })} />
       <Field label={`${title} · destino/URL`} value={value.href} onChange={(href) => onChange({ ...value, href })} placeholder="/productos o https://..." />
+      <label className="flex items-center gap-2 text-sm font-bold md:col-span-2">
+        <input type="checkbox" checked={value.visible !== false} onChange={(event) => onChange({ ...value, visible: event.target.checked })} />
+        ON/OFF · Mostrar este enlace o botón
+      </label>
+      <div className="md:col-span-2">
+        <AdminScheduleFields label={title} value={value.schedule} onChange={(schedule) => onChange({ ...value, schedule })} />
+      </div>
     </div>
   );
 }
@@ -182,9 +191,12 @@ export function AdminContent({
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [saving, setSaving] = useState(false);
   const [visualMode, setVisualMode] = useState(false);
+  const publishedRawAtLoadRef = useRef<string | null>(null);
 
   const load = () => {
-    const next = parseSiteContent(backendStorage.getItem("siteContent"));
+    const latestRaw = backendStorage.getItem("siteContent");
+    publishedRawAtLoadRef.current = latestRaw;
+    const next = parseSiteContent(latestRaw);
     const heroLegacy = readLegacyBanner("heroBanner");
     const ctaLegacy = readLegacyBanner("ctaBanner");
     setSite({
@@ -201,6 +213,9 @@ export function AdminContent({
   async function saveAll() {
     setSaving(true);
     try {
+      if ((backendStorage.getItem("siteContent") || null) !== publishedRawAtLoadRef.current) {
+        throw new Error("El contenido publicado cambió desde que abriste la administración. Recarga la página y revisa los cambios antes de publicar.");
+      }
       // La portada visible de Home usa marketExperience.home.heroImageUrl.
       // Mantener ambos modelos sincronizados evita que el editor legacy y el
       // editor de HERENCIA MARKET se sobrescriban entre sí al publicar.
@@ -238,21 +253,19 @@ export function AdminContent({
           : {}),
       } as SiteContent;
       const publishableSite = syncLegacyToBuilder(synchronizedSite);
-      const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(publishableSite)),
-        backendStorage.setItem("siteContentDraft", JSON.stringify(publishableSite)),
-        publishableSite.hero.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: publishableSite.hero.imageUrl }))
-          : backendStorage.removeItem("heroBanner"),
-        publishableSite.cta.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: publishableSite.cta.imageUrl }))
-          : backendStorage.removeItem("ctaBanner"),
-      ]);
-
-      if (results.some((result) => !result.ok)) {
-        throw new Error(results.find((result) => !result.ok)?.error || "No se pudo sincronizar todo");
-      }
-
+      const validationErrors = validateSitePublication(publishableSite);
+      if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
+      const nextRaw = JSON.stringify(publishableSite);
+      // Compare-and-swap and revision history are committed together on Neon.
+      await backendApi.publishSiteContent({
+        nextRaw,
+        expectedRaw: publishedRawAtLoadRef.current,
+        auxiliary: {
+          heroBanner: publishableSite.hero.imageUrl ? JSON.stringify({ imageUrl: publishableSite.hero.imageUrl }) : "",
+          ctaBanner: publishableSite.cta.imageUrl ? JSON.stringify({ imageUrl: publishableSite.cta.imageUrl }) : "",
+        },
+      });
+      publishedRawAtLoadRef.current = JSON.stringify(publishableSite);
       setSite(publishableSite);
       toast.success("Contenido guardado en el backend y publicado");
     } catch (error: any) {
@@ -415,11 +428,37 @@ export function AdminContent({
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-3 rounded-xl border border-border bg-background p-4">
               <Field label="Título columna productos" value={site.footer.productsTitle} onChange={(productsTitle) => setSite({ ...site, footer: { ...site.footer, productsTitle } })} />
-              {site.footer.productLinks.map((item, index) => <LinkEditor key={index} title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("productLinks", index, value)} />)}
+{site.footer.productLinks.map((item, index) => (
+                <div key={index} className="space-y-2">
+                  <AdminElementControls label={item.label} visible={item.visible !== false}
+                    onToggle={(visible) => setSite({ ...site, footer: { ...site.footer, productLinks: site.footer.productLinks.map((entry, i) => i === index ? { ...entry, visible } : entry) } })}
+                    onMoveUp={() => setSite({ ...site, footer: { ...site.footer, productLinks: reorderItem(site.footer.productLinks, index, index - 1) } })}
+                    onMoveDown={() => setSite({ ...site, footer: { ...site.footer, productLinks: reorderItem(site.footer.productLinks, index, index + 1) } })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === site.footer.productLinks.length - 1}
+                    onDuplicate={() => setSite({ ...site, footer: { ...site.footer, productLinks: [...site.footer.productLinks.slice(0, index + 1), { ...item }, ...site.footer.productLinks.slice(index + 1)] } })}
+                    onRemove={() => setSite({ ...site, footer: { ...site.footer, productLinks: site.footer.productLinks.filter((_, i) => i !== index) } })}
+                  />
+                  <LinkEditor title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("productLinks", index, value)} />
+                </div>
+              ))}
+              <AdminAddElement label="Añadir enlace" onAdd={() => setSite({ ...site, footer: { ...site.footer, productLinks: [...site.footer.productLinks, { label: "Nuevo enlace", href: "/productos", visible: false }] } })} />
             </div>
             <div className="space-y-3 rounded-xl border border-border bg-background p-4">
               <Field label="Título columna servicios" value={site.footer.servicesTitle} onChange={(servicesTitle) => setSite({ ...site, footer: { ...site.footer, servicesTitle } })} />
-              {site.footer.serviceLinks.map((item, index) => <LinkEditor key={index} title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("serviceLinks", index, value)} />)}
+{site.footer.serviceLinks.map((item, index) => (
+                <div key={index} className="space-y-2">
+                  <AdminElementControls label={item.label} visible={item.visible !== false}
+                    onToggle={(visible) => setSite({ ...site, footer: { ...site.footer, serviceLinks: site.footer.serviceLinks.map((entry, i) => i === index ? { ...entry, visible } : entry) } })}
+                    onMoveUp={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: reorderItem(site.footer.serviceLinks, index, index - 1) } })}
+                    onMoveDown={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: reorderItem(site.footer.serviceLinks, index, index + 1) } })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === site.footer.serviceLinks.length - 1}
+                    onDuplicate={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: [...site.footer.serviceLinks.slice(0, index + 1), { ...item }, ...site.footer.serviceLinks.slice(index + 1)] } })}
+                    onRemove={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: site.footer.serviceLinks.filter((_, i) => i !== index) } })}
+                  />
+                  <LinkEditor title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("serviceLinks", index, value)} />
+                </div>
+              ))}
+              <AdminAddElement label="Añadir enlace" onAdd={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: [...site.footer.serviceLinks, { label: "Nuevo enlace", href: "/productos", visible: false }] } })} />
             </div>
           </div>
         </div>

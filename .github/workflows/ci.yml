@@ -35,7 +35,7 @@ jobs:
           (
             cd "$isolated"
             npm install --ignore-scripts --no-audit --no-fund
-            node --input-type=module -e "await import('./supplierFileSchema.js'); await import('./supplierFileImporter.js'); await import('./supplierFileProfiles.js'); console.log('Railway backend imports verified in isolation')"
+            node --input-type=module -e "await import('./supplierFileSchema.js'); await import('./supplierFileImporter.js'); await import('./supplierFileProfiles.js'); await import('./siteContentPublication.js'); console.log('Railway backend imports verified in isolation')"
           )
 
       - name: Backend syntax
@@ -45,6 +45,8 @@ jobs:
           node --check backend/server.js 2>&1 | tee backend-syntax.log
           node --check backend/neonGateway.js 2>&1 | tee -a backend-syntax.log
           node --check backend/neonDb.js 2>&1 | tee -a backend-syntax.log
+          node --check backend/siteContentPublication.js 2>&1 | tee -a backend-syntax.log
+          node --check backend/sitePublicationValidation.mjs 2>&1 | tee -a backend-syntax.log
 
       - name: Upload CI diagnostics
         if: always()

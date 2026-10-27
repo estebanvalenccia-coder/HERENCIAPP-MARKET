@@ -1,6 +1,43 @@
 import type { SiteContent, SiteLink } from "./siteContent";
+import type { StorefrontComponentControl } from "./componentRegistry";
+
+export type PublicationWindow = { startAt?: string; endAt?: string };
+
+export const DEFAULT_HOME_SECTION_ORDER = [
+  "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
+  "services", "featured", "promotions", "trust", "bottomCta",
+] as const;
+export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
+
+export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionId[] {
+  if (!Array.isArray(incoming)) return [...DEFAULT_HOME_SECTION_ORDER];
+  const allowed = new Set<string>(DEFAULT_HOME_SECTION_ORDER);
+  const selected = incoming.filter((id): id is MarketHomeSectionId => typeof id === "string" && allowed.has(id));
+  const unique = [...new Set(selected)];
+  for (const id of DEFAULT_HOME_SECTION_ORDER) if (!unique.includes(id)) unique.push(id);
+  return unique;
+}
+
+export type MarketCardDesign = {
+  backgroundColor?: string;
+  textColor?: string;
+  radius?: number;
+  imagePosition?: string;
+  imageHeight?: number;
+};
+
+export type MarketPromoDesign = {
+  radius?: number;
+  minHeight?: number;
+  overlayOpacity?: number;
+  imagePosition?: string;
+  textAlign?: "left" | "center" | "right";
+};
 
 export type MarketCard = {
+  design?: MarketCardDesign;
+  visible?: boolean;
+  schedule?: PublicationWindow;
   title: string;
   subtitle: string;
   imageUrl: string;
@@ -12,6 +49,9 @@ export type MarketServiceCard = MarketCard & {
 };
 
 export type MarketPromo = {
+  design?: MarketPromoDesign;
+  enabled?: boolean;
+  schedule?: PublicationWindow;
   title: string;
   subtitle: string;
   imageUrl: string;
@@ -19,17 +59,45 @@ export type MarketPromo = {
   buttonLabel: string;
 };
 
+export type MarketCampaign = MarketPromo & { id: string; kicker: string };
+
 export type MarketSalesAction = {
   id: "bouquet" | "plant" | "sweet" | "gardening" | "seeds" | "soil" | "decor" | "fashion" | "services" | "photo" | "gift" | "surprise";
   label: string;
   prompt: string;
+  enabled?: boolean;
 };
 
 export type MarketExperienceContent = {
   locationLabel: string;
   announcement: string;
   navigation: SiteLink[];
+  componentControls: Record<string, StorefrontComponentControl>;
+  layout: {
+    announcement: boolean;
+    search: boolean;
+    account: boolean;
+    favorites: boolean;
+    cart: boolean;
+    deliverySelector: boolean;
+    footer: boolean;
+  };
   home: {
+    sectionOrder: MarketHomeSectionId[];
+    sections: {
+      hero: boolean;
+      delivery: boolean;
+      categoryStrip: boolean;
+      feed: boolean;
+      plantCta: boolean;
+      bottomCta: boolean;
+      categoriesGrid: boolean;
+      services: boolean;
+      featured: boolean;
+      promotions: boolean;
+      trust: boolean;
+    };
+
     kicker: string;
     title: string;
     description: string;
@@ -38,12 +106,15 @@ export type MarketExperienceContent = {
     heroOverlayOpacity: number;
     heroOverlayWidth: number;
     categoriesTitle: string;
+    categoryGridLimit: number;
     categories: MarketCard[];
+    campaigns: MarketCampaign[];
     servicesTitle: string;
     services: MarketServiceCard[];
     featuredTitle: string;
     featuredSubtitle: string;
-    trust: Array<{ title: string; description: string }>;
+    featuredLimit: number;
+    trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
   dulce: MarketPromo & {
     kicker: string;
@@ -62,8 +133,23 @@ export type MarketExperienceContent = {
     imageUrl: string;
     values: Array<{ title: string; description: string }>;
   };
+  whatsapp: {
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
+    message: string;
+  };
+  support: {
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
+    buttonLabel: string;
+  };
   sales: {
     enabled: boolean;
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
     buttonLabel: string;
     title: string;
     prompt: string;
@@ -77,8 +163,28 @@ export const defaultMarketExperience: MarketExperienceContent = {
   announcement: "Envíos en Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada",
   navigation: [
     { label: "Inicio", href: "/" },
-    { label: "Plantas", href: "/productos?coleccion=plantas" },
+    { label: "Plantas", href: "/productos?coleccion=plantas", children: [
+      { label: "Ver todas las plantas", href: "/productos?coleccion=plantas" },
+      { label: "Interior", href: "/productos?coleccion=plantas&categoria=plantas-interior" },
+      { label: "Exterior", href: "/productos?coleccion=plantas&categoria=plantas-exterior" },
+      { label: "Cactus y suculentas", href: "/productos?coleccion=plantas&categoria=cactus-suculentas" },
+      { label: "Orquídeas", href: "/productos?coleccion=plantas&categoria=orquideas" },
+      { label: "Exóticas", href: "/productos?coleccion=plantas&categoria=plantas-exoticas" },
+    ] },
     { label: "Tienda", href: "/productos" },
+    { label: "Jardinería", href: "/productos?coleccion=jardineria", children: [
+      { label: "Artículos de jardinería", href: "/productos?coleccion=jardineria" },
+      { label: "Huerto urbano", href: "/productos?coleccion=jardineria&categoria=huerto-urbano" },
+      { label: "Herramientas", href: "/productos?coleccion=jardineria&categoria=herramientas" },
+      { label: "Riego", href: "/productos?coleccion=jardineria&categoria=riego" },
+      { label: "Fertilizantes", href: "/productos?coleccion=jardineria&categoria=fertilizantes" },
+      { label: "Accesorios", href: "/productos?coleccion=jardineria&categoria=accesorios-jardin" },
+      { label: "Fungicidas", href: "/productos?coleccion=jardineria&categoria=fungicidas" },
+      { label: "Acaricidas", href: "/productos?coleccion=jardineria&categoria=acaricidas" },
+      { label: "Insecticidas", href: "/productos?coleccion=jardineria&categoria=insecticidas" },
+      { label: "Otros fitosanitarios", href: "/productos?coleccion=jardineria&categoria=tratamientos-fitosanitarios" },
+      { label: "Servicios de huerto urbano", href: "/servicios#huerto-urbano" },
+    ] },
     { label: "Servicios", href: "/servicios" },
     { label: "Dulce", href: "/dulce" },
     { label: "Moda", href: "/moda" },
@@ -86,7 +192,31 @@ export const defaultMarketExperience: MarketExperienceContent = {
     { label: "Comunidad", href: "/comunidad" },
     { label: "Contacto", href: "/contacto" },
   ],
+  componentControls: {},
+  layout: {
+    announcement: true,
+    search: true,
+    account: true,
+    favorites: true,
+    cart: true,
+    deliverySelector: true,
+    footer: true,
+  },
   home: {
+    sectionOrder: [...DEFAULT_HOME_SECTION_ORDER],
+    sections: {
+      hero: true,
+      delivery: true,
+      categoryStrip: true,
+      feed: true,
+      plantCta: true,
+      bottomCta: true,
+      categoriesGrid: true,
+      services: true,
+      featured: true,
+      promotions: true,
+      trust: true,
+    },
     kicker: "PLANTAS · HOGAR · NATURALEZA",
     title: "Haz de tu hogar un espacio con vida",
     description: "Plantas, decoración, productos, servicios y detalles únicos para crear espacios que te hagan bien.",
@@ -95,6 +225,8 @@ export const defaultMarketExperience: MarketExperienceContent = {
     heroOverlayOpacity: 90,
     heroOverlayWidth: 72,
     categoriesTitle: "Todo para un estilo de vida más verde",
+    categoryGridLimit: 8,
+    campaigns: [],
     categories: [
       {
         title: "Plantas",
@@ -191,6 +323,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       },
     ],
     featuredTitle: "Productos destacados",
+    featuredLimit: 6,
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
     trust: [
       { title: "Calidad seleccionada", description: "Productos y servicios elegidos con cuidado." },
@@ -231,8 +364,23 @@ export const defaultMarketExperience: MarketExperienceContent = {
       { title: "Barcelona", description: "Nuestra referencia de servicio y comunicación local es Barcelona." },
     ],
   },
+  whatsapp: {
+    position: "left",
+    bottomOffset: 24,
+    buttonColor: "#25D366",
+    message: "Hola, vengo de Herencia Market y necesito ayuda con un producto.",
+  },
+  support: {
+    position: "right",
+    bottomOffset: 96,
+    buttonColor: "#315b42",
+    buttonLabel: "Atención al cliente",
+  },
   sales: {
     enabled: true,
+    position: "right",
+    bottomOffset: 24,
+    buttonColor: "#173d2a",
     buttonLabel: "Crear con Herencia",
     title: "HERENCIA SALES",
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
@@ -265,57 +413,28 @@ function mergeObject<T extends Record<string, any>>(base: T, incoming: unknown):
 }
 
 function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown): T[] {
-  if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(base));
-  return incoming.map((item, index) => ({ ...(base[index] || {}), ...(item || {}) })) as T[];
+  // An explicitly empty list means "no items"; never repopulate removed items.
+  if (!Array.isArray(incoming)) return JSON.parse(JSON.stringify(base));
+  return incoming.map((item, index) => {
+    const data = item && typeof item === "object" ? item : {};
+    const match = base.find((candidate) =>
+      (typeof data.href === "string" && data.href === candidate.href) ||
+      (!data.href && typeof data.title === "string" && data.title === candidate.title)
+    );
+    // Old partial records can fall back by index, but explicit removal/reordering
+    // must never attach unrelated default fields to a different identified item.
+    const fallback = match || ((data.href || data.title) ? {} : (base[index] || {}));
+    return { ...fallback, ...data } as T;
+  });
 }
 
 function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
-  const merged = mergeList(base, incoming);
-  const hasPlants = merged.some((item) => {
-    const label = String(item?.label || "").toLowerCase();
-    const href = String(item?.href || "").toLowerCase();
-    return label === "plantas" || href.includes("coleccion=plantas");
+  if (!Array.isArray(incoming)) return JSON.parse(JSON.stringify(base));
+  // Match by href rather than position. Reordering must not attach Plantas children to another link.
+  return incoming.map((item: SiteLink) => {
+    const defaults = base.find((entry) => entry.href === item.href);
+    return { ...(defaults || {}), ...(item || {}) };
   });
-  const hasCommunity = merged.some((item) => String(item?.href || "").split("?")[0] === "/comunidad");
-  let ensured = merged;
-  if (!hasCommunity) {
-    const contactIndex = ensured.findIndex((item) => String(item?.href || "").split("?")[0] === "/contacto");
-    const community: SiteLink = { label: "Comunidad", href: "/comunidad" };
-    ensured = contactIndex >= 0 ? [...ensured.slice(0, contactIndex), community, ...ensured.slice(contactIndex)] : [...ensured, community];
-  }
-  if (!hasPlants) {
-    const plants: SiteLink = { label: "Plantas", href: "/productos?coleccion=plantas" };
-    const startIndex = ensured.findIndex((item) => String(item?.href || "") === "/");
-    ensured = startIndex >= 0
-      ? [...ensured.slice(0, startIndex + 1), plants, ...ensured.slice(startIndex + 1)]
-      : [plants, ...ensured];
-  }
-
-  // Show Jardinería for existing stores even if their saved navigation predates this menu.
-  const hasGardening = ensured.some((item) => {
-    const label = String(item?.label || "").trim().toLowerCase();
-    const href = String(item?.href || "").toLowerCase();
-    return label === "jardinería" || label === "jardineria" || href.includes("coleccion=jardineria");
-  });
-  if (!hasGardening) {
-    const gardening: SiteLink = { label: "Jardinería", href: "/productos?coleccion=jardineria" };
-    const shopIndex = ensured.findIndex((item) => String(item?.href || "").split("?")[0] === "/productos");
-    const plantsIndex = ensured.findIndex((item) => String(item?.label || "").toLowerCase() === "plantas");
-    const after = shopIndex >= 0 ? shopIndex : plantsIndex;
-    ensured = after >= 0
-      ? [...ensured.slice(0, after + 1), gardening, ...ensured.slice(after + 1)]
-      : [...ensured, gardening];
-  }
-
-  return ensured;
-}
-
-function ensureUrbanGardenService(services: MarketServiceCard[]): MarketServiceCard[] {
-  if (services.some((service) => String(service.href || "").includes("#huerto-urbano") || /huerto urbano/i.test(service.title))) {
-    return services;
-  }
-  const urbanGarden = defaultMarketExperience.home.services.find((service) => service.href === "/servicios#huerto-urbano");
-  return urbanGarden ? [...services, { ...urbanGarden }] : services;
 }
 
 function isDisabledSalesAction(item: any) {
@@ -331,20 +450,8 @@ function isDisabledSalesAction(item: any) {
 }
 
 function mergeSalesActions(base: MarketSalesAction[], incoming: unknown): MarketSalesAction[] {
-  const safeBase = base.filter((item) => !isDisabledSalesAction(item));
-  if (!Array.isArray(incoming) || incoming.length === 0) return JSON.parse(JSON.stringify(safeBase));
-  const safeIncoming = incoming.filter((item: any) => !isDisabledSalesAction(item));
-  const incomingById = new Map(
-    safeIncoming
-      .filter((item: any) => item && typeof item.id === "string")
-      .map((item: any) => [item.id, item])
-  );
-  const baseIds = new Set(safeBase.map((item) => item.id));
-  const merged = safeBase.map((item) => ({ ...item, ...(incomingById.get(item.id) || {}) })) as MarketSalesAction[];
-  const customExtras = safeIncoming.filter(
-    (item: any) => item && typeof item.id === "string" && !baseIds.has(item.id)
-  ) as MarketSalesAction[];
-  return [...merged, ...customExtras];
+  const current = Array.isArray(incoming) ? incoming : base;
+  return current.filter((item) => item && !isDisabledSalesAction(item)).map((item) => ({ ...item })) as MarketSalesAction[];
 }
 
 export function getMarketExperience(site: SiteContent): MarketExperienceContent {
@@ -354,6 +461,8 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const modaIncoming = incoming.moda || {};
   const aboutIncoming = incoming.about || {};
   const salesIncoming = incoming.sales || {};
+  const supportIncoming = incoming.support || {};
+  const whatsappIncoming = incoming.whatsapp || {};
   const savedHeroImageUrl = String((homeIncoming as any).heroImageUrl || "").trim();
   const invalidDataUrl = savedHeroImageUrl.startsWith("data:") && !savedHeroImageUrl.startsWith("data:image/");
   const resolvedHeroImageUrl =
@@ -367,12 +476,17 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     locationLabel: String(incoming.locationLabel || defaultMarketExperience.locationLabel),
     announcement: String(incoming.announcement || defaultMarketExperience.announcement),
     navigation: mergeNavigation(defaultMarketExperience.navigation, incoming.navigation),
+    componentControls: incoming.componentControls && typeof incoming.componentControls === "object" && !Array.isArray(incoming.componentControls) ? incoming.componentControls : {},
+    layout: { ...defaultMarketExperience.layout, ...(incoming.layout || {}) },
     home: {
       ...defaultMarketExperience.home,
       ...homeIncoming,
+      sections: { ...defaultMarketExperience.home.sections, ...(homeIncoming.sections || {}) },
+      sectionOrder: normalizeHomeSectionOrder(homeIncoming.sectionOrder),
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
-      services: ensureUrbanGardenService(mergeList(defaultMarketExperience.home.services, homeIncoming.services)),
+      campaigns: Array.isArray(homeIncoming.campaigns) ? homeIncoming.campaigns : [],
+      services: mergeList(defaultMarketExperience.home.services, homeIncoming.services),
       trust: mergeList(defaultMarketExperience.home.trust, homeIncoming.trust),
     },
     dulce: mergeObject(defaultMarketExperience.dulce, dulceIncoming),
@@ -382,6 +496,8 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...aboutIncoming,
       values: mergeList(defaultMarketExperience.about.values, aboutIncoming.values),
     },
+    whatsapp: { ...defaultMarketExperience.whatsapp, ...whatsappIncoming },
+    support: { ...defaultMarketExperience.support, ...supportIncoming },
     sales: {
       ...defaultMarketExperience.sales,
       ...salesIncoming,

@@ -292,6 +292,36 @@ export const backendApi = {
     return request<{ ok: boolean; service?: string }>("/api/health");
   },
 
+  async getStorefrontComponentAnalytics(days = 30) {
+    const safeDays = Math.max(1, Math.min(365, Math.floor(Number(days) || 30)));
+    return request<{
+      days: number;
+      generatedAt: string;
+      componentClicks: Array<{ label: string; value: number }>;
+    }>(`/api/admin/analytics?days=${safeDays}`);
+  },
+
+  async publishSiteContent(payload: {
+    nextRaw: string;
+    expectedRaw: string | null;
+    auxiliary?: Record<string, string>;
+  }) {
+    // Atomic compare-and-swap on the backend: never write content optimistically.
+    const result = await request<{ ok: boolean; revision: string; versionCount: number; history?: string }>(
+      "/api/admin/site-content/publish",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    if (!result.ok) throw new Error("No se pudo publicar");
+    backendStorage.setCachedItem("siteContent", payload.nextRaw);
+    backendStorage.setCachedItem("siteContentDraft", payload.nextRaw);
+    if (typeof result.history === "string") backendStorage.setCachedItem("siteContentHistory", result.history);
+    for (const [key, value] of Object.entries(payload.auxiliary || {})) {
+      backendStorage.setCachedItem(key, value);
+    }
+    emitChange();
+    return result;
+  },
+
   async readiness() {
     return request<{
       ok: boolean;

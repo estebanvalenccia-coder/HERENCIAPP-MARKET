@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
+import { SlidersHorizontal,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -41,7 +41,11 @@ import {
   syncBuilderToLegacy,
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
-import { getMarketExperience } from "../../lib/marketExperience";
+import { getMarketExperience, withMarketExperience } from "../../lib/marketExperience";
+import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
+import { STOREFRONT_COMPONENT_REGISTRY, isComponentAllowed } from "../../lib/componentRegistry";
+import { AdminMarketExperience } from "./AdminMarketExperience";
+import { AdminLiveComponentInspector } from "./AdminLiveComponentInspector";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -495,6 +499,9 @@ export function AdminVisualBuilder({
     }
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [controlPanelOpen, setControlPanelOpen] = useState(false);
+  const [realPreview, setRealPreview] = useState(false);
+  const livePreviewRef = useRef<HTMLIFrameElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
@@ -506,8 +513,35 @@ export function AdminVisualBuilder({
   const [catalogPreviewSearch, setCatalogPreviewSearch] = useState("");
   const hydratedRef = useRef(false);
   const siteRef = useRef(site);
+  // Detect content changed elsewhere since opening this editor. Backend must still enforce atomic concurrency in a later phase.
+  const publishedRawAtOpenRef = useRef<string | null>(backendStorage.getItem("siteContent"));
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
+  const market = useMemo(() => getMarketExperience(site), [site]);
+  useEffect(() => {
+    if (!realPreview) return;
+    const sync = () => {
+      livePreviewRef.current?.contentWindow?.postMessage(
+        { type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin
+      );
+    };
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== livePreviewRef.current?.contentWindow) return;
+      if (event.data?.type === "herencia:preview:ready") sync();
+      if (event.data?.type === "herencia:preview:select" && typeof event.data.componentId === "string") {
+        const found = STOREFRONT_COMPONENT_REGISTRY.find((entry) => entry.id === event.data.componentId);
+        if (found) setSelected(`storefront:${found.id}`);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    // In-memory changes are sent to the iframe only. No draft is published here.
+    const timer = window.setTimeout(sync, 100);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [realPreview, site]);
+
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
   const selectedCatalogProduct = useMemo(() => {
     if (!String(selected).startsWith("product:")) return null;
@@ -589,7 +623,24 @@ export function AdminVisualBuilder({
   }
 
   function updateSite(mutator: (current: SiteContent) => SiteContent) {
-    commit(mutator(clone(siteRef.current)));
+    const previous = clone(siteRef.current);
+    let next = mutator(clone(previous));
+    const legacyKeys = ["home", "products", "services"] as const;
+    // Changes made in the legacy header editor also update the actual market menu.
+    // This prevents the editor showing one label while the public storefront shows another.
+    const updates = legacyKeys.filter((key) =>
+      previous.navigation[key].label !== next.navigation[key].label ||
+      previous.navigation[key].href !== next.navigation[key].href
+    );
+    if (updates.length) {
+      const market = getMarketExperience(next);
+      const navigation = market.navigation.map((entry) => {
+        const key = updates.find((item) => entry.href === previous.navigation[item].href);
+        return key ? { ...entry, label: next.navigation[key].label, href: next.navigation[key].href } : entry;
+      });
+      next = withMarketExperience(next, { ...market, navigation });
+    }
+    commit(next);
   }
 
   function updateBlock(id: string, mutator: (block: BuilderBlock) => BuilderBlock) {
@@ -691,6 +742,7 @@ export function AdminVisualBuilder({
       builder: {
         ...current.builder,
         blocks: ensureBuilderBlocks(current).filter((item) => item.id !== block.id),
+        blocksInitialized: true,
       },
     }));
     setSelected("header");
@@ -725,46 +777,32 @@ export function AdminVisualBuilder({
     setPublishing(true);
     try {
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
-      const previousRaw = backendStorage.getItem("siteContent");
-      const previous = previousRaw ? parseSiteContent(previousRaw) : publishedSite;
-      let nextHistory: StoredVersion[] = [
-        {
-          id: makeBuilderId("version"),
-          at: new Date().toISOString(),
-          label: `Antes de publicar · ${new Date().toLocaleString("es-ES")}`,
-          content: JSON.stringify(previous),
-        },
-        ...versions,
-      ].slice(0, 12);
-
-      // Evita que el historial con imágenes base64 supere el límite del backend.
-      while (nextHistory.length > 1 && JSON.stringify(nextHistory).length > 5_000_000) {
-        nextHistory = nextHistory.slice(0, -1);
+      const validationErrors = validateSitePublication(nextPublished);
+      if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
+      const previousRaw = backendStorage.getItem("siteContent") || null;
+      if (previousRaw !== publishedRawAtOpenRef.current) {
+        throw new Error("Hay una nueva publicación en esta sesión. Recarga el contenido antes de publicar.");
       }
-
       const hero = ensureBuilderBlocks(nextPublished).find((block) => block.type === "hero");
       const cta = ensureBuilderBlocks(nextPublished).find((block) => block.type === "cta");
-
-      const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentDraft", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentHistory", JSON.stringify(nextHistory)),
-        backendStorage.setItem("menuIcons", JSON.stringify(menuIcons)),
-        backendStorage.setItem("herenciaSettings", JSON.stringify(herenciaSettings)),
-        hero?.data?.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: hero.data.imageUrl }))
-          : backendStorage.removeItem("heroBanner"),
-        cta?.data?.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: cta.data.imageUrl }))
-          : backendStorage.removeItem("ctaBanner"),
-      ]);
-
-      const failed = results.find((result) => !result.ok);
-      if (failed) throw new Error(failed.error || "No se pudo publicar");
-
+      const nextRaw = JSON.stringify(nextPublished);
+      const auxiliary = {
+        menuIcons: JSON.stringify(menuIcons),
+        herenciaSettings: JSON.stringify(herenciaSettings),
+        heroBanner: hero?.data?.imageUrl ? JSON.stringify({ imageUrl: hero.data.imageUrl }) : "",
+        ctaBanner: cta?.data?.imageUrl ? JSON.stringify({ imageUrl: cta.data.imageUrl }) : "",
+      };
+      // Server holds a PostgreSQL lock and atomically validates the expected published
+      // version. A second admin cannot silently overwrite this publication.
+      const result = await backendApi.publishSiteContent({
+        nextRaw,
+        expectedRaw: publishedRawAtOpenRef.current,
+        auxiliary,
+      });
+      publishedRawAtOpenRef.current = nextRaw;
       setSite(nextPublished);
       setPublishedSite(nextPublished);
-      setVersions(nextHistory);
+      setVersions(JSON.parse(result.history || "[]"));
       setPublishedMenuIcons(menuIcons);
       setPublishedHerenciaSettings(herenciaSettings);
       await backendStorage.removeItem("visualBuilderAuxDraft");
@@ -774,6 +812,40 @@ export function AdminVisualBuilder({
       onPublished?.();
     } catch (error: any) {
       toast.error(error?.message || "No se pudo publicar");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function revertLatestPublication() {
+    const latest = versions[0];
+    if (!latest) {
+      toast.info("Todavía no hay publicaciones anteriores para recuperar");
+      return;
+    }
+    if (!window.confirm("¿Revertir a la publicación anterior ahora? Se descartará el borrador actual y la reversión se publicará inmediatamente. Esta operación también quedará en el historial.")) return;
+    setPublishing(true);
+    try {
+      const restored = parseSiteContent(latest.content);
+      const nextRaw = JSON.stringify(restored);
+      const outcome = await backendApi.publishSiteContent({
+        expectedRaw: publishedRawAtOpenRef.current,
+        nextRaw,
+        auxiliary: {
+          heroBanner: restored.hero.imageUrl ? JSON.stringify({ imageUrl: restored.hero.imageUrl }) : "",
+          ctaBanner: restored.cta.imageUrl ? JSON.stringify({ imageUrl: restored.cta.imageUrl }) : "",
+        },
+      });
+      publishedRawAtOpenRef.current = nextRaw;
+      setSite(restored);
+      setPublishedSite(restored);
+      setVersions(JSON.parse(outcome.history || "[]"));
+      setUndoStack([]);
+      setRedoStack([]);
+      toast.success("Publicación anterior recuperada y publicada");
+      onPublished?.();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo revertir la publicación");
     } finally {
       setPublishing(false);
     }
@@ -872,6 +944,26 @@ export function AdminVisualBuilder({
           >
             <ExternalLink className="h-4 w-4" /> Ver sitio
           </button>
+          <button type="button" onClick={() => { setRealPreview((current) => !current); setPageMode("home"); }}
+            className={`rounded-xl border px-3 py-2 text-xs font-black ${realPreview ? "border-emerald-500 bg-emerald-700 text-white" : "border-slate-200 bg-white text-slate-900"}`}>
+            {realPreview ? "Vista real activa" : "Editar sobre tienda real"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setControlPanelOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100"
+          >
+            <SlidersHorizontal className="h-4 w-4" /> <span className="hidden sm:inline">Controles ON/OFF</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void revertLatestPublication()}
+            disabled={publishing || versions.length === 0}
+            title="Recuperar y publicar inmediatamente la versión anterior"
+            className="hidden items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 disabled:opacity-40 lg:flex"
+          >
+            <RotateCcw className="h-4 w-4" /> Deshacer publicación
+          </button>
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
@@ -896,6 +988,18 @@ export function AdminVisualBuilder({
           </button>
         </div>
       </header>
+
+      {controlPanelOpen && (
+        <div className="fixed inset-0 z-[200] flex flex-col bg-[#fbfaf6]">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-white px-5 py-3">
+            <div><p className="text-lg font-black">Controles completos de la tienda</p><p className="text-xs text-slate-500">Los cambios se guardan en el borrador del editor visual. Publica cuando estén listos.</p></div>
+            <button type="button" onClick={() => setControlPanelOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-black">Volver al editor</button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            <AdminMarketExperience site={site} onChange={(next) => commit(next)} />
+          </div>
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_350px]">
         <aside className="hidden overflow-y-auto border-r border-slate-200 bg-white lg:block">
@@ -1145,6 +1249,20 @@ export function AdminVisualBuilder({
             className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
             style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
           >
+            {realPreview ? (
+              <div>
+                <p className="border-b border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-black text-emerald-900">Haz clic en cualquier bloque registrado para modificarlo. Esta vista muestra el borrador sin publicar.</p>
+                <iframe
+                  ref={livePreviewRef}
+                  title="Vista real de Herencia Market con borrador administrativo"
+                  src="/?__herencia_preview=1"
+                  onLoad={() => livePreviewRef.current?.contentWindow?.postMessage({ type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin)}
+                  className="h-[1050px] w-full bg-white"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                />
+              </div>
+            ) : (
+              <>
             <div
               className="flex min-h-14 items-center justify-between border-b px-4"
               style={{
@@ -1161,15 +1279,14 @@ export function AdminVisualBuilder({
                 )}
               </button>
               <div className="hidden gap-4 text-xs md:flex">
-                <span>{site.navigation.home.label}</span>
-                <span>{site.navigation.products.label}</span>
-                <span>{site.navigation.services.label}</span>
+                {market.navigation.filter((item) => item.visible !== false && item.showDesktop !== false).slice(0, 5).map((item, index) => <span key={`${item.href}-${index}`}>{item.label}</span>)}
                 {herenciaSettings.enabled && <span>{site.navigation.herencia.label}</span>}
               </div>
             </div>
 
             {pageMode === "home" ? (
-              blocks.map((block) => (
+              <>
+              {blocks.map((block) => (
                 <div
                   key={block.id}
                   onClick={() => setSelected(block.id)}
@@ -1182,7 +1299,30 @@ export function AdminVisualBuilder({
                   )}
                   <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
                 </div>
-              ))
+              ))}
+              <div className="border-t border-emerald-200 bg-[#f5f9f5] p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-emerald-900">Mapa de secciones reales de Inicio</p>
+                    <p className="mt-1 text-[11px] text-emerald-800/80">Complementa la previsualización de bloques. Muestra el orden y visibilidad efectivos del frontend.</p>
+                  </div>
+                  <button type="button" onClick={() => setControlPanelOpen(true)} className="rounded-lg border border-emerald-500 bg-white px-3 py-2 text-xs font-bold text-emerald-900">Editar controles</button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {market.home.sectionOrder.map((key, index) => {
+                    const definition = STOREFRONT_COMPONENT_REGISTRY.find((item) => item.id === `home.${key}`);
+                    const visible = market.home.sections[key] && isComponentAllowed(market.componentControls, `home.${key}`);
+                    return (
+                      <button key={key} type="button" onClick={() => setControlPanelOpen(true)}
+                        className={`flex items-center justify-between rounded-lg border p-2 text-left text-xs ${visible ? "border-[#c7d9c9] bg-white text-[#254e38]" : "border-slate-200 bg-slate-100 text-slate-500"}`}>
+                        <span>{index + 1}. {definition?.name || key}</span>
+                        <span className="ml-2 shrink-0 font-black">{visible ? "ON" : "OFF/Programado"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              </>
             ) : pageMode === "products" ? (
               <ProductsPreview
                 site={site}
@@ -1232,6 +1372,8 @@ export function AdminVisualBuilder({
               <div><p className="font-black">{site.footer.servicesTitle}</p>{site.footer.serviceLinks.slice(0, 3).map((link, index) => <p key={index} className="mt-2 text-slate-600">{link.label}</p>)}</div>
               <div><p className="font-black">{site.footer.contactTitle}</p><p className="mt-2 text-slate-600">{site.footer.whatsappLabel}</p><p className="mt-2 text-slate-600">{site.footer.instagramLabel}</p></div>
             </button>
+              </>
+            )}
           </div>
         </main>
 
@@ -1241,7 +1383,7 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedCatalogProduct?.name || selectedBlock?.name || (
+                  {selectedCatalogProduct?.name || selectedBlock?.name || (selected.startsWith("storefront:") ? STOREFRONT_COMPONENT_REGISTRY.find((entry) => entry.id === selected.slice("storefront:".length))?.name : null) || (
                     selected === "header" ? "Header"
                       : selected === "footer" ? "Footer"
                       : selected === "products" ? "Productos"
@@ -1278,6 +1420,14 @@ export function AdminVisualBuilder({
           </div>
 
           <div className="space-y-4 p-4">
+            {selected.startsWith("storefront:") && (
+              <AdminLiveComponentInspector
+                id={selected.slice("storefront:".length)}
+                site={site}
+                onChange={(next) => commit(next)}
+                onOpenControls={() => setControlPanelOpen(true)}
+              />
+            )}
             {selected === "header" && tab === "contenido" && (
               <HeaderEditor
                 site={site}
@@ -1449,6 +1599,7 @@ function HeaderEditor({
 }) {
   return (
     <div className="space-y-4">
+      <p className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">Los enlaces globales que edites aquí se sincronizan con el menú real. Para añadir, mover u ocultar los demás enlaces (Plantas, Jardinería, Dulce, etc.), utiliza «Controles ON/OFF».</p>
       <TextField label="Nombre de marca" value={site.brand.name} onChange={(name) => updateSite((current) => ({ ...current, brand: { ...current.brand, name } }))} />
       <TextField label="Texto alternativo del logo" value={site.brand.logoAlt} onChange={(logoAlt) => updateSite((current) => ({ ...current, brand: { ...current.brand, logoAlt } }))} />
       <ImageFields label="Logo" value={site.brand.logoUrl} onChange={(logoUrl) => updateSite((current) => ({ ...current, brand: { ...current.brand, logoUrl } }))} />
