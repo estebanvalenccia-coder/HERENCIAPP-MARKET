@@ -1666,6 +1666,8 @@ app.get("/api/admin/session", (req, res) => {
 });
 
 app.get("/api/admin/accounts", requireAdmin, async (req, res) => {
+  const claims = currentAdminClaims(req);
+  if (!claims || claims.accountId) return res.status(403).json({ error: "Solo el propietario puede consultar las cuentas" });
   try {
     const users = await listAdminAccounts();
     res.json({ users: [
