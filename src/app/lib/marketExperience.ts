@@ -67,7 +67,7 @@ export type MarketExperienceContent = {
     services: MarketServiceCard[];
     featuredTitle: string;
     featuredSubtitle: string;
-    trust: Array<{ title: string; description: string }>;
+    trust: Array<{ title: string; description: string; visible?: boolean }>;
   };
   dulce: MarketPromo & {
     kicker: string;
