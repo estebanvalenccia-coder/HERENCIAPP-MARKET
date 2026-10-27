@@ -1,4 +1,5 @@
 import type { SiteContent, SiteLink } from "./siteContent";
+import type { StorefrontComponentControl } from "./componentRegistry";
 
 export type PublicationWindow = { startAt?: string; endAt?: string };
 
@@ -36,6 +37,7 @@ export type MarketExperienceContent = {
   locationLabel: string;
   announcement: string;
   navigation: SiteLink[];
+  componentControls: Record<string, StorefrontComponentControl>;
   layout: {
     announcement: boolean;
     search: boolean;
@@ -139,6 +141,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     { label: "Comunidad", href: "/comunidad" },
     { label: "Contacto", href: "/contacto" },
   ],
+  componentControls: {},
   layout: {
     announcement: true,
     search: true,
@@ -394,6 +397,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     locationLabel: String(incoming.locationLabel || defaultMarketExperience.locationLabel),
     announcement: String(incoming.announcement || defaultMarketExperience.announcement),
     navigation: mergeNavigation(defaultMarketExperience.navigation, incoming.navigation),
+    componentControls: incoming.componentControls && typeof incoming.componentControls === "object" && !Array.isArray(incoming.componentControls) ? incoming.componentControls : {},
     layout: { ...defaultMarketExperience.layout, ...(incoming.layout || {}) },
     home: {
       ...defaultMarketExperience.home,
