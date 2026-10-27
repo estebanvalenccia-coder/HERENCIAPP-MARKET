@@ -246,7 +246,9 @@ function renderProductCards(productIds){
 
 async function persistCart(cart){
   const value = JSON.stringify(cart);
+  const previous = localStorage.getItem("cart");
   localStorage.setItem("cart", value);
+  try{ window.parent?.dispatchEvent(new CustomEvent("herencia:cart-updated", {detail:{before:previous,after:value}})); }catch(_){}
   try{
     await fetch("/api/storage/cart",{
       method:"PUT",

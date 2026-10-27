@@ -1,3 +1,4 @@
+import { sendTikTokPaidOrder } from "./tiktokEventsApi.js";
 import { registerSupportV2 } from "./supportV2.js";
 import { verifyAdminPassword } from "./adminAccounts.js";
 import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword, manageAdminAccount, issueAdminTrustedDevice, verifyAdminTrustedDevice, revokeAdminTrustedDevice } from "./adminAccountStore.js";
@@ -1360,7 +1361,12 @@ app.post(
             String(previousOrder?.stripe_payment_intent_id || "") === String(paymentIntent.id || "");
 
           if (!alreadyConfirmed) {
-      
+            // Stripe signature and paid order were verified before this point.
+            // TikTok is strictly optional: analytics failure must not affect paid orders.
+            await sendTikTokPaidOrder(updatedOrder, paymentIntent).catch((error) =>
+              console.warn("[tiktok-events] Envío pendiente:", error?.message || error)
+            );
+
       try {
         const supplierFulfillments = await buildSupplierFulfillmentsForOrder(inventoryOrder);
         // Stripe confirms payment, not permission to spend money with a supplier.

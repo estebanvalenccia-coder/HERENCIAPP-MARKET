@@ -396,7 +396,7 @@ export function Checkout() {
 
   const orderMetadata = {
     source: "frontend_checkout",
-    tiktokConsent: (() => { try { return localStorage.getItem("herencia_cookie_consent") === "accepted"; } catch { return false; } })(),
+    tiktokConsent: (() => { try { return localStorage.getItem("herencia_cookie_consent") === "accepted" && localStorage.getItem("herencia_ads_consent_v1") === "accepted"; } catch { return false; } })(),
     herenciaSales: salesAttribution.enabled,
     salesConversationId: salesAttribution.conversationId || null,
     salesAttributedItems: salesAttribution.itemCount,
@@ -689,9 +689,9 @@ export function Checkout() {
                 requestedPaymentMethod: paymentMethod,
               }}
               onCancel={() => setShowStripe(false)}
-              onSuccess={({ orderId, paymentIntentId, status }) => {
+              onSuccess={({ orderId, paymentIntentId, status, paidTotal }) => {
                 if (salesAttribution.enabled) trackSalesPurchase(total, salesAttribution.conversationId);
-                if (status === "succeeded" && paymentIntentId) trackTikTokConfirmedPurchase(orderId, paymentIntentId, cartItems.map((item: any) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), total);
+                if (status === "succeeded" && paymentIntentId) trackTikTokConfirmedPurchase(orderId, paymentIntentId, cartItems.map((item: any) => ({ id: item.id, price: item.unitPrice ?? item.price, quantity: item.quantity })), Number(paidTotal || 0));
                 if (status === "succeeded") {
                   toast.success(onlyServices ? "Reserva pagada correctamente 🌿" : "Pago realizado correctamente 🌿");
                 } else {

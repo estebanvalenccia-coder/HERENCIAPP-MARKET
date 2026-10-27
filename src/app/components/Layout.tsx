@@ -46,7 +46,12 @@ export function Layout() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [cookieConsent, setCookieConsent] = useState<string>(() => {
     try {
-      return localStorage.getItem("herencia_cookie_consent") || "";
+      // Consent previously granted for site analytics must not be reused for ads.
+      const adsChoice = localStorage.getItem("herencia_ads_consent_v1");
+      if (!adsChoice) return "";
+      return adsChoice === "accepted" && localStorage.getItem("herencia_cookie_consent") === "accepted"
+        ? "accepted"
+        : "essential";
     } catch {
       return "";
     }
@@ -454,6 +459,12 @@ export function Layout() {
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <FooterLink href={site.footer.privacyHref}>{site.footer.privacyLabel}</FooterLink>
                 <FooterLink href={site.footer.cookiesHref}>{site.footer.cookiesLabel}</FooterLink>
+                <button type="button" className="underline underline-offset-2 hover:text-white" onClick={() => {
+                  localStorage.setItem("herencia_cookie_consent", "essential");
+                  localStorage.setItem("herencia_ads_consent_v1", "essential");
+                  window.ttq?.revokeConsent?.();
+                  setCookieConsent("");
+                }}>Configurar cookies</button>
                 <FooterLink href={site.footer.termsHref}>{site.footer.termsLabel}</FooterLink>
               </div>
             </div>
@@ -505,9 +516,9 @@ export function Layout() {
             <div className="flex-1">
               <p className="font-black">Privacidad y cookies</p>
               <p className="mt-1 text-sm text-[#6d776f]">
-                Herencia usa almacenamiento esencial para carrito, sesión y funcionamiento de la tienda.
-                Si aceptas, también podremos medir visitas y uso de forma agregada para mejorar la tienda.
-                Puedes aceptar o mantener solo lo esencial.
+                Usamos almacenamiento esencial para el carrito y el funcionamiento de la tienda.
+                Si aceptas, también activamos TikTok Pixel para medir visitas, productos, carritos y compras
+                y analizar nuestra publicidad. Puedes elegir «Solo esenciales» sin activar TikTok.
               </p>
             </div>
             <div className="flex gap-2">
@@ -515,6 +526,8 @@ export function Layout() {
                 type="button"
                 onClick={() => {
                   localStorage.setItem("herencia_cookie_consent", "essential");
+                  localStorage.setItem("herencia_ads_consent_v1", "essential");
+                  window.ttq?.revokeConsent?.();
                   setCookieConsent("essential");
                 }}
                 className="rounded-full border border-[#ded9cd] px-4 py-2 text-sm font-black"
@@ -525,6 +538,8 @@ export function Layout() {
                 type="button"
                 onClick={() => {
                   localStorage.setItem("herencia_cookie_consent", "accepted");
+                  localStorage.setItem("herencia_ads_consent_v1", "accepted");
+                  window.ttq?.grantConsent?.();
                   setCookieConsent("accepted");
                 }}
                 className="rounded-full bg-[#315b42] px-4 py-2 text-sm font-black text-white"

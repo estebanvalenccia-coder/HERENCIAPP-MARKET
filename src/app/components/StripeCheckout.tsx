@@ -6,7 +6,7 @@ import { backendApi, backendStorage } from "../lib/backendStorage";
 
 interface StripeCheckoutProps {
   amount: number;
-  onSuccess: (result: { orderId: string; paymentIntentId: string; status: "succeeded" | "processing" }) => void;
+  onSuccess: (result: { orderId: string; paymentIntentId: string; status: "succeeded" | "processing"; paidTotal?: number }) => void;
   onCancel: () => void;
   paymentMethod?: string;
   customerName?: string;
@@ -216,7 +216,7 @@ export function StripeCheckout({
         } else {
           toast.info("Pago en proceso. Te avisaremos cuando Stripe lo confirme.");
         }
-        onSuccess({ orderId, paymentIntentId, status: paymentIntent.status });
+        onSuccess({ orderId, paymentIntentId, status: paymentIntent.status, paidTotal: Number(paymentIntent.amount_received || 0) / 100 });
         return;
       }
 
