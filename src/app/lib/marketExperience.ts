@@ -59,6 +59,8 @@ export type MarketPromo = {
   buttonLabel: string;
 };
 
+export type MarketCampaign = MarketPromo & { id: string; kicker: string };
+
 export type MarketSalesAction = {
   id: "bouquet" | "plant" | "sweet" | "gardening" | "seeds" | "soil" | "decor" | "fashion" | "services" | "photo" | "gift" | "surprise";
   label: string;
@@ -106,6 +108,7 @@ export type MarketExperienceContent = {
     categoriesTitle: string;
     categoryGridLimit: number;
     categories: MarketCard[];
+    campaigns: MarketCampaign[];
     servicesTitle: string;
     services: MarketServiceCard[];
     featuredTitle: string;
@@ -211,6 +214,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     heroOverlayWidth: 72,
     categoriesTitle: "Todo para un estilo de vida más verde",
     categoryGridLimit: 8,
+    campaigns: [],
     categories: [
       {
         title: "Plantas",
@@ -455,6 +459,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       sectionOrder: normalizeHomeSectionOrder(homeIncoming.sectionOrder),
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
+      campaigns: Array.isArray(homeIncoming.campaigns) ? homeIncoming.campaigns : [],
       services: mergeList(defaultMarketExperience.home.services, homeIncoming.services),
       trust: mergeList(defaultMarketExperience.home.trust, homeIncoming.trust),
     },
