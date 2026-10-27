@@ -184,6 +184,12 @@ export function Home() {
       && (product.trackInventory === false || Number(product.stock || 0) > 0 || (Array.isArray(product.variants) && product.variants.some((variant: any) => Number(variant.stock || 0) > 0)));
   }).slice(0, 4), [catalog]);
 
+  // Curated storefront collections are derived from the real, administrator-controlled cards.
+  // Disabled collections remain disabled; no demo products or invented prices.
+  const spotlightCollections = visibleHomeCategories.filter((item) =>
+    /(?:3d|impresi[oó]n|colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
+  ).slice(0, 2);
+
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
     try {
@@ -389,6 +395,21 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
       <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+        {spotlightCollections.length > 0 && (
+          <div className="mb-10 grid gap-5 md:grid-cols-2">
+            {spotlightCollections.map((collection) => (
+              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[265px] items-end overflow-hidden rounded-xl border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[340px]">
+                <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#102b20]/50 to-transparent" />
+                <div className="relative max-w-[78%] p-7 sm:p-9">
+                  <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">{collection.title}</h2>
+                  <p className="mt-3 text-sm leading-6 text-white/90">{collection.subtitle}</p>
+                  <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[#173d2a]">Explorar colección <ArrowRight className="h-4 w-4" /></span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
@@ -512,7 +533,7 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-8 grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
           {featured.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
