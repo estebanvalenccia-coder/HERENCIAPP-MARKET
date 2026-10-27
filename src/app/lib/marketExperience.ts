@@ -1,7 +1,10 @@
 import type { SiteContent, SiteLink } from "./siteContent";
 
+export type PublicationWindow = { startAt?: string; endAt?: string };
+
 export type MarketCard = {
   visible?: boolean;
+  schedule?: PublicationWindow;
   title: string;
   subtitle: string;
   imageUrl: string;
@@ -14,6 +17,7 @@ export type MarketServiceCard = MarketCard & {
 
 export type MarketPromo = {
   enabled?: boolean;
+  schedule?: PublicationWindow;
   title: string;
   subtitle: string;
   imageUrl: string;
@@ -67,7 +71,7 @@ export type MarketExperienceContent = {
     services: MarketServiceCard[];
     featuredTitle: string;
     featuredSubtitle: string;
-    trust: Array<{ title: string; description: string; visible?: boolean }>;
+    trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
   dulce: MarketPromo & {
     kicker: string;
