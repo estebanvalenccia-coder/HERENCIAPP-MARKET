@@ -6,6 +6,9 @@ import { ArrowLeft, ShoppingCart, Heart, Leaf, Droplets, Sun, ThermometerSun, Sp
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
+import { getMarketExperience } from "../lib/marketExperience";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
+import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 import { getCommerceCollection, isPlantCareProduct, primaryCollectionOf } from "../lib/commerceCatalog";
 import { deriveVariantOptionGroups, chooseExistingVariant, splitSupplierOptions } from "../lib/productVariantOptions";
 import { isCjSupplierItem, assessCjPublicProductStatus } from "../lib/cjFulfillmentIdentity";
@@ -21,6 +24,12 @@ export function ProductDetail() {
   }|null>(null);
   const [cjAvailabilityLoading,setCjAvailabilityLoading] = useState(false);
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [quantity, setQuantity] = useState(1);
   const [serviceHours, setServiceHours] = useState(1);
   const [favorite, setFavorite] = useState(false);
@@ -39,7 +48,7 @@ export function ProductDetail() {
   const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
 
   useEffect(() => {
-    const hydrate = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+    const hydrate = () => !isEmbeddedAdminPreview() && setSite(parseSiteContent(backendStorage.getItem("siteContent")));
     hydrate();
     window.addEventListener("storage", hydrate);
     window.addEventListener("backend-storage", hydrate);
