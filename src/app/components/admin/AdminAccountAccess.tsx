@@ -74,7 +74,7 @@ export function AdminUsersManager({ previewOnly = false, ownerOnly = false }: { 
                 <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={()=>setResetFor(resetFor===user.id?null:user.id)}>Restablecer clave</button>
               </>}
             </div>
-            {resetFor===user.id && <div className="flex gap-2 flex-wrap w-full"><input aria-label="Contraseña provisional" type="password" autoComplete="new-password" minLength={4} value={resetPassword} onChange={e=>setResetPassword(e.target.value)} className="border rounded-lg p-2" placeholder="Nueva contraseña provisional"/><button type="button" disabled={busyId===user.id || resetPassword.length<4} onClick={()=>void manage(user,"reset_password",resetPassword)} className="rounded-lg border px-3 py-2">Confirmar restablecimiento</button></div>
+            {resetFor===user.id && <div className="flex gap-2 flex-wrap w-full"><input aria-label="Contraseña provisional" type="password" autoComplete="new-password" minLength={4} value={resetPassword} onChange={e=>setResetPassword(e.target.value)} className="border rounded-lg p-2" placeholder="Nueva contraseña provisional"/><button type="button" disabled={busyId===user.id || resetPassword.length<4} onClick={()=>void manage(user,"reset_password",resetPassword)} className="rounded-lg border px-3 py-2">Confirmar restablecimiento</button></div>}
           </div>)}
         </div>
       )}
