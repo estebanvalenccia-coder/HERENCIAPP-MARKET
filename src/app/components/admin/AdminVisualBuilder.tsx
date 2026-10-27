@@ -511,7 +511,7 @@ export function AdminVisualBuilder({
   const hydratedRef = useRef(false);
   const siteRef = useRef(site);
   // Detect content changed elsewhere since opening this editor. Backend must still enforce atomic concurrency in a later phase.
-  const publishedRawAtOpenRef = useRef(backendStorage.getItem("siteContent") || "");
+  const publishedRawAtOpenRef = useRef<string | null>(backendStorage.getItem("siteContent"));
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const market = useMemo(() => getMarketExperience(site), [site]);
@@ -735,50 +735,30 @@ export function AdminVisualBuilder({
       const nextPublished = syncBuilderToLegacy(site, ensureBuilderBlocks(site));
       const validationErrors = validateSitePublication(nextPublished);
       if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
-      const previousRaw = backendStorage.getItem("siteContent") || "";
+      const previousRaw = backendStorage.getItem("siteContent") || null;
       if (previousRaw !== publishedRawAtOpenRef.current) {
-        throw new Error("La tienda ha recibido cambios publicados desde que abriste este editor. Sal del editor, recarga los datos y revisa las modificaciones antes de publicar.");
+        throw new Error("Hay una nueva publicación en esta sesión. Recarga el contenido antes de publicar.");
       }
-      const previous = previousRaw ? parseSiteContent(previousRaw) : publishedSite;
-      let nextHistory: StoredVersion[] = [
-        {
-          id: makeBuilderId("version"),
-          at: new Date().toISOString(),
-          label: `Antes de publicar · ${new Date().toLocaleString("es-ES")}`,
-          content: JSON.stringify(previous),
-        },
-        ...versions,
-      ].slice(0, 12);
-
-      // Evita que el historial con imágenes base64 supere el límite del backend.
-      while (nextHistory.length > 1 && JSON.stringify(nextHistory).length > 5_000_000) {
-        nextHistory = nextHistory.slice(0, -1);
-      }
-
       const hero = ensureBuilderBlocks(nextPublished).find((block) => block.type === "hero");
       const cta = ensureBuilderBlocks(nextPublished).find((block) => block.type === "cta");
-
-      const results = await Promise.all([
-        backendStorage.setItem("siteContent", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentDraft", JSON.stringify(nextPublished)),
-        backendStorage.setItem("siteContentHistory", JSON.stringify(nextHistory)),
-        backendStorage.setItem("menuIcons", JSON.stringify(menuIcons)),
-        backendStorage.setItem("herenciaSettings", JSON.stringify(herenciaSettings)),
-        hero?.data?.imageUrl
-          ? backendStorage.setItem("heroBanner", JSON.stringify({ imageUrl: hero.data.imageUrl }))
-          : backendStorage.removeItem("heroBanner"),
-        cta?.data?.imageUrl
-          ? backendStorage.setItem("ctaBanner", JSON.stringify({ imageUrl: cta.data.imageUrl }))
-          : backendStorage.removeItem("ctaBanner"),
-      ]);
-
-      const failed = results.find((result) => !result.ok);
-      if (failed) throw new Error(failed.error || "No se pudo publicar");
-
-      publishedRawAtOpenRef.current = JSON.stringify(nextPublished);
+      const nextRaw = JSON.stringify(nextPublished);
+      const auxiliary = {
+        menuIcons: JSON.stringify(menuIcons),
+        herenciaSettings: JSON.stringify(herenciaSettings),
+        heroBanner: hero?.data?.imageUrl ? JSON.stringify({ imageUrl: hero.data.imageUrl }) : "",
+        ctaBanner: cta?.data?.imageUrl ? JSON.stringify({ imageUrl: cta.data.imageUrl }) : "",
+      };
+      // Server holds a PostgreSQL lock and atomically validates the expected published
+      // version. A second admin cannot silently overwrite this publication.
+      const result = await backendApi.publishSiteContent({
+        nextRaw,
+        expectedRaw: publishedRawAtOpenRef.current,
+        auxiliary,
+      });
+      publishedRawAtOpenRef.current = nextRaw;
       setSite(nextPublished);
       setPublishedSite(nextPublished);
-      setVersions(nextHistory);
+      setVersions(JSON.parse(result.history || "[]"));
       setPublishedMenuIcons(menuIcons);
       setPublishedHerenciaSettings(herenciaSettings);
       await backendStorage.removeItem("visualBuilderAuxDraft");
