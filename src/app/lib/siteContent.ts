@@ -706,7 +706,7 @@ export function syncBuilderToLegacy(site: SiteContent, blocks: BuilderBlock[]): 
     };
   }
 
-  next.builder = { ...next.builder, blocks: copy(blocks) };
+  next.builder = { ...next.builder, blocks: copy(blocks), blocksInitialized: true };
   return next;
 }
 
