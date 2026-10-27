@@ -20,7 +20,7 @@ const layoutKeys = new Set<string>([
   "announcement", "search", "account", "favorites", "cart", "deliverySelector", "footer",
 ]);
 
-function baseEnabled(market: MarketExperienceContent, id: StorefrontComponentKey) {
+export function baseEnabled(market: MarketExperienceContent, id: StorefrontComponentKey) {
   if (id.startsWith("home.")) {
     const key = id.slice("home.".length);
     if (homeKeys.has(key)) return market.home.sections[key as LegacyHomeSection];
@@ -34,7 +34,7 @@ function baseEnabled(market: MarketExperienceContent, id: StorefrontComponentKey
   return true;
 }
 
-function changeEnabled(market: MarketExperienceContent, id: StorefrontComponentKey, enabled: boolean): MarketExperienceContent {
+export function changeEnabled(market: MarketExperienceContent, id: StorefrontComponentKey, enabled: boolean): MarketExperienceContent {
   const controls = {
     ...market.componentControls,
     [id]: { ...getComponentControl(market.componentControls, id), enabled },
