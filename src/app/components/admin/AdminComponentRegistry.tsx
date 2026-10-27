@@ -15,7 +15,7 @@ type LegacyHomeSection = keyof MarketExperienceContent["home"]["sections"];
 type LegacyLayoutSection = keyof MarketExperienceContent["layout"];
 const homeKeys = new Set<string>([
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
-  "services", "featured", "promotions", "trust", "bottomCta",
+  "services", "featured", "promotions", "creations3d", "trust", "bottomCta",
 ]);
 const layoutKeys = new Set<string>([
   "announcement", "search", "account", "favorites", "cart", "deliverySelector", "footer",
