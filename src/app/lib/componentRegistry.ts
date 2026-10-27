@@ -11,7 +11,22 @@ export type StorefrontComponentKey =
   | "contact.intro" | "contact.form" | "contact.hours"
   | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
+export type StorefrontComponentDesign = {
+  backgroundColor?: string;
+  textColor?: string;
+  paddingY?: number;
+  marginY?: number;
+  radius?: number;
+  headingSize?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  shadow?: "none" | "small" | "medium" | "large";
+  fontFamily?: "inherit" | "sans" | "serif";
+  animation?: "none" | "fade-in" | "slide-up";
+};
+
 export type StorefrontComponentControl = {
+  design?: StorefrontComponentDesign;
   enabled?: boolean;
   desktop?: boolean;
   tablet?: boolean;
