@@ -165,8 +165,8 @@ export function Home() {
       if (item?.trackInventory === false) return true;
       if (Number(item?.stock || 0) > 0) return true;
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
-    }).slice(0, 6);
-  }, [catalog]);
+    }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
+  }, [catalog, market.home.featuredLimit]);
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -388,7 +388,7 @@ export function Home() {
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {visibleHomeCategories.slice(0, 8).map((item) => (
+          {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
             <Link
               key={item.title}
               to={item.href}
