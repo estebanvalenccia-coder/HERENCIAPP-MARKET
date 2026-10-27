@@ -659,9 +659,9 @@ export function Home() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="sr-only">Selección Herencia</p>
-            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{market.home.featuredTitle}</h2>
+            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{shopFirst ? productDisplay.title : market.home.featuredTitle}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
-              {market.home.featuredSubtitle}
+              {shopFirst ? productDisplay.subtitle : market.home.featuredSubtitle}
             </p>
           </div>
           <Link to="/productos" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
