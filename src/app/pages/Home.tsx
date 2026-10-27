@@ -173,6 +173,16 @@ export function Home() {
     }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
   }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
 
+  // La colección editorial se alimenta exclusivamente de productos publicados:
+  // nunca sustituir el catálogo real por artículos o precios del boceto.
+  const creations3D = useMemo(() => catalog.filter((product) => {
+    const text = [product.name, product.category, product.subcategory, product.collection,
+      ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ").toLowerCase();
+    return product.active !== false && !product.deletedAt && !["draft", "archived", "inactive"].includes(String(product.status || "active"))
+      && /(?:impresi[oó]n\s*3d|creaciones?\s*3d|maceta\s*3d|dise[nñ]o\s*3d|3d\s*print)/i.test(text)
+      && Boolean(product.image) && Number(product.price || 0) > 0;
+  }).slice(0, 4), [catalog]);
+
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
     try {
@@ -484,6 +494,22 @@ export function Home() {
             Ver todos <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
+
+        {creations3D.length > 0 && (
+          <div className="mt-8 overflow-hidden rounded-2xl border border-[#dfdccc] bg-[#eaf0e6] md:flex md:items-center">
+            <div className="flex-1 px-7 py-8 md:px-10">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#57705c]">Diseño y creatividad</p>
+              <h3 className="mt-2 font-serif text-3xl tracking-tight text-[#173d2a] md:text-4xl">Creaciones 3D de Herencia</h3>
+              <p className="mt-3 max-w-lg text-sm leading-6 text-[#4a604f]">Explora nuestras macetas, diseños y detalles creados con impresión 3D.</p>
+              <Link to={`/producto/${creations3D[0].id}`} className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white hover:bg-[#173d2a]">
+                Descubrir creaciones <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            <Link to={`/producto/${creations3D[0].id}`} className="block h-60 bg-[#e2e5d9] md:h-72 md:w-[38%]">
+              <img src={creations3D[0].image} alt={creations3D[0].name} className="h-full w-full object-cover" />
+            </Link>
+          </div>
+        )}
 
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {featured.map((product) => {
