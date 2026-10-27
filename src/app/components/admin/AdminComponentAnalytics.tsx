@@ -3,7 +3,7 @@ import { BarChart3, RefreshCcw } from "lucide-react";
 import { backendApi } from "../../lib/backendStorage";
 import { STOREFRONT_COMPONENT_REGISTRY } from "../../lib/componentRegistry";
 
-type AnalyticsState = { days: number; generatedAt: string; componentClicks: Array<{ label: string; value: number }> };
+type AnalyticsState = { days: number; generatedAt: string; componentClicks: Array<{ label: string; value: number }>; commerceOrders?: { orders: number; revenue: number } };
 
 export function AdminComponentAnalytics() {
   const [days, setDays] = useState(30);
@@ -47,6 +47,19 @@ export function AdminComponentAnalytics() {
           <button type="button" onClick={() => setRefresh((value) => value + 1)} aria-label="Actualizar analítica" className="rounded-lg border p-2"><RefreshCcw className="h-4 w-4" /></button>
         </div>
       </div>
+      {data?.commerceOrders && !error && !loading && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border bg-[#f5f9f5] p-4">
+            <p className="text-xs font-semibold text-[#536a58]">Pedidos en estado pagado o confirmado</p>
+            <p className="mt-2 text-2xl font-black">{Number(data.commerceOrders.orders || 0).toLocaleString("es-ES")}</p>
+          </div>
+          <div className="rounded-xl border bg-[#f5f9f5] p-4">
+            <p className="text-xs font-semibold text-[#536a58]">Importe agregado de esos pedidos</p>
+            <p className="mt-2 text-2xl font-black">{Number(data.commerceOrders.revenue || 0).toLocaleString("es-ES", { style:"currency", currency:"EUR" })}</p>
+          </div>
+          <p className="text-xs text-slate-500 sm:col-span-2">Son cifras independientes de los clics. No se atribuyen ventas a un botón o campaña sin una medición comprobada del recorrido del cliente.</p>
+        </div>
+      )}
       {loading && <p className="text-sm text-muted-foreground">Consultando estadísticas…</p>}
       {error && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-900">{error}</p>}
       {!loading && !error && values.length === 0 && <p className="rounded-xl bg-[#f5f8f4] p-4 text-sm text-muted-foreground">Aún no hay clics registrados en el período seleccionado. Los datos aparecen cuando la función esté publicada y los visitantes acepten la medición.</p>}
