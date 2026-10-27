@@ -292,6 +292,15 @@ export const backendApi = {
     return request<{ ok: boolean; service?: string }>("/api/health");
   },
 
+  async getStorefrontComponentAnalytics(days = 30) {
+    const safeDays = Math.max(1, Math.min(365, Math.floor(Number(days) || 30)));
+    return request<{
+      days: number;
+      generatedAt: string;
+      componentClicks: Array<{ label: string; value: number }>;
+    }>(`/api/admin/analytics?days=${safeDays}`);
+  },
+
   async publishSiteContent(payload: {
     nextRaw: string;
     expectedRaw: string | null;
