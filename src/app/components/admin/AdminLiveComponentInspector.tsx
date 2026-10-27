@@ -2,6 +2,7 @@ import { Eye, EyeOff, MonitorSmartphone, MoveDown, MoveUp, SlidersHorizontal } f
 import type { SiteContent } from "../../lib/siteContent";
 import { getMarketExperience, withMarketExperience, type MarketHomeSectionId } from "../../lib/marketExperience";
 import { getComponentControl, STOREFRONT_COMPONENT_REGISTRY } from "../../lib/componentRegistry";
+import { AdminUniversalDesignFields } from "./AdminUniversalDesignFields";
 import { AdminScheduleFields, reorderItem } from "./AdminElementControls";
 import { baseEnabled, changeEnabled } from "./AdminComponentRegistry";
 
@@ -66,6 +67,7 @@ export function AdminLiveComponentInspector({
         </div>
       </div>
       <AdminScheduleFields label={definition.name} value={current.schedule} onChange={(schedule) => update({ schedule })} />
+      <AdminUniversalDesignFields label={definition.name} design={current.design} onChange={(design) => update({ design })} />
       {currentIndex >= 0 && (
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => move(-1)} disabled={currentIndex === 0} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-black disabled:opacity-40">
