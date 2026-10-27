@@ -274,6 +274,7 @@ const server=http.createServer(async(req,res)=>{try{
     const allowedEvents=new Set([
       "pageview",
       "space_preview",
+      "storefront_click",
       "sales_open",
       "sales_message",
       "sales_recommendation",
