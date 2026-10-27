@@ -285,7 +285,15 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
   </section>;
 }
 
-export function FloatingCustomerSupportV2() {
+export function FloatingCustomerSupportV2({
+  salesButtonVisible = false,
+  salesPosition = "right",
+  salesBottomOffset = 24,
+}: {
+  salesButtonVisible?: boolean;
+  salesPosition?: "left" | "right";
+  salesBottomOffset?: number;
+} = {}) {
   const location=useLocation();
   const [open,setOpen]=useState(false);
   const [whatsapp,setWhatsapp]=useState("");
@@ -298,9 +306,13 @@ export function FloatingCustomerSupportV2() {
     const site=parseSiteContent(backendStorage.getItem("siteContent"));
     setWhatsapp(normalizeWhatsAppPhone(site.footer.whatsappPhone || defaultSiteContent.footer.whatsappPhone));
   },[]);
+  // Keep separate floating assistants from covering each other's trigger buttons.
+  const salesBottom = Math.max(12, Math.min(200, Number(salesBottomOffset) || 24));
+  const overlaps = salesButtonVisible && salesPosition === "right" && salesBottom < 150 && salesBottom + 56 > 96;
+  const supportBottom = overlaps ? salesBottom + 68 : 96;
   if(["/contacto","/perfil"].includes(location.pathname))return null;
-  return <div className="fixed bottom-24 right-4 z-[95] flex flex-col items-end gap-2 sm:right-6">
-    {open && <div className="max-h-[78vh] w-[min(400px,calc(100vw-32px))] overflow-y-auto rounded-[25px] bg-white shadow-2xl">
+  return <div className="fixed right-4 z-[95] flex flex-col items-end gap-2 sm:right-6" style={{ bottom: supportBottom }}>
+    {open && <div className="max-h-[78vh] w-[min(400px,calc(100vw-32px))] overflow-y-auto rounded-[25px] bg-white shadow-2xl" style={{ maxHeight: `min(78vh, calc(100vh - ${supportBottom + 18}px))` }}>
       <CustomerSupportV2 compact/>
       {whatsapp && <a href={"https://wa.me/"+whatsapp} target="_blank" rel="noopener noreferrer"
         className="block px-4 py-3 text-center text-xs font-semibold text-[#376247] underline">
