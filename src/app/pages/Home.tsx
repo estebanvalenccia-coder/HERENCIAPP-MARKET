@@ -482,20 +482,6 @@ export function Home() {
             ))}
           </div>
         )}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
-              Nuestras categorías
-            </p>
-            <h2 className="mt-1 font-serif text-2xl font-normal tracking-tight sm:text-3xl">
-              {market.home.categoriesTitle}
-            </h2>
-          </div>
-          <Link to="/productos" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
-            Ver toda la tienda <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
         {/* Existing category cards remain in admin; the homepage uses the reference's
             compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
