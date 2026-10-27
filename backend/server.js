@@ -1,6 +1,6 @@
 import { registerSupportV2 } from "./supportV2.js";
 import { verifyAdminPassword } from "./adminAccounts.js";
-import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword } from "./adminAccountStore.js";
+import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword, manageAdminAccount } from "./adminAccountStore.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
@@ -1678,6 +1678,8 @@ app.get("/api/admin/accounts", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/accounts", requireAdmin, async (req, res) => {
+  const claims = currentAdminClaims(req);
+  if (!claims || claims.accountId) return res.status(403).json({ error: "Solo el propietario puede crear administradores" });
   try {
     const { username, password, email } = req.body || {};
     if (!password || typeof password !== "string") return res.status(400).json({ error: "Indica una contraseña provisional" });
@@ -1687,6 +1689,17 @@ app.post("/api/admin/accounts", requireAdmin, async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message || "No se pudo crear el administrador" });
   }
+});
+
+app.patch("/api/admin/accounts/:id", requireAdmin, async (req, res) => {
+  const claims = currentAdminClaims(req);
+  if (!claims || claims.accountId) return res.status(403).json({ error: "Solo el propietario puede gestionar usuarios" });
+  const { action, value } = req.body || {};
+  if (!["status","role","reset_password"].includes(action)) return res.status(400).json({ error: "Acción no permitida" });
+  try {
+    const user = await manageAdminAccount(req.params.id, action, value);
+    res.json({ ok: true, user });
+  } catch(error) { res.status(400).json({ error: error.message || "No se pudo modificar la cuenta" }); }
 });
 
 app.post("/api/admin/password/change", authRateLimit, async (req, res) => {
