@@ -160,7 +160,10 @@ export function Home() {
     [site]
   );
   const heroDesign = heroBlock?.design;
-  const heroMinHeight = Math.max(340, Math.min(760, Number(heroDesign?.minHeight || 460)));
+  // The legacy builder shipped with a 650px hero. Match the reference's
+  // shorter editorial banner, but continue to honor other admin-set sizes.
+  const heroConfiguredHeight = Number(heroDesign?.minHeight || 460);
+  const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 460 : heroConfiguredHeight));
   const heroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
