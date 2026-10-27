@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
+import { getMarketExperience } from "../lib/marketExperience";
+import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
+import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -72,6 +75,12 @@ export function Products() {
   const location = useLocation();
   const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [displayProducts, setDisplayProducts] = useState<any[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [collectionOptions, setCollectionOptions] = useState<any[]>(
@@ -120,7 +129,7 @@ export function Products() {
     let cancelled = false;
 
     const hydrateLocal = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      !isEmbeddedAdminPreview() && setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       try {
         setFavorites(JSON.parse(backendStorage.getItem("wishlist") || "[]").map(String));
       } catch {
