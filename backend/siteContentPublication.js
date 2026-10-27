@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { neonPool } from "./neonDb.js";
-import { validateSitePublication } from "../src/app/lib/sitePublicationValidation.mjs";
+import { validateSitePublication } from "./sitePublicationValidation.mjs";
 
 export class SitePublicationConflict extends Error {
   constructor() {
