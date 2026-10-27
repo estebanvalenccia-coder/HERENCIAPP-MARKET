@@ -1053,7 +1053,7 @@ export function AdminDashboard() {
           {currentSection === "inventory-lots" && <AdminInventoryLots />}
 
           {currentSection === "settings" && <AdminSettings />}
-          {currentSection === "admin-users" && <AdminUsersManager previewOnly={previewOnly} />}
+          {currentSection === "admin-users" && <AdminUsersManager previewOnly={previewOnly} ownerOnly={sessionRole === "owner"} />}
           {currentSection === "admin-profile" && <AdminPasswordChange legacy={previewOnly || sessionRole === "owner"} onChanged={() => { toast.success("Tu perfil está actualizado"); setCurrentSection("dashboard"); }} />}
         </main>
       </div>
