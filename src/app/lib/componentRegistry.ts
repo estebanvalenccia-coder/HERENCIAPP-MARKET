@@ -2,10 +2,10 @@
 export type StorefrontComponentLocation = "header" | "home" | "floating" | "footer";
 export type StorefrontComponentKey =
   | "header.announcement" | "header.search" | "header.account" | "header.favorites" | "header.cart"
-  | "header.deliverySelector" | "home.hero" | "home.delivery" | "home.categoryStrip"
+  | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.delivery" | "home.categoryStrip"
   | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
   | "home.featured" | "home.promotions" | "home.trust" | "home.bottomCta"
-  | "floating.sales" | "floating.support" | "floating.accessibility" | "footer.main";
+  | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
 export type StorefrontComponentControl = {
   enabled?: boolean;
@@ -34,6 +34,7 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"header.favorites", name:"Favoritos", location:"header", editingSection:"navegacion", description:"Acceso a lista de favoritos" },
   { id:"header.cart", name:"Carrito", location:"header", editingSection:"navegacion", description:"Acceso al carrito de compra" },
   { id:"header.deliverySelector", name:"Selector de entrega", location:"header", editingSection:"navegacion", description:"Destinos de entrega disponibles" },
+  { id:"header.herenciaIA", name:"Acceso Herencia IA", location:"header", editingSection:"navegacion", description:"Acceso al asistente de IA cuando esté habilitado" },
   { id:"home.hero", name:"Portada principal", location:"home", editingSection:"portada", description:"Imagen, textos y botones principales" },
   { id:"home.delivery", name:"Banner de entrega internacional", location:"home", editingSection:"portada", description:"Envíos a Colombia" },
   { id:"home.categoryStrip", name:"Categorías circulares", location:"home", editingSection:"portada", description:"Fila de categorías redondas" },
@@ -47,6 +48,7 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"home.bottomCta", name:"Banner inferior", location:"home", editingSection:"promociones", description:"Llamada a la acción de la portada" },
   { id:"floating.sales", name:"Herencia Sales", location:"floating", editingSection:"sales", description:"Chat y botón comercial flotante" },
   { id:"floating.support", name:"Atención al cliente", location:"floating", editingSection:"sales", description:"Centro de soporte flotante" },
+  { id:"floating.whatsapp", name:"WhatsApp", location:"floating", editingSection:"sales", description:"Botón de contacto por WhatsApp" },
   { id:"floating.accessibility", name:"Accesibilidad", location:"floating", editingSection:"sales", description:"Panel de preferencias accesibles" },
   { id:"footer.main", name:"Pie de página", location:"footer", editingSection:"footer", description:"Enlaces y datos de contacto" },
 ] as const;
