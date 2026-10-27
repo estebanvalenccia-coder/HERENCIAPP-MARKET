@@ -18,7 +18,24 @@ export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionI
   return unique;
 }
 
+export type MarketCardDesign = {
+  backgroundColor?: string;
+  textColor?: string;
+  radius?: number;
+  imagePosition?: string;
+  imageHeight?: number;
+};
+
+export type MarketPromoDesign = {
+  radius?: number;
+  minHeight?: number;
+  overlayOpacity?: number;
+  imagePosition?: string;
+  textAlign?: "left" | "center" | "right";
+};
+
 export type MarketCard = {
+  design?: MarketCardDesign;
   visible?: boolean;
   schedule?: PublicationWindow;
   title: string;
@@ -32,6 +49,7 @@ export type MarketServiceCard = MarketCard & {
 };
 
 export type MarketPromo = {
+  design?: MarketPromoDesign;
   enabled?: boolean;
   schedule?: PublicationWindow;
   title: string;
