@@ -25,15 +25,19 @@ export type MarketHomeProductDisplay = {
   mode: "featured" | "plants" | "all";
   limit: number;
   columns: 4 | 6 | 8;
+  imageAspect: "square" | "portrait";
+  cardRadius: number;
   filtersEnabled: boolean;
   filterLabels: string[];
 };
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
-  title: "Plantas de interior",
-  subtitle: "Descubre nuestra selección de plantas para dar más vida a tu hogar.",
+  title: "Nuestra selección de plantas",
+  subtitle: "Plantas naturales disponibles para tu hogar.",
   mode: "featured",
   limit: 16,
   columns: 8,
+  imageAspect: "portrait",
+  cardRadius: 10,
   filtersEnabled: true,
   filterLabels: ["Todas", "Purificadoras", "Fáciles de cuidar", "Con flor", "Colgantes", "Tropicales", "Pequeñas", "Grandes"],
 };
@@ -543,6 +547,8 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
         columns: [4, 6, 8].includes(Number(homeIncoming.productDisplay?.columns))
           ? Number(homeIncoming.productDisplay?.columns) as 4 | 6 | 8
           : DEFAULT_HOME_PRODUCT_DISPLAY.columns,
+        cardRadius: Math.max(0, Math.min(32, Number(homeIncoming.productDisplay?.cardRadius ?? DEFAULT_HOME_PRODUCT_DISPLAY.cardRadius))),
+        imageAspect: homeIncoming.productDisplay?.imageAspect === "square" ? "square" : "portrait",
         filterLabels: Array.isArray(homeIncoming.productDisplay?.filterLabels)
           ? homeIncoming.productDisplay.filterLabels.filter((name): name is string => typeof name === "string").slice(0, 12)
           : [...DEFAULT_HOME_PRODUCT_DISPLAY.filterLabels],
