@@ -482,6 +482,15 @@ export function Layout() {
         </footer>
       </div>
 
+      <StorefrontComponentBoundary id="floating.herenciaIA" controls={market.componentControls} now={scheduleNow}
+        enabled={herenciaEnabled && site.navigation.herencia.visible !== false && !/^\\/(?:checkout|pago)/.test(location.pathname)}>
+        <Link to={site.navigation.herencia.href || "/herencia"}
+          aria-label="Abrir asistente Herenc(IA)"
+          className="group fixed bottom-[260px] right-4 z-[95] inline-flex items-center gap-2 rounded-full border border-[#b3c8b5] bg-[#fffdf9] px-3 py-2.5 text-sm font-semibold text-[#173d2a] shadow-[0_6px_24px_rgba(9,42,20,.18)] transition duration-300 hover:-translate-y-1 hover:border-[#5b8464] hover:shadow-[0_12px_30px_rgba(9,42,20,.22)] sm:right-6">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e2efdf] text-[#28573b]"><Bot className="h-6 w-6"/></span>
+          <span className="hidden sm:inline">{site.navigation.herencia.label || "Herenc(IA)"}</span>
+        </Link>
+      </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
         <SalesChatWidget />
       </StorefrontComponentBoundary>
