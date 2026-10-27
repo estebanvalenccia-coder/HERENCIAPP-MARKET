@@ -6,8 +6,8 @@ export type PublicationWindow = { startAt?: string; endAt?: string };
 // Visual storefront preset: matches the reference composition while leaving the
 // section order fully editable in the existing administration builder.
 export const DEFAULT_HOME_SECTION_ORDER = [
-  "hero", "categoryStrip", "categoriesGrid", "featured", "trust", "feed",
-  "bottomCta", "delivery", "plantCta", "services", "promotions", "creations3d",
+  "hero", "categoryStrip", "categoriesGrid", "featured", "creations3d", "trust", "feed",
+  "bottomCta", "delivery", "plantCta", "services", "promotions",
 ] as const;
 const LEGACY_HOME_SECTION_ORDER = [
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
@@ -16,8 +16,8 @@ const LEGACY_HOME_SECTION_ORDER = [
 export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
 /** Optional shop-first template. It reuses all the existing home sections. */
 export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
-  "hero", "categoryStrip", "featured", "categoriesGrid", "trust",
-  "promotions", "creations3d", "services", "feed", "bottomCta", "delivery", "plantCta",
+  "hero", "categoryStrip", "featured", "creations3d", "categoriesGrid", "trust",
+  "promotions", "services", "feed", "bottomCta", "delivery", "plantCta",
 ];
 export type MarketHomeProductDisplay = {
   title: string;
@@ -57,8 +57,8 @@ export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionI
   // Put the new commercial area just before benefits for existing saved layouts,
   // without changing any of their previously chosen relative positions.
   if (!unique.includes("creations3d")) {
-    const beforeBenefits = unique.indexOf("trust");
-    unique.splice(beforeBenefits >= 0 ? beforeBenefits : unique.length, 0, "creations3d");
+    const afterFeatured = unique.indexOf("featured");
+    unique.splice(afterFeatured >= 0 ? afterFeatured + 1 : unique.length, 0, "creations3d");
   }
   for (const id of DEFAULT_HOME_SECTION_ORDER) if (!unique.includes(id)) unique.push(id);
   return unique;
