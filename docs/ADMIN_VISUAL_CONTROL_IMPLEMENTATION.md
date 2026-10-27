@@ -69,3 +69,24 @@
 - Guía de uso en español para los administradores.
 
 **Estado:** propuesta funcional en desarrollo; NO es una entrega final de todas las fases.
+
+## Avance adicional — componentes universales y orden real
+
+- Registro declarativo en `src/app/lib/componentRegistry.ts`, con 21 componentes iniciales de cabecera, portada, botones flotantes y pie de página.
+- Política reutilizable de visibilidad, programación y escritorio/tablet/móvil en `componentPolicy.mjs`.
+- Aplicación efectiva mediante `StorefrontComponentBoundary` en `Home.tsx` y `Layout.tsx`.
+- Inventario filtrable `AdminComponentRegistry`: encender/apagar, horario, dispositivo, ir al editor de contenido, aviso de ajustes guardados sin registro.
+- Modelo `marketExperience.componentControls` persistido con el resto del contenido. Los controles anteriores de cabecera, portada y Sales permanecen sincronizados.
+- Orden de las 11 secciones completas de la portada guardado en `home.sectionOrder`, reordenable con arrastre o flechas y aplicado con flex order en la tienda.
+- Resumen del orden/estado de secciones en la previsualización del constructor (esquema visual, **no** reproducción fiel de todas las secciones de Home).
+- Protección preventiva en `AdminContent` y `AdminVisualBuilder` ante cambios detectados en la copia publicada durante la edición. **No es bloqueo transaccional: falta control de versión atómico en backend**.
+- Las listas vacías de bloques, categorías y ventajas legacy permanecen vacías cuando se eliminan explícitamente; el constructor utiliza la marca `blocksInitialized` para distinguir tiendas antiguas de una eliminación intencionada.
+- Pruebas `backend/componentPolicy.test.js` para OFF, calendario y 8 combinaciones de dispositivo.
+
+### Notas de compatibilidad y riesgos
+
+- Un nuevo componente debe declararse en el registro **y** envolverse en la frontera de visibilidad en su renderizado. El sistema no descubre automáticamente JSX arbitrario.
+- Los cambios de posición de la portada se aplican como CSS `order`; requieren revisión manual de presentación y accesibilidad en tamaños reales antes del despliegue.
+- Los controles de catálogo, autenticación, cobro y stock no se alteran desde esta configuración visual.
+- Comprobar los estados del calendario en cambios de horario, y los controles que ocultan un acceso importante como carrito o soporte.
+- Esta propuesta sigue siendo borrador hasta completar QA, conflictos y las fases pendientes del prompt.
