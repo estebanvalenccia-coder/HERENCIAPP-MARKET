@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import {
   ArrowRight,
   Bot,
+  Heart,
   HeartHandshake,
   Leaf,
   ShieldCheck,
@@ -79,6 +80,7 @@ export function Home() {
     return () => window.clearInterval(interval);
   }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
@@ -91,6 +93,12 @@ export function Home() {
         setAssistantEnabled(Boolean(JSON.parse(backendStorage.getItem("herenciaSettings") || "{}").enabled));
       } catch {
         setAssistantEnabled(false);
+      }
+      try {
+        const wishlist = JSON.parse(backendStorage.getItem("wishlist") || "[]");
+        setFavorites(Array.isArray(wishlist) ? wishlist.map(String) : []);
+      } catch {
+        setFavorites([]);
       }
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
@@ -217,6 +225,21 @@ export function Home() {
       href: "/colombia",
     } : null),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  const toggleFavorite = async (productId: unknown) => {
+    const id = String(productId);
+    const next = favorites.includes(id) ? favorites.filter((entry) => entry !== id) : [...favorites, id];
+    setFavorites(next);
+    try {
+      await backendStorage.setItem("wishlist", JSON.stringify(next));
+      window.dispatchEvent(new Event("backend-storage"));
+      void backendApi.customerSaveWishlist(next).catch(() => null);
+      toast.success(next.includes(id) ? "Añadido a favoritos" : "Eliminado de favoritos");
+    } catch {
+      setFavorites(favorites);
+      toast.error("No se pudieron guardar los favoritos");
+    }
+  };
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -588,8 +611,13 @@ export function Home() {
             return (
               <article
                 key={product.id}
-                className="group overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                className="group relative overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
               >
+                <button type="button" onClick={() => void toggleFavorite(product.id)}
+                  aria-label={favorites.includes(String(product.id)) ? `Quitar ${product.name} de favoritos` : `Guardar ${product.name} en favoritos`}
+                  className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#294a35] shadow-sm transition hover:bg-[#e8f2e7]">
+                  <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
+                </button>
                 <Link to={`/producto/${product.id}`} className="block aspect-[4/4.3] overflow-hidden bg-[#f1eee7]">
                   <img
                     src={product.image}
