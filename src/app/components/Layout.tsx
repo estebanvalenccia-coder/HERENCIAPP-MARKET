@@ -21,6 +21,7 @@ import { SalesChatWidget } from "./SalesChatWidget";
 import { MarketNavigationMenu } from "./MarketNavigationMenu";
 import { StorefrontComponentBoundary } from "./StorefrontComponentBoundary";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
+import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
 
@@ -274,14 +275,14 @@ export function Layout() {
                     <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
                 )}
-                {herenciaEnabled && site.navigation.herencia.visible !== false ? (
+                <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
                     label={site.navigation.herencia.label || "Herenc(IA)"}
                     active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                     icon={<Bot className="h-3.5 w-3.5" />}
                   />
-                ) : null}
+                </StorefrontComponentBoundary>
               </nav>
 
               <div className="ml-auto flex items-center gap-1.5">
@@ -367,14 +368,14 @@ export function Layout() {
                   <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
                 )
               )}
-              {herenciaEnabled && site.navigation.herencia.visible !== false ? (
+              <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
                   label={site.navigation.herencia.label || "Herenc(IA)"}
                   active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                   mobile
                 />
-              ) : null}
+              </StorefrontComponentBoundary>
               <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                 <MarketNavLink href="/colombia" label="🇨🇴 Cali" active={location.pathname === "/colombia"} mobile />
               </StorefrontComponentBoundary>
@@ -462,6 +463,34 @@ export function Layout() {
 
       <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
         <SalesChatWidget />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.whatsapp" controls={market.componentControls} now={scheduleNow}>
+        <WhatsAppFloatingButton
+          phone={normalizeWhatsAppPhone(site.footer.whatsappPhone) || "34624239598"}
+          message={market.whatsapp.message}
+          position={market.whatsapp.position}
+          color={market.whatsapp.buttonColor}
+          bottomOffset={(() => {
+            const position = market.whatsapp.position;
+            const salesBottom = Math.max(12, Math.min(200, Number(market.sales.bottomOffset) || 24));
+            const supportDesired = Math.max(12, Math.min(240, Number(market.support.bottomOffset) || 96));
+            const salesVisible = market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow);
+            const supportVisible = isComponentAllowed(market.componentControls, "floating.support", scheduleNow);
+            const supportBottom = salesVisible && market.sales.position === market.support.position && Math.abs(salesBottom - supportDesired) < 68
+              ? salesBottom + 68 : supportDesired;
+            const otherButtons = [
+              { visible: salesVisible, position: market.sales.position, bottom: salesBottom },
+              { visible: supportVisible, position: market.support.position, bottom: supportBottom },
+            ];
+            let bottom = Math.max(12, Math.min(300, Number(market.whatsapp.bottomOffset) || 24));
+            for (let i = 0; i < otherButtons.length + 1; i++) {
+              for (const item of otherButtons) {
+                if (item.visible && item.position === position && Math.abs(item.bottom - bottom) < 70) bottom = item.bottom + 74;
+              }
+            }
+            return bottom;
+          })()}
+        />
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.support" controls={market.componentControls} now={scheduleNow}>
         <FloatingCustomerSupportV2 salesButtonVisible={market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow)} salesPosition={market.sales.position} salesBottomOffset={market.sales.bottomOffset} position={market.support.position} bottomOffset={market.support.bottomOffset} buttonColor={market.support.buttonColor} buttonLabel={market.support.buttonLabel} />
