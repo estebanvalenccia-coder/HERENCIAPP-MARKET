@@ -42,6 +42,7 @@ import {
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
 import { getMarketExperience } from "../../lib/marketExperience";
+import { STOREFRONT_COMPONENT_REGISTRY, isComponentAllowed } from "../../lib/componentRegistry";
 import { AdminMarketExperience } from "./AdminMarketExperience";
 import {
   COMMERCE_COLLECTIONS,
@@ -510,6 +511,7 @@ export function AdminVisualBuilder({
   const siteRef = useRef(site);
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
+  const market = useMemo(() => getMarketExperience(site), [site]);
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
   const selectedCatalogProduct = useMemo(() => {
     if (!String(selected).startsWith("product:")) return null;
@@ -1190,7 +1192,8 @@ export function AdminVisualBuilder({
             </div>
 
             {pageMode === "home" ? (
-              blocks.map((block) => (
+              <>
+              {blocks.map((block) => (
                 <div
                   key={block.id}
                   onClick={() => setSelected(block.id)}
@@ -1203,7 +1206,30 @@ export function AdminVisualBuilder({
                   )}
                   <StorefrontBlock block={{ ...block, visible: true }} site={site} logoFallback={logo} preview />
                 </div>
-              ))
+              ))}
+              <div className="border-t border-emerald-200 bg-[#f5f9f5] p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-emerald-900">Mapa de secciones reales de Inicio</p>
+                    <p className="mt-1 text-[11px] text-emerald-800/80">Complementa la previsualización de bloques. Muestra el orden y visibilidad efectivos del frontend.</p>
+                  </div>
+                  <button type="button" onClick={() => setControlPanelOpen(true)} className="rounded-lg border border-emerald-500 bg-white px-3 py-2 text-xs font-bold text-emerald-900">Editar controles</button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {market.home.sectionOrder.map((key, index) => {
+                    const definition = STOREFRONT_COMPONENT_REGISTRY.find((item) => item.id === `home.${key}`);
+                    const visible = market.home.sections[key] && isComponentAllowed(market.componentControls, `home.${key}`);
+                    return (
+                      <button key={key} type="button" onClick={() => setControlPanelOpen(true)}
+                        className={`flex items-center justify-between rounded-lg border p-2 text-left text-xs ${visible ? "border-[#c7d9c9] bg-white text-[#254e38]" : "border-slate-200 bg-slate-100 text-slate-500"}`}>
+                        <span>{index + 1}. {definition?.name || key}</span>
+                        <span className="ml-2 shrink-0 font-black">{visible ? "ON" : "OFF/Programado"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              </>
             ) : pageMode === "products" ? (
               <ProductsPreview
                 site={site}
