@@ -782,11 +782,15 @@ export const backendApi = {
     return request<{ totpRequired: boolean }>("/api/admin/auth-config");
   },
 
-  async adminLogin(username: string, password: string, otp = "") {
+  async adminLogin(username: string, password: string, otp = "", trustDevice = false) {
     return request<{ ok: boolean; mustChangePassword: boolean; username: string; role: string }>("/api/admin/login", {
       method: "POST",
-      body: JSON.stringify({ username, password, otp }),
+      body: JSON.stringify({ username, password, otp, trustDevice }),
     });
+  },
+
+  async adminRevokeTrustedDevice() {
+    return request<{ ok: boolean }>("/api/admin/trusted-device/revoke", { method: "POST" });
   },
 
   async adminLogout() {
