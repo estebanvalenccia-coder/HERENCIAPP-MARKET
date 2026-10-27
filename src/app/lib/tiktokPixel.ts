@@ -13,7 +13,7 @@ declare global {
 export function trackTikTokPageView(): void {
   if (typeof window === "undefined") return;
   try {
-    if (window.localStorage.getItem("herencia_cookie_consent") !== "accepted") return;
+    if (window.localStorage.getItem("herencia_cookie_consent") !== "accepted" || localStorage.getItem("herencia_ads_consent_v1") !== "accepted") return;
   } catch {
     return;
   }
@@ -67,7 +67,7 @@ function wPage(): void {
 /** Send only consented browser events with validated EUR commerce fields. */
 export function trackTikTokCommerceEvent(event: "ViewContent" | "AddToCart" | "InitiateCheckout", items: Array<{id: unknown; price: unknown; quantity?: unknown}>, total?: number): void {
   if (typeof window === "undefined") return;
-  try { if (window.localStorage.getItem("herencia_cookie_consent") !== "accepted") return; } catch { return; }
+  try { if (window.localStorage.getItem("herencia_cookie_consent") !== "accepted" || localStorage.getItem("herencia_ads_consent_v1") !== "accepted") return; } catch { return; }
   trackTikTokPageViewOnce();
   const contents = items.map(item => ({
     content_id: String(item.id ?? ""),
@@ -88,7 +88,7 @@ export function trackTikTokConfirmedPurchase(orderId: string, paymentIntentId: s
   if (!orderId || !/^pi_/.test(paymentIntentId) || !Number.isFinite(paidTotal) || paidTotal <= 0) return;
   if (typeof window === "undefined") return;
   try {
-    if (localStorage.getItem("herencia_cookie_consent") !== "accepted") return;
+    if (localStorage.getItem("herencia_cookie_consent") !== "accepted" || localStorage.getItem("herencia_ads_consent_v1") !== "accepted") return;
     const key = "herencia_tiktok_purchase_" + orderId;
     if (localStorage.getItem(key)) return;
     const contents = items.map(item => ({
