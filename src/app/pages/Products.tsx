@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
 import { defaultSiteContent, parseSiteContent, type SiteContent } from "../lib/siteContent";
+import { getMarketExperience } from "../lib/marketExperience";
+import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -88,6 +90,8 @@ export function Products() {
   const [light, setLight] = useState("all");
   const [petSafe, setPetSafe] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const market = getMarketExperience(site);
+  const collectionEnabled = (id: string) => isMarketDestinationEnabled(market, `/productos?coleccion=${encodeURIComponent(id)}`);
 
   const gridClass =
     Number(site.productsPage.columns || 4) <= 2
@@ -221,6 +225,7 @@ export function Products() {
   const suggestions = useMemo(() => {
     if (searchQuery.trim().length < 2) return [];
     return displayProducts
+      .filter((product) => isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(product)}`))
       .filter((product) =>
         fuzzyMatch(
           [product.name, product.description, product.category, ...(Array.isArray(product.tags) ? product.tags : [product.tags])]
@@ -230,10 +235,11 @@ export function Products() {
         )
       )
       .slice(0, 6);
-  }, [displayProducts, searchQuery]);
+  }, [displayProducts, searchQuery, market.dulce.enabled, market.moda.enabled]);
 
   const filteredProducts = useMemo(() => {
     const rows = displayProducts.filter((product) => {
+      if (!collectionEnabled(primaryCollectionOf(product))) return false;
       const collectionMatch = productBelongsToCollection(product, selectedCollection);
       const categoryMatch =
         selectedCategory === "todos" || String(product.category || "") === selectedCategory;
@@ -302,6 +308,8 @@ export function Products() {
     light,
     petSafe,
     sort,
+    market.dulce.enabled,
+    market.moda.enabled,
   ]);
 
   async function toggleFavorite(productId: any) {
@@ -447,7 +455,7 @@ export function Products() {
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => selectCollection("todos")} className={`rounded-full px-4 py-2 text-sm font-bold ${selectedCollection === "todos" ? "bg-primary text-primary-foreground" : "border border-border bg-background"}`}>Todo</button>
                 {collectionOptions
-                  .filter((item) => String(item.status || "active") === "active")
+                  .filter((item) => String(item.status || "active") === "active" && collectionEnabled(String(item.id)))
                   .map((item) => {
                     const id = String(item.id);
                     return (
