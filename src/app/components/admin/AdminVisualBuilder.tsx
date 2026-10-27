@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
+import { SlidersHorizontal,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -42,6 +42,7 @@ import {
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
 import { getMarketExperience } from "../../lib/marketExperience";
+import { AdminMarketExperience } from "./AdminMarketExperience";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -495,6 +496,7 @@ export function AdminVisualBuilder({
     }
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [controlPanelOpen, setControlPanelOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
@@ -874,6 +876,13 @@ export function AdminVisualBuilder({
           </button>
           <button
             type="button"
+            onClick={() => setControlPanelOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100"
+          >
+            <SlidersHorizontal className="h-4 w-4" /> <span className="hidden sm:inline">Controles ON/OFF</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setHistoryOpen(true)}
             className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold sm:flex"
           >
@@ -896,6 +905,18 @@ export function AdminVisualBuilder({
           </button>
         </div>
       </header>
+
+      {controlPanelOpen && (
+        <div className="fixed inset-0 z-[200] flex flex-col bg-[#fbfaf6]">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-white px-5 py-3">
+            <div><p className="text-lg font-black">Controles completos de la tienda</p><p className="text-xs text-slate-500">Los cambios se guardan en el borrador del editor visual. Publica cuando estén listos.</p></div>
+            <button type="button" onClick={() => setControlPanelOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-black">Volver al editor</button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            <AdminMarketExperience site={site} onChange={(next) => commit(next)} />
+          </div>
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_350px]">
         <aside className="hidden overflow-y-auto border-r border-slate-200 bg-white lg:block">
