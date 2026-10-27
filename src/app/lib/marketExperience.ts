@@ -88,6 +88,9 @@ export type MarketExperienceContent = {
   };
   sales: {
     enabled: boolean;
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
     buttonLabel: string;
     title: string;
     prompt: string;
@@ -278,6 +281,9 @@ export const defaultMarketExperience: MarketExperienceContent = {
   },
   sales: {
     enabled: true,
+    position: "right",
+    bottomOffset: 24,
+    buttonColor: "#173d2a",
     buttonLabel: "Crear con Herencia",
     title: "HERENCIA SALES",
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
