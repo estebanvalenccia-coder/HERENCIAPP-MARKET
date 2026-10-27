@@ -388,7 +388,7 @@ export function Home() {
       <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
-      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
@@ -403,12 +403,12 @@ export function Home() {
           </Link>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
             <Link
               key={item.title}
               to={item.href}
-              className="group overflow-hidden rounded-3xl border border-[#e5e1d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+              className="group overflow-hidden rounded-[1.25rem] border border-[#e8e5da] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
               style={{ backgroundColor: item.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(item.design?.radius ?? 24))) }}
             >
               <div className="h-44 overflow-hidden bg-[#efece4]" style={{ height: `${Math.max(100, Math.min(300, Number(item.design?.imageHeight ?? 176))) }px` }}>
@@ -420,7 +420,7 @@ export function Home() {
                   style={{ objectPosition: item.design?.imagePosition || "center" }}
                 />
               </div>
-              <div className="flex items-center justify-between gap-4 p-4">
+              <div className="flex items-center justify-between gap-4 px-5 py-5">
                 <div>
                   <p className="font-black" style={{ color: item.design?.textColor || undefined }}>{item.title}</p>
                   <p className="mt-1 text-xs text-[#718076]">{item.subtitle}</p>
@@ -449,12 +449,12 @@ export function Home() {
             </Link>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-9 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {market.home.services.filter((service) => service.visible !== false && isWithinPublicationWindow(service.schedule, scheduleNow)).map((service) => (
               <Link
                 key={service.title}
                 to={service.href}
-                className="group overflow-hidden rounded-3xl border border-[#ded9cd] bg-[#fffdf9] shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                className="group overflow-hidden rounded-[1.25rem] border border-[#e6e2d7] bg-[#fffdf9] transition duration-300 hover:-translate-y-1 hover:shadow-lg"
                 style={{ backgroundColor: service.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(service.design?.radius ?? 24))) }}
               >
                 <div className="h-40 overflow-hidden" style={{ height: `${Math.max(100, Math.min(300, Number(service.design?.imageHeight ?? 160)))}px` }}>
@@ -467,7 +467,7 @@ export function Home() {
                   />
                 </div>
                 <div className="p-4">
-                  <h3 className="text-lg font-black leading-tight" style={{ color: service.design?.textColor || undefined }}>{service.title}</h3>
+                  <h3 className="font-serif text-xl font-medium leading-tight" style={{ color: service.design?.textColor || undefined }}>{service.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-[#6c786f]">{service.subtitle}</p>
                   <span className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
                     {service.ctaLabel} <ArrowRight className="h-4 w-4" />
@@ -480,7 +480,7 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
-      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
@@ -547,7 +547,7 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
-      <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
+      <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-6 px-5 pb-16 sm:px-8 lg:grid-cols-2 lg:px-10">
         {[market.dulce, market.moda, ...market.home.campaigns].filter((promo) => {
           if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow) || !isMarketDestinationEnabled(market, promo.href)) return false;
           const dest = String(promo.href || "").split("?")[0];
@@ -557,7 +557,7 @@ export function Home() {
           <Link
             key={("id" in promo && promo.id) || `${promo.title}-${index}`}
             to={promo.href}
-            className="group relative min-h-[300px] overflow-hidden rounded-[2rem] border border-[#ded9cd]"
+            className="group relative min-h-[300px] overflow-hidden rounded-[1.25rem] border border-[#ded9cd]"
             style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))), borderRadius: Math.max(0, Math.min(48, Number(promo.design?.radius ?? 32))) }}
           >
             <img
@@ -609,7 +609,7 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
-      <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+      <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
           <Sparkles className="absolute right-8 top-8 h-20 w-20 text-white/5" />
           <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">HERENCIA</p>
