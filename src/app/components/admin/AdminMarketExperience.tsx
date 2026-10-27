@@ -893,7 +893,7 @@ export function AdminMarketExperience({
                       patchHome({ services });
                     }}
                   />
-                  <AdminCardDesignFields label={service.title} value={service.design}
+                  <AdminCardDesignFields label={service.title} value={service.design} defaultImageHeight={160} defaultBackgroundColor="#fffdf9"
                     onChange={(design) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, design } : current) })}
                   />
                 </div>
