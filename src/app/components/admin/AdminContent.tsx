@@ -5,6 +5,7 @@ import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
+import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
 import { AdminScheduleFields, AdminElementControls, AdminAddElement, reorderItem } from "./AdminElementControls";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
@@ -252,6 +253,8 @@ export function AdminContent({
           : {}),
       } as SiteContent;
       const publishableSite = syncLegacyToBuilder(synchronizedSite);
+      const validationErrors = validateSitePublication(publishableSite);
+      if (validationErrors.length) throw new Error(`No se puede publicar: ${validationErrors.slice(0, 3).join("; ")}`);
       const results = await Promise.all([
         backendStorage.setItem("siteContent", JSON.stringify(publishableSite)),
         backendStorage.setItem("siteContentDraft", JSON.stringify(publishableSite)),
