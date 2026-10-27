@@ -14,7 +14,7 @@ import {
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
-import { useAdminPreviewSite } from "../lib/useAdminPreviewSite";
+import { isEmbeddedAdminPreview, useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { isComponentAllowed } from "../lib/componentRegistry";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
@@ -60,7 +60,7 @@ export function Layout() {
 
   useEffect(() => {
     const load = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      if (!isEmbeddedAdminPreview()) setSite(parseSiteContent(backendStorage.getItem("siteContent")));
 
       try {
         const cart = JSON.parse(backendStorage.getItem("cart") || "[]");
@@ -111,7 +111,7 @@ export function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (cookieConsent !== "accepted") return;
+    if (cookieConsent !== "accepted" || isEmbeddedAdminPreview()) return;
     trackTikTokPageView();
 
     let sessionId = "";
