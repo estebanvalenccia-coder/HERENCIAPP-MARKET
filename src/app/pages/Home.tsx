@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
-import { primaryCollectionOf } from "../lib/commerceCatalog";
+import { primaryCollectionOf, productBelongsToCollection } from "../lib/commerceCatalog";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
 import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
@@ -84,6 +84,7 @@ export function Home() {
   }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [activeProductFilter, setActiveProductFilter] = useState("Todas");
   const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
@@ -148,6 +149,27 @@ export function Home() {
     };
   }, []);
 
+  // Use the same published commerce API as the /productos page. Cached admin
+  // products remain the offline fallback, and the embedded editor keeps its draft.
+  useEffect(() => {
+    if (isEmbeddedAdminPreview()) return;
+    let cancelled = false;
+    const fetchPublishedProducts = async () => {
+      try {
+        const result = await backendApi.listCommerceProducts();
+        if (cancelled || !Array.isArray(result.products)) return;
+        const rows = result.products.filter((p: any) =>
+          (p.status === "active" || p.active === true) && p.active !== false && !p.deletedAt
+        );
+        setCatalog(rows);
+      } catch {
+        // Do not clear the previously cached product grid on transient API errors.
+      }
+    };
+    void fetchPublishedProducts();
+    return () => { cancelled = true; };
+  }, []);
+
   const market = getMarketExperience(site);
 
   const collectionIdForCard = (item: any) => {
@@ -203,6 +225,55 @@ export function Home() {
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
     }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
   }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
+
+  const shopFirst = market.home.shopFirst === true;
+  const productDisplay = market.home.productDisplay!;
+  const productTags = (product: any) => [
+    product.name, product.category, product.subcategory, product.collection,
+    product.description, ...(Array.isArray(product.tags) ? product.tags : []),
+  ].filter(Boolean).join(" ").toLocaleLowerCase("es");
+  const productMatchesChip = (product: any, label: string) => {
+    const key = String(label || "").trim().toLocaleLowerCase("es");
+    if (!key || key === "todas") return true;
+    const aliases: Record<string, string[]> = {
+      "purificadoras": ["purific", "sansevieria", "spathiphyllum", "espatifilo"],
+      "fáciles de cuidar": ["fácil", "facil", "resistente", "bajo mantenimiento", "pothos", "sansevieria", "zamioculca"],
+      "con flor": ["flor", "orquídea", "orquidea", "anthurium", "espatifilo"],
+      "colgantes": ["colgante", "hoya", "pothos", "tradescantia"],
+      "tropicales": ["tropical", "monstera", "calathea", "philodendron", "filodendro"],
+      "pequeñas": ["mini", "peque", "small"],
+      "grandes": ["grande", "large", "xl"],
+    };
+    const text = productTags(product);
+    return (aliases[key] || [key]).some(value => text.includes(value));
+  };
+  const shoppingProducts = useMemo(() => {
+    if (!shopFirst) return featured;
+    const mode = productDisplay.mode;
+    const candidates = [...catalog]
+      .filter((p: any) => p && p.active !== false && !p.deletedAt && !["draft", "archived", "inactive"].includes(String(p.status || "active")))
+      .filter((p: any) => p.image && Number(p.onSale && p.salePrice ? p.salePrice : p.price || 0) > 0)
+      .filter((p: any) => p.trackInventory === false || Number(p.stock || 0) > 0 ||
+        (Array.isArray(p.variants) && p.variants.some((v: any) => Number(v.stock || 0) > 0)))
+      .filter((p: any) => isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(p)}`))
+      .filter((p: any) => mode === "all" || mode === "featured" && p.featured ||
+        mode === "plants" && productBelongsToCollection(p, "plantas"))
+      .sort((a: any,b: any) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+    return candidates.filter((product) => productMatchesChip(product, activeProductFilter))
+      .slice(0, Math.max(1, Math.min(48, productDisplay.limit)));
+  }, [catalog, shopFirst, productDisplay.mode, productDisplay.limit, activeProductFilter, featured, market.home.sections, market.dulce.enabled, market.moda.enabled]);
+  const availableShopFilters = shopFirst && productDisplay.filtersEnabled
+    ? productDisplay.filterLabels.filter((label) =>
+      label === "Todas" || catalog.some((product) => (
+        (productDisplay.mode !== "plants" || productBelongsToCollection(product,"plantas"))
+        && productMatchesChip(product, label)))
+    ) : [];
+  const gridColumns = shopFirst ? productDisplay.columns : 6;
+  const shopGridClass = gridColumns === 8
+    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
+    : gridColumns === 6
+      ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
 
   // La colección editorial se alimenta exclusivamente de productos publicados:
   // nunca sustituir el catálogo real por artículos o precios del boceto.
@@ -614,8 +685,20 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {featured.map((product) => {
+        {availableShopFilters.length > 1 && (
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Filtros de plantas">
+            {availableShopFilters.map((label) => (
+              <button key={label} type="button"
+                onClick={() => setActiveProductFilter(label)}
+                aria-pressed={activeProductFilter === label}
+                className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${activeProductFilter === label ? "bg-[#234b35] text-white" : "bg-[#f1eee8] text-[#4e6153] hover:bg-[#e1e9dd]"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className={`mt-4 grid gap-3 ${shopGridClass}`}>
+          {shoppingProducts.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
               <article
@@ -658,6 +741,12 @@ export function Home() {
             );
           })}
         </div>
+        {shopFirst && shoppingProducts.length === 0 && (
+          <div className="mt-5 rounded-xl border border-[#e1e5db] bg-white p-6 text-sm text-[#445d4a]">
+            No hay productos disponibles con estos filtros.
+            <Link to="/productos?coleccion=plantas" className="ml-2 font-semibold underline">Ver el catálogo</Link>
+          </div>
+        )}
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
