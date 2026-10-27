@@ -50,7 +50,9 @@ export type MarketExperienceContent = {
       hero: boolean;
       delivery: boolean;
       categoryStrip: boolean;
+      feed: boolean;
       plantCta: boolean;
+      bottomCta: boolean;
       categoriesGrid: boolean;
       services: boolean;
       featured: boolean;
@@ -151,7 +153,9 @@ export const defaultMarketExperience: MarketExperienceContent = {
       hero: true,
       delivery: true,
       categoryStrip: true,
+      feed: true,
       plantCta: true,
+      bottomCta: true,
       categoriesGrid: true,
       services: true,
       featured: true,
