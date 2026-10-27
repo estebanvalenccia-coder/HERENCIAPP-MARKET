@@ -513,6 +513,33 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
     }
   }
 
+  async function handlePasteGalleryImage(event: React.ClipboardEvent<HTMLInputElement>) {
+    const clipboardImage = Array.from(event.clipboardData?.items || [])
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!clipboardImage) return; // Normal URL pastes keep working.
+    event.preventDefault();
+    const file = clipboardImage.getAsFile();
+    if (!file) return;
+    if (selectedImages.length >= 8) return toast.error("Puedes añadir un máximo de 8 imágenes");
+    if (file.size > 8 * 1024 * 1024) return toast.error("La foto supera el máximo de 8 MB");
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(file.type)) {
+      return toast.error("Pega una foto JPG, PNG, WEBP, GIF o AVIF");
+    }
+    try {
+      const preview = await readImagePreview(file);
+      setSelectedImages((current) => current.length >= 8 ? current : [...current, {
+        id: `paste-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        preview,
+      }]);
+      setImageUrlInput("");
+      setImageUrlError("");
+      toast.success("Foto pegada y añadida a la galería. Puedes pegar otra.");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo pegar la imagen");
+    }
+  }
+
   async function handleAddImageUrl() {
     if (addingImageUrl) return;
     const value = imageUrlInput.trim();
@@ -1073,6 +1100,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                       setImageUrlInput(event.target.value);
                       setImageUrlError("");
                     }}
+                    onPaste={(event) => void handlePasteGalleryImage(event)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -1093,6 +1121,11 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                     {addingImageUrl ? "Importando…" : "+ Añadir URL"}
                   </button>
                 </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Si una web como Wallapop bloquea el enlace (HTTP 403), abre la foto en esa web,
+                  haz clic derecho → «Copiar imagen» y pégala aquí con Ctrl+V.
+                  Se añadirá a la galería sin sustituir las anteriores.
+                </p>
                 {!imageUrlError && selectedImages.length > 0 && selectedImages.length < 8 && (
                   <p className="mt-2 text-xs text-muted-foreground">Cada URL se añade a la galería sin sustituir las fotos anteriores. Puedes pegar otra después de importar.</p>
                 )}
