@@ -417,10 +417,10 @@ export const defaultSiteContent: SiteContent = {
 
 function mergeLinks(defaults: SiteLink[], incoming: unknown): SiteLink[] {
   if (!Array.isArray(incoming)) return defaults;
-  return defaults.map((item, index) => ({
-    ...item,
-    ...(incoming[index] && typeof incoming[index] === "object" ? incoming[index] : {}),
-  }));
+  return incoming.map((item, index) => ({
+    ...(defaults[index] || {}),
+    ...(item && typeof item === "object" ? item : {}),
+  })) as SiteLink[];
 }
 
 function copy<T>(value: T): T {
