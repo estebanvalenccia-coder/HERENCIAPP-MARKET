@@ -52,9 +52,43 @@ try {
   assert.equal(await mobile.locator('[data-storefront-component="home.hero"]').isVisible(), true);
   await page.screenshot({ path: "admin-e2e-desktop.png", fullPage: false });
   await mobile.screenshot({ path: "admin-e2e-mobile.png", fullPage: false });
+  for (const item of [
+    { path:"/productos", id:"products.intro" },
+    { path:"/servicios", id:"services.hero" },
+    { path:"/contacto", id:"contact.intro" },
+  ]) {
+    await page.goto(origin + item.path, { waitUntil:"domcontentloaded" });
+    await page.locator(`[data-storefront-component="${item.id}"]`).waitFor({timeout:30_000});
+    await mobile.goto(origin + item.path, { waitUntil:"domcontentloaded" });
+    await mobile.locator(`[data-storefront-component="${item.id}"]`).waitFor({timeout:30_000});
+  }
+
+  // Exercise the catalog's own editor preview rather than assuming only Home
+  // has a working draft channel.
+  await page.goto(origin + "/productos", { waitUntil:"domcontentloaded" });
+  await page.evaluate(() => {
+    const iframe=document.createElement("iframe");
+    iframe.id="admin-catalog-preview";
+    iframe.title="Prueba catálogo editable";
+    iframe.src="/productos?__herencia_preview=1";
+    iframe.style.width="900px"; iframe.style.height="600px";
+    document.body.appendChild(iframe);
+  });
+  const catalogPreview=page.frameLocator("#admin-catalog-preview");
+  await catalogPreview.locator('[data-storefront-component="products.intro"] h1').waitFor({timeout:30_000});
+  await page.evaluate(() => {
+    document.querySelector("#admin-catalog-preview").contentWindow.postMessage({
+      type:"herencia:editor:sync",
+      siteRaw: JSON.stringify({productsPage:{title:"CATÁLOGO PRIVADO DE PRUEBA"}}),
+    },window.location.origin);
+  });
+  await catalogPreview.locator('[data-storefront-component="products.intro"] h1')
+    .getByText("CATÁLOGO PRIVADO DE PRUEBA").waitFor({timeout:15_000});
+  assert.notEqual((await page.locator('[data-storefront-component="products.intro"] h1').textContent())?.trim(),
+    "CATÁLOGO PRIVADO DE PRUEBA", "A catalog preview must not replace the public catalogue");
   await mobile.close();
 
-  console.log("Admin visual smoke: public home, isolated draft, click-to-select, no accidental navigation, mobile render OK");
+  console.log("Admin visual smoke: isolated drafts and click selection on Home and Products; responsive Products, Services and Contact OK");
   await page.close();
 } finally {
   await browser.close();
