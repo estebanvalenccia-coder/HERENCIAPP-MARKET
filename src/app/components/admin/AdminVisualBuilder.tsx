@@ -991,9 +991,44 @@ export function AdminVisualBuilder({
 
       {controlPanelOpen && (
         <div className="fixed inset-0 z-[200] flex flex-col bg-[#fbfaf6]">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-white px-5 py-3">
-            <div><p className="text-lg font-black">Controles completos de la tienda</p><p className="text-xs text-slate-500">Los cambios se guardan en el borrador del editor visual. Publica cuando estén listos.</p></div>
-            <button type="button" onClick={() => setControlPanelOpen(false)} className="rounded-xl border px-4 py-2 text-sm font-black">Volver al editor</button>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3 shadow-sm sm:px-5">
+            <div>
+              <p className="text-lg font-black">Controles completos de la tienda</p>
+              <p className="text-xs text-slate-500">
+                {draftState === "guardando"
+                  ? "Guardando borrador…"
+                  : draftState === "pendiente"
+                    ? "Cambios pendientes de guardar"
+                    : "Borrador guardado · Publicar para aplicar a la web"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void saveDraftNow()}
+                disabled={draftState === "guardando" || publishing}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#95b69e] bg-white px-3 py-2 text-sm font-bold text-[#244b34] hover:bg-[#e8f2e9] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
+              >
+                <Save className="h-4 w-4" />
+                {draftState === "guardando" ? "Guardando…" : "Guardar borrador"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void publish()}
+                disabled={publishing || draftState === "guardando"}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#2f6848] px-3 py-2 text-sm font-black text-white hover:bg-[#234b35] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
+              >
+                {publishing ? "Publicando…" : "Guardar y publicar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setControlPanelOpen(false)}
+                disabled={publishing || draftState === "guardando"}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Volver al editor
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <AdminMarketExperience site={site} onChange={(next) => commit(next)} />
