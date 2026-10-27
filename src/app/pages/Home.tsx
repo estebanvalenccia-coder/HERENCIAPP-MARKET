@@ -505,7 +505,12 @@ export function Home() {
           <div className="grid gap-3 md:grid-cols-2">
             {spotlightCollections.map((collection) => (
               <Link key={collection.href} to={collection.href} className="group relative flex min-h-[215px] items-end overflow-hidden rounded-lg border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[245px] xl:min-h-[260px]">
-                {collection.imageUrl
+                {collection.imageUrl === REFERENCE_3D_VISUAL ? (
+                  <>
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,#6b8e59,#183e29_68%)]"/>
+                    <img src={REFERENCE_3D_VISUAL} alt="" className="absolute right-0 top-0 h-full w-[44%] object-cover object-center opacity-95 transition-transform duration-700 group-hover:scale-105" />
+                  </>
+                ) : collection.imageUrl
                   ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
                   : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
                 }
