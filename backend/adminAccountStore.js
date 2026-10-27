@@ -23,6 +23,14 @@ export async function initializeAdminAccounts() {
         created_at timestamptz not null default now(),
         password_changed_at timestamptz
       )`);
+      await neonPool.query(`create table if not exists herencia_admin_trusted_devices (
+        token_hash text primary key,
+        username text not null,
+        session_version integer,
+        created_at timestamptz not null default now(),
+        expires_at timestamptz not null,
+        last_used_at timestamptz
+      )`);
     })().catch((error) => { setupPromise = null; throw error; });
   }
   await setupPromise;
@@ -84,6 +92,31 @@ export async function bootstrapChristianFromEnvironment() {
     throw error;
   }
 }
+/** Owner-only account lifecycle updates; invalidate sessions after every change. */
+export async function manageAdminAccount(id, action, value) {
+  await initializeAdminAccounts();
+  const client = await neonPool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query("select * from herencia_admin_accounts where id=$1 for update", [id]);
+    if (!result.rows.length) throw new Error("Administrador no encontrado");
+    if (action === "status") {
+      if (!["active", "disabled"].includes(value)) throw new Error("Estado no válido");
+      await client.query("update herencia_admin_accounts set state=$2, session_version=session_version+1 where id=$1", [id,value]);
+    } else if (action === "role") {
+      if (!["admin","employee"].includes(value)) throw new Error("Rol no permitido");
+      await client.query("update herencia_admin_accounts set role=$2, session_version=session_version+1 where id=$1", [id,value]);
+    } else if (action === "reset_password") {
+      const hash = hashAdminPassword(value, { temporary: true });
+      await client.query("update herencia_admin_accounts set password_hash=$2,must_change_password=true,session_version=session_version+1 where id=$1", [id,hash]);
+    } else throw new Error("Acción desconocida");
+    const updated=await client.query("select * from herencia_admin_accounts where id=$1",[id]);
+    await client.query("commit");
+    return sanitizeAdminAccount(asAccount(updated.rows[0]));
+  } catch(error) { await client.query("rollback"); throw error; }
+  finally { client.release(); }
+}
+
 export async function updateAdminPassword(accountId, currentPassword, nextPassword) {
   await initializeAdminAccounts();
   const client = await neonPool.connect();
@@ -104,4 +137,31 @@ export async function updateAdminPassword(accountId, currentPassword, nextPasswo
   } finally {
     client.release();
   }
+}
+
+/** Device tokens are random secrets: only SHA-256 digests ever enter Neon. */
+export async function issueAdminTrustedDevice(username, sessionVersion = null) {
+  await initializeAdminAccounts();
+  const token = crypto.randomBytes(32).toString("base64url");
+  const digest = crypto.createHash("sha256").update(token).digest("hex");
+  await neonPool.query(
+    "insert into herencia_admin_trusted_devices(token_hash,username,session_version,expires_at) values($1,$2,$3,now()+interval '30 days')",
+    [digest, username, sessionVersion]
+  );
+  return token;
+}
+export async function verifyAdminTrustedDevice(token, username, sessionVersion = null) {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
+  await initializeAdminAccounts();
+  const digest = crypto.createHash("sha256").update(token).digest("hex");
+  const result = await neonPool.query(
+    "update herencia_admin_trusted_devices set last_used_at=now() where token_hash=$1 and username=$2 and session_version is not distinct from $3 and expires_at > now() returning token_hash",
+    [digest, username, sessionVersion]
+  );
+  return result.rowCount === 1;
+}
+export async function revokeAdminTrustedDevice(token) {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return;
+  await initializeAdminAccounts();
+  await neonPool.query("delete from herencia_admin_trusted_devices where token_hash=$1", [crypto.createHash("sha256").update(token).digest("hex")]);
 }
