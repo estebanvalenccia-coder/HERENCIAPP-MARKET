@@ -430,11 +430,30 @@ export function AdminMarketExperience({
   };
 
   const patchHome = (value: Partial<MarketExperienceContent["home"]>) => {
-    setMarket({ ...market, home: { ...market.home, ...value } });
+    const controls = { ...market.componentControls };
+    if (value.sections) {
+      for (const [key, enabled] of Object.entries(value.sections)) {
+        const id = `home.${key}`;
+        controls[id] = { ...(controls[id] || {}), enabled };
+      }
+    }
+    setMarket({
+      ...market,
+      home: { ...market.home, ...value },
+      componentControls: controls,
+    });
   };
 
   const patchLayout = (key: keyof MarketExperienceContent["layout"], enabled: boolean) => {
-    patch({ layout: { ...market.layout, [key]: enabled } });
+    const id = key === "footer" ? "footer.main" : `header.${key}`;
+    setMarket({
+      ...market,
+      layout: { ...market.layout, [key]: enabled },
+      componentControls: {
+        ...market.componentControls,
+        [id]: { ...(market.componentControls[id] || {}), enabled },
+      },
+    });
   };
 
   const patchPromo = (
@@ -998,7 +1017,9 @@ export function AdminMarketExperience({
               type="checkbox"
               checked={market.sales.enabled}
               onChange={(event) =>
-                setMarket({ ...market, sales: { ...market.sales, enabled: event.target.checked } })
+                setMarket({ ...market, sales: { ...market.sales, enabled: event.target.checked }, componentControls: {
+                  ...market.componentControls, "floating.sales": { ...(market.componentControls["floating.sales"] || {}), enabled: event.target.checked },
+                } })
               }
             />
             Mostrar “Crear con Herencia”
