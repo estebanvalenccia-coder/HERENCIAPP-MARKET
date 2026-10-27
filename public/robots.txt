@@ -8,3 +8,4 @@ Disallow: /login
 Disallow: /recuperar-contrasena
 
 Sitemap: https://www.herenciamarket.es/sitemap.xml
+Sitemap: https://www.herenciamarket.es/sitemap-productos.xml
