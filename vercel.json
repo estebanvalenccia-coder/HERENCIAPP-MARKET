@@ -32,7 +32,11 @@
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/google-shopping.xml",
+      "destination": "/api/merchant-feed"
+    },
+    {
+      "source": "/api/((?!merchant-feed(?:/|$)).*)",
       "destination": "https://herenciapp-market-production.up.railway.app/api/$1"
     },
     {
