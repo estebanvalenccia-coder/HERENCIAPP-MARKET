@@ -175,11 +175,21 @@ export function Home() {
   // shorter editorial banner, but continue to honor other admin-set sizes.
   const heroConfiguredHeight = Number(heroDesign?.minHeight || 460);
   const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 460 : heroConfiguredHeight));
-  const heroImage =
+  const originalHeroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
+  const referenceMode = market.home.referenceCategories !== false;
+  const heroImage = referenceMode
+    ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
+    : originalHeroImage;
+  const displayHeroTitle = referenceMode
+    ? market.home.referenceHeroTitle || market.home.title
+    : market.home.title;
+  const displayHeroDescription = referenceMode
+    ? market.home.referenceHeroDescription || market.home.description
+    : market.home.description;
 
   const featured = useMemo(() => {
     const rows = [...catalog].sort(
@@ -405,10 +415,10 @@ export function Home() {
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
-              {market.home.title}
+              {displayHeroTitle}
             </h1>
             <p className="mt-3 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
-              {market.home.description}
+              {displayHeroDescription}
             </p>
             <div
               className="mt-8 flex flex-wrap"
