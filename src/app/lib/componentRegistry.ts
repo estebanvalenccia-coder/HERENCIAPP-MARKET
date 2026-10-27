@@ -4,7 +4,7 @@ export type StorefrontComponentKey =
   | "header.announcement" | "header.search" | "header.account" | "header.favorites" | "header.cart"
   | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.delivery" | "home.categoryStrip"
   | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
-  | "home.featured" | "home.promotions" | "home.trust" | "home.bottomCta"
+  | "home.featured" | "home.promotions" | "home.creations3d" | "home.trust" | "home.bottomCta"
   | "floating.herenciaIA" | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
 export type StorefrontComponentControl = {
@@ -44,6 +44,7 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"home.services", name:"Servicios", location:"home", editingSection:"servicios", description:"Tarjetas de servicios" },
   { id:"home.featured", name:"Productos destacados", location:"home", editingSection:"portada", description:"Selección de productos disponibles" },
   { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Banners Dulce y Moda" },
+  { id:"home.creations3d", name:"Creaciones 3D", location:"home", editingSection:"portada", description:"Escaparate 3D con productos reales seleccionables" },
   { id:"home.trust", name:"Ventajas de Herencia", location:"home", editingSection:"portada", description:"Beneficios de compra y asistencia" },
   { id:"home.bottomCta", name:"Banner inferior", location:"home", editingSection:"promociones", description:"Llamada a la acción de la portada" },
   { id:"floating.herenciaIA", name:"Herenc(IA) flotante", location:"floating", editingSection:"navegacion", description:"Asistente de IA en botón flotante, sujeto a disponibilidad y controles de visibilidad" },
