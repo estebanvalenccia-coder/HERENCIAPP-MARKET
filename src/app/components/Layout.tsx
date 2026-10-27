@@ -13,6 +13,7 @@ import {
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
+import { isComponentAllowed } from "../lib/componentRegistry";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
 import { MarketNavigationMenu } from "./MarketNavigationMenu";
@@ -451,7 +452,7 @@ export function Layout() {
         <SalesChatWidget />
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.support" controls={market.componentControls} now={scheduleNow}>
-        <FloatingCustomerSupportV2 />
+        <FloatingCustomerSupportV2 salesButtonVisible={market.sales.enabled && isComponentAllowed(market.componentControls, "floating.sales", scheduleNow)} salesPosition={market.sales.position} salesBottomOffset={market.sales.bottomOffset} />
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.accessibility" controls={market.componentControls} now={scheduleNow}>
         <AccessibilityPanel />
