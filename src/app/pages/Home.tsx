@@ -16,7 +16,7 @@ import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.j
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
-import { useAdminPreviewSite } from "../lib/useAdminPreviewSite";
+import { isEmbeddedAdminPreview, useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
@@ -81,7 +81,7 @@ export function Home() {
 
   useEffect(() => {
     const load = () => {
-      setSite(parseSiteContent(backendStorage.getItem("siteContent")));
+      if (!isEmbeddedAdminPreview()) setSite(parseSiteContent(backendStorage.getItem("siteContent")));
       setColombiaDelivery(parseColombiaDeliverySettings(backendStorage.getItem("internationalDeliverySettings")));
       try {
         const saved = JSON.parse(backendStorage.getItem("adminProducts") || "[]");
