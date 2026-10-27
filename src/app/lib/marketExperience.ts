@@ -133,6 +133,12 @@ export type MarketExperienceContent = {
     imageUrl: string;
     values: Array<{ title: string; description: string }>;
   };
+  support: {
+    position: "left" | "right";
+    bottomOffset: number;
+    buttonColor: string;
+    buttonLabel: string;
+  };
   sales: {
     enabled: boolean;
     position: "left" | "right";
@@ -352,6 +358,12 @@ export const defaultMarketExperience: MarketExperienceContent = {
       { title: "Barcelona", description: "Nuestra referencia de servicio y comunicación local es Barcelona." },
     ],
   },
+  support: {
+    position: "right",
+    bottomOffset: 96,
+    buttonColor: "#315b42",
+    buttonLabel: "Atención al cliente",
+  },
   sales: {
     enabled: true,
     position: "right",
@@ -437,6 +449,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const modaIncoming = incoming.moda || {};
   const aboutIncoming = incoming.about || {};
   const salesIncoming = incoming.sales || {};
+  const supportIncoming = incoming.support || {};
   const savedHeroImageUrl = String((homeIncoming as any).heroImageUrl || "").trim();
   const invalidDataUrl = savedHeroImageUrl.startsWith("data:") && !savedHeroImageUrl.startsWith("data:image/");
   const resolvedHeroImageUrl =
@@ -470,6 +483,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...aboutIncoming,
       values: mergeList(defaultMarketExperience.about.values, aboutIncoming.values),
     },
+    support: { ...defaultMarketExperience.support, ...supportIncoming },
     sales: {
       ...defaultMarketExperience.sales,
       ...salesIncoming,
