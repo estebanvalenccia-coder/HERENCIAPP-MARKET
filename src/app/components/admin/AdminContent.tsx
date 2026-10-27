@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Image as ImageIcon, Monitor, RotateCcw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
@@ -190,9 +190,12 @@ export function AdminContent({
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
   const [saving, setSaving] = useState(false);
   const [visualMode, setVisualMode] = useState(false);
+  const publishedRawAtLoadRef = useRef<string | null>(null);
 
   const load = () => {
-    const next = parseSiteContent(backendStorage.getItem("siteContent"));
+    const latestRaw = backendStorage.getItem("siteContent");
+    publishedRawAtLoadRef.current = latestRaw;
+    const next = parseSiteContent(latestRaw);
     const heroLegacy = readLegacyBanner("heroBanner");
     const ctaLegacy = readLegacyBanner("ctaBanner");
     setSite({
@@ -209,6 +212,9 @@ export function AdminContent({
   async function saveAll() {
     setSaving(true);
     try {
+      if ((backendStorage.getItem("siteContent") || null) !== publishedRawAtLoadRef.current) {
+        throw new Error("El contenido publicado cambió desde que abriste la administración. Recarga la página y revisa los cambios antes de publicar.");
+      }
       // La portada visible de Home usa marketExperience.home.heroImageUrl.
       // Mantener ambos modelos sincronizados evita que el editor legacy y el
       // editor de HERENCIA MARKET se sobrescriban entre sí al publicar.
@@ -261,6 +267,7 @@ export function AdminContent({
         throw new Error(results.find((result) => !result.ok)?.error || "No se pudo sincronizar todo");
       }
 
+      publishedRawAtLoadRef.current = JSON.stringify(publishableSite);
       setSite(publishableSite);
       toast.success("Contenido guardado en el backend y publicado");
     } catch (error: any) {
