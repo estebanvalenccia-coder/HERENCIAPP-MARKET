@@ -5,6 +5,7 @@ import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem
 import { AdminComponentRegistry } from "./AdminComponentRegistry";
 import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
 import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
+import { AdminCampaigns } from "./AdminCampaigns";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -1043,6 +1044,8 @@ export function AdminMarketExperience({
             </div>
           );
         })}
+
+        <AdminCampaigns campaigns={market.home.campaigns} onChange={(campaigns) => patchHome({ campaigns })} />
 
         <div className="rounded-2xl border border-border bg-white p-5">
           <div id="market-editor-sales" className="mb-5 flex items-center gap-2 scroll-mt-6">
