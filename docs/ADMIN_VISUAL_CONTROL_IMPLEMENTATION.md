@@ -90,3 +90,15 @@
 - Los controles de catálogo, autenticación, cobro y stock no se alteran desde esta configuración visual.
 - Comprobar los estados del calendario en cambios de horario, y los controles que ocultan un acceso importante como carrito o soporte.
 - Esta propuesta sigue siendo borrador hasta completar QA, conflictos y las fases pendientes del prompt.
+
+## Avance de publicación segura y diagnóstico
+
+- `sitePublicationValidation.mjs` valida protocolos de enlaces, submenús, fechas ISO con zona horaria y enlaces legales obligatorios antes de publicar en ambos editores.
+- `AdminSiteDiagnostics` avisa de enlaces duplicados, imágenes ausentes, componentes sin destino y secciones activadas pero ocultas en todos los dispositivos. No hace peticiones externas ni asegura que un enlace remoto funcione.
+- Incluso con el pie de página opcional desactivado se conserva una zona legal con privacidad, cookies, términos y copyright.
+- El publicador comprueba si su copia publicada local difiere de la que abrió inicialmente y, de ser así, impide sobrescribirla de forma inadvertida. Sigue pendiente el bloqueo optimista *atómico* en servidor.
+- `ensureBuilderBlocks` distingue el estado legado de una lista de bloques intencionadamente vacía mediante `blocksInitialized`.
+- `marketExperience.home.sectionOrder` controla el orden de once secciones reales sin reescribir los componentes. Las tarjetas y servicios mantienen controles independientes.
+- Las pruebas de publicación se amplían con `sitePublicationValidation.test.js` y casos de calendario ambiguo.
+
+**Precaución:** el despliegue permanece bloqueado hasta comprobar el comportamiento en navegadores reales, permisos administrativos, actualización de base de la rama frente a cambios paralelos y revisión funcional completa.
