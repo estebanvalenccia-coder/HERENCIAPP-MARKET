@@ -501,6 +501,8 @@ export function AdminVisualBuilder({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [controlPanelOpen, setControlPanelOpen] = useState(false);
   const [realPreview, setRealPreview] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const livePreviewRef = useRef<HTMLIFrameElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
@@ -641,6 +643,47 @@ export function AdminVisualBuilder({
       next = withMarketExperience(next, { ...market, navigation });
     }
     commit(next);
+  }
+
+  function saveReusableTemplate() {
+    const block = blocks.find((item) => item.id === selected);
+    const name = templateName.trim();
+    if (!block || !name) { toast.error("Selecciona una sección y escribe el nombre de su plantilla"); return; }
+    if ((site.builder.templates || []).length >= 30) { toast.error("El máximo es 30 plantillas. Elimina una plantilla antigua."); return; }
+    const template = {
+      id: makeBuilderId("template"),
+      name: name.slice(0, 70),
+      createdAt: new Date().toISOString(),
+      block: clone(block),
+    };
+    updateSite((current) => ({
+      ...current, builder: { ...current.builder, templates: [...(current.builder.templates || []), template] },
+    }));
+    setTemplateName("");
+    setSelectedTemplateId(template.id);
+    toast.success("Plantilla guardada en el borrador");
+  }
+
+  function insertReusableTemplate() {
+    const template = (site.builder.templates || []).find((item) => item.id === selectedTemplateId);
+    if (!template) { toast.error("Elige una plantilla válida"); return; }
+    const id = makeBuilderId(template.block.type);
+    const newBlock = { ...clone(template.block), id, name: template.name, visible: true };
+    updateSite((current) => ({
+      ...current, builder: { ...current.builder, blocksInitialized: true, blocks: [...ensureBuilderBlocks(current), newBlock] },
+    }));
+    setSelected(id);
+    setPageMode("home");
+    toast.success("Sección añadida desde tu biblioteca");
+  }
+
+  function deleteReusableTemplate() {
+    const template = (site.builder.templates || []).find((item) => item.id === selectedTemplateId);
+    if (!template || !window.confirm(`¿Eliminar la plantilla guardada «${template.name}»? Las secciones ya insertadas no cambiarán.`)) return;
+    updateSite((current) => ({
+      ...current, builder: { ...current.builder, templates: (current.builder.templates || []).filter((item) => item.id !== selectedTemplateId) },
+    }));
+    setSelectedTemplateId("");
   }
 
   function updateBlock(id: string, mutator: (block: BuilderBlock) => BuilderBlock) {
@@ -1104,6 +1147,22 @@ export function AdminVisualBuilder({
                   </div>
                 ))}
 
+                <div className="mt-4 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-black text-emerald-900">Biblioteca de secciones</p>
+                  <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Nombre de la plantilla" aria-label="Nombre de la plantilla"
+                    maxLength={70} className="w-full rounded-lg border bg-white p-2 text-xs" />
+                  <button type="button" onClick={saveReusableTemplate} disabled={!blocks.some((item) => item.id === selected)}
+                    className="w-full rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Guardar sección seleccionada</button>
+                  <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)} aria-label="Plantilla guardada"
+                    className="w-full rounded-lg border bg-white p-2 text-xs">
+                    <option value="">Selecciona plantilla guardada</option>
+                    {(site.builder.templates || []).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" disabled={!selectedTemplateId} onClick={insertReusableTemplate} className="rounded-lg border bg-white p-2 text-xs font-bold disabled:opacity-40">Insertar</button>
+                    <button type="button" disabled={!selectedTemplateId} onClick={deleteReusableTemplate} className="rounded-lg border border-rose-200 bg-white p-2 text-xs font-bold text-rose-800 disabled:opacity-40">Eliminar</button>
+                  </div>
+                </div>
                 <div className="relative pt-1">
                   <button
                     type="button"
