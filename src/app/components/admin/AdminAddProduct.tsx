@@ -560,12 +560,15 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
           },
         ];
       });
+      // Clear only after successful persistence; the gallery retains all previous photos.
       setImageUrlInput("");
-      toast.success("Imagen importada y guardada en la biblioteca multimedia");
+      setImageUrlError("");
+      toast.success("Foto añadida a la galería. Puedes pegar otra URL.");
     } catch (error: any) {
       const message = error?.message || "No se pudo importar la imagen. Prueba un enlace directo y público a JPG, PNG, WEBP, GIF o AVIF.";
+      // Keep the failed URL available for correction without touching existing photos.
       setImageUrlError(message);
-      toast.error(message);
+      toast.error("No se añadió la foto: " + message);
     } finally {
       setAddingImageUrl(false);
     }
@@ -1055,7 +1058,10 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               )}
 
               <div className="mt-3 rounded-2xl border border-border bg-background p-3">
-                <p className="text-sm font-black">Añadir imagen por URL o enlace de producto</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-black">Añadir imagen por URL o enlace de producto</p>
+                  <span className="text-xs font-semibold text-muted-foreground" aria-live="polite">{selectedImages.length} de 8 fotos</span>
+                </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Pega la URL directa de una foto o el enlace de un producto público. Herencia intentará extraer su imagen y guardarla en la biblioteca multimedia.
                 </p>
@@ -1087,6 +1093,12 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                     {addingImageUrl ? "Importando…" : "+ Añadir URL"}
                   </button>
                 </div>
+                {!imageUrlError && selectedImages.length > 0 && selectedImages.length < 8 && (
+                  <p className="mt-2 text-xs text-muted-foreground">Cada URL se añade a la galería sin sustituir las fotos anteriores. Puedes pegar otra después de importar.</p>
+                )}
+                {selectedImages.length >= 8 && (
+                  <p className="mt-2 text-xs font-semibold text-muted-foreground">Has alcanzado el máximo de 8 fotos. Elimina alguna para añadir otra.</p>
+                )}
                 {imageUrlError && (
                   <p role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                     {imageUrlError} Si el proveedor protege sus fotografías, abre la imagen en su web y copia su URL directa, o utiliza «Subir fotos».
