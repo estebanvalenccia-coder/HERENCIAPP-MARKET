@@ -386,7 +386,6 @@ export const defaultMarketExperience: MarketExperienceContent = {
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
     helperText: "Solo compras, personalización y productos de Herencia.",
     quickActions: [
-      { id: "bouquet", label: "Crear un ramo", prompt: "Quiero crear un ramo personalizado con las flores reales disponibles." },
       { id: "plant", label: "Plantas", prompt: "Muéstrame plantas disponibles para comprar." },
       { id: "sweet", label: "Dulces", prompt: "Muéstrame dulces, tartas, chocolates, galletas y cajas regalo disponibles." },
       { id: "gardening", label: "Jardinería", prompt: "Muéstrame productos de jardinería disponibles: macetas, herramientas, riego, fertilizantes y accesorios." },
