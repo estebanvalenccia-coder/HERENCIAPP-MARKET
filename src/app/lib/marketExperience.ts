@@ -120,6 +120,7 @@ export type MarketExperienceContent = {
     categoriesTitle: string;
     categoryGridLimit: number;
     referenceNavigation?: boolean;
+    referenceCategories?: boolean;
     categories: MarketCard[];
     campaigns: MarketCampaign[];
     servicesTitle: string;
@@ -240,6 +241,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     categoriesTitle: "Todo para un estilo de vida más verde",
     categoryGridLimit: 8,
     referenceNavigation: true,
+    referenceCategories: true,
     campaigns: [],
     categories: [
       {
