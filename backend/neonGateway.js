@@ -51,6 +51,7 @@ import { universalDay, universalLedgerKey, readUniversalLedger } from "./univers
 import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
 import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
 import { publishNeonSiteContent } from "./siteContentPublication.js";
+import { isTrustedSitePublishOrigin } from "./sitePublishOrigin.mjs";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -397,14 +398,13 @@ const server=http.createServer(async(req,res)=>{try{
   }
 
   if(path==="/api/admin/site-content/publish"&&req.method==="POST"){
-    if(String(req.headers["sec-fetch-site"]||"")==="cross-site")return json(res,403,{error:"Origen no permitido"});
-    const origin=String(req.headers.origin||"");
-    if(origin){
-      try{const supplied=new URL(origin).host;const actual=String(req.headers["x-forwarded-host"]||req.headers.host||"").split(",")[0].trim();if(supplied!==actual)return json(res,403,{error:"Origen no permitido"});}
-      catch{return json(res,403,{error:"Origen no permitido"});}
+    if(!isTrustedSitePublishOrigin(req.headers,process.env.CORS_ORIGIN)){
+      return json(res,403,{error:"El dominio no está autorizado para publicar contenido.",code:"SITE_PUBLISH_ORIGIN_DENIED"});
     }
     const actor=await siteEditorActor(req);
-    if(!actor)return json(res,403,{error:"Solo administradores autorizados pueden publicar el contenido."});
+    if(!actor){
+      return json(res,403,{error:"Tu sesión no tiene permiso de publicación. Comprueba que sigues conectado como propietario o administrador y vuelve a iniciar sesión si ha caducado.",code:"SITE_PUBLISH_ADMIN_REQUIRED"});
+    }
     try{
       const body=await bodyJson(req);
       if(!body || typeof body!=="object" || typeof body.nextRaw!=="string" || !("expectedRaw" in body)){
