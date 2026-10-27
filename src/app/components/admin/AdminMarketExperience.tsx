@@ -6,6 +6,7 @@ import { AdminComponentRegistry } from "./AdminComponentRegistry";
 import { AdminSiteDiagnostics } from "./AdminSiteDiagnostics";
 import { AdminCardDesignFields, AdminPromoDesignFields } from "./AdminVisualStyleFields";
 import { AdminCampaigns } from "./AdminCampaigns";
+import { AdminComponentAnalytics } from "./AdminComponentAnalytics";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -492,6 +493,7 @@ export function AdminMarketExperience({
       <div className="space-y-8 p-6">
         <AdminComponentRegistry market={market} onChange={setMarket} />
         <AdminSiteDiagnostics site={site} market={market} />
+        <AdminComponentAnalytics />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
