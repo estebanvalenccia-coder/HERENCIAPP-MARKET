@@ -10,6 +10,7 @@ import {
   type SiteContent,
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
+import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
 import { useAdminPreviewSite, isEmbeddedAdminPreview } from "../lib/useAdminPreviewSite";
 
@@ -171,7 +172,7 @@ export function Services() {
         </div>
 
         <div className="mt-9 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {market.home.services.map((service, index) => (
+          {market.home.services.filter((service) => service.visible !== false && isWithinPublicationWindow(service.schedule, scheduleNow)).map((service, index) => (
             <article
               id={ids[index] || `servicio-${index + 1}`}
               key={service.title}
