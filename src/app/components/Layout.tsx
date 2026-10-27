@@ -236,6 +236,29 @@ export function Layout() {
     ? { ...item, children: item.children.filter((child) => isMarketDestinationEnabled(market, child.href)) }
     : item);
 
+  // Reference storefront layout: commercial navigation driven by the original
+  // market configuration and product collection routes. The admin may disable the
+  // preset; visibility settings on existing nav items are respected.
+  const referenceMenu = [
+    { label: "Plantas", href: "/productos?coleccion=plantas", pattern: /plantas?/i },
+    { label: "Macetas", href: "/productos?buscar=macetas", pattern: /macetas?/i },
+    { label: "Creaciones 3D", href: "/productos?buscar=3D", pattern: /3d|impresi[oó]n/i },
+    { label: "Accesorios", href: "/productos?coleccion=jardineria", pattern: /accesorios|jardiner[ií]a/i },
+    { label: "Regalos de Colombia", href: "/colombia", pattern: /colombia|regalos/i },
+  ];
+  const referenceNavigation = referenceMenu.flatMap(({label, href, pattern}) => {
+    if (href === "/colombia" && !colombiaEnabled) return [];
+    const existing = market.navigation.find(item => pattern.test(item.label));
+    if (existing?.visible === false) return [];
+    const matched = visibleNavigation.find(item => pattern.test(item.label));
+    const homeCategory = market.home.categories.find(item => pattern.test(item.title));
+    if (homeCategory?.visible === false || !isMarketDestinationEnabled(market, matched?.href || href)) return [];
+    const item = matched || { label, href: homeCategory?.href || href };
+    return [{...item, label, href: item.href || href}];
+  });
+  const storefrontNavigation = market.home.referenceNavigation === false
+    ? visibleNavigation : referenceNavigation;
+
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
     const query = search.trim();
@@ -298,18 +321,22 @@ export function Layout() {
           } as CSSProperties}
         >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex min-h-[88px] items-center gap-6">
-              <Link to="/" className="shrink-0">
+            <div className="flex min-h-[68px] items-center gap-4">
+              <Link to="/" className="flex shrink-0 items-center gap-2">
                 <img
                   src={site.brand.logoUrl || logo}
                   alt={site.brand.logoAlt || site.brand.name}
                   className="w-auto object-contain"
-                  style={{ height: Math.max(28, Math.min(120, Number(site.builder.headerStyle.logoHeight) || 56)) }}
+                  style={{ height: Math.max(28, Math.min(65, Number(site.builder.headerStyle.logoHeight) || 50)) }}
                 />
+                <span className="hidden flex-col justify-center text-[#1d3828] sm:flex" aria-hidden="true">
+                  <span className="text-[19px] font-semibold leading-none tracking-[.15em]">HERENCIA</span>
+                  <span className="mt-1 text-[9px] font-semibold leading-none tracking-[.55em]">MARKET</span>
+                </span>
               </Link>
 
-              <nav className="hidden flex-1 flex-wrap items-center justify-center gap-x-1 gap-y-2 lg:flex">
-                {visibleNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
+              <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-0.5 lg:flex">
+                {storefrontNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
                   item.children?.length ? (
                     <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} active={isPathActive(location.pathname, item.href)} />
                   ) : (
@@ -329,8 +356,8 @@ export function Layout() {
               <div className="ml-auto flex items-center gap-2">
                 <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                   <div className="group relative hidden lg:block">
-                    <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md border border-[#d4dfd2] bg-[#f1f5ee] px-4 text-sm font-semibold text-[#315b42] transition hover:bg-[#e8f0e8]">
-                      <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
+                    <button type="button" className="inline-flex h-10 items-center gap-1 rounded-lg border border-[#edf0e8] bg-[#f8f7f2] px-2 text-xs font-semibold text-[#315b42] transition hover:bg-[#e8f0e8]">
+                      <span>{location.pathname === "/colombia" ? "CO" : "ES"}</span><ChevronDown className="h-3.5 w-3.5" />
                     </button>
                     <div className="pointer-events-none absolute right-0 top-full z-[90] w-72 pt-3 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                       <div className="overflow-hidden rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-2 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
@@ -402,7 +429,7 @@ export function Layout() {
             </div>
 
             <nav className="flex items-center gap-1 overflow-x-auto border-t border-[#eee9df] py-2 lg:hidden">
-              {visibleNavigation.filter((item) => item.showMobile !== false).map((item, index) =>
+              {storefrontNavigation.filter((item) => item.showMobile !== false).map((item, index) =>
                 item.children?.length ? (
                   <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} mobile active={isPathActive(location.pathname, item.href)} />
                 ) : (
