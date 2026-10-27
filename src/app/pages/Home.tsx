@@ -630,6 +630,13 @@ export function Home() {
                     {product.name}
                   </Link>
                   <p className="mt-2 text-base font-black text-[#315b42]">{money(price)}</p>
+                  {Number(product.rating || product.averageRating || 0) > 0 && (
+                    <p className="mt-1 text-xs text-[#bd871c]" aria-label={`Valoración ${Number(product.rating || product.averageRating).toFixed(1)} de 5`}>
+                      {"★".repeat(Math.max(0, Math.min(5, Math.round(Number(product.rating || product.averageRating)))))}
+                      {Number(product.reviewCount || product.reviewsCount || 0) > 0 &&
+                        <span className="ml-1 text-[#718076]">({Number(product.reviewCount || product.reviewsCount)})</span>}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => addToCart(product)}
