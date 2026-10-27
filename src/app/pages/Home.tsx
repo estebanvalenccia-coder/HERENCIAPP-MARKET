@@ -364,13 +364,13 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
-            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
               {market.home.title}
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
+            <p className="mt-3 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
               {market.home.description}
             </p>
             <div
@@ -434,8 +434,8 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.categoryStrip" controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
-        <div className="mx-auto max-w-7xl px-5 py-9 sm:px-8 lg:px-10">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
             {visibleHomeCategories.map((item) => (
               <Link key={item.title} to={item.href} className="group text-center">
                 <div className="mx-auto h-24 w-24 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2eee6] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md">
@@ -463,17 +463,17 @@ export function Home() {
       <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
-      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+      <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 pt-5 pb-3 sm:px-8 lg:px-10">
         {spotlightCollections.length > 0 && (
-          <div className="mb-10 grid gap-5 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             {spotlightCollections.map((collection) => (
-              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[265px] items-end overflow-hidden rounded-xl border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[340px]">
+              <Link key={collection.href} to={collection.href} className="group relative flex min-h-[215px] items-end overflow-hidden rounded-lg border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[245px] xl:min-h-[260px]">
                 {collection.imageUrl
                   ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
                   : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
                 }
                 <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#102b20]/50 to-transparent" />
-                <div className="relative max-w-[78%] p-7 sm:p-9">
+                <div className="relative max-w-[78%] p-5 sm:p-7">
                   <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">{collection.title}</h2>
                   <p className="mt-3 text-sm leading-6 text-white/90">{collection.subtitle}</p>
                   <span className="mt-5 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[#173d2a]">Explorar colección <ArrowRight className="h-4 w-4" /></span>
@@ -487,7 +487,7 @@ export function Home() {
             <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
               Nuestras categorías
             </p>
-            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">
+            <h2 className="mt-1 font-serif text-2xl font-normal tracking-tight sm:text-3xl">
               {market.home.categoriesTitle}
             </h2>
           </div>
@@ -496,35 +496,8 @@ export function Home() {
           </Link>
         </div>
 
-        {spotlightCollections.length === 0 && <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
-            <Link
-              key={item.title}
-              to={item.href}
-              className="group overflow-hidden rounded-[1.25rem] border border-[#e8e5da] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
-              style={{ backgroundColor: item.design?.backgroundColor || undefined, borderRadius: Math.max(0, Math.min(48, Number(item.design?.radius ?? 24))) }}
-            >
-              <div className="h-44 overflow-hidden bg-[#efece4]" style={{ height: `${Math.max(100, Math.min(300, Number(item.design?.imageHeight ?? 176))) }px` }}>
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                  style={{ objectPosition: item.design?.imagePosition || "center" }}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 px-5 py-5">
-                <div>
-                  <p className="font-black" style={{ color: item.design?.textColor || undefined }}>{item.title}</p>
-                  <p className="mt-1 text-xs text-[#718076]">{item.subtitle}</p>
-                </div>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f1efe8]">
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>}
+        {/* Existing category cards remain in admin; the homepage uses the reference's
+            compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
@@ -573,12 +546,10 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
-      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
+      <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#6d7d72]">
-              Selección Herencia
-            </p>
+            <p className="sr-only">Selección Herencia</p>
             <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{market.home.featuredTitle}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
               {market.home.featuredSubtitle}
@@ -605,7 +576,7 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-8 grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {featured.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
