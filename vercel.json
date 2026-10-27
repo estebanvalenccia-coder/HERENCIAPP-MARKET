@@ -32,7 +32,7 @@
   ],
   "rewrites": [
     {
-      "source": "/sitemap.xml",
+      "source": "/sitemap-productos.xml",
       "destination": "/api/seo-sitemap"
     },
     {
