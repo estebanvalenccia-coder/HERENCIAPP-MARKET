@@ -226,6 +226,40 @@ export function Home() {
     } : null),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
+  // Seven circular shelves follow the design reference. Every link resolves to
+  // the existing catalog, Colombia flow, or assistant; admin category entries
+  // override the displayed art and can disable individual destinations.
+  const shelfDefinitions = [
+    {title:"Plantas de interior", match:/interior/i, href:"/productos?coleccion=plantas&categoria=plantas-interior", image:"https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=320&q=85"},
+    {title:"Plantas de exterior", match:/exterior/i, href:"/productos?coleccion=plantas&categoria=plantas-exterior", image:"https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=320&q=85"},
+    {title:"Macetas", match:/macetas?/i, href:"/productos?buscar=macetas", image:"https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=320&q=85"},
+    {title:"Creaciones 3D", match:/3d|impresi[oó]n/i, href:"/productos?buscar=3D", image:"https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=320&q=85"},
+    {title:"Accesorios", match:/jardiner|accesorios/i, href:"/productos?coleccion=jardineria", image:"https://images.unsplash.com/photo-1617576683096-00fc8eecb3af?auto=format&fit=crop&w=320&q=85"},
+    {title:"Regalos de Colombia", match:/colombia|regalos/i, href:"/colombia", image:colombiaDelivery.heroImageUrl},
+    {title:"Detalles personalizados", match:/personaliz|detalles/i, href:"/productos?buscar=personalizados", image:"https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=320&q=85"},
+  ];
+  const referenceHomeCategories = shelfDefinitions.flatMap((definition) => {
+    if (definition.href === "/colombia" && !colombiaDelivery.enabled) return [];
+    const configured = market.home.categories.find((c) => definition.match.test(c.title));
+    if (configured && !visibleHomeCategories.includes(configured)) return [];
+    const plants = visibleHomeCategories.find((c) => /plantas?/i.test(c.title));
+    const fallback = definition.title.startsWith("Plantas") ? plants : undefined;
+    const category = configured || fallback;
+    const matchingProduct = catalog.find((p) =>
+      p.active !== false && !p.deletedAt && Boolean(p.image) &&
+      (definition.match.test(String(p.name || "")) || definition.match.test(String(p.category || "")))
+    );
+    const href = configured?.href || definition.href;
+    if (!isMarketDestinationEnabled(market, href)) return [];
+    return [{
+      title: configured?.title || definition.title,
+      subtitle: configured?.subtitle || "",
+      href,
+      imageUrl: configured?.imageUrl || matchingProduct?.image || category?.imageUrl || definition.image,
+    }];
+  });
+  const displayedHomeCategories = market.home.referenceCategories === false ? visibleHomeCategories : referenceHomeCategories;
+
   const toggleFavorite = async (productId: unknown) => {
     const id = String(productId);
     const next = favorites.includes(id) ? favorites.filter((entry) => entry !== id) : [...favorites, id];
@@ -436,12 +470,12 @@ export function Home() {
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
           <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
-            {visibleHomeCategories.map((item) => (
+            {displayedHomeCategories.map((item) => (
               <Link key={item.title} to={item.href} className="group text-center">
-                <div className="mx-auto h-24 w-24 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2eee6] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md">
+                <div className="mx-auto h-20 w-20 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2e6d5] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md sm:h-24 sm:w-24">
                   <img src={item.imageUrl} alt="" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />
                 </div>
-                <p className="mt-2 text-xs font-black leading-tight text-[#1f3b2d] sm:text-sm">
+                <p className="mx-auto mt-2 max-w-32 font-serif text-sm font-medium leading-tight text-[#1f3b2d] sm:text-base">
                   {item.title}
                 </p>
               </Link>
