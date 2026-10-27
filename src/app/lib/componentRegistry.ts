@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-import { isWithinPublicationWindow } from "./publicationSchedule.mjs";
 
 export type StorefrontComponentLocation = "header" | "home" | "floating" | "footer";
 export type StorefrontComponentKey =
@@ -60,34 +58,7 @@ export function getComponentControl(
   return controls?.[id] || {};
 }
 
-export function isComponentAllowed(
-  controls: Record<string, StorefrontComponentControl> | undefined,
-  id: string,
-  now = Date.now()
-) {
-  const setting = getComponentControl(controls, id);
-  return setting.enabled !== false && isWithinPublicationWindow(setting.schedule, now);
-}
-
-// Always return complete Tailwind tokens so the CSS compiler sees every branch.
-export function componentDeviceClasses(
-  controls: Record<string, StorefrontComponentControl> | undefined,
-  id: string
-): string {
-  const setting = getComponentControl(controls, id);
-  const key = `${setting.mobile !== false ? 1 : 0}${setting.tablet !== false ? 1 : 0}${setting.desktop !== false ? 1 : 0}`;
-  const classes: Record<string, string> = {
-    "000": "hidden",
-    "001": "hidden lg:contents",
-    "010": "hidden sm:contents lg:hidden",
-    "011": "hidden sm:contents",
-    "100": "contents sm:hidden",
-    "101": "contents sm:hidden lg:contents",
-    "110": "contents lg:hidden",
-    "111": "contents",
-  };
-  return classes[key] || "contents";
-}
+export { isComponentAllowed, componentDeviceClasses } from "./componentPolicy.mjs";
 
 export function checkComponentRegistry(registeredIds: readonly string[] = STOREFRONT_COMPONENT_REGISTRY.map((item) => item.id)) {
   const duplicates = registeredIds.filter((id, index) => registeredIds.indexOf(id) !== index);
