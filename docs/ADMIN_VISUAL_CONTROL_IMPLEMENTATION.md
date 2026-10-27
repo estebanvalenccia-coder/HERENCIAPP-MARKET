@@ -102,3 +102,16 @@
 - Las pruebas de publicación se amplían con `sitePublicationValidation.test.js` y casos de calendario ambiguo.
 
 **Precaución:** el despliegue permanece bloqueado hasta comprobar el comportamiento en navegadores reales, permisos administrativos, actualización de base de la rama frente a cambios paralelos y revisión funcional completa.
+
+## Avance de estilos específicos y botones flotantes
+
+- Diseño individual para tarjetas de categorías y servicios: fondo, color de título, esquinas, altura y encuadre de imagen. Son campos guardados con cada tarjeta y aplicados en la portada.
+- Banners promocionales: altura mínima, borde redondeado, opacidad del degradado, posición de imagen y alineación del contenido.
+- Límites editables para la cuadrícula de categorías (0 significa todas) y para productos destacados.
+- La asistencia al cliente se reposiciona automáticamente cuando el botón flotante de Herencia Sales utiliza la misma esquina y una altura que lo cubriría; preserva el lado de soporte existente cuando no hay colisión.
+
+## Comprobaciones aún pendientes
+
+- Validación visual manual en móviles pequeños, tablets y escritorios (colores, espacios, stacking de widgets, orden CSS, teclado y foco).
+- Estructura de componentes de registro para cualquier desarrollo nuevo no incluido entre los 21 elementos actuales.
+- Versionado/publicación transaccional y control de roles del backend, campañas/plantillas, analítica y cuadro completo de propiedades para el resto de componentes.
