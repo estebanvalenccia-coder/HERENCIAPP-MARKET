@@ -312,7 +312,7 @@ function mergeObject<T extends Record<string, any>>(base: T, incoming: unknown):
 function mergeList<T extends Record<string, any>>(base: T[], incoming: unknown): T[] {
   // An explicitly empty list means "no items"; never repopulate removed items.
   if (!Array.isArray(incoming)) return JSON.parse(JSON.stringify(base));
-  return incoming.map((item) => ({ ...(item || {}) })) as T[];
+  return incoming.map((item, index) => ({ ...(base[index] || {}), ...(item || {}) })) as T[];
 }
 
 function mergeNavigation(base: SiteLink[], incoming: unknown): SiteLink[] {
