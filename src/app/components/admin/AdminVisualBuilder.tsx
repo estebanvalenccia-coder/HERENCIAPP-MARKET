@@ -41,7 +41,7 @@ import {
   syncBuilderToLegacy,
 } from "../../lib/siteContent";
 import { StorefrontBlock } from "../site/StorefrontBlock";
-import { getMarketExperience } from "../../lib/marketExperience";
+import { getMarketExperience, withMarketExperience } from "../../lib/marketExperience";
 import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
 import { STOREFRONT_COMPONENT_REGISTRY, isComponentAllowed } from "../../lib/componentRegistry";
 import { AdminMarketExperience } from "./AdminMarketExperience";
@@ -623,7 +623,24 @@ export function AdminVisualBuilder({
   }
 
   function updateSite(mutator: (current: SiteContent) => SiteContent) {
-    commit(mutator(clone(siteRef.current)));
+    const previous = clone(siteRef.current);
+    let next = mutator(clone(previous));
+    const legacyKeys = ["home", "products", "services"] as const;
+    // Changes made in the legacy header editor also update the actual market menu.
+    // This prevents the editor showing one label while the public storefront shows another.
+    const updates = legacyKeys.filter((key) =>
+      previous.navigation[key].label !== next.navigation[key].label ||
+      previous.navigation[key].href !== next.navigation[key].href
+    );
+    if (updates.length) {
+      const market = getMarketExperience(next);
+      const navigation = market.navigation.map((entry) => {
+        const key = updates.find((item) => entry.href === previous.navigation[item].href);
+        return key ? { ...entry, label: next.navigation[key].label, href: next.navigation[key].href } : entry;
+      });
+      next = withMarketExperience(next, { ...market, navigation });
+    }
+    commit(next);
   }
 
   function updateBlock(id: string, mutator: (block: BuilderBlock) => BuilderBlock) {
@@ -1262,9 +1279,7 @@ export function AdminVisualBuilder({
                 )}
               </button>
               <div className="hidden gap-4 text-xs md:flex">
-                <span>{site.navigation.home.label}</span>
-                <span>{site.navigation.products.label}</span>
-                <span>{site.navigation.services.label}</span>
+                {market.navigation.filter((item) => item.visible !== false && item.showDesktop !== false).slice(0, 5).map((item, index) => <span key={`${item.href}-${index}`}>{item.label}</span>)}
                 {herenciaSettings.enabled && <span>{site.navigation.herencia.label}</span>}
               </div>
             </div>
@@ -1584,6 +1599,7 @@ function HeaderEditor({
 }) {
   return (
     <div className="space-y-4">
+      <p className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">Los enlaces globales que edites aquí se sincronizan con el menú real. Para añadir, mover u ocultar los demás enlaces (Plantas, Jardinería, Dulce, etc.), utiliza «Controles ON/OFF».</p>
       <TextField label="Nombre de marca" value={site.brand.name} onChange={(name) => updateSite((current) => ({ ...current, brand: { ...current.brand, name } }))} />
       <TextField label="Texto alternativo del logo" value={site.brand.logoAlt} onChange={(logoAlt) => updateSite((current) => ({ ...current, brand: { ...current.brand, logoAlt } }))} />
       <ImageFields label="Logo" value={site.brand.logoUrl} onChange={(logoUrl) => updateSite((current) => ({ ...current, brand: { ...current.brand, logoUrl } }))} />
