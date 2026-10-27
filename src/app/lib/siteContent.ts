@@ -2,6 +2,7 @@ export type SiteLink = {
   label: string;
   href: string;
   visible?: boolean;
+  schedule?: { startAt?: string; endAt?: string };
 };
 
 export type BuilderBlockType =
