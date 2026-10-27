@@ -39,6 +39,14 @@ export function validateSitePublication(site) {
   checkHref("BannerInferior.boton", site?.cta?.button);
   checkArray("Footer.productos", site?.footer?.productLinks);
   checkArray("Footer.servicios", site?.footer?.serviceLinks);
+  for (const field of ["privacyHref", "cookiesHref", "termsHref"]) {
+    const value = site?.footer?.[field];
+    if (site?.footer && (typeof value !== "string" || !value.trim())) {
+      problems.push(`Footer.${field}: enlace legal obligatorio`);
+    } else if (typeof value === "string") {
+      checkHref(`Footer.${field}`, value);
+    }
+  }
 
   const market = site?.marketExperience || {};
   checkArray("Menú principal", market.navigation);
