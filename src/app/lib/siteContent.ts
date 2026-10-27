@@ -1,6 +1,7 @@
 export type SiteLink = {
   label: string;
   href: string;
+  visible?: boolean;
 };
 
 export type BuilderBlockType =
