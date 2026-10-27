@@ -17,6 +17,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { Privacy } from "./pages/Privacy";
 import { Cookies } from "./pages/Cookies";
 import { Terms } from "./pages/Terms";
+import { Returns } from "./pages/Returns";
 import { NotFound } from "./pages/NotFound";
 import { PlantPassport } from "./pages/PlantPassport";
 import { FAQ } from "./pages/FAQ";
@@ -28,7 +29,7 @@ import { ColombiaDelivery } from "./pages/ColombiaDelivery";
 
 export const router = createBrowserRouter([
   { path: "/", Component: Layout, children: [
-    { index:true, Component:Home }, { path:"productos", Component:Products }, { path:"crear-ramo", Component:BouquetBuilder }, { path:"producto/:id", Component:ProductDetail }, { path:"cuidados/:id", Component:PlantPassport }, { path:"faq", Component:FAQ }, { path:"campana/:slug", Component:CampaignPage }, { path:"servicios", Component:Services }, { path:"dulce", Component:Sweet }, { path:"moda", Component:Fashion }, { path:"nosotros", Component:About }, { path:"comunidad", Component:Community }, { path:"colombia", Component:ColombiaDelivery }, { path:"contacto", Component:Contact }, { path:"herencia", Component:HerencIA }, { path:"ia", Component:HerencIA }, { path:"carrito", Component:Cart }, { path:"checkout", Component:Checkout }, { path:"pedido-confirmado", Component:OrderConfirmed }, { path:"perfil", Component:Profile }, { path:"login", Component:Login }, { path:"recuperar-contrasena", Component:ResetPassword }, { path:"privacidad", Component:Privacy }, { path:"cookies", Component:Cookies }, { path:"terminos", Component:Terms }, { path:"*", Component:NotFound }
+    { index:true, Component:Home }, { path:"productos", Component:Products }, { path:"crear-ramo", Component:BouquetBuilder }, { path:"producto/:id", Component:ProductDetail }, { path:"cuidados/:id", Component:PlantPassport }, { path:"faq", Component:FAQ }, { path:"campana/:slug", Component:CampaignPage }, { path:"servicios", Component:Services }, { path:"dulce", Component:Sweet }, { path:"moda", Component:Fashion }, { path:"nosotros", Component:About }, { path:"comunidad", Component:Community }, { path:"colombia", Component:ColombiaDelivery }, { path:"contacto", Component:Contact }, { path:"herencia", Component:HerencIA }, { path:"ia", Component:HerencIA }, { path:"carrito", Component:Cart }, { path:"checkout", Component:Checkout }, { path:"pedido-confirmado", Component:OrderConfirmed }, { path:"perfil", Component:Profile }, { path:"login", Component:Login }, { path:"recuperar-contrasena", Component:ResetPassword }, { path:"privacidad", Component:Privacy }, { path:"cookies", Component:Cookies }, { path:"terminos", Component:Terms }, { path:"politica-de-devoluciones", Component:Returns }, { path:"*", Component:NotFound }
   ]},
   { path:"/admin", Component:AdminDashboard },
 ]);
