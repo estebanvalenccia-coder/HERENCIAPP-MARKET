@@ -539,6 +539,7 @@ export function Layout() {
                 onClick={() => {
                   localStorage.setItem("herencia_cookie_consent", "accepted");
                   localStorage.setItem("herencia_ads_consent_v1", "accepted");
+                  window.ttq?.grantConsent?.();
                   setCookieConsent("accepted");
                 }}
                 className="rounded-full bg-[#315b42] px-4 py-2 text-sm font-black text-white"
