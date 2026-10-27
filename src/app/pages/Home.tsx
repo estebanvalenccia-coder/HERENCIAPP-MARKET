@@ -287,6 +287,30 @@ export function Home() {
       && (product.trackInventory === false || Number(product.stock || 0) > 0 || (Array.isArray(product.variants) && product.variants.some((variant: any) => Number(variant.stock || 0) > 0)));
   }).slice(0, 4), [catalog]);
 
+
+  // A curated 3D shelf is purely a presentation of existing products. Removing
+  // a product ID here never changes the shared catalog, stock or prices.
+  const storefrontCreations3D = useMemo(() => {
+    const config = market.home.creations3D;
+    const eligible = catalog.filter((product) => {
+      const price = Number(product?.onSale && product?.salePrice ? product.salePrice : product?.price || 0);
+      const available = product?.trackInventory === false || Number(product?.stock || 0) > 0 ||
+        (Array.isArray(product?.variants) && product.variants.some((variant: any) => Number(variant?.stock || 0) > 0));
+      return product && product.active !== false && !product.deletedAt &&
+        !["draft", "archived", "inactive"].includes(String(product.status || "active")) &&
+        Boolean(product.image) && Number.isFinite(price) && price > 0 && available &&
+        isMarketDestinationEnabled(market, "/productos?coleccion=" + primaryCollectionOf(product));
+    });
+    const selected = config.mode === "manual"
+      ? config.productIds.map((id) => eligible.find((product) => String(product.id) === String(id))).filter(Boolean)
+      : eligible.filter((product) => {
+          const text = [product.name, product.category, product.subcategory, product.collection,
+            ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ");
+          return /(?:3d|impresi[oó]n\s*3d|maceta\s*3d|diseño\s*3d)/i.test(text);
+        });
+    return selected.slice(0, Math.max(1, Math.min(12, Number(config.limit || 4)))) as any[];
+  }, [catalog, market.home.creations3D, market.dulce.enabled, market.moda.enabled]);
+
   // Curated storefront collections are derived from the real, administrator-controlled cards.
   // Disabled collections remain disabled; no demo products or invented prices.
   const editorial3D = visibleHomeCategories.find((item) =>
@@ -793,6 +817,68 @@ export function Home() {
           </Link>
         ))}
       </section></StorefrontComponentBoundary>
+
+      
+      <StorefrontComponentBoundary id="home.creations3d" order={sectionOrder("creations3d")}
+        controls={market.componentControls} now={scheduleNow} enabled={sections.creations3d}>
+        <section aria-label="Creaciones 3D" className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
+          <div className="overflow-hidden rounded-2xl border border-[#d8e2d7] bg-[#eef1e8] md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="flex min-h-[235px] flex-col justify-center bg-gradient-to-r from-[#183e2c] to-[#315d42] p-7 text-white sm:p-9">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d5e8d5]">DISEÑADO EN HERENCIA</span>
+              <h2 className="mt-2 font-serif text-3xl font-medium sm:text-4xl">{market.home.creations3D.title}</h2>
+              <p className="mt-3 max-w-lg text-sm leading-6 text-white/85">{market.home.creations3D.subtitle}</p>
+              <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
+                className="mt-5 inline-flex w-fit items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-bold text-[#20442f] transition hover:-translate-y-0.5 hover:bg-[#e8f2e8]">
+                {market.home.creations3D.buttonLabel || "Explorar creaciones"}
+                <ArrowRight className="h-4 w-4"/>
+              </Link>
+            </div>
+            <div className="relative min-h-[210px] overflow-hidden bg-[#cdddc9]">
+              {(market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image) ? (
+                <img src={market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image}
+                  alt={market.home.creations3D.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 hover:scale-105"
+                  onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}/>
+              ) : (
+                <div className="flex h-full min-h-[210px] items-center justify-center bg-[radial-gradient(circle_at_center,#6b9877,#275138)]">
+                  <Sparkles className="h-20 w-20 text-[#e1f1dc]"/>
+                </div>
+              )}
+            </div>
+          </div>
+          {storefrontCreations3D.length > 0 && (
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {storefrontCreations3D.map((product) => {
+                const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
+                return (
+                  <article key={product.id} className="group relative overflow-hidden rounded-xl border border-[#e5e9df] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
+                    <button type="button" onClick={() => void toggleFavorite(product.id)}
+                      aria-label={(favorites.includes(String(product.id)) ? "Quitar de" : "Añadir a") + " favoritos: " + product.name}
+                      className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#244b35] shadow">
+                      <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
+                    </button>
+                    <Link to={"/producto/" + product.id} className="block aspect-[4/4.3] overflow-hidden bg-[#f0efe9]">
+                      <img src={product.image} alt={product.name} loading="lazy"
+                        onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"/>
+                    </Link>
+                    <div className="space-y-2 p-3">
+                      <Link to={"/producto/" + product.id} className="block min-h-[40px] text-sm font-semibold leading-snug text-[#1c3b29] hover:underline">{product.name}</Link>
+                      <p className="text-sm font-bold text-[#28563b]">{money(price)}</p>
+                      <button type="button" onClick={() => addToCart(product)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#244c34] px-3 py-2 text-xs font-bold text-white hover:bg-[#173b27]">
+                        <ShoppingCart className="h-4 w-4"/> Añadir al carrito
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          {storefrontCreations3D.length === 0 && (
+            <p className="mt-3 text-xs text-[#586d5d]">Explora nuestra sección de diseños 3D. Los productos disponibles aparecerán aquí cuando estén publicados y seleccionados desde Administración.</p>
+          )}
+        </section>
+      </StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.trust" order={sectionOrder("trust")} controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
       <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ebe7df] bg-[#faf9f5]">
