@@ -797,6 +797,12 @@ export const backendApi = {
     return request<{ authenticated: boolean; username?: string | null; role?: string | null; mustChangePassword?: boolean }>("/api/admin/session");
   },
 
+  async adminManageAccount(id: string, action: "status" | "role" | "reset_password", value: string) {
+    return request<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}`, {
+      method: "PATCH", body: JSON.stringify({ action, value }),
+    });
+  },
+
   async adminAccounts() {
     return request<{ users: Array<{ id: string; username: string; role: string; state: string; legacy?: boolean; mustChangePassword?: boolean }> }>("/api/admin/accounts");
   },
