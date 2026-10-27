@@ -14,6 +14,26 @@ const LEGACY_HOME_SECTION_ORDER = [
   "services", "featured", "promotions", "trust", "bottomCta",
 ];
 export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
+/** Optional shop-first template. It reuses all the existing home sections. */
+export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
+  "hero", "categoryStrip", "featured", "categoriesGrid", "trust",
+  "promotions", "services", "feed", "bottomCta", "delivery", "plantCta",
+];
+export type MarketHomeProductDisplay = {
+  mode: "featured" | "plants" | "all";
+  limit: number;
+  columns: 4 | 6 | 8;
+  filtersEnabled: boolean;
+  filterLabels: string[];
+};
+export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
+  mode: "featured",
+  limit: 16,
+  columns: 8,
+  filtersEnabled: true,
+  filterLabels: ["Todas", "Purificadoras", "Fáciles de cuidar", "Con flor", "Colgantes", "Tropicales", "Pequeñas", "Grandes"],
+};
+
 
 export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionId[] {
   if (!Array.isArray(incoming)) return [...DEFAULT_HOME_SECTION_ORDER];
@@ -132,6 +152,9 @@ export type MarketExperienceContent = {
     featuredTitle: string;
     featuredSubtitle: string;
     featuredLimit: number;
+    /** When omitted, use the legacy featured block with all admin settings intact. */
+    shopFirst?: boolean;
+    productDisplay?: MarketHomeProductDisplay;
     trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
   dulce: MarketPromo & {
@@ -348,6 +371,8 @@ export const defaultMarketExperience: MarketExperienceContent = {
     ],
     featuredTitle: "Productos destacados",
     featuredLimit: 6,
+    shopFirst: false,
+    productDisplay: DEFAULT_HOME_PRODUCT_DISPLAY,
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
     trust: [
       { title: "Calidad seleccionada", description: "Productos y servicios elegidos con cuidado." },
@@ -506,6 +531,17 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...homeIncoming,
       sections: { ...defaultMarketExperience.home.sections, ...(homeIncoming.sections || {}) },
       sectionOrder: normalizeHomeSectionOrder(homeIncoming.sectionOrder),
+      productDisplay: {
+        ...DEFAULT_HOME_PRODUCT_DISPLAY,
+        ...(homeIncoming.productDisplay || {}),
+        limit: Math.max(1, Math.min(48, Number(homeIncoming.productDisplay?.limit ?? DEFAULT_HOME_PRODUCT_DISPLAY.limit))),
+        columns: [4, 6, 8].includes(Number(homeIncoming.productDisplay?.columns))
+          ? Number(homeIncoming.productDisplay?.columns) as 4 | 6 | 8
+          : DEFAULT_HOME_PRODUCT_DISPLAY.columns,
+        filterLabels: Array.isArray(homeIncoming.productDisplay?.filterLabels)
+          ? homeIncoming.productDisplay.filterLabels.filter((name): name is string => typeof name === "string").slice(0, 12)
+          : [...DEFAULT_HOME_PRODUCT_DISPLAY.filterLabels],
+      },
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
       campaigns: Array.isArray(homeIncoming.campaigns) ? homeIncoming.campaigns : [],
