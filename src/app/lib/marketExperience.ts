@@ -20,6 +20,8 @@ export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
   "promotions", "services", "feed", "bottomCta", "delivery", "plantCta",
 ];
 export type MarketHomeProductDisplay = {
+  title: string;
+  subtitle: string;
   mode: "featured" | "plants" | "all";
   limit: number;
   columns: 4 | 6 | 8;
@@ -27,6 +29,8 @@ export type MarketHomeProductDisplay = {
   filterLabels: string[];
 };
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
+  title: "Plantas de interior",
+  subtitle: "Descubre nuestra selección de plantas para dar más vida a tu hogar.",
   mode: "featured",
   limit: 16,
   columns: 8,
