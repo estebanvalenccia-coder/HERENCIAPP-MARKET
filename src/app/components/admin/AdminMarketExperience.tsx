@@ -503,6 +503,31 @@ export function AdminMarketExperience({
                     onRemove={() => patch({ navigation: market.navigation.filter((_, i) => i !== index) })}
                   />
                   <AdminScheduleFields label={item.label} value={item.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, schedule } : current) })} />
+                  <div className="my-2 flex flex-wrap items-center gap-4 text-xs font-bold">
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={item.showDesktop !== false} onChange={(event) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, showDesktop: event.target.checked } : entry) })} /> Ordenador</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={item.showMobile !== false} onChange={(event) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, showMobile: event.target.checked } : entry) })} /> Móvil</label>
+                  </div>
+                  <details className="my-2 rounded-xl border border-[#dce6dc] bg-white p-3">
+                    <summary className="cursor-pointer text-xs font-black">Submenú · {(item.children || []).length} enlaces</summary>
+                    <div className="mt-3 space-y-3">
+                      {(item.children || []).map((child, childIndex) => (
+                        <div key={childIndex} className="space-y-2 rounded-xl border bg-[#fafcf9] p-3">
+                          <AdminElementControls label={child.label} visible={child.visible !== false}
+                            onToggle={(visible) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, visible } : link) } : entry) })}
+                            onMoveUp={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex - 1) } : entry) })}
+                            onMoveDown={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: reorderItem(entry.children || [], childIndex, childIndex + 1) } : entry) })}
+                            moveUpDisabled={childIndex === 0} moveDownDisabled={childIndex === (item.children || []).length - 1}
+                            onRemove={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).filter((_, j) => j !== childIndex) } : entry) })}
+                          />
+                          <Field label="Título" value={child.label} onChange={(label) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, label } : link) } : entry) })} />
+                          <Field label="Destino" value={child.href} onChange={(href) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, href } : link) } : entry) })} />
+                          <AdminScheduleFields label={child.label} value={child.schedule} onChange={(schedule) => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: (entry.children || []).map((link, j) => j === childIndex ? { ...link, schedule } : link) } : entry) })} />
+                        </div>
+                      ))}
+                      <AdminAddElement label="Añadir subenlace" onAdd={() => patch({ navigation: market.navigation.map((entry, i) => i === index ? { ...entry, children: [...(entry.children || []), { label: "Nuevo subenlace", href: "/productos", visible: false }] } : entry) })} />
+                    </div>
+                  </details>
+
                   <Field
                     label={`Enlace ${index + 1} · texto`}
                     value={item.label}
