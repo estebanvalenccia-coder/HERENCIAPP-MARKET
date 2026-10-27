@@ -366,7 +366,7 @@ function sign(value) {
 
 function createAdminToken(account = null) {
   const claims = account ? {
-    role: account.mustChangePassword ? "admin-onboarding" : "admin",
+    role: account.mustChangePassword ? "admin-onboarding" : account.role,
     iat: Date.now(), accountId: account.id, username: account.username,
     sessionVersion: account.sessionVersion,
   } : { role: "admin", iat: Date.now() };
@@ -1454,7 +1454,7 @@ app.use(async (req, _res, next) => {
     if (account && account.state === "active" &&
         account.username === claims.username &&
         account.sessionVersion === claims.sessionVersion &&
-        claims.role === (account.mustChangePassword ? "admin-onboarding" : "admin")) {
+        claims.role === (account.mustChangePassword ? "admin-onboarding" : account.role)) {
       req.verifiedAdminAccount = account;
     }
   } catch (error) {
