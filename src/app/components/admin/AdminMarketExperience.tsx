@@ -10,6 +10,7 @@ import { AdminComponentAnalytics } from "./AdminComponentAnalytics";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
+  DEFAULT_HOME_SECTION_ORDER,
   getMarketExperience,
   type MarketExperienceContent,
   type MarketHomeSectionId,
@@ -616,11 +617,16 @@ export function AdminMarketExperience({
           <div className="mb-5 rounded-xl border border-[#e0e9dd] bg-[#f5f9f5] p-4">
             <p className="mb-2 font-black">ON/OFF y posición de las secciones de Inicio</p>
             <p className="mb-4 text-xs text-muted-foreground">Arrastra las tarjetas o utiliza las flechas para cambiar el orden real de aparición en la tienda.</p>
+            <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
+              className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">
+              <Sparkles className="h-4 w-4" /> Aplicar orden del boceto de Herencia
+            </button>
+            <p className="mb-4 text-xs text-muted-foreground">El botón solo cambia el orden del borrador: usa Guardar y Publicar para reflejarlo en la tienda.</p>
             <div className="grid gap-2 md:grid-cols-2">
               {market.home.sectionOrder.map((key, index) => {
                 const names: Record<MarketHomeSectionId, string> = {
                   hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías redondas",
-                  plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Tarjetas de categorías",
+                  plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Colecciones y banners de portada",
                   services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales",
                   trust: "Beneficios", bottomCta: "Banner CTA inferior",
                 };
