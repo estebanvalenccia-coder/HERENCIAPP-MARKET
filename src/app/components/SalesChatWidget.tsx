@@ -1047,7 +1047,7 @@ export function SalesChatWidget() {
             {messages.length <= 1 ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
-                  {sales.quickActions.filter((action) => action.enabled !== false).map((action) => {
+                  {sales.quickActions.filter((action) => action.enabled !== false && action.id !== "bouquet").map((action) => {
                     const Icon = iconByAction[action.id] || Sparkles;
                     return (
                       <button
@@ -1081,7 +1081,6 @@ export function SalesChatWidget() {
             <div className="mb-2 flex flex-wrap gap-2">
               <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"><Camera className="h-4 w-4" /> Buscar por foto</button>
               <button type="button" onClick={openSpacePicker} className="flex items-center gap-2 rounded-full border border-[#315b42]/30 bg-[#eef2eb] px-3 py-2 text-xs font-bold text-[#315b42]"><ImageIcon className="h-4 w-4" /> Ver en mi espacio</button>
-              <a href="/crear-ramo" className="flex items-center gap-2 rounded-full border border-[#ded9cd] px-3 py-2 text-xs font-bold hover:bg-[#f5f1e9]"><Flower2 className="h-4 w-4" /> Creador manual</a>
             </div>
             <div className="flex items-end gap-2">
               <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={1} placeholder="Dime qué quieres comprar o crear…" className="max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-[#ded9cd] bg-white px-4 py-3 text-sm outline-none focus:border-[#315b42]" />
