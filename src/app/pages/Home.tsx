@@ -399,7 +399,7 @@ export function Home() {
 
   return (
     <div className="flex flex-col bg-[#fffdf9] text-[#173126]">
-      <StorefrontComponentBoundary id="home.hero" controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
+      <StorefrontComponentBoundary id="home.hero" order={sectionOrder("hero")} controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
       <section
         className="relative overflow-hidden"
         style={{
@@ -532,7 +532,7 @@ export function Home() {
         }
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
+      <StorefrontComponentBoundary id="home.delivery" order={sectionOrder("delivery")} controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
         <section style={{ order: sectionOrder("delivery") }} className="border-b border-[#d9e1d9] bg-[#edf4ee]">
           <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
             <div className="flex items-start gap-4">
@@ -550,7 +550,7 @@ export function Home() {
         </section>
       </StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.categoryStrip" controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
+      <StorefrontComponentBoundary id="home.categoryStrip" order={sectionOrder("categoryStrip")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
           <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
@@ -568,7 +568,7 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.plantCta" controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div style={{ order: sectionOrder("plantCta") }} className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
+      <StorefrontComponentBoundary id="home.plantCta" order={sectionOrder("plantCta")} controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div style={{ order: sectionOrder("plantCta") }} className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
         <Link
           to="/catalogo/plantas"
           className="inline-flex items-center gap-2 rounded-lg bg-[#254932] px-6 py-3.5 font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#173d2a]"
@@ -578,9 +578,9 @@ export function Home() {
         </Link>
       </div></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="home.feed" order={sectionOrder("feed")} controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
+      <StorefrontComponentBoundary id="home.categoriesGrid" order={sectionOrder("categoriesGrid")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
       <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 pt-5 pb-3 sm:px-8 lg:px-10">
         {spotlightCollections.length > 0 && (
           <div className="grid gap-3 md:grid-cols-2">
@@ -609,7 +609,7 @@ export function Home() {
             compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
+      <StorefrontComponentBoundary id="home.services" order={sectionOrder("services")} controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
       <section style={{ order: sectionOrder("services") }} className="bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="flex items-end justify-between gap-4">
@@ -654,7 +654,7 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
+      <StorefrontComponentBoundary id="home.featured" order={sectionOrder("featured")} controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
       <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -749,7 +749,7 @@ export function Home() {
         )}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
+      <StorefrontComponentBoundary id="home.promotions" order={sectionOrder("promotions")} controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
       <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-6 px-5 pb-16 sm:px-8 lg:grid-cols-2 lg:px-10">
         {[market.dulce, market.moda, ...market.home.campaigns].filter((promo) => {
           if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow) || !isMarketDestinationEnabled(market, promo.href)) return false;
@@ -791,7 +791,7 @@ export function Home() {
         ))}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.trust" controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
+      <StorefrontComponentBoundary id="home.trust" order={sectionOrder("trust")} controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
       <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ebe7df] bg-[#faf9f5]">
         <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
@@ -811,7 +811,7 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
+      <StorefrontComponentBoundary id="home.bottomCta" order={sectionOrder("bottomCta")} controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="relative overflow-hidden rounded-xl border border-[#e4dfd3] bg-[#ece5d8] px-7 py-12 text-[#173d2a] sm:px-10">
           {site.cta.imageUrl && <>
