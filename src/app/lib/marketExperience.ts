@@ -7,7 +7,7 @@ export type PublicationWindow = { startAt?: string; endAt?: string };
 // section order fully editable in the existing administration builder.
 export const DEFAULT_HOME_SECTION_ORDER = [
   "hero", "categoryStrip", "categoriesGrid", "featured", "trust", "feed",
-  "bottomCta", "delivery", "plantCta", "services", "promotions",
+  "bottomCta", "delivery", "plantCta", "services", "promotions", "creations3d",
 ] as const;
 const LEGACY_HOME_SECTION_ORDER = [
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
@@ -17,7 +17,7 @@ export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
 /** Optional shop-first template. It reuses all the existing home sections. */
 export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
   "hero", "categoryStrip", "featured", "categoriesGrid", "trust",
-  "promotions", "services", "feed", "bottomCta", "delivery", "plantCta",
+  "promotions", "creations3d", "services", "feed", "bottomCta", "delivery", "plantCta",
 ];
 export type MarketHomeProductDisplay = {
   title: string;
@@ -54,6 +54,12 @@ export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionI
   const allowed = new Set<string>(DEFAULT_HOME_SECTION_ORDER);
   const selected = incoming.filter((id): id is MarketHomeSectionId => typeof id === "string" && allowed.has(id));
   const unique = [...new Set(selected)];
+  // Put the new commercial area just before benefits for existing saved layouts,
+  // without changing any of their previously chosen relative positions.
+  if (!unique.includes("creations3d")) {
+    const beforeBenefits = unique.indexOf("trust");
+    unique.splice(beforeBenefits >= 0 ? beforeBenefits : unique.length, 0, "creations3d");
+  }
   for (const id of DEFAULT_HOME_SECTION_ORDER) if (!unique.includes(id)) unique.push(id);
   return unique;
 }
@@ -135,6 +141,7 @@ export type MarketExperienceContent = {
       services: boolean;
       featured: boolean;
       promotions: boolean;
+      creations3d: boolean;
       trust: boolean;
     };
 
@@ -160,6 +167,16 @@ export type MarketExperienceContent = {
     featuredTitle: string;
     featuredSubtitle: string;
     featuredLimit: number;
+    creations3D: {
+      title: string;
+      subtitle: string;
+      imageUrl: string;
+      buttonLabel: string;
+      href: string;
+      mode: "automatic" | "manual";
+      productIds: string[];
+      limit: number;
+    };
     /** When omitted, use the legacy featured block with all admin settings intact. */
     shopFirst?: boolean;
     shopFirstPreviousSectionOrder?: MarketHomeSectionId[];
@@ -265,6 +282,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       services: true,
       featured: true,
       promotions: true,
+      creations3d: true,
       trust: true,
     },
     kicker: "PLANTAS · HOGAR · NATURALEZA",
@@ -378,6 +396,16 @@ export const defaultMarketExperience: MarketExperienceContent = {
         ctaLabel: "Solicitar información",
       },
     ],
+    creations3D: {
+      title: "Creaciones 3D",
+      subtitle: "Macetas de diseño, piezas personalizadas y detalles únicos fabricados en 3D.",
+      imageUrl: "",
+      buttonLabel: "Explorar creaciones 3D",
+      href: "/productos?buscar=3D",
+      mode: "automatic",
+      productIds: [],
+      limit: 4,
+    },
     featuredTitle: "Productos destacados",
     featuredLimit: 6,
     shopFirst: true,
@@ -550,6 +578,14 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
       ...defaultMarketExperience.home,
       ...homeIncoming,
       sections: { ...defaultMarketExperience.home.sections, ...(homeIncoming.sections || {}) },
+      creations3D: {
+        ...defaultMarketExperience.home.creations3D,
+        ...(homeIncoming.creations3D || {}),
+        productIds: Array.isArray(homeIncoming.creations3D?.productIds)
+          ? [...new Set(homeIncoming.creations3D.productIds.map(String))].slice(0, 60)
+          : [],
+        limit: Math.max(1, Math.min(12, Number(homeIncoming.creations3D?.limit ?? 4))),
+      },
       shopFirst: hasExplicitShopChoice ? homeIncoming.shopFirst : true,
       sectionOrder: initialShopOrder,
       shopFirstPreviousSectionOrder: hasExplicitShopChoice
