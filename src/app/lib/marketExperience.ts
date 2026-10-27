@@ -158,6 +158,7 @@ export type MarketExperienceContent = {
     featuredLimit: number;
     /** When omitted, use the legacy featured block with all admin settings intact. */
     shopFirst?: boolean;
+    shopFirstPreviousSectionOrder?: MarketHomeSectionId[];
     productDisplay?: MarketHomeProductDisplay;
     trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
