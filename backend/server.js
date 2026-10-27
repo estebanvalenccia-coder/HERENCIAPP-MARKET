@@ -1,6 +1,6 @@
 import { registerSupportV2 } from "./supportV2.js";
 import { verifyAdminPassword } from "./adminAccounts.js";
-import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword, manageAdminAccount } from "./adminAccountStore.js";
+import { initializeAdminAccounts, bootstrapChristianFromEnvironment, findAdminById, findAdminByUsername, listAdminAccounts, createAdminWithPassword, updateAdminPassword, manageAdminAccount, issueAdminTrustedDevice, verifyAdminTrustedDevice, revokeAdminTrustedDevice } from "./adminAccountStore.js";
 import { isPrivateSupportStorageKey } from "./supportStorageSecurity.js";
 import { parseSupportTicketMetadata } from "./supportTicketMetadata.js";
 import { answerGeneralSupport, canAppendSupportAIReply } from "./customerSupportAI.js";
@@ -1622,16 +1622,24 @@ app.get("/api/admin/auth-config", (_req, res) => {
 });
 
 // Preserve the existing environment-based owner login during migration.
-app.post("/api/admin/login", async (req, res) => {
+app.post("/api/admin/login", authRateLimit, async (req, res) => {
   if (!adminAuthConfigured) return res.status(503).json({ error: "Acceso admin no configurado en el servidor" });
-  const { username, password, otp } = req.body || {};
+  const { username, password, otp, trustDevice } = req.body || {};
   const normalizedUsername = String(username || "").trim();
   const submittedPassword = String(password || "");
   const ownerValid = normalizedUsername === adminUsername &&
     (submittedPassword === adminPassword || submittedPassword.trim() === adminPassword.trim());
   if (ownerValid) {
-    if (!verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
-    res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(createAdminToken())}; ${cookieOptions(60 * 60 * 12)}`);
+    const trusted = await verifyAdminTrustedDevice(parseCookies(req).admin_trusted_device, adminUsername, null).catch(() => false);
+    if (!trusted && !verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
+    const cookies = [`admin_session=${encodeURIComponent(createAdminToken())}; ${cookieOptions(60 * 60 * 12)}`];
+    if (trustDevice === true && !trusted && adminTotpSecret) {
+      try {
+        const token = await issueAdminTrustedDevice(adminUsername);
+        cookies.push(`admin_trusted_device=${token}; ${cookieOptions(60 * 60 * 24 * 30)}`);
+      } catch(error) { console.warn("No se pudo guardar dispositivo de confianza:", error?.message); }
+    }
+    res.setHeader("Set-Cookie", cookies);
     return res.json({ ok: true, mustChangePassword: false, username: adminUsername, role: "owner" });
   }
   try {
@@ -1641,8 +1649,16 @@ app.post("/api/admin/login", async (req, res) => {
     if (!account || account.state !== "active" || !verifyAdminPassword(submittedPassword, account.passwordHash)) {
       return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
     }
-    if (!verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
-    res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(createAdminToken(account))}; ${cookieOptions(60 * 60 * 12)}`);
+    const trusted = await verifyAdminTrustedDevice(parseCookies(req).admin_trusted_device, account.username, account.sessionVersion).catch(() => false);
+    if (!trusted && !verifyAdminTotp(otp)) return res.status(401).json({ error: "Código de verificación incorrecto", field: "otp" });
+    const cookies = [`admin_session=${encodeURIComponent(createAdminToken(account))}; ${cookieOptions(60 * 60 * 12)}`];
+    if (trustDevice === true && !trusted && adminTotpSecret) {
+      try {
+        const token = await issueAdminTrustedDevice(account.username, account.sessionVersion);
+        cookies.push(`admin_trusted_device=${token}; ${cookieOptions(60 * 60 * 24 * 30)}`);
+      } catch(error) { console.warn("No se pudo guardar dispositivo de confianza:", error?.message); }
+    }
+    res.setHeader("Set-Cookie", cookies);
     return res.json({ ok: true, mustChangePassword: account.mustChangePassword, username: account.username, role: account.role });
   } catch (error) {
     console.error("Admin login database error:", error?.message || error);
@@ -1653,6 +1669,16 @@ app.post("/api/admin/login", async (req, res) => {
 app.post("/api/admin/logout", (_req, res) => {
   res.setHeader("Set-Cookie", `admin_session=; ${cookieOptions(0)}`);
   res.json({ ok: true });
+});
+
+app.post("/api/admin/trusted-device/revoke", async (req, res) => {
+  const claims = currentAdminClaims(req);
+  if (!claims) return res.status(401).json({ error: "Inicia sesión" });
+  try {
+    await revokeAdminTrustedDevice(parseCookies(req).admin_trusted_device);
+    res.setHeader("Set-Cookie", `admin_trusted_device=; ${cookieOptions(0)}`);
+    res.json({ ok: true });
+  } catch(error) { res.status(503).json({ error: "No se pudo revocar el dispositivo" }); }
 });
 
 app.get("/api/admin/session", (req, res) => {
