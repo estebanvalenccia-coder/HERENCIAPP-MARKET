@@ -694,7 +694,7 @@ export function Home() {
           </Link>
         </div>
 
-        {creations3D.length > 0 && !spotlightCollections.some((item) => /3d/i.test(item.title)) && (
+        {creations3D.length > 0 && !sections.creations3d && !spotlightCollections.some((item) => /3d/i.test(item.title)) && (
           <div className="mt-8 overflow-hidden rounded-2xl border border-[#dfdccc] bg-[#eaf0e6] md:flex md:items-center">
             <div className="flex-1 px-7 py-8 md:px-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#57705c]">Diseño y creatividad</p>
