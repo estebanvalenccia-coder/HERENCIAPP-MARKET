@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Copy, Edit3, Home, Layers3, MapPin, PackagePlus, Search, Shirt, Sparkles, Store, Trash2, Upload, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { AdminElementControls, AdminAddElement, AdminScheduleFields, reorderItem } from "./AdminElementControls";
+import { AdminComponentRegistry } from "./AdminComponentRegistry";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
@@ -465,6 +466,7 @@ export function AdminMarketExperience({
       </div>
 
       <div className="space-y-8 p-6">
+        <AdminComponentRegistry market={market} onChange={setMarket} />
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
@@ -486,7 +488,7 @@ export function AdminMarketExperience({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-white p-5">
+          <div id="market-editor-navegacion" className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
             <div className="mb-4 flex items-center gap-2 font-black">
               <Store className="h-5 w-5 text-primary" />
               Menú principal
@@ -573,7 +575,7 @@ export function AdminMarketExperience({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-white p-5">
+        <div id="market-editor-portada" className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
           <div className="mb-5 flex items-center gap-2">
             <Home className="h-5 w-5 text-primary" />
             <div>
@@ -779,7 +781,7 @@ export function AdminMarketExperience({
             <AdminAddElement label="Añadir categoría" onAdd={() => patchHome({ categories: [...market.home.categories, { title: "Nueva categoría", subtitle: "", href: "/productos", imageUrl: "", visible: false }] })} />
           </div>
 
-          <div className="mt-6">
+          <div id="market-editor-servicios" className="mt-6 scroll-mt-6">
             <p className="mb-3 font-black">Servicios visibles en Inicio</p>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {market.home.services.map((service, index) => (
@@ -958,7 +960,7 @@ export function AdminMarketExperience({
           const promo = market[kind];
           const Icon = kind === "dulce" ? Sparkles : Shirt;
           return (
-            <div key={kind} className="rounded-2xl border border-border bg-white p-5">
+            <div key={kind} id={kind === "dulce" ? "market-editor-promociones" : undefined} className="scroll-mt-6 rounded-2xl border border-border bg-white p-5">
               <div className="mb-5 flex items-center gap-2">
                 <Icon className="h-5 w-5 text-primary" />
                 <h4 className="font-black">{kind === "dulce" ? "Dulce" : "Moda"} · portada y banner</h4>
@@ -982,7 +984,7 @@ export function AdminMarketExperience({
         })}
 
         <div className="rounded-2xl border border-border bg-white p-5">
-          <div className="mb-5 flex items-center gap-2">
+          <div id="market-editor-sales" className="mb-5 flex items-center gap-2 scroll-mt-6">
             <WandSparkles className="h-5 w-5 text-primary" />
             <div>
               <h4 className="font-black">HERENCIA SALES · “Crear con Herencia”</h4>
