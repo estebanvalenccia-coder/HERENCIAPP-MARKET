@@ -610,8 +610,8 @@ export function Home() {
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.trust" controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
-      <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ded9cd] bg-[#f4f1e8]">
-        <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
+      <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ebe7df] bg-[#faf9f5]">
+        <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
             const Icon = trustIcons[index % trustIcons.length];
             return (
@@ -631,16 +631,16 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
-        <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
-          <Sparkles className="absolute right-8 top-8 h-20 w-20 text-white/5" />
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-white/65">HERENCIA</p>
+        <div className="relative overflow-hidden rounded-xl border border-[#e4dfd3] bg-[#ece5d8] px-7 py-12 text-[#173d2a] sm:px-10">
+          <Sparkles className="absolute right-8 top-8 h-20 w-20 text-[#315b42]/15" />
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#315b42]/70">HERENCIA</p>
           <h2 className="mt-2 max-w-2xl text-3xl font-medium sm:text-4xl">
             {site.cta.title}
           </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/78">{site.cta.subtitle}</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#4b6453]">{site.cta.subtitle}</p>
           {site.cta.button.visible !== false && isWithinPublicationWindow(site.cta.button.schedule, scheduleNow) && <Link
             to={site.cta.button.href || "/productos"}
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
+            className="mt-6 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white"
           >
             {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
           </Link>}
