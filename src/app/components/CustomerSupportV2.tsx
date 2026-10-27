@@ -289,10 +289,18 @@ export function FloatingCustomerSupportV2({
   salesButtonVisible = false,
   salesPosition = "right",
   salesBottomOffset = 24,
+  position = "right",
+  bottomOffset = 96,
+  buttonColor = "#315b42",
+  buttonLabel = "Atención al cliente",
 }: {
   salesButtonVisible?: boolean;
   salesPosition?: "left" | "right";
   salesBottomOffset?: number;
+  position?: "left" | "right";
+  bottomOffset?: number;
+  buttonColor?: string;
+  buttonLabel?: string;
 } = {}) {
   const location=useLocation();
   const [open,setOpen]=useState(false);
@@ -308,10 +316,11 @@ export function FloatingCustomerSupportV2({
   },[]);
   // Keep separate floating assistants from covering each other's trigger buttons.
   const salesBottom = Math.max(12, Math.min(200, Number(salesBottomOffset) || 24));
-  const overlaps = salesButtonVisible && salesPosition === "right" && salesBottom < 150 && salesBottom + 56 > 96;
-  const supportBottom = overlaps ? salesBottom + 68 : 96;
+  const desiredBottom = Math.max(12, Math.min(240, Number(bottomOffset) || 96));
+  const overlaps = salesButtonVisible && salesPosition === position && Math.abs(salesBottom - desiredBottom) < 68;
+  const supportBottom = overlaps ? salesBottom + 68 : desiredBottom;
   if(["/contacto","/perfil"].includes(location.pathname))return null;
-  return <div className="fixed right-4 z-[95] flex flex-col items-end gap-2 sm:right-6" style={{ bottom: supportBottom }}>
+  return <div className={`fixed z-[95] flex flex-col gap-2 ${position === "left" ? "left-4 items-start sm:left-6" : "right-4 items-end sm:right-6"}`} style={{ bottom: supportBottom }}>
     {open && <div className="max-h-[78vh] w-[min(400px,calc(100vw-32px))] overflow-y-auto rounded-[25px] bg-white shadow-2xl" style={{ maxHeight: `min(78vh, calc(100vh - ${supportBottom + 18}px))` }}>
       <CustomerSupportV2 compact/>
       {whatsapp && <a href={"https://wa.me/"+whatsapp} target="_blank" rel="noopener noreferrer"
@@ -320,9 +329,10 @@ export function FloatingCustomerSupportV2({
       </a>}
     </div>}
     <button type="button" onClick={()=>{if(!open)window.dispatchEvent(new Event("herencia:support-open"));setOpen(!open);}}
-      className="flex items-center gap-2 rounded-full bg-[#315b42] px-5 py-3.5 font-bold text-white shadow-xl"
+      className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-xl"
+      style={{ backgroundColor: /^#[0-9a-fA-F]{6}$/.test(buttonColor) ? buttonColor : "#315b42" }}
       aria-label={open?"Cerrar atención al cliente":"Abrir atención al cliente"} aria-expanded={open}>
-      {open?<X size={20}/>:<MessageCircle size={20}/>} {open?"Cerrar":"Atención al cliente"}
+      {open?<X size={20}/>:<MessageCircle size={20}/>} {open?"Cerrar":buttonLabel}
     </button>
   </div>;
 }
