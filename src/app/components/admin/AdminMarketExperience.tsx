@@ -494,7 +494,7 @@ export function AdminMarketExperience({
             <div className="grid gap-3 md:grid-cols-2">
               {market.navigation.map((item, index) => (
                 <div key={index} className="rounded-xl border border-border bg-[#fbfaf6] p-3">
-                  <AdminElementControls label={item.title || item.label || "Elemento"} visible={item.visible !== false}
+                  <AdminElementControls label={item.label || "Enlace"} visible={item.visible !== false}
                     onToggle={(visible) => patch({ navigation: market.navigation.map((current, i) => i === index ? { ...current, visible } : current) })}
                     onMoveUp={() => patch({ navigation: reorderItem(market.navigation, index, index - 1) })}
                     onMoveDown={() => patch({ navigation: reorderItem(market.navigation, index, index + 1) })}
@@ -532,6 +532,22 @@ export function AdminMarketExperience({
         </div>
 
         <div className="rounded-2xl border border-border bg-white p-5">
+          <h4 className="mb-3 font-black">Cabecera y pie de página · ON/OFF</h4>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              ["announcement", "Franja superior"], ["search", "Buscador"], ["account", "Mi cuenta"],
+              ["favorites", "Favoritos"], ["cart", "Carrito"], ["deliverySelector", "Selector de entrega"],
+              ["footer", "Pie de página"],
+            ] as Array<[keyof MarketExperienceContent["layout"], string]>).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 rounded-xl bg-[#f5f8f3] p-3 text-sm font-bold">
+                <input type="checkbox" checked={market.layout[key]} onChange={(event) => patchLayout(key, event.target.checked)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-white p-5">
           <div className="mb-5 flex items-center gap-2">
             <Home className="h-5 w-5 text-primary" />
             <div>
@@ -542,6 +558,21 @@ export function AdminMarketExperience({
             </div>
           </div>
 
+          <div className="mb-5 rounded-xl border border-[#e0e9dd] bg-[#f5f9f5] p-4">
+            <p className="mb-3 font-black">ON/OFF de cada sección de Inicio</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {([
+                ["hero", "Portada principal"], ["delivery", "Envíos a Colombia"], ["categoryStrip", "Categorías redondas"],
+                ["plantCta", "Botón descubrir plantas"], ["categoriesGrid", "Tarjetas de categorías"],
+                ["services", "Servicios"], ["featured", "Productos destacados"], ["promotions", "Banners promocionales"], ["trust", "Beneficios"],
+              ] as Array<[keyof MarketExperienceContent["home"]["sections"], string]>).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 rounded-lg bg-white p-2 text-sm font-semibold">
+                  <input type="checkbox" checked={market.home.sections[key]} onChange={(event) => patchHome({ sections: { ...market.home.sections, [key]: event.target.checked } })} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-4">
               <Field label="Texto pequeño" value={market.home.kicker} onChange={(kicker) => patchHome({ kicker })} />
@@ -659,7 +690,7 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.categories.map((category, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
-                  <AdminElementControls label={category.title || category.label || "Elemento"} visible={category.visible !== false}
+                  <AdminElementControls label={category.title || "Categoría"} visible={category.visible !== false}
                     onToggle={(visible) => patchHome({ categories: market.home.categories.map((current, i) => i === index ? { ...current, visible } : current) })}
                     onMoveUp={() => patchHome({ categories: reorderItem(market.home.categories, index, index - 1) })}
                     onMoveDown={() => patchHome({ categories: reorderItem(market.home.categories, index, index + 1) })}
@@ -718,6 +749,7 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir categoría" onAdd={() => patchHome({ categories: [...market.home.categories, { title: "Nueva categoría", subtitle: "", href: "/productos", imageUrl: "", visible: false }] })} />
           </div>
 
           <div className="mt-6">
@@ -725,7 +757,7 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {market.home.services.map((service, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
-                  <AdminElementControls label={service.title || service.label || "Elemento"} visible={service.visible !== false}
+                  <AdminElementControls label={service.title || "Servicio"} visible={service.visible !== false}
                     onToggle={(visible) => patchHome({ services: market.home.services.map((current, i) => i === index ? { ...current, visible } : current) })}
                     onMoveUp={() => patchHome({ services: reorderItem(market.home.services, index, index - 1) })}
                     onMoveDown={() => patchHome({ services: reorderItem(market.home.services, index, index + 1) })}
@@ -787,6 +819,7 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir servicio" onAdd={() => patchHome({ services: [...market.home.services, { title: "Nuevo servicio", subtitle: "", href: "/servicios", imageUrl: "", ctaLabel: "Saber más", visible: false }] })} />
           </div>
 
           <div className="mt-6">
@@ -794,7 +827,7 @@ export function AdminMarketExperience({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {market.home.trust.map((item, index) => (
                 <div key={index} className="space-y-3 rounded-2xl border border-border bg-[#fbfaf6] p-4">
-                  <AdminElementControls label={item.title || item.label || "Elemento"} visible={item.visible !== false}
+                  <AdminElementControls label={item.title || "Beneficio"} visible={item.visible !== false}
                     onToggle={(visible) => patchHome({ trust: market.home.trust.map((current, i) => i === index ? { ...current, visible } : current) })}
                     onMoveUp={() => patchHome({ trust: reorderItem(market.home.trust, index, index - 1) })}
                     onMoveDown={() => patchHome({ trust: reorderItem(market.home.trust, index, index + 1) })}
@@ -826,6 +859,7 @@ export function AdminMarketExperience({
                 </div>
               ))}
             </div>
+            <AdminAddElement label="Añadir beneficio" onAdd={() => patchHome({ trust: [...market.home.trust, { title: "Nuevo beneficio", description: "", visible: false }] })} />
           </div>
         </div>
 
