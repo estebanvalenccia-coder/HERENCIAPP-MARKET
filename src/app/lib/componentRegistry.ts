@@ -1,10 +1,14 @@
 
-export type StorefrontComponentLocation = "header" | "home" | "floating" | "footer";
+export type StorefrontComponentLocation = "header" | "home" | "products" | "productDetail" | "services" | "contact" | "floating" | "footer";
 export type StorefrontComponentKey =
   | "header.announcement" | "header.search" | "header.account" | "header.favorites" | "header.cart"
   | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.delivery" | "home.categoryStrip"
   | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
   | "home.featured" | "home.promotions" | "home.trust" | "home.bottomCta"
+  | "products.intro" | "products.filters" | "products.grid"
+  | "productDetail.gallery" | "productDetail.info" | "productDetail.related" | "productDetail.reviews" | "productDetail.questions"
+  | "services.hero" | "services.cards" | "services.booking" | "services.process"
+  | "contact.intro" | "contact.form" | "contact.hours"
   | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
 export type StorefrontComponentControl = {
@@ -20,7 +24,7 @@ export type StorefrontComponentDefinition = {
   name: string;
   location: StorefrontComponentLocation;
   description: string;
-  editingSection: "navegacion" | "portada" | "servicios" | "promociones" | "sales" | "footer";
+  editingSection: "navegacion" | "portada" | "servicios" | "promociones" | "sales" | "footer" | "productos" | "ficha" | "contacto";
 };
 
 /**
@@ -46,6 +50,22 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Banners Dulce y Moda" },
   { id:"home.trust", name:"Ventajas de Herencia", location:"home", editingSection:"portada", description:"Beneficios de compra y asistencia" },
   { id:"home.bottomCta", name:"Banner inferior", location:"home", editingSection:"promociones", description:"Llamada a la acción de la portada" },
+  { id:"products.intro", name:"Cabecera del catálogo", location:"products", editingSection:"productos", description:"Título e introducción al catálogo" },
+  { id:"products.filters", name:"Filtros y búsqueda", location:"products", editingSection:"productos", description:"Filtros visuales del catálogo; la configuración comercial permanece activa" },
+  { id:"products.grid", name:"Cuadrícula del catálogo", location:"products", editingSection:"productos", description:"Tarjetas de artículos visibles, sin alterar stock ni precios" },
+  { id:"productDetail.gallery", name:"Galería de producto", location:"productDetail", editingSection:"ficha", description:"Fotografía y miniaturas de cada artículo" },
+  { id:"productDetail.info", name:"Información y compra", location:"productDetail", editingSection:"ficha", description:"Descripción, opciones y botones de compra" },
+  { id:"productDetail.related", name:"Productos relacionados", location:"productDetail", editingSection:"ficha", description:"Recomendaciones asociadas a cada producto" },
+  { id:"productDetail.reviews", name:"Valoraciones", location:"productDetail", editingSection:"ficha", description:"Opiniones públicas en la ficha" },
+  { id:"productDetail.questions", name:"Preguntas", location:"productDetail", editingSection:"ficha", description:"Preguntas y respuestas" },
+  { id:"services.hero", name:"Portada de servicios", location:"services", editingSection:"servicios", description:"Presentación visual de servicios" },
+  { id:"services.cards", name:"Tarjetas de servicios", location:"services", editingSection:"servicios", description:"Listado de servicios de Herencia" },
+  { id:"services.booking", name:"Contratación de servicios", location:"services", editingSection:"servicios", description:"Servicios disponibles para reservar o comprar" },
+  { id:"services.process", name:"Cómo trabajamos", location:"services", editingSection:"servicios", description:"Etapas del servicio y proyecto" },
+  { id:"contact.intro", name:"Opciones de contacto", location:"contact", editingSection:"contacto", description:"Teléfono, Instagram, WhatsApp y ubicación" },
+  { id:"contact.form", name:"Formulario de contacto", location:"contact", editingSection:"contacto", description:"Ayuda y formulario de contacto" },
+  { id:"contact.hours", name:"Horarios", location:"contact", editingSection:"contacto", description:"Horario de atención" },
+
   { id:"floating.sales", name:"Herencia Sales", location:"floating", editingSection:"sales", description:"Chat y botón comercial flotante" },
   { id:"floating.support", name:"Atención al cliente", location:"floating", editingSection:"sales", description:"Centro de soporte flotante" },
   { id:"floating.whatsapp", name:"WhatsApp", location:"floating", editingSection:"sales", description:"Botón de contacto por WhatsApp" },
