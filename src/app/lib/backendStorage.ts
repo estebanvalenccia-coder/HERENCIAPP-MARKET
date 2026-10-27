@@ -1,3 +1,4 @@
+import { trackTikTokCartDifference } from "./tiktokPixel";
 // Browser requests always use the same-origin Vercel proxy.
 // Every endpoint below already starts with /api, so no API base prefix is needed.
 const API_BASE = "";
@@ -2291,8 +2292,10 @@ export const backendStorage = {
 
   async setItem(key: string, value: string): Promise<BackendStorageResult> {
     const sanitized = sanitizeForClient(key, value);
+    const previousCart = key === "cart" ? (cache.get(key) ?? readLocalStorage(key)) : null;
     cache.set(key, sanitized);
     writeLocalStorage(key, sanitized);
+    if (key === "cart") trackTikTokCartDifference(previousCart, sanitized);
     emitChange();
 
     return syncStorageValue(key, sanitized);
