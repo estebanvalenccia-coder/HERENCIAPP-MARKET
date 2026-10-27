@@ -24,7 +24,7 @@ jobs:
 
       - name: Install application and browser runner
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.58.0
           npx playwright install --with-deps chromium
 
