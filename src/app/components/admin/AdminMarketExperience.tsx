@@ -1049,6 +1049,45 @@ export function AdminMarketExperience({
 
         <AdminCampaigns campaigns={market.home.campaigns} onChange={(campaigns) => patchHome({ campaigns })} />
 
+        <div className="rounded-2xl border border-[#dce6dc] bg-white p-5">
+          <h4 className="mb-3 font-black">Atención al cliente · botón flotante</h4>
+          <p className="mb-4 text-xs text-muted-foreground">Estos ajustes afectan al acceso visual al soporte. La mensajería y los datos privados no se modifican.</p>
+          <label className="mb-4 flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox"
+              checked={market.componentControls["floating.support"]?.enabled !== false}
+              onChange={(event) => setMarket({ ...market, componentControls: {
+                ...market.componentControls, "floating.support": { ...market.componentControls["floating.support"], enabled: event.target.checked },
+              } })} />
+            ON/OFF · Mostrar atención al cliente
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Texto del botón" value={market.support.buttonLabel}
+              onChange={(buttonLabel) => setMarket({ ...market, support: { ...market.support, buttonLabel } })} />
+            <label className="block text-xs font-bold">
+              Posición
+              <select className="mt-2 block w-full rounded-lg border bg-white p-3"
+                value={market.support.position}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, position: event.target.value as "left" | "right" } })}>
+                <option value="right">Inferior derecha</option>
+                <option value="left">Inferior izquierda</option>
+              </select>
+            </label>
+            <label className="block text-xs font-bold">
+              Separación inferior: {market.support.bottomOffset}px
+              <input type="range" min="12" max="240" className="mt-3 block w-full"
+                value={market.support.bottomOffset}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-xs font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer"
+                value={market.support.buttonColor}
+                onChange={(event) => setMarket({ ...market, support: { ...market.support, buttonColor: event.target.value } })} />
+            </label>
+          </div>
+        </div>
+
+
         <div className="rounded-2xl border border-border bg-white p-5">
           <div id="market-editor-sales" className="mb-5 flex items-center gap-2 scroll-mt-6">
             <WandSparkles className="h-5 w-5 text-primary" />
