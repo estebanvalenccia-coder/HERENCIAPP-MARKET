@@ -6,8 +6,10 @@ on:
       - "backend/**"
       - "tests/adminVisualSmoke.mjs"
       - ".github/workflows/admin-visual-e2e.yml"
-  push:
-    branches: ["feature/admin-universal-controls-20261027"]
+
+concurrency:
+  group: admin-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
