@@ -45,6 +45,7 @@ import { getMarketExperience } from "../../lib/marketExperience";
 import { validateSitePublication } from "../../lib/sitePublicationValidation.mjs";
 import { STOREFRONT_COMPONENT_REGISTRY, isComponentAllowed } from "../../lib/componentRegistry";
 import { AdminMarketExperience } from "./AdminMarketExperience";
+import { AdminLiveComponentInspector } from "./AdminLiveComponentInspector";
 import {
   COMMERCE_COLLECTIONS,
   getCommerceCollection,
@@ -499,6 +500,8 @@ export function AdminVisualBuilder({
   });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [controlPanelOpen, setControlPanelOpen] = useState(false);
+  const [realPreview, setRealPreview] = useState(false);
+  const livePreviewRef = useRef<HTMLIFrameElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draftState, setDraftState] = useState<"guardado" | "guardando" | "pendiente">("guardado");
   const [publishing, setPublishing] = useState(false);
@@ -515,6 +518,30 @@ export function AdminVisualBuilder({
 
   const blocks = useMemo(() => ensureBuilderBlocks(site), [site]);
   const market = useMemo(() => getMarketExperience(site), [site]);
+  useEffect(() => {
+    if (!realPreview) return;
+    const sync = () => {
+      livePreviewRef.current?.contentWindow?.postMessage(
+        { type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin
+      );
+    };
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== livePreviewRef.current?.contentWindow) return;
+      if (event.data?.type === "herencia:preview:ready") sync();
+      if (event.data?.type === "herencia:preview:select" && typeof event.data.componentId === "string") {
+        const found = STOREFRONT_COMPONENT_REGISTRY.find((entry) => entry.id === event.data.componentId);
+        if (found) setSelected(`storefront:${found.id}`);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    // In-memory changes are sent to the iframe only. No draft is published here.
+    const timer = window.setTimeout(sync, 100);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [realPreview, site]);
+
   const selectedBlock = blocks.find((block) => block.id === selected) || null;
   const selectedCatalogProduct = useMemo(() => {
     if (!String(selected).startsWith("product:")) return null;
@@ -866,6 +893,10 @@ export function AdminVisualBuilder({
           >
             <ExternalLink className="h-4 w-4" /> Ver sitio
           </button>
+          <button type="button" onClick={() => { setRealPreview((current) => !current); setPageMode("home"); }}
+            className={`rounded-xl border px-3 py-2 text-xs font-black ${realPreview ? "border-emerald-500 bg-emerald-700 text-white" : "border-slate-200 bg-white text-slate-900"}`}>
+            {realPreview ? "Vista real activa" : "Editar sobre tienda real"}
+          </button>
           <button
             type="button"
             onClick={() => setControlPanelOpen(true)}
@@ -1158,6 +1189,20 @@ export function AdminVisualBuilder({
             className="builder-page-container mx-auto origin-top overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl transition-all duration-300"
             style={{ width: `${previewWidth}px`, maxWidth: "100%" }}
           >
+            {realPreview ? (
+              <div>
+                <p className="border-b border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-black text-emerald-900">Haz clic en cualquier bloque registrado para modificarlo. Esta vista muestra el borrador sin publicar.</p>
+                <iframe
+                  ref={livePreviewRef}
+                  title="Vista real de Herencia Market con borrador administrativo"
+                  src="/?__herencia_preview=1"
+                  onLoad={() => livePreviewRef.current?.contentWindow?.postMessage({ type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin)}
+                  className="h-[1050px] w-full bg-white"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                />
+              </div>
+            ) : (
+              <>
             <div
               className="flex min-h-14 items-center justify-between border-b px-4"
               style={{
@@ -1269,6 +1314,8 @@ export function AdminVisualBuilder({
               <div><p className="font-black">{site.footer.servicesTitle}</p>{site.footer.serviceLinks.slice(0, 3).map((link, index) => <p key={index} className="mt-2 text-slate-600">{link.label}</p>)}</div>
               <div><p className="font-black">{site.footer.contactTitle}</p><p className="mt-2 text-slate-600">{site.footer.whatsappLabel}</p><p className="mt-2 text-slate-600">{site.footer.instagramLabel}</p></div>
             </button>
+              </>
+            )}
           </div>
         </main>
 
@@ -1278,7 +1325,7 @@ export function AdminVisualBuilder({
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-700">Editando</p>
                 <h2 className="mt-1 text-lg font-black">
-                  {selectedCatalogProduct?.name || selectedBlock?.name || (
+                  {selectedCatalogProduct?.name || selectedBlock?.name || (selected.startsWith("storefront:") ? STOREFRONT_COMPONENT_REGISTRY.find((entry) => entry.id === selected.slice("storefront:".length))?.name : null) || (
                     selected === "header" ? "Header"
                       : selected === "footer" ? "Footer"
                       : selected === "products" ? "Productos"
@@ -1315,6 +1362,14 @@ export function AdminVisualBuilder({
           </div>
 
           <div className="space-y-4 p-4">
+            {selected.startsWith("storefront:") && (
+              <AdminLiveComponentInspector
+                id={selected.slice("storefront:".length)}
+                site={site}
+                onChange={(next) => commit(next)}
+                onOpenControls={() => setControlPanelOpen(true)}
+              />
+            )}
             {selected === "header" && tab === "contenido" && (
               <HeaderEditor
                 site={site}
