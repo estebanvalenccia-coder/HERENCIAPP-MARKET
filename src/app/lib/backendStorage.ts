@@ -299,6 +299,7 @@ export const backendApi = {
       days: number;
       generatedAt: string;
       componentClicks: Array<{ label: string; value: number }>;
+      commerceOrders?: { orders: number; revenue: number };
     }>(`/api/admin/analytics?days=${safeDays}`);
   },
 
