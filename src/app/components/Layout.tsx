@@ -397,10 +397,7 @@ export function Layout() {
 
               <FooterColumn
                 title={site.footer.servicesTitle}
-                links={market.home.services.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item) => ({
-                  label: item.title,
-                  href: item.href,
-                }))}
+                links={site.footer.serviceLinks.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow))}
               />
 
               <div>
