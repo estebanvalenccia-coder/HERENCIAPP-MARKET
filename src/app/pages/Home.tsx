@@ -193,9 +193,26 @@ export function Home() {
 
   // Curated storefront collections are derived from the real, administrator-controlled cards.
   // Disabled collections remain disabled; no demo products or invented prices.
-  const spotlightCollections = visibleHomeCategories.filter((item) =>
-    /(?:3d|impresi[oó]n|colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
-  ).slice(0, 2);
+  const editorial3D = visibleHomeCategories.find((item) =>
+    /(?:3d|impresi[oó]n)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
+  );
+  const editorialColombia = visibleHomeCategories.find((item) =>
+    /(?:colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
+  );
+  const spotlightCollections = [
+    editorial3D || (creations3D[0] ? {
+      title: "Creaciones 3D",
+      subtitle: "Macetas, detalles y diseños de nuestra colección",
+      imageUrl: creations3D[0].image,
+      href: `/producto/${creations3D[0].id}`,
+    } : null),
+    editorialColombia || (colombiaDelivery.enabled ? {
+      title: "Regalos de Colombia",
+      subtitle: colombiaDelivery.description,
+      imageUrl: colombiaDelivery.heroImageUrl,
+      href: "/colombia",
+    } : null),
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item?.imageUrl));
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -449,7 +466,7 @@ export function Home() {
           </Link>
         </div>
 
-        <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {spotlightCollections.length === 0 && <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {(Number(market.home.categoryGridLimit ?? 8) === 0 ? visibleHomeCategories : visibleHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit ?? 8))))).map((item) => (
             <Link
               key={item.title}
@@ -477,7 +494,7 @@ export function Home() {
               </div>
             </Link>
           ))}
-        </div>
+        </div>}
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
@@ -542,7 +559,7 @@ export function Home() {
           </Link>
         </div>
 
-        {creations3D.length > 0 && (
+        {creations3D.length > 0 && !spotlightCollections.some((item) => /3d/i.test(item.title)) && (
           <div className="mt-8 overflow-hidden rounded-2xl border border-[#dfdccc] bg-[#eaf0e6] md:flex md:items-center">
             <div className="flex-1 px-7 py-8 md:px-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#57705c]">Diseño y creatividad</p>
