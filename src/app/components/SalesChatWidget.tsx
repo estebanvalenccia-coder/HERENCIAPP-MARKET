@@ -875,7 +875,8 @@ export function SalesChatWidget() {
         <button
           type="button"
           onClick={openSales}
-          className="fixed bottom-6 right-5 z-[90] inline-flex h-14 items-center gap-2 rounded-full border border-white/20 bg-[#173d2a] px-5 text-sm font-black text-white shadow-[0_16px_42px_rgba(23,61,42,.32)] transition hover:-translate-y-1 hover:bg-[#234e37] sm:right-7"
+          className={`fixed z-[90] inline-flex h-14 items-center gap-2 rounded-full border border-white/20 px-5 text-sm font-black text-white shadow-[0_16px_42px_rgba(23,61,42,.32)] transition hover:-translate-y-1 hover:brightness-110 ${sales.position === "left" ? "left-5 sm:left-7" : "right-5 sm:right-7"}`}
+          style={{ bottom: `${Math.max(12, Math.min(200, Number(sales.bottomOffset || 24)))}px`, backgroundColor: /^#[0-9a-fA-F]{6}$/.test(sales.buttonColor) ? sales.buttonColor : "#173d2a" }}
           aria-label="Abrir HERENCIA SALES"
           title={sales.buttonLabel}
         >
@@ -885,7 +886,7 @@ export function SalesChatWidget() {
       ) : null}
 
       {open ? (
-        <section className="fixed bottom-4 right-3 z-[110] flex h-[min(760px,90vh)] w-[min(460px,calc(100vw-24px))] flex-col overflow-hidden rounded-[28px] border border-[#d9ddd6] bg-[#fffdf9] text-[#173126] shadow-[0_24px_70px_rgba(25,47,34,.28)] sm:right-5">
+        <section className={`fixed bottom-4 z-[110] flex h-[min(760px,90vh)] w-[min(460px,calc(100vw-24px))] flex-col overflow-hidden rounded-[28px] border border-[#d9ddd6] bg-[#fffdf9] text-[#173126] shadow-[0_24px_70px_rgba(25,47,34,.28)] ${sales.position === "left" ? "left-3 sm:left-5" : "right-3 sm:right-5"}`}>
           <header className="border-b border-white/10 bg-[#173d2a] px-5 pb-5 pt-4 text-white">
             <div className="flex items-start justify-between gap-4">
               <div>
