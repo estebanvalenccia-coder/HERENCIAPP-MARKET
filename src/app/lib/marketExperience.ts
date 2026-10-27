@@ -123,6 +123,7 @@ export type MarketExperienceContent = {
     referenceCategories?: boolean;
     referenceHero?: boolean;
     referenceHeroImageUrl?: string;
+    referenceUseOriginalHeroImage?: boolean;
     referenceHeroTitle?: string;
     referenceHeroDescription?: string;
     categories: MarketCard[];
@@ -247,6 +248,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     referenceNavigation: true,
     referenceCategories: true,
     referenceHero: true,
+    referenceUseOriginalHeroImage: true,
     referenceHeroImageUrl: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=85",
     referenceHeroTitle: "Naturaleza que te inspira",
     referenceHeroDescription: "Plantas, macetas, creaciones 3D y regalos únicos para un hogar más vivo y feliz.",
