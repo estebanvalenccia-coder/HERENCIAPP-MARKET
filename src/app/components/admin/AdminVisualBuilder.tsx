@@ -697,6 +697,7 @@ export function AdminVisualBuilder({
       builder: {
         ...current.builder,
         blocks: ensureBuilderBlocks(current).filter((item) => item.id !== block.id),
+        blocksInitialized: true,
       },
     }));
     setSelected("header");
