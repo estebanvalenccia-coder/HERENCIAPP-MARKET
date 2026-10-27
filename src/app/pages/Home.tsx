@@ -181,7 +181,10 @@ export function Home() {
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
   const referenceMode = market.home.referenceHero !== false;
-  const heroImage = referenceMode
+  // Always keep the customer's original hero photograph by default.
+  // The reference design is a layout preset, not permission to replace their artwork.
+  // Only an explicit opt-in in Administration may use the alternate photograph.
+  const heroImage = referenceMode && market.home.referenceUseOriginalHeroImage === false
     ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
     : originalHeroImage;
   const displayHeroTitle = referenceMode
