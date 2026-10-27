@@ -874,6 +874,17 @@ export function AdminVisualBuilder({
   }
 
   const previewWidth = deviceWidth(device);
+  const realPreviewPath = ({
+    home: "/",
+    products: "/productos",
+    "product-detail": catalogPreview[0]?.id ? `/producto/${encodeURIComponent(String(catalogPreview[0].id))}` : "/productos",
+    services: "/servicios",
+    dulce: "/dulce",
+    moda: "/moda",
+    about: "/nosotros",
+    contact: "/contacto",
+    herencia: "/herencia",
+  } as Record<PageMode, string>)[pageMode];
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-[#eef0ec] text-slate-900">
@@ -944,7 +955,7 @@ export function AdminVisualBuilder({
           >
             <ExternalLink className="h-4 w-4" /> Ver sitio
           </button>
-          <button type="button" onClick={() => { setRealPreview((current) => !current); setPageMode("home"); }}
+          <button type="button" onClick={() => { setRealPreview((current) => !current); }}
             className={`rounded-xl border px-3 py-2 text-xs font-black ${realPreview ? "border-emerald-500 bg-emerald-700 text-white" : "border-slate-200 bg-white text-slate-900"}`}>
             {realPreview ? "Vista real activa" : "Editar sobre tienda real"}
           </button>
@@ -1251,11 +1262,11 @@ export function AdminVisualBuilder({
           >
             {realPreview ? (
               <div>
-                <p className="border-b border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-black text-emerald-900">Haz clic en cualquier bloque registrado para modificarlo. Esta vista muestra el borrador sin publicar.</p>
+                <p className="border-b border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-black text-emerald-900">Selecciona una página y pulsa un componente registrado. Esta vista muestra el borrador sin permitir compras ni envíos.</p>
                 <iframe
                   ref={livePreviewRef}
                   title="Vista real de Herencia Market con borrador administrativo"
-                  src="/?__herencia_preview=1"
+                  src={`${realPreviewPath}?__herencia_preview=1`}
                   onLoad={() => livePreviewRef.current?.contentWindow?.postMessage({ type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin)}
                   className="h-[1050px] w-full bg-white"
                   sandbox="allow-scripts allow-same-origin allow-forms"
