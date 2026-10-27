@@ -3,6 +3,10 @@ export type SiteLink = {
   href: string;
   visible?: boolean;
   schedule?: { startAt?: string; endAt?: string };
+  showDesktop?: boolean;
+  showMobile?: boolean;
+  description?: string;
+  children?: SiteLink[];
 };
 
 export type BuilderBlockType =
