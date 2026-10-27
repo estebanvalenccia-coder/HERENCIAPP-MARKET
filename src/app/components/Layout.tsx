@@ -1,7 +1,7 @@
 import { trackTikTokPageView } from "../lib/tiktokPixel";
 import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User } from "lucide-react";
+import { Bot, ChevronDown, Heart, Search, ShoppingCart, Sparkles, User, Truck, Leaf, ShieldCheck, Headphones } from "lucide-react";
 import { Toaster } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import {
@@ -248,9 +248,16 @@ export function Layout() {
           Saltar al contenido principal
         </a>
 
-        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}><div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
-          {market.announcement}
-        </div></StorefrontComponentBoundary>
+        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}>
+          <div className="bg-[#173d2a] px-4 py-2 text-[11px] font-medium text-white/95 sm:text-xs">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 overflow-x-auto whitespace-nowrap px-1 sm:px-4">
+              {market.announcement.split(" · ").filter(Boolean).map((part, index) => {
+                const BenefitIcon = [Truck, Leaf, ShieldCheck, Headphones][index % 4];
+                return <span key={index} className="inline-flex shrink-0 items-center gap-2"><BenefitIcon className="h-3.5 w-3.5"/>{part}</span>;
+              })}
+            </div>
+          </div>
+        </StorefrontComponentBoundary>
 
         <header
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
