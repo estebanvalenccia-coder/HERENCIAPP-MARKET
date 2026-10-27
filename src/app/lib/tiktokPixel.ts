@@ -77,7 +77,7 @@ export function trackTikTokCommerceEvent(event: "ViewContent" | "AddToCart" | "I
   })).filter(item => item.content_id && Number.isFinite(item.price) && item.price >= 0);
   if (!contents.length) return;
   const value = typeof total === "number" && Number.isFinite(total) ? total : contents.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  window.ttq?.track?.(event, { contents, currency: "EUR", value });
+  window.ttq?.track?.(event, { contents, content_type: "product", currency: "EUR", value });
 }
 function trackTikTokPageViewOnce(): void {
   if (!initialized) trackTikTokPageView();
@@ -97,7 +97,7 @@ export function trackTikTokConfirmedPurchase(orderId: string, paymentIntentId: s
     })).filter(item => item.content_id && Number.isFinite(item.price) && item.price >= 0);
     if (!contents.length) return;
     trackTikTokPageViewOnce();
-    window.ttq?.track?.("Purchase", { contents, currency: "EUR", value: paidTotal, order_id: orderId }, { event_id: "purchase_" + orderId });
+    window.ttq?.track?.("Purchase", { contents, content_type: "product", currency: "EUR", value: paidTotal, order_id: orderId }, { event_id: "purchase_" + orderId });
     localStorage.setItem(key, "1");
   } catch { /* Analytics must never interrupt checkout. */ }
 }
