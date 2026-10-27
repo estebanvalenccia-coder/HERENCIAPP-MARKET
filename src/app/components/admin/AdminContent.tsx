@@ -5,7 +5,7 @@ import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { defaultSiteContent, parseSiteContent, SiteContent, SiteLink, syncLegacyToBuilder } from "../../lib/siteContent";
 import { AdminVisualBuilder } from "./AdminVisualBuilder";
 import { AdminMarketExperience } from "./AdminMarketExperience";
-import { AdminScheduleFields } from "./AdminElementControls";
+import { AdminScheduleFields, AdminElementControls, AdminAddElement, reorderItem } from "./AdminElementControls";
 
 function readLegacyBanner(key: "heroBanner" | "ctaBanner") {
   try {
@@ -423,11 +423,37 @@ export function AdminContent({
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-3 rounded-xl border border-border bg-background p-4">
               <Field label="Título columna productos" value={site.footer.productsTitle} onChange={(productsTitle) => setSite({ ...site, footer: { ...site.footer, productsTitle } })} />
-              {site.footer.productLinks.map((item, index) => <LinkEditor key={index} title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("productLinks", index, value)} />)}
+{site.footer.productLinks.map((item, index) => (
+                <div key={index} className="space-y-2">
+                  <AdminElementControls label={item.label} visible={item.visible !== false}
+                    onToggle={(visible) => setSite({ ...site, footer: { ...site.footer, productLinks: site.footer.productLinks.map((entry, i) => i === index ? { ...entry, visible } : entry) } })}
+                    onMoveUp={() => setSite({ ...site, footer: { ...site.footer, productLinks: reorderItem(site.footer.productLinks, index, index - 1) } })}
+                    onMoveDown={() => setSite({ ...site, footer: { ...site.footer, productLinks: reorderItem(site.footer.productLinks, index, index + 1) } })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === site.footer.productLinks.length - 1}
+                    onDuplicate={() => setSite({ ...site, footer: { ...site.footer, productLinks: [...site.footer.productLinks.slice(0, index + 1), { ...item }, ...site.footer.productLinks.slice(index + 1)] } })}
+                    onRemove={() => setSite({ ...site, footer: { ...site.footer, productLinks: site.footer.productLinks.filter((_, i) => i !== index) } })}
+                  />
+                  <LinkEditor title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("productLinks", index, value)} />
+                </div>
+              ))}
+              <AdminAddElement label="Añadir enlace" onAdd={() => setSite({ ...site, footer: { ...site.footer, productLinks: [...site.footer.productLinks, { label: "Nuevo enlace", href: "/productos", visible: false }] } })} />
             </div>
             <div className="space-y-3 rounded-xl border border-border bg-background p-4">
               <Field label="Título columna servicios" value={site.footer.servicesTitle} onChange={(servicesTitle) => setSite({ ...site, footer: { ...site.footer, servicesTitle } })} />
-              {site.footer.serviceLinks.map((item, index) => <LinkEditor key={index} title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("serviceLinks", index, value)} />)}
+{site.footer.serviceLinks.map((item, index) => (
+                <div key={index} className="space-y-2">
+                  <AdminElementControls label={item.label} visible={item.visible !== false}
+                    onToggle={(visible) => setSite({ ...site, footer: { ...site.footer, serviceLinks: site.footer.serviceLinks.map((entry, i) => i === index ? { ...entry, visible } : entry) } })}
+                    onMoveUp={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: reorderItem(site.footer.serviceLinks, index, index - 1) } })}
+                    onMoveDown={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: reorderItem(site.footer.serviceLinks, index, index + 1) } })}
+                    moveUpDisabled={index === 0} moveDownDisabled={index === site.footer.serviceLinks.length - 1}
+                    onDuplicate={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: [...site.footer.serviceLinks.slice(0, index + 1), { ...item }, ...site.footer.serviceLinks.slice(index + 1)] } })}
+                    onRemove={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: site.footer.serviceLinks.filter((_, i) => i !== index) } })}
+                  />
+                  <LinkEditor title={`Enlace ${index + 1}`} value={item} onChange={(value) => updateFooterLink("serviceLinks", index, value)} />
+                </div>
+              ))}
+              <AdminAddElement label="Añadir enlace" onAdd={() => setSite({ ...site, footer: { ...site.footer, serviceLinks: [...site.footer.serviceLinks, { label: "Nuevo enlace", href: "/productos", visible: false }] } })} />
             </div>
           </div>
         </div>
