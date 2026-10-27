@@ -104,11 +104,13 @@ export type MarketExperienceContent = {
     heroOverlayOpacity: number;
     heroOverlayWidth: number;
     categoriesTitle: string;
+    categoryGridLimit: number;
     categories: MarketCard[];
     servicesTitle: string;
     services: MarketServiceCard[];
     featuredTitle: string;
     featuredSubtitle: string;
+    featuredLimit: number;
     trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
   dulce: MarketPromo & {
@@ -208,6 +210,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     heroOverlayOpacity: 90,
     heroOverlayWidth: 72,
     categoriesTitle: "Todo para un estilo de vida más verde",
+    categoryGridLimit: 8,
     categories: [
       {
         title: "Plantas",
@@ -304,6 +307,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       },
     ],
     featuredTitle: "Productos destacados",
+    featuredLimit: 6,
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
     trust: [
       { title: "Calidad seleccionada", description: "Productos y servicios elegidos con cuidado." },
