@@ -2279,6 +2279,14 @@ export const backendApi = {
   },
 };
 
+// The legacy HerencIA chat writes the cart directly from an embedded widget.
+if (typeof window !== "undefined") {
+  window.addEventListener("herencia:cart-updated", (event: Event) => {
+    const detail = (event as CustomEvent<{before?: string | null; after?: string}>).detail;
+    if (typeof detail?.after === "string") trackTikTokCartDifference(detail.before ?? null, detail.after);
+  });
+}
+
 export const backendStorage = {
   getItem(key: string): StoredValue {
     return cache.get(key) ?? readLocalStorage(key);
