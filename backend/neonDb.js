@@ -983,7 +983,7 @@ export async function getNeonAnalyticsSummary(days = 30) {
   const safeDays = Math.max(1, Math.min(365, Math.floor(Number(days) || 30)));
   const params = [safeDays];
 
-  const [totals, daily, pages, locations, sources, devices, browsers, salesEvents, componentClicks] = await Promise.all([
+  const [totals, daily, pages, locations, sources, devices, browsers, salesEvents, componentClicks, commerceOrders] = await Promise.all([
     neonPool.query(`
       select
         count(*) filter (where event_type='pageview')::int as pageviews,
@@ -1063,6 +1063,13 @@ export async function getNeonAnalyticsSummary(days = 30) {
         and created_at >= now() - ($1::int * interval '1 day')
       group by 1 order by value desc limit 30
     `, params),
+    neonPool.query(`
+      select count(*)::int as orders,
+             coalesce(sum(total),0)::float8 as revenue
+      from orders
+      where created_at >= now() - ($1::int * interval '1 day')
+        and status in ('paid','confirmed','preparing','processing','ready','delivered','completed')
+    `, params),
   ]);
 
   return {
@@ -1076,6 +1083,7 @@ export async function getNeonAnalyticsSummary(days = 30) {
     browsers: browsers.rows || [],
     salesEvents: salesEvents.rows || [],
     componentClicks: componentClicks.rows || [],
+    commerceOrders: commerceOrders.rows?.[0] || {orders: 0,revenue: 0},
     generatedAt: new Date().toISOString(),
   };
 }
