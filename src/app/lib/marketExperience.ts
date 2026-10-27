@@ -121,6 +121,9 @@ export type MarketExperienceContent = {
     categoryGridLimit: number;
     referenceNavigation?: boolean;
     referenceCategories?: boolean;
+    referenceHeroImageUrl?: string;
+    referenceHeroTitle?: string;
+    referenceHeroDescription?: string;
     categories: MarketCard[];
     campaigns: MarketCampaign[];
     servicesTitle: string;
@@ -242,6 +245,9 @@ export const defaultMarketExperience: MarketExperienceContent = {
     categoryGridLimit: 8,
     referenceNavigation: true,
     referenceCategories: true,
+    referenceHeroImageUrl: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=85",
+    referenceHeroTitle: "Naturaleza que te inspira",
+    referenceHeroDescription: "Plantas, macetas, creaciones 3D y regalos únicos para un hogar más vivo y feliz.",
     campaigns: [],
     categories: [
       {
