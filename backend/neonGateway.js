@@ -51,6 +51,8 @@ import { universalDay, universalLedgerKey, readUniversalLedger } from "./univers
 import { readCjAutopilotPolicy } from "./cjAutopilotPolicy.js";
 import { CJ_LIVE_MANDATE_KEY, validateCjLiveMandate } from "./cjLiveAutopilotMandate.js";
 import { publishNeonSiteContent } from "./siteContentPublication.js";
+import { canEditSite } from "./siteEditorPermissions.mjs";
+import { getSiteRestrictions, listSiteRestrictions, updateSiteRestrictions, listSitePublicationAudit } from "./siteEditorAudit.js";
 
 const publicPort = Number(process.env.PORT || 3001);
 const legacyPort = Number(process.env.LEGACY_BACKEND_PORT || 3002);
@@ -110,6 +112,29 @@ async function siteEditorActor(req){
     if(!session?.authenticated||session?.mustChangePassword||!["owner","admin"].includes(String(session.role||"")))return null;
     return String(session.username||"administrador").slice(0,80);
   }catch{return null;}
+}
+async function siteEditorPrincipal(req) {
+  try {
+    const response = await fetch(`${legacyUrl}/api/admin/session`, {
+      headers: { cookie: cookies(req) }, signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return null;
+    const session = await response.json();
+    if (session?.authenticated !== true || session?.mustChangePassword === true) return null;
+    const role = String(session.role || "").toLowerCase();
+    if (!["owner","admin","employee"].includes(role)) return null;
+    return { authenticated: true, username: String(session.username || "").slice(0,80), role };
+  } catch { return null; }
+}
+function allowedAdminMutation(req) {
+  if (String(req.headers["sec-fetch-site"] || "") === "cross-site") return false;
+  const origin = String(req.headers.origin || "");
+  if (!origin) return true;
+  try {
+    const supplied = new URL(origin).host;
+    const actual = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+    return supplied === actual;
+  } catch { return false; }
 }
 const aliexpressConnector = createAliExpressConnector({read:readNeonStorageValue,write:upsertNeonStorageValue,requireAdmin:adminSession,saveDraft:saveNeonCommerceProduct});
 const aeStripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -396,24 +421,54 @@ const server=http.createServer(async(req,res)=>{try{
     if(req.method==="DELETE"){if(protectedKeys.has(key)&&!isAdmin)return json(res,401,{error:"Acceso de administrador requerido"});await deleteNeonStorageValue(dbKey);return json(res,200,{ok:true,source:"neon"});}
   }
 
-  if(path==="/api/admin/site-content/publish"&&req.method==="POST"){
-    if(String(req.headers["sec-fetch-site"]||"")==="cross-site")return json(res,403,{error:"Origen no permitido"});
-    const origin=String(req.headers.origin||"");
-    if(origin){
-      try{const supplied=new URL(origin).host;const actual=String(req.headers["x-forwarded-host"]||req.headers.host||"").split(",")[0].trim();if(supplied!==actual)return json(res,403,{error:"Origen no permitido"});}
-      catch{return json(res,403,{error:"Origen no permitido"});}
+  if(path==="/api/admin/site-content/audit"&&req.method==="GET"){
+    const principal=await siteEditorPrincipal(req);
+    if(!principal)return json(res,403,{error:"Sesión administrativa obligatoria"});
+    try{
+      const grants=await getSiteRestrictions(principal.username);
+      if(!canEditSite(principal,"site:audit",grants))return json(res,403,{error:"Sin permiso para consultar auditoría"});
+      return json(res,200,{items:await listSitePublicationAudit(Number(url.searchParams.get("limit")||35))});
+    }catch(error){return json(res,503,{error:"No se pudo consultar la auditoría"});}
+  }
+  if(path==="/api/admin/site-content/permissions"&&["GET","PUT"].includes(req.method)){
+    const principal=await siteEditorPrincipal(req);
+    if(!principal||!canEditSite(principal,"site:permissions"))return json(res,403,{error:"Solo la cuenta propietaria puede administrar permisos"});
+    if(req.method==="GET"){
+      try{return json(res,200,{items:await listSiteRestrictions()});}
+      catch{return json(res,503,{error:"No se pudieron consultar permisos"});}
     }
-    const actor=await siteEditorActor(req);
-    if(!actor)return json(res,403,{error:"Solo administradores autorizados pueden publicar el contenido."});
+    if(!allowedAdminMutation(req))return json(res,403,{error:"Origen no permitido"});
+    try{
+      const data=await bodyJson(req);
+      const result=await updateSiteRestrictions({username:data.username,actor:principal.username,restrictions:data.restrictions});
+      return json(res,200,result);
+    }catch(error){
+      const status=Number(error?.statusCode)||503;
+      return json(res,status,{error:String(error?.message||"No se pudieron guardar permisos")});
+    }
+  }
+  if(path==="/api/admin/site-content/publish"&&req.method==="POST"){
+    if(!allowedAdminMutation(req))return json(res,403,{error:"Origen no permitido"});
+    const principal=await siteEditorPrincipal(req);
+    if(!principal)return json(res,403,{error:"Solo administradores autorizados pueden publicar"});
     try{
       const body=await bodyJson(req);
       if(!body || typeof body!=="object" || typeof body.nextRaw!=="string" || !("expectedRaw" in body)){
         return json(res,400,{error:"Faltan contenido o versión anterior"});
       }
-      const result=await publishNeonSiteContent({expectedRaw:body.expectedRaw,nextRaw:body.nextRaw,actor,auxiliary:body.auxiliary||{}});
+      const action=body.action===undefined||body.action==="publish"?"publish":body.action==="restore"?"restore":null;
+      if(!action)return json(res,400,{error:"Acción de publicación desconocida"});
+      const restriction=await getSiteRestrictions(principal.username);
+      if(!canEditSite(principal,action==="restore"?"site:restore":"site:publish",restriction)){
+        return json(res,403,{error:"Tu cuenta no tiene permiso para esta publicación"});
+      }
+      const result=await publishNeonSiteContent({
+        expectedRaw:body.expectedRaw,nextRaw:body.nextRaw,actor:principal.username,
+        auxiliary:body.auxiliary||{},action,
+      });
       return json(res,200,result);
     }catch(error){
-      const status=[400,409,413,422].includes(Number(error?.statusCode))?Number(error.statusCode):503;
+      const status=[400,403,409,413,422].includes(Number(error?.statusCode))?Number(error.statusCode):503;
       return json(res,status,{error:String(error?.message||"No se pudo publicar"),code:String(error?.code||"SITE_CONTENT_PUBLISH_FAILED")});
     }
   }
