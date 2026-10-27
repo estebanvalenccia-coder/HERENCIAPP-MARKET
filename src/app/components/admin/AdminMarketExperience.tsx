@@ -11,6 +11,7 @@ import { backendApi, backendStorage } from "../../lib/backendStorage";
 import type { SiteContent } from "../../lib/siteContent";
 import {
   DEFAULT_HOME_SECTION_ORDER,
+  PLANT_SHOP_HOME_SECTION_ORDER,
   getMarketExperience,
   type MarketExperienceContent,
   type MarketHomeSectionId,
@@ -425,6 +426,7 @@ export function AdminMarketExperience({
   onChange: (site: SiteContent) => void;
 }) {
   const market = getMarketExperience(site);
+  const productDisplay = market.home.productDisplay!;
   const [managedCategory, setManagedCategory] = useState<{ title: string; key: string } | null>(null);
   const [draggedSection, setDraggedSection] = useState<MarketHomeSectionId | null>(null);
 
@@ -628,6 +630,87 @@ export function AdminMarketExperience({
                   onChange={(e) => patchHome({ referenceCategories: e.target.checked })}/>
                 Siete categorías circulares del boceto
               </label>
+            </div>
+            <div className="mb-5 space-y-4 rounded-2xl border border-[#c7d8c7] bg-[#f3f8f1] p-5">
+              <div>
+                <h4 className="text-lg font-bold text-[#234b35]">Escaparate de plantas · Diseño de tienda</h4>
+                <p className="mt-1 text-sm text-[#526c55]">La vista comercial utiliza los productos publicados y conserva los apartados actuales de Administración. Los cambios se guardan con tu sistema habitual de borradores y publicación.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button"
+                  onClick={() => patchHome({
+                    shopFirst: true,
+                    shopFirstPreviousSectionOrder: market.home.shopFirst
+                      ? market.home.shopFirstPreviousSectionOrder
+                      : [...market.home.sectionOrder],
+                    sectionOrder: [...PLANT_SHOP_HOME_SECTION_ORDER],
+                    productDisplay: { ...productDisplay, mode: "plants", limit: 16, columns: 8, filtersEnabled: true },
+                  })}
+                  className="rounded-lg bg-[#234b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#173d2a]">
+                  Aplicar distribución comercial en borrador
+                </button>
+                <button type="button" onClick={() => patchHome({
+                  shopFirst: false,
+                  sectionOrder: market.home.shopFirstPreviousSectionOrder || market.home.sectionOrder,
+                  shopFirstPreviousSectionOrder: undefined,
+                })}
+                  className="rounded-lg border border-[#abc3ad] bg-white px-4 py-2.5 text-sm font-semibold text-[#234b35] hover:bg-[#e5efe5]">
+                  Volver a la distribución anterior
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={market.home.shopFirst === true}
+                  onChange={(event) => patchHome({ shopFirst: event.target.checked })}/>
+                Mostrar escaparate comercial de plantas
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-xs font-semibold">Origen de productos
+                  <select value={productDisplay.mode}
+                    onChange={(event) => patchHome({ productDisplay: { ...productDisplay, mode: event.target.value as "featured" | "plants" | "all" } })}
+                    className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm">
+                    <option value="plants">Solo plantas activas</option>
+                    <option value="featured">Solo destacados</option>
+                    <option value="all">Todos los productos activos</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold">Productos en portada
+                  <input type="number" min="1" max="48" value={productDisplay.limit}
+                    onChange={(event) => patchHome({ productDisplay: { ...productDisplay, limit: Math.max(1, Math.min(48, Number(event.target.value) || 1)) } })}
+                    className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm"/>
+                </label>
+                <label className="block text-xs font-semibold">Columnas en ordenador
+                  <select value={productDisplay.columns}
+                    onChange={(event) => patchHome({ productDisplay: { ...productDisplay, columns: Number(event.target.value) as 4 | 6 | 8 } })}
+                    className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm">
+                    <option value={4}>4 · Fotos grandes</option>
+                    <option value={6}>6 · Equilibrado</option>
+                    <option value={8}>8 · Más productos</option>
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Título del escaparate" value={productDisplay.title}
+                  onChange={(title) => patchHome({ productDisplay: {...productDisplay, title} })}/>
+                <Field label="Texto debajo del título" value={productDisplay.subtitle}
+                  onChange={(subtitle) => patchHome({ productDisplay: {...productDisplay, subtitle} })}/>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={productDisplay.filtersEnabled}
+                  onChange={(event) => patchHome({ productDisplay: {...productDisplay, filtersEnabled: event.target.checked} })}/>
+                Mostrar filtros de productos en la portada
+              </label>
+              {productDisplay.filtersEnabled && (
+                <label className="block text-xs font-semibold">Nombres de filtros (separados por comas)
+                  <textarea rows={2}
+                    value={productDisplay.filterLabels.join(", ")}
+                    onChange={(event) => patchHome({ productDisplay: {
+                      ...productDisplay,
+                      filterLabels: event.target.value.split(",").map(label => label.trimStart()).slice(0,12),
+                    } })}
+                    className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm"/>
+                </label>
+              )}
+              <p className="text-xs text-[#526c55]">Los precios, fotos, existencias, carrito y favoritos siguen conectados al catálogo original. No se publicarán artículos ficticios para rellenar huecos.</p>
             </div>
             <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
               className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">
