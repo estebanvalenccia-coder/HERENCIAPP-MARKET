@@ -292,6 +292,27 @@ export const backendApi = {
     return request<{ ok: boolean; service?: string }>("/api/health");
   },
 
+  async publishSiteContent(payload: {
+    nextRaw: string;
+    expectedRaw: string | null;
+    auxiliary?: Record<string, string>;
+  }) {
+    // Atomic compare-and-swap on the backend: never write content optimistically.
+    const result = await request<{ ok: boolean; revision: string; versionCount: number; history?: string }>(
+      "/api/admin/site-content/publish",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    if (!result.ok) throw new Error("No se pudo publicar");
+    backendStorage.setCachedItem("siteContent", payload.nextRaw);
+    backendStorage.setCachedItem("siteContentDraft", payload.nextRaw);
+    if (typeof result.history === "string") backendStorage.setCachedItem("siteContentHistory", result.history);
+    for (const [key, value] of Object.entries(payload.auxiliary || {})) {
+      backendStorage.setCachedItem(key, value);
+    }
+    emitChange();
+    return result;
+  },
+
   async readiness() {
     return request<{
       ok: boolean;
