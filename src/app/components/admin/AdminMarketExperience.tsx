@@ -688,6 +688,21 @@ export function AdminMarketExperience({
                   </select>
                 </label>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-semibold">Proporción de la fotografía
+                  <select value={productDisplay.imageAspect}
+                    onChange={(event) => patchHome({ productDisplay: {...productDisplay, imageAspect: event.target.value as "square" | "portrait"} })}
+                    className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm">
+                    <option value="portrait">Vertical · como el boceto</option>
+                    <option value="square">Cuadrada</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold">Redondeo de tarjetas: {productDisplay.cardRadius}px
+                  <input type="range" min="0" max="32" step="1" value={productDisplay.cardRadius}
+                    onChange={(event) => patchHome({ productDisplay: { ...productDisplay, cardRadius: Number(event.target.value) } })}
+                    className="mt-2 block w-full"/>
+                </label>
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Título del escaparate" value={productDisplay.title}
                   onChange={(title) => patchHome({ productDisplay: {...productDisplay, title} })}/>
