@@ -19,9 +19,31 @@ export function useAdminPreviewSite(setSite: (site: SiteContent) => void) {
         // The standalone storefront remains on published content.
       }
     };
+    // Intercept clicks before React event handlers: the preview must NEVER add
+    // products to a cart, trigger chat actions or follow checkout links.
+    const preventPreviewAction = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const id = target.closest("[data-storefront-component]")?.getAttribute("data-storefront-component");
+      if (id) window.parent.postMessage({ type: "herencia:preview:select", componentId: id }, window.location.origin);
+    };
+    const preventPreviewSubmit = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    document.addEventListener("click", preventPreviewAction, true);
+    document.addEventListener("submit", preventPreviewSubmit, true);
     window.addEventListener("message", onMessage);
     window.parent.postMessage({ type: "herencia:preview:ready" }, window.location.origin);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      document.removeEventListener("click", preventPreviewAction, true);
+      document.removeEventListener("submit", preventPreviewSubmit, true);
+    };
   }, [setSite]);
 }
 
