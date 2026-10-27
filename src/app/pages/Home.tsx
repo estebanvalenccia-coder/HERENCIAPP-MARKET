@@ -200,19 +200,20 @@ export function Home() {
     /(?:colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
   );
   const spotlightCollections = [
-    editorial3D || (creations3D[0] ? {
+    editorial3D || {
       title: "Creaciones 3D",
-      subtitle: "Macetas, detalles y diseños de nuestra colección",
-      imageUrl: creations3D[0].image,
-      href: `/producto/${creations3D[0].id}`,
-    } : null),
+      subtitle: "Macetas, diseños y detalles personalizados",
+      imageUrl: creations3D[0]?.image || site.cta.imageUrl || "",
+      href: creations3D[0] ? `/producto/${creations3D[0].id}` :
+        assistantEnabled ? (site.navigation.herencia.href || "/herencia") : "/productos?buscar=3D",
+    },
     editorialColombia || (colombiaDelivery.enabled ? {
       title: "Regalos de Colombia",
       subtitle: colombiaDelivery.description,
       imageUrl: colombiaDelivery.heroImageUrl,
       href: "/colombia",
     } : null),
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item?.imageUrl));
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   const addToCart = (product: any) => {
     if (needsExplicitVariantSelection(product)) {navigate(`/producto/${product.id}`);return;}
@@ -441,7 +442,10 @@ export function Home() {
           <div className="mb-10 grid gap-5 md:grid-cols-2">
             {spotlightCollections.map((collection) => (
               <Link key={collection.href} to={collection.href} className="group relative flex min-h-[265px] items-end overflow-hidden rounded-xl border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[340px]">
-                <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
+                {collection.imageUrl
+                  ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
+                  : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
+                }
                 <div className="absolute inset-0 bg-gradient-to-r from-[#102b20]/90 via-[#102b20]/50 to-transparent" />
                 <div className="relative max-w-[78%] p-7 sm:p-9">
                   <h2 className="font-serif text-3xl font-normal tracking-tight sm:text-4xl">{collection.title}</h2>
