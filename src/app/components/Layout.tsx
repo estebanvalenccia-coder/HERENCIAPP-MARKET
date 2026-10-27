@@ -13,6 +13,7 @@ import {
 } from "../lib/siteContent";
 import { getMarketExperience } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
+import { useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { isComponentAllowed } from "../lib/componentRegistry";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
@@ -26,6 +27,7 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
 
   useEffect(() => {
