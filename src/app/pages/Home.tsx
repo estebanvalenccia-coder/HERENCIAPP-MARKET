@@ -16,6 +16,7 @@ import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.j
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
 import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
+import { useAdminPreviewSite } from "../lib/useAdminPreviewSite";
 import { parseColombiaDeliverySettings, defaultColombiaDeliverySettings, type ColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { StorefrontFeed } from "../components/site/StorefrontFeed";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
@@ -67,6 +68,7 @@ function money(value: unknown) {
 export function Home() {
   const navigate=useNavigate();
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  useAdminPreviewSite(setSite);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
 
   useEffect(() => {
