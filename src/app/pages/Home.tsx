@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
-import { primaryCollectionOf } from "../lib/commerceCatalog";
+import { primaryCollectionOf, productBelongsToCollection } from "../lib/commerceCatalog";
 import { defaultSiteContent, ensureBuilderBlocks, parseSiteContent, type SiteContent } from "../lib/siteContent";
 import { getMarketExperience, type MarketHomeSectionId } from "../lib/marketExperience";
 import { isMarketDestinationEnabled } from "../lib/marketCollectionVisibility.mjs";
@@ -84,6 +84,7 @@ export function Home() {
   }, []);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [activeProductFilter, setActiveProductFilter] = useState("Todas");
   const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<Record<string, string>>({});
   const [colombiaDelivery, setColombiaDelivery] = useState<ColombiaDeliverySettings>(defaultColombiaDeliverySettings);
@@ -148,6 +149,27 @@ export function Home() {
     };
   }, []);
 
+  // Use the same published commerce API as the /productos page. Cached admin
+  // products remain the offline fallback, and the embedded editor keeps its draft.
+  useEffect(() => {
+    if (isEmbeddedAdminPreview()) return;
+    let cancelled = false;
+    const fetchPublishedProducts = async () => {
+      try {
+        const result = await backendApi.listCommerceProducts();
+        if (cancelled || !Array.isArray(result.products)) return;
+        const rows = result.products.filter((p: any) =>
+          (p.status === "active" || p.active === true) && p.active !== false && !p.deletedAt
+        );
+        setCatalog(rows);
+      } catch {
+        // Do not clear the previously cached product grid on transient API errors.
+      }
+    };
+    void fetchPublishedProducts();
+    return () => { cancelled = true; };
+  }, []);
+
   const market = getMarketExperience(site);
 
   const collectionIdForCard = (item: any) => {
@@ -166,6 +188,7 @@ export function Home() {
   const visibleHomeCategories = market.home.categories.filter(
     (item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow) && isMarketDestinationEnabled(market, item.href) && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
+  const shopFirst = market.home.shopFirst === true;
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
     [site]
@@ -181,8 +204,9 @@ export function Home() {
     safeHeroImage(site.hero.imageUrl) ||
     DEFAULT_HERO;
   const referenceMode = market.home.referenceHero !== false;
-  const heroImage = referenceMode
-    ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
+  // A new sales layout must NEVER swap the administrator's saved hero photo.
+  const heroImage = shopFirst ? originalHeroImage
+    : referenceMode ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
     : originalHeroImage;
   const displayHeroTitle = referenceMode
     ? market.home.referenceHeroTitle || market.home.title
@@ -203,6 +227,54 @@ export function Home() {
       return Array.isArray(item?.variants) && item.variants.some((variant: any) => Number(variant?.stock || 0) > 0);
     }).slice(0, Math.max(1, Math.min(48, Number(market.home.featuredLimit ?? 6))));
   }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
+
+  const productDisplay = market.home.productDisplay!;
+  const productTags = (product: any) => [
+    product.name, product.category, product.subcategory, product.collection,
+    product.description, ...(Array.isArray(product.tags) ? product.tags : []),
+  ].filter(Boolean).join(" ").toLocaleLowerCase("es");
+  const productMatchesChip = (product: any, label: string) => {
+    const key = String(label || "").trim().toLocaleLowerCase("es");
+    if (!key || key === "todas") return true;
+    const aliases: Record<string, string[]> = {
+      "purificadoras": ["purific", "sansevieria", "spathiphyllum", "espatifilo"],
+      "fáciles de cuidar": ["fácil", "facil", "resistente", "bajo mantenimiento", "pothos", "sansevieria", "zamioculca"],
+      "con flor": ["flor", "orquídea", "orquidea", "anthurium", "espatifilo"],
+      "colgantes": ["colgante", "hoya", "pothos", "tradescantia"],
+      "tropicales": ["tropical", "monstera", "calathea", "philodendron", "filodendro"],
+      "pequeñas": ["mini", "peque", "small"],
+      "grandes": ["grande", "large", "xl"],
+    };
+    const text = productTags(product);
+    return (aliases[key] || [key]).some(value => text.includes(value));
+  };
+  const shoppingProducts = useMemo(() => {
+    if (!shopFirst) return featured;
+    const mode = productDisplay.mode;
+    const candidates = [...catalog]
+      .filter((p: any) => p && p.active !== false && !p.deletedAt && !["draft", "archived", "inactive"].includes(String(p.status || "active")))
+      .filter((p: any) => p.image && Number(p.onSale && p.salePrice ? p.salePrice : p.price || 0) > 0)
+      .filter((p: any) => p.trackInventory === false || Number(p.stock || 0) > 0 ||
+        (Array.isArray(p.variants) && p.variants.some((v: any) => Number(v.stock || 0) > 0)))
+      .filter((p: any) => isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(p)}`))
+      .filter((p: any) => mode === "all" || mode === "featured" && p.featured ||
+        mode === "plants" && productBelongsToCollection(p, "plantas"))
+      .sort((a: any,b: any) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+    return candidates.filter((product) => productMatchesChip(product, activeProductFilter))
+      .slice(0, Math.max(1, Math.min(48, productDisplay.limit)));
+  }, [catalog, shopFirst, productDisplay.mode, productDisplay.limit, activeProductFilter, featured, market.home.sections, market.dulce.enabled, market.moda.enabled]);
+  const availableShopFilters = shopFirst && productDisplay.filtersEnabled
+    ? productDisplay.filterLabels.filter((label) =>
+      label === "Todas" || catalog.some((product) => (
+        (productDisplay.mode !== "plants" || productBelongsToCollection(product,"plantas"))
+        && productMatchesChip(product, label)))
+    ) : [];
+  const gridColumns = shopFirst ? productDisplay.columns : 6;
+  const shopGridClass = gridColumns === 8
+    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
+    : gridColumns === 6
+      ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
 
   // La colección editorial se alimenta exclusivamente de productos publicados:
   // nunca sustituir el catálogo real por artículos o precios del boceto.
@@ -328,7 +400,7 @@ export function Home() {
 
   return (
     <div className="flex flex-col bg-[#fffdf9] text-[#173126]">
-      <StorefrontComponentBoundary id="home.hero" controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
+      <StorefrontComponentBoundary id="home.hero" order={sectionOrder("hero")} controls={market.componentControls} now={scheduleNow} enabled={sections.hero}>
       <section
         className="relative overflow-hidden"
         style={{
@@ -461,7 +533,7 @@ export function Home() {
         }
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.delivery" controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
+      <StorefrontComponentBoundary id="home.delivery" order={sectionOrder("delivery")} controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
         <section style={{ order: sectionOrder("delivery") }} className="border-b border-[#d9e1d9] bg-[#edf4ee]">
           <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
             <div className="flex items-start gap-4">
@@ -479,7 +551,7 @@ export function Home() {
         </section>
       </StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.categoryStrip" controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
+      <StorefrontComponentBoundary id="home.categoryStrip" order={sectionOrder("categoryStrip")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
           <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
@@ -497,7 +569,7 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.plantCta" controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div style={{ order: sectionOrder("plantCta") }} className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
+      <StorefrontComponentBoundary id="home.plantCta" order={sectionOrder("plantCta")} controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div style={{ order: sectionOrder("plantCta") }} className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
         <Link
           to="/catalogo/plantas"
           className="inline-flex items-center gap-2 rounded-lg bg-[#254932] px-6 py-3.5 font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#173d2a]"
@@ -507,9 +579,9 @@ export function Home() {
         </Link>
       </div></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.feed" controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="home.feed" order={sectionOrder("feed")} controls={market.componentControls} now={scheduleNow} enabled={sections.feed}><div style={{ order: sectionOrder("feed") }}><StorefrontFeed /></div></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.categoriesGrid" controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
+      <StorefrontComponentBoundary id="home.categoriesGrid" order={sectionOrder("categoriesGrid")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoriesGrid}>
       <section style={{ order: sectionOrder("categoriesGrid") }} className="mx-auto w-full max-w-7xl px-5 pt-5 pb-3 sm:px-8 lg:px-10">
         {spotlightCollections.length > 0 && (
           <div className="grid gap-3 md:grid-cols-2">
@@ -538,7 +610,7 @@ export function Home() {
             compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.services" controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
+      <StorefrontComponentBoundary id="home.services" order={sectionOrder("services")} controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
       <section style={{ order: sectionOrder("services") }} className="bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="flex items-end justify-between gap-4">
@@ -583,14 +655,14 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.featured" controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
+      <StorefrontComponentBoundary id="home.featured" order={sectionOrder("featured")} controls={market.componentControls} now={scheduleNow} enabled={sections.featured}>
       <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="sr-only">Selección Herencia</p>
-            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{market.home.featuredTitle}</h2>
+            <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{shopFirst ? productDisplay.title : market.home.featuredTitle}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
-              {market.home.featuredSubtitle}
+              {shopFirst ? productDisplay.subtitle : market.home.featuredSubtitle}
             </p>
           </div>
           <Link to="/productos" className="inline-flex items-center gap-2 text-sm font-black text-[#315b42]">
@@ -614,20 +686,34 @@ export function Home() {
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {featured.map((product) => {
+        {availableShopFilters.length > 1 && (
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Filtros de plantas">
+            {availableShopFilters.map((label) => (
+              <button key={label} type="button"
+                onClick={() => setActiveProductFilter(label)}
+                aria-pressed={activeProductFilter === label}
+                className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${activeProductFilter === label ? "bg-[#234b35] text-white" : "bg-[#f1eee8] text-[#4e6153] hover:bg-[#e1e9dd]"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className={`mt-4 grid gap-3 ${shopGridClass}`}>
+          {shoppingProducts.map((product) => {
             const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
             return (
               <article
                 key={product.id}
                 className="group relative overflow-hidden rounded-xl border border-[#ece7dc] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                style={shopFirst ? {borderRadius: `${productDisplay.cardRadius}px`} : undefined}
               >
                 <button type="button" onClick={() => void toggleFavorite(product.id)}
                   aria-label={favorites.includes(String(product.id)) ? `Quitar ${product.name} de favoritos` : `Guardar ${product.name} en favoritos`}
                   className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#294a35] shadow-sm transition hover:bg-[#e8f2e7]">
                   <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
                 </button>
-                <Link to={`/producto/${product.id}`} className="block aspect-[4/4.3] overflow-hidden bg-[#f1eee7]">
+                <Link to={`/producto/${product.id}`}
+                  className={`block overflow-hidden bg-[#f1eee7] ${shopFirst && productDisplay.imageAspect === "square" ? "aspect-square" : "aspect-[4/4.3]"}`}>
                   <img
                     src={product.image}
                     alt={product.name}
@@ -658,9 +744,15 @@ export function Home() {
             );
           })}
         </div>
+        {shopFirst && shoppingProducts.length === 0 && (
+          <div className="mt-5 rounded-xl border border-[#e1e5db] bg-white p-6 text-sm text-[#445d4a]">
+            No hay productos disponibles con estos filtros.
+            <Link to="/productos?coleccion=plantas" className="ml-2 font-semibold underline">Ver el catálogo</Link>
+          </div>
+        )}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.promotions" controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
+      <StorefrontComponentBoundary id="home.promotions" order={sectionOrder("promotions")} controls={market.componentControls} now={scheduleNow} enabled={sections.promotions}>
       <section style={{ order: sectionOrder("promotions") }} className="mx-auto grid w-full max-w-7xl gap-6 px-5 pb-16 sm:px-8 lg:grid-cols-2 lg:px-10">
         {[market.dulce, market.moda, ...market.home.campaigns].filter((promo) => {
           if (promo.enabled === false || !isWithinPublicationWindow(promo.schedule, scheduleNow) || !isMarketDestinationEnabled(market, promo.href)) return false;
@@ -702,7 +794,7 @@ export function Home() {
         ))}
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.trust" controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
+      <StorefrontComponentBoundary id="home.trust" order={sectionOrder("trust")} controls={market.componentControls} now={scheduleNow} enabled={sections.trust}>
       <section style={{ order: sectionOrder("trust") }} className="border-y border-[#ebe7df] bg-[#faf9f5]">
         <div className="mx-auto grid max-w-7xl gap-3 px-5 py-5 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
           {market.home.trust.filter((item) => item.visible !== false && isWithinPublicationWindow(item.schedule, scheduleNow)).map((item, index) => {
@@ -722,7 +814,7 @@ export function Home() {
         </div>
       </section></StorefrontComponentBoundary>
 
-      <StorefrontComponentBoundary id="home.bottomCta" controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
+      <StorefrontComponentBoundary id="home.bottomCta" order={sectionOrder("bottomCta")} controls={market.componentControls} now={scheduleNow} enabled={sections.bottomCta}>
       <section style={{ order: sectionOrder("bottomCta") }} className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
         <div className="relative overflow-hidden rounded-xl border border-[#e4dfd3] bg-[#ece5d8] px-7 py-12 text-[#173d2a] sm:px-10">
           {site.cta.imageUrl && <>
