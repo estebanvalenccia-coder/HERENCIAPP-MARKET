@@ -971,6 +971,23 @@ export function AdminMarketExperience({
             />
             Mostrar “Crear con Herencia”
           </label>
+          <div className="mb-5 grid gap-4 rounded-xl border border-[#dce6dc] bg-[#f5f9f5] p-4 sm:grid-cols-3">
+            <label className="block text-sm font-bold">
+              Posición del botón
+              <select value={market.sales.position} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, position: event.target.value as "left" | "right" } })} className="mt-2 w-full rounded-lg border bg-white p-2">
+                <option value="left">Abajo a la izquierda</option>
+                <option value="right">Abajo a la derecha</option>
+              </select>
+            </label>
+            <label className="block text-sm font-bold">
+              Distancia al borde inferior: {market.sales.bottomOffset}px
+              <input className="mt-3 w-full" type="range" min="12" max="200" value={market.sales.bottomOffset} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, bottomOffset: Number(event.target.value) } })} />
+            </label>
+            <label className="block text-sm font-bold">
+              Color del botón
+              <input type="color" className="mt-2 block h-10 w-20 cursor-pointer" value={market.sales.buttonColor} onChange={(event) => setMarket({ ...market, sales: { ...market.sales, buttonColor: event.target.value } })} />
+            </label>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Field
               label="Texto del botón flotante"
