@@ -181,6 +181,7 @@ export function Layout() {
 
   const market = useMemo(() => getMarketExperience(site), [site]);
   const visibleNavigation = market.navigation.filter((item) => {
+    if (item.visible === false) return false;
     const path = String(item.href || "").split("?")[0].toLowerCase();
     const collectionId = path === "/dulce" ? "dulce" : path === "/moda" ? "moda" : "";
     return !collectionId || !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionId]);
@@ -224,9 +225,9 @@ export function Layout() {
           Saltar al contenido principal
         </a>
 
-        <div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
+        {market.layout.announcement && <div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
           {market.announcement}
-        </div>
+        </div>}
 
         <header
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
@@ -264,7 +265,7 @@ export function Layout() {
                     />
                   )
                 )}
-                {herenciaEnabled ? (
+                {herenciaEnabled && site.navigation.herencia.visible !== false ? (
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
                     label={site.navigation.herencia.label || "Herenc(IA)"}
@@ -275,7 +276,7 @@ export function Layout() {
               </nav>
 
               <div className="ml-auto flex items-center gap-1.5">
-                {colombiaEnabled ? (
+                {colombiaEnabled && market.layout.deliverySelector ? (
                   <div className="group relative hidden lg:block">
                     <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#315b42]/30 bg-white px-4 text-sm font-black text-[#315b42] transition hover:bg-[#f1f6f2]">
                       <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
@@ -289,7 +290,7 @@ export function Layout() {
                     </div>
                   </div>
                 ) : null}
-                <form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
+                {market.layout.search && <form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718076]" />
                   <input
                     value={search}
@@ -297,9 +298,9 @@ export function Layout() {
                     placeholder="Buscar plantas, productos, servicios..."
                     className="h-11 w-full rounded-full border border-[#ded9cd] bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#315b42] focus:ring-2 focus:ring-[#315b42]/10"
                   />
-                </form>
+                </form>}
 
-                <button
+                {market.layout.search && <button
                   type="button"
                   onClick={() => {
                     const query = window.prompt("¿Qué quieres buscar en Herencia?", search);
@@ -311,17 +312,17 @@ export function Layout() {
                   aria-label="Buscar"
                 >
                   <Search className="h-5 w-5" />
-                </button>
+                </button>}
 
-                <Link
+                {market.layout.account && <Link
                   to={site.headerActions.profileHref || "/perfil"}
                   className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Mi cuenta"
                 >
                   <User className="h-5 w-5" />
-                </Link>
+                </Link>}
 
-                <Link
+                {market.layout.favorites && <Link
                   to="/perfil"
                   className="relative hidden h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7] sm:grid"
                   aria-label="Favoritos"
@@ -332,9 +333,9 @@ export function Layout() {
                       {wishlistCount}
                     </span>
                   ) : null}
-                </Link>
+                </Link>}
 
-                <Link
+                {market.layout.cart && <Link
                   to={site.headerActions.cartHref || "/carrito"}
                   className="relative grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Carrito"
@@ -345,7 +346,7 @@ export function Layout() {
                       {cartCount}
                     </span>
                   ) : null}
-                </Link>
+                </Link>}
               </div>
             </div>
 
@@ -390,7 +391,7 @@ export function Layout() {
           <Outlet />
         </main>
 
-        <footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
+        {market.layout.footer && <footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
           <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
             <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
               <div>
@@ -409,19 +410,13 @@ export function Layout() {
               </div>
 
               <FooterColumn
-                title="Tienda"
-                links={[
-                  { label: "Todos los productos", href: "/productos" },
-                  { label: "Plantas y jardín", href: "/productos?categoria=plantas-interior" },
-                  { label: "Semillas", href: "/productos?categoria=semillas" },
-                  { label: "Dulce", href: "/dulce" },
-                  { label: "Moda", href: "/moda" },
-                ]}
+                title={site.footer.productsTitle}
+                links={site.footer.productLinks.filter((item) => item.visible !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[String(item.href || "").split("?")[0].replace("/", "")]))}
               />
 
               <FooterColumn
-                title="Servicios"
-                links={market.home.services.slice(0, 5).map((item) => ({
+                title={site.footer.servicesTitle}
+                links={market.home.services.filter((item) => item.visible !== false).map((item) => ({
                   label: item.title,
                   href: item.href,
                 }))}
@@ -466,7 +461,7 @@ export function Layout() {
               </div>
             </div>
           </div>
-        </footer>
+        </footer>}
       </div>
 
       <SalesChatWidget />
