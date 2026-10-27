@@ -16,6 +16,7 @@ import { isWithinPublicationWindow } from "../lib/publicationSchedule.mjs";
 import { parseColombiaDeliverySettings } from "../lib/internationalDelivery";
 import { SalesChatWidget } from "./SalesChatWidget";
 import { MarketNavigationMenu } from "./MarketNavigationMenu";
+import { StorefrontComponentBoundary } from "./StorefrontComponentBoundary";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
@@ -233,9 +234,9 @@ export function Layout() {
           Saltar al contenido principal
         </a>
 
-        {market.layout.announcement && <div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
+        <StorefrontComponentBoundary id="header.announcement" controls={market.componentControls} now={scheduleNow} enabled={market.layout.announcement}><div className="bg-[#173d2a] px-4 py-2 text-center text-[11px] font-bold tracking-wide text-white/90 sm:text-xs">
           {market.announcement}
-        </div>}
+        </div></StorefrontComponentBoundary>
 
         <header
           className={`z-50 border-b border-[#e8e2d8] bg-[#fffdf9]/95 transition-all duration-300 ${
@@ -271,7 +272,7 @@ export function Layout() {
               </nav>
 
               <div className="ml-auto flex items-center gap-1.5">
-                {colombiaEnabled && market.layout.deliverySelector ? (
+                <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                   <div className="group relative hidden lg:block">
                     <button type="button" className="inline-flex h-11 items-center gap-2 rounded-full border border-[#315b42]/30 bg-white px-4 text-sm font-black text-[#315b42] transition hover:bg-[#f1f6f2]">
                       <span>Entregar en:</span><span>{location.pathname === "/colombia" ? "🇨🇴 Cali" : "🇪🇸 Barcelona"}</span><ChevronDown className="h-3.5 w-3.5" />
@@ -284,8 +285,8 @@ export function Layout() {
                       </div>
                     </div>
                   </div>
-                ) : null}
-                {market.layout.search && <form onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
+                </StorefrontComponentBoundary>
+                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}> onSubmit={submitSearch} className="relative hidden w-[220px] xl:block">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718076]" />
                   <input
                     value={search}
@@ -293,9 +294,9 @@ export function Layout() {
                     placeholder="Buscar plantas, productos, servicios..."
                     className="h-11 w-full rounded-full border border-[#ded9cd] bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#315b42] focus:ring-2 focus:ring-[#315b42]/10"
                   />
-                </form>}
+                </form></StorefrontComponentBoundary>
 
-                {market.layout.search && <button
+                <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}>
                   type="button"
                   onClick={() => {
                     const query = window.prompt("¿Qué quieres buscar en Herencia?", search);
@@ -307,17 +308,17 @@ export function Layout() {
                   aria-label="Buscar"
                 >
                   <Search className="h-5 w-5" />
-                </button>}
+                </button></StorefrontComponentBoundary>
 
-                {market.layout.account && <Link
+                <StorefrontComponentBoundary id="header.account" controls={market.componentControls} now={scheduleNow} enabled={market.layout.account}>
                   to={site.headerActions.profileHref || "/perfil"}
                   className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Mi cuenta"
                 >
                   <User className="h-5 w-5" />
-                </Link>}
+                </Link></StorefrontComponentBoundary>
 
-                {market.layout.favorites && <Link
+                <StorefrontComponentBoundary id="header.favorites" controls={market.componentControls} now={scheduleNow} enabled={market.layout.favorites}>
                   to="/perfil"
                   className="relative hidden h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7] sm:grid"
                   aria-label="Favoritos"
@@ -328,9 +329,9 @@ export function Layout() {
                       {wishlistCount}
                     </span>
                   ) : null}
-                </Link>}
+                </Link></StorefrontComponentBoundary>
 
-                {market.layout.cart && <Link
+                <StorefrontComponentBoundary id="header.cart" controls={market.componentControls} now={scheduleNow} enabled={market.layout.cart}>
                   to={site.headerActions.cartHref || "/carrito"}
                   className="relative grid h-10 w-10 place-items-center rounded-full transition hover:bg-[#f0eee7]"
                   aria-label="Carrito"
@@ -341,7 +342,7 @@ export function Layout() {
                       {cartCount}
                     </span>
                   ) : null}
-                </Link>}
+                </Link></StorefrontComponentBoundary>
               </div>
             </div>
 
@@ -353,7 +354,7 @@ export function Layout() {
                   <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
                 )
               )}
-              {herenciaEnabled ? (
+              {herenciaEnabled && site.navigation.herencia.visible !== false ? (
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
                   label={site.navigation.herencia.label || "Herenc(IA)"}
@@ -361,9 +362,9 @@ export function Layout() {
                   mobile
                 />
               ) : null}
-              {colombiaEnabled ? (
+              <StorefrontComponentBoundary id="header.deliverySelector" controls={market.componentControls} now={scheduleNow} enabled={colombiaEnabled && market.layout.deliverySelector}>
                 <MarketNavLink href="/colombia" label="🇨🇴 Cali" active={location.pathname === "/colombia"} mobile />
-              ) : null}
+              </StorefrontComponentBoundary>
             </nav>
           </div>
         </header>
@@ -372,7 +373,7 @@ export function Layout() {
           <Outlet />
         </main>
 
-        {market.layout.footer && <footer className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
+        <StorefrontComponentBoundary id="footer.main" controls={market.componentControls} now={scheduleNow} enabled={market.layout.footer}> className="border-t border-[#d9ddd6] bg-[#173d2a] text-white">
           <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
             <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
               <div>
@@ -439,12 +440,18 @@ export function Layout() {
               </div>
             </div>
           </div>
-        </footer>}
+        </footer></StorefrontComponentBoundary>
       </div>
 
-      <SalesChatWidget />
-      <FloatingCustomerSupportV2 />
-      <AccessibilityPanel />
+      <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
+        <SalesChatWidget />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.support" controls={market.componentControls} now={scheduleNow}>
+        <FloatingCustomerSupportV2 />
+      </StorefrontComponentBoundary>
+      <StorefrontComponentBoundary id="floating.accessibility" controls={market.componentControls} now={scheduleNow}>
+        <AccessibilityPanel />
+      </StorefrontComponentBoundary>
 
       {!cookieConsent ? (
         <div className="fixed bottom-4 left-4 right-4 z-[120] mx-auto max-w-3xl rounded-2xl border border-[#ded9cd] bg-[#fffdf9] p-4 text-[#173126] shadow-2xl">
