@@ -14,6 +14,9 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [resetFor, setResetFor] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
   const reload = async () => {
     if (previewOnly) return;
     setLoading(true);
@@ -34,6 +37,17 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
     } catch (e: any) { setError(e?.message || "No se pudo crear la cuenta"); }
     finally { setCreating(false); }
   };
+  const manage = async (user: AdminUser, action: "status" | "role" | "reset_password", value: string) => {
+    if (previewOnly || user.legacy || busyId) return;
+    setBusyId(user.id); setError("");
+    try {
+      await backendApi.adminManageAccount(user.id, action, value);
+      toast.success("Cuenta actualizada");
+      setResetFor(null); setResetPassword("");
+      await reload();
+    } catch(e: any) { setError(e?.message || "No se pudo actualizar la cuenta"); }
+    finally { setBusyId(null); }
+  };
   return <div className="max-w-4xl space-y-6">
     <header>
       <h3 className="text-xl font-bold">Usuarios y permisos</h3>
@@ -49,7 +63,17 @@ export function AdminUsersManager({ previewOnly = false }: { previewOnly?: boole
             <div><p className="font-medium">{user.username}</p>
               <p className="text-xs text-muted-foreground">{user.role === "owner" ? "Administrador principal" : "Administrador"} · {user.mustChangePassword ? "Cambio de contraseña pendiente" : "Activo"}</p>
             </div>
-            <span className="text-xs rounded-lg bg-muted px-3 py-1">{user.legacy ? "Cuenta principal" : user.state}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs rounded-lg bg-muted px-3 py-1">{user.legacy ? "Cuenta principal" : user.state}</span>
+              {!user.legacy && !previewOnly && <>
+                <select aria-label={`Rol de ${user.username}`} disabled={busyId===user.id} value={user.role} onChange={e=>void manage(user,"role",e.target.value)} className="rounded-lg border p-2 text-sm bg-background">
+                  <option value="admin">Administrador</option><option value="employee">Empleado</option>
+                </select>
+                <button type="button" disabled={busyId===user.id} className="rounded-lg border px-3 py-2 text-sm" onClick={()=>void manage(user,"status",user.state==="disabled"?"active":"disabled")}>{user.state==="disabled"?"Reactivar":"Suspender"}</button>
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={()=>setResetFor(resetFor===user.id?null:user.id)}>Restablecer clave</button>
+              </>}
+            </div>
+            {resetFor===user.id && <div className="flex gap-2 flex-wrap w-full"><input aria-label="Contraseña provisional" type="password" autoComplete="new-password" minLength={4} value={resetPassword} onChange={e=>setResetPassword(e.target.value)} className="border rounded-lg p-2" placeholder="Nueva contraseña provisional"/><button type="button" disabled={busyId===user.id || resetPassword.length<4} onClick={()=>void manage(user,"reset_password",resetPassword)} className="rounded-lg border px-3 py-2">Confirmar restablecimiento</button></div>
           </div>)}
         </div>
       )}
