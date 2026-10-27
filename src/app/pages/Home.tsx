@@ -134,7 +134,7 @@ export function Home() {
   };
 
   const visibleHomeCategories = market.home.categories.filter(
-    (item) => !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
+    (item) => item.visible !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[collectionIdForCard(item)])
   );
   const heroBlock = useMemo(
     () => ensureBuilderBlocks(site).find((block) => block.type === "hero"),
@@ -195,9 +195,11 @@ export function Home() {
   };
 
   const trustIcons = [ShieldCheck, Truck, HeartHandshake, Leaf];
+  const sections = market.home.sections;
 
   return (
     <div className="bg-[#fbfaf6] text-[#173126]">
+      {sections.hero && (
       <section
         className="relative overflow-hidden"
         style={{
@@ -293,25 +295,25 @@ export function Home() {
                       : "flex-start",
               }}
             >
-              <Link
+              {site.hero.primaryButton.visible !== false && <Link
                 to={site.hero.primaryButton.href || "/productos"}
                 className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
               >
                 {site.hero.primaryButton.label || "Explorar tienda"}
                 <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
+              </Link>}
+              {site.hero.secondaryButton.visible !== false && <Link
                 to={site.hero.secondaryButton.href || "/servicios"}
                 className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/10 px-6 py-3.5 font-bold text-white backdrop-blur transition hover:bg-white/20"
               >
                 {site.hero.secondaryButton.label || "Nuestros servicios"}
-              </Link>
+              </Link>}
             </div>
           </div>
         </div>
-      </section>
+      </section>)}
 
-      {colombiaDelivery.enabled && (
+      {sections.delivery && colombiaDelivery.enabled && (
         <section className="border-b border-[#d9e1d9] bg-[#edf4ee]">
           <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between lg:px-10">
             <div className="flex items-start gap-4">
@@ -329,6 +331,7 @@ export function Home() {
         </section>
       )}
 
+      {sections.categoryStrip && (
       <section className="border-b border-[#e5e1d8] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
           <div className="grid grid-cols-4 gap-5 md:grid-cols-8">
@@ -344,9 +347,9 @@ export function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>)}
 
-      <div className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
+      {sections.plantCta && (<div className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
         <Link
           to="/catalogo/plantas"
           className="inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#234832]"
@@ -354,10 +357,11 @@ export function Home() {
           Descubre nuestras plantas
           <ArrowRight className="h-4 w-4" />
         </Link>
-      </div>
+      </div>)}
 
       <StorefrontFeed />
 
+      {sections.categoriesGrid && (
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -400,8 +404,9 @@ export function Home() {
             </Link>
           ))}
         </div>
-      </section>
+      </section>)}
 
+      {sections.services && (
       <section className="bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
           <div className="flex items-end justify-between gap-4">
@@ -417,7 +422,7 @@ export function Home() {
           </div>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {market.home.services.map((service) => (
+            {market.home.services.filter((service) => service.visible !== false).map((service) => (
               <Link
                 key={service.title}
                 to={service.href}
@@ -442,8 +447,9 @@ export function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>)}
 
+      {sections.featured && (
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -492,10 +498,11 @@ export function Home() {
             );
           })}
         </div>
-      </section>
+      </section>)}
 
+      {sections.promotions && (
       <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-14 sm:px-8 lg:grid-cols-2 lg:px-10">
-        {[market.dulce, market.moda].filter((promo) => !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo.href === "/dulce" ? "dulce" : "moda"])).map((promo) => (
+        {[market.dulce, market.moda].filter((promo) => promo.enabled !== false && !["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus[promo === market.dulce ? "dulce" : "moda"])).map((promo) => (
           <Link
             key={promo.title}
             to={promo.href}
@@ -524,11 +531,12 @@ export function Home() {
             </div>
           </Link>
         ))}
-      </section>
+      </section>)}
 
+      {sections.trust && (
       <section className="border-y border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:px-10">
-          {market.home.trust.map((item, index) => {
+          {market.home.trust.filter((item) => item.visible !== false).map((item, index) => {
             const Icon = trustIcons[index % trustIcons.length];
             return (
               <div key={item.title} className="flex gap-3">
@@ -543,7 +551,7 @@ export function Home() {
             );
           })}
         </div>
-      </section>
+      </section>)}
 
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="relative overflow-hidden rounded-[2rem] bg-[#173d2a] px-7 py-10 text-white sm:px-10">
