@@ -6,7 +6,7 @@ export const TIKTOK_EVENTS_ENDPOINT = "https://business-api.tiktok.com/open_api/
 const money = (value) => Number(Number(value).toFixed(2));
 const hashEmail = (email) => {
   const normalized = String(email || "").trim().toLowerCase();
-  return normalized && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(normalized)
+  return normalized && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)
     ? createHash("sha256").update(normalized).digest("hex")
     : undefined;
 };
