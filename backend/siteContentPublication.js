@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { neonPool } from "./neonDb.js";
 import { validateSitePublication } from "../src/app/lib/sitePublicationValidation.mjs";
 
 export class SitePublicationConflict extends Error {
@@ -77,4 +78,48 @@ export function planSiteContentPublication({
     previousRevision: contentRevision(previous),
     versionCount: versions.length,
   };
+}
+
+/**
+ * Persist ALL publication keys under one PostgreSQL transaction.
+ * An advisory lock on siteContent makes compare-and-swap conflict detection atomic.
+ * The public content, draft snapshot and versions are committed or rolled back together.
+ */
+export async function publishNeonSiteContent({ expectedRaw, nextRaw, actor, auxiliary }) {
+  if (!neonPool) throw Object.assign(new Error("Neon no está configurado."), { statusCode: 503 });
+  const client = await neonPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", ["storage:siteContent"]);
+    const previousRow = await client.query("select value from app_storage where key=$1", ["siteContent"]);
+    const historyRow = await client.query("select value from app_storage where key=$1", ["siteContentHistory"]);
+    const plan = planSiteContentPublication({
+      before: previousRow.rows?.[0]?.value ?? null,
+      expectedRaw,
+      nextRaw,
+      historyRaw: historyRow.rows?.[0]?.value ?? null,
+      actor,
+      auxiliary,
+    });
+    for (const [key, value] of Object.entries({
+      siteContent: plan.content,
+      siteContentDraft: plan.draft,
+      siteContentHistory: plan.history,
+      ...plan.auxiliary,
+    })) {
+      await client.query(
+        `insert into app_storage (key,value,created_at,updated_at)
+         values ($1,$2,now(),now())
+         on conflict (key) do update set value=excluded.value,updated_at=now()`,
+        [key, value]
+      );
+    }
+    await client.query("COMMIT");
+    return { ok: true, revision: plan.revision, previousRevision: plan.previousRevision, versionCount: plan.versionCount };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
