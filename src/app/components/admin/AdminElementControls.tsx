@@ -45,7 +45,7 @@ export function AdminElementControls({
         <button type="button" onClick={onDuplicate} aria-label={`Duplicar ${label}`} title="Duplicar" className="rounded-lg border p-1.5"><Copy className="h-4 w-4" /></button>
       )}
       {onRemove && (
-        <button type="button" onClick={onRemove} aria-label={`Eliminar ${label}`} title="Eliminar" className="rounded-lg border border-red-200 p-1.5 text-red-700"><Trash2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { if (window.confirm(`¿Eliminar «${label}» de esta sección? Puedes recuperarlo antes de publicar desde el historial del editor visual.`)) onRemove(); }} aria-label={`Eliminar ${label}`} title="Eliminar" className="rounded-lg border border-red-200 p-1.5 text-red-700"><Trash2 className="h-4 w-4" /></button>
       )}
     </div>
   );
