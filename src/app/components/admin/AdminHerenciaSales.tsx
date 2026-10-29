@@ -86,13 +86,13 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
       ]);
       const healthJson = await healthResponse.json();
       const analyticsJson = await analyticsResponse.json();
-      if (!healthResponse.ok) throw new Error(healthJson?.error || "No se pudo comprobar HERENCIA SALES");
+      if (!healthResponse.ok) throw new Error(healthJson?.error || "No se pudo comprobar Tropical Sales");
       if (!analyticsResponse.ok) throw new Error(analyticsJson?.error || "No se pudo cargar el embudo");
       setHealth({ ...emptyHealth, ...healthJson });
       setAnalytics(analyticsJson || {});
       setOrders(Array.isArray(orderResponse.orders) ? orderResponse.orders : []);
     } catch (error: any) {
-      toast.error(error?.message || "No se pudo cargar HERENCIA SALES");
+      toast.error(error?.message || "No se pudo cargar Tropical Sales");
     } finally {
       setLoading(false);
     }
@@ -164,10 +164,10 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "La prueba no respondió");
       setTestResult(`${data.reply || "Respuesta recibida"}${Array.isArray(data.productIds) && data.productIds.length ? ` · IDs: ${data.productIds.join(", ")}` : ""}`);
-      toast.success("HERENCIA SALES respondió correctamente");
+      toast.success("Tropical Sales respondió correctamente");
     } catch (error: any) {
       setTestResult(error?.message || "La prueba falló");
-      toast.error(error?.message || "La prueba de HERENCIA SALES falló");
+      toast.error(error?.message || "La prueba de Tropical Sales falló");
     } finally {
       setTesting(false);
     }
@@ -181,7 +181,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white/65">
               <Sparkles className="h-4 w-4" /> Centro comercial IA
             </div>
-            <h1 className="mt-2 text-3xl font-black">HERENCIA SALES</h1>
+            <h1 className="mt-2 text-3xl font-black">Tropical Sales</h1>
             <p className="mt-2 max-w-3xl text-sm text-white/75">
               Estado real del vendedor digital: catálogo Commerce/Neon, stock, variantes, Groq, Gemini, imágenes, ramos y embudo de conversión.
             </p>
@@ -208,7 +208,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
         <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5 flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-black">Embudo de HERENCIA SALES · 30 días</h2>
+            <h2 className="text-xl font-black">Embudo de Tropical Sales · 30 días</h2>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
@@ -236,7 +236,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
           </div>
           {health.vision?.legacyEnv ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
-              Gemini funciona con la variable legacy de Railway. HERENCIA SALES ya no expone la clave desde su frontend, pero conviene migrarla a GEMINI_API_KEY cuando tengas acceso al valor.
+              Gemini funciona con la variable legacy de Railway. Tropical Sales ya no expone la clave desde su frontend, pero conviene migrarla a GEMINI_API_KEY cuando tengas acceso al valor.
             </div>
           ) : null}
           <div className="space-y-3 text-sm">
@@ -263,7 +263,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
           </div>
           <button onClick={() => void runTest()} disabled={testing || !health.chat?.configured} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">
             {testing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-            {testing ? "Probando..." : "Probar HERENCIA SALES"}
+            {testing ? "Probando..." : "Probar Tropical Sales"}
           </button>
         </div>
         {testResult ? <div className="mt-4 rounded-2xl border border-border bg-muted/40 p-4 text-sm">{testResult}</div> : null}
@@ -271,7 +271,7 @@ export function AdminHerenciaSales({ onNavigate }: { onNavigate: (section: strin
 
       <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
         <h2 className="text-xl font-black">Gestión rápida</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Cada botón abre la fuente real que utiliza HERENCIA SALES.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Cada botón abre la fuente real que utiliza Tropical Sales.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <button onClick={() => onNavigate("products")} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:bg-muted/50"><Boxes className="h-5 w-5 text-primary" /><span><b>Productos</b><br/><span className="text-xs text-muted-foreground">Precio, stock y variantes</span></span></button>
           <button onClick={() => onNavigate("bouquet-catalog")} className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left hover:bg-muted/50"><Flower2 className="h-5 w-5 text-primary" /><span><b>Flores del creador</b><br/><span className="text-xs text-muted-foreground">Flores y verdes permitidos</span></span></button>
