@@ -76,7 +76,7 @@ export function AdminShippingRules() {
       <div className="flex items-center gap-2"><Truck className="h-5 w-5 text-primary" /><h3 className="text-xl font-bold">Envíos y dropshipping</h3></div>
       <p className="text-xs text-muted-foreground">Precios y promociones configurables para productos físicos. Los servicios conservan su reserva sin envío. Los gastos CJ ya incluidos en el precio de venta no se cobran dos veces.</p>
       {toggle("Cobrar gastos de envío (ON/OFF)",policy.enabled,v=>patch("enabled",v))}
-      <p className="text-xs text-amber-700">OFF elimina la tarifa de transporte, pero no la obligación de entregar los artículos ni la tarifa que el proveedor cobre a Herencia.</p>
+      <p className="text-xs text-amber-700">OFF elimina la tarifa de transporte, pero no la obligación de entregar los artículos ni la tarifa que el proveedor cobre a Tropical Plants.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className={labelStyle}>Tipo de tarifa
           <select className={inputStyle} value={policy.mode} onChange={e=>patch("mode",e.target.value)}>
