@@ -120,7 +120,7 @@ export function Services() {
         <div className="relative mx-auto flex min-h-[440px] max-w-7xl items-center px-5 py-14 sm:px-8 lg:px-10">
           <div className="max-w-2xl text-white">
             <p className="text-xs font-black uppercase tracking-[0.25em] text-white/70">
-              SERVICIOS HERENCIA
+              SERVICIOS TROPICAL PLANTS
             </p>
             <h1 className="mt-4 text-5xl font-medium leading-[1.02] sm:text-6xl">
               {site.servicesPage.title}
@@ -130,7 +130,7 @@ export function Services() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <a
-                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola, quiero solicitar información sobre un servicio de Herencia.")}`}
+                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Hola, quiero solicitar información sobre un servicio de Tropical Plants.")}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#173d2a]"
