@@ -54,7 +54,7 @@ function emptyPost(priority = 0): StorefrontPost {
     layout: "card",
     title: "",
     description: "",
-    label: "HERENCIA",
+    label: "TROPICAL PLANTS",
     imageUrls: [],
     ctaLabel: "Ver más",
     ctaHref: "",
@@ -408,7 +408,7 @@ export function AdminPublications() {
                 ["Tienda", "/productos"],
                 ["Servicios", "/servicios"],
                 ["Colombia", "/colombia"],
-                ["Herenc(IA)", "/ia"],
+                ["Tropical IA", "/ia"],
               ].map(([label, href]) => (
                 <button key={href} type="button" onClick={() => setEditing({ ...editing, ctaLabel: "Ver " + label, ctaHref: href })} className="rounded-full border border-border px-3 py-2 text-xs font-black hover:bg-muted">{label}</button>
               ))}
@@ -497,7 +497,7 @@ export function AdminPublications() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary"><Megaphone className="h-3.5 w-3.5" /> FEED DEL FRONTEND</div>
             <h2 className="mt-3 text-3xl font-black">Publicaciones</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Crea ofertas, novedades, campañas, productos destacados, servicios, anuncios, eventos o contenido libre y publícalo directamente en Herencia Market.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Crea ofertas, novedades, campañas, productos destacados, servicios, anuncios, eventos o contenido libre y publícalo directamente en Tropical Plants.</p>
           </div>
           <button type="button" onClick={() => setEditing(emptyPost(posts.length))} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground shadow-lg"><Plus className="h-4 w-4" /> Nueva publicación</button>
         </div>
