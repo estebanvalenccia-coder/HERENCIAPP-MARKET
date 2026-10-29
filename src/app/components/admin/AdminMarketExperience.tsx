@@ -641,18 +641,18 @@ export function AdminMarketExperience({
               <label className="flex items-center gap-2 rounded-xl border border-[#dce6dc] bg-white px-4 py-3 text-sm font-semibold">
                 <input type="checkbox" checked={market.home.referenceNavigation !== false}
                   onChange={(e) => patchHome({ referenceNavigation: e.target.checked })}/>
-                Menú comercial como el boceto
+                Orden de menú del boceto (respeta todos tus enlaces)
               </label>
               <label className="flex items-center gap-2 rounded-xl border border-[#dce6dc] bg-white px-4 py-3 text-sm font-semibold">
                 <input type="checkbox" checked={market.home.referenceCategories !== false}
                   onChange={(e) => patchHome({ referenceCategories: e.target.checked })}/>
-                Siete categorías circulares del boceto
+                Tarjetas de categorías con imagen como el boceto
               </label>
             </div>
             <div className="mb-5 space-y-4 rounded-2xl border border-[#c7d8c7] bg-[#f3f8f1] p-5">
               <div>
                 <h4 className="text-lg font-bold text-[#234b35]">Escaparate de plantas · Diseño de tienda</h4>
-                <p className="mt-1 text-sm text-[#526c55]">La vista comercial utiliza los productos publicados y conserva los apartados actuales de Administración. Los cambios se guardan con tu sistema habitual de borradores y publicación.</p>
+                <p className="mt-1 text-sm text-[#526c55]">Las tarjetas, fotografías, enlaces, precios y asistentes se alimentan de las configuraciones y catálogos reales; este botón solo cambia distribución, nunca elimina productos ni sobreescribe tus fotografías. Guarda y publica el borrador con el sistema habitual.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button"
@@ -662,10 +662,13 @@ export function AdminMarketExperience({
                       ? market.home.shopFirstPreviousSectionOrder
                       : [...market.home.sectionOrder],
                     sectionOrder: [...PLANT_SHOP_HOME_SECTION_ORDER],
-                    productDisplay: { ...productDisplay, mode: "plants", limit: 16, columns: 8, filtersEnabled: true },
+                    referenceNavigation: true,
+                    referenceCategories: true,
+                    productDisplay: { ...productDisplay, mode: "plants", limit: 6, columns: 6, filtersEnabled: false },
+                    creations3D: { ...market.home.creations3D, limit: 6 },
                   })}
                   className="rounded-lg bg-[#234b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#173d2a]">
-                  Aplicar distribución comercial en borrador
+                  Aplicar diseño del boceto en borrador
                 </button>
                 <button type="button" onClick={() => patchHome({
                   shopFirst: false,
@@ -907,7 +910,7 @@ export function AdminMarketExperience({
               <div className="rounded-xl border border-[#dce6dc] bg-[#f5f8f3] p-4">
                 <label className="mb-3 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={market.home.referenceHero !== false} onChange={(e) => patchHome({referenceHero:e.target.checked})}/> Activar banner visual de referencia</label>
                 <h4 className="mb-2 font-bold">Hero del diseño de referencia</h4>
-                <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y textos del banner cuando el modo visual de referencia está activo; no alteran el banner anterior.</p>
+                <p className="mb-3 text-xs text-muted-foreground">Estos campos controlan la imagen y los textos que aparecen realmente en el banner del diseño nuevo. Al desactivar este modo vuelve a mostrarse el banner anterior.</p>
                 <Field label="URL de fotografía botánica" value={market.home.referenceHeroImageUrl || ""}
                   onChange={(referenceHeroImageUrl) => patchHome({referenceHeroImageUrl})} />
                 <Field label="Título del banner" value={market.home.referenceHeroTitle || ""}
@@ -921,7 +924,7 @@ export function AdminMarketExperience({
                 onChange={(categoriesTitle) => patchHome({ categoriesTitle })}
               />
               <label className="block text-xs font-bold">
-                Categorías mostradas en la cuadrícula (0 = todas)
+                Número de categorías en portada (0 = todas)
                 <input type="number" min="0" max="100" value={market.home.categoryGridLimit} onChange={(event) => patchHome({ categoryGridLimit: Math.max(0, Math.min(100, Number(event.target.value) || 0)) })} className="mt-2 block w-full rounded-xl border p-3 text-sm" />
               </label>
               <Field
