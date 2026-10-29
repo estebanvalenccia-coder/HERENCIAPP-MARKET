@@ -214,15 +214,15 @@ export type SiteContent = {
 
 export const defaultSiteContent: SiteContent = {
   brand: {
-    name: "Herencia Floristería",
-    logoUrl: "",
-    logoAlt: "Herencia Floristería",
+    name: "Tropical Plants",
+    logoUrl: "/logo.svg",
+    logoAlt: "Tropical Plants",
   },
   navigation: {
     home: { label: "Inicio", href: "/" },
     products: { label: "Productos", href: "/productos" },
     services: { label: "Servicios", href: "/servicios" },
-    herencia: { label: "Herenc(IA)", href: "/herencia" },
+    herencia: { label: "Tropical IA", href: "/herencia" },
   },
   headerActions: {
     cartHref: "/carrito",
@@ -301,7 +301,7 @@ export const defaultSiteContent: SiteContent = {
     instagramUrl: "https://instagram.com/floristeriaherencia",
     mapsLabel: "Cómo llegar",
     mapsUrl: "https://maps.app.goo.gl/WLihx3aD1Xhqc9WT8",
-    copyright: "© 2026 Herencia Floristería. Todos los derechos reservados.",
+    copyright: "© 2026 Tropical Plants. Todos los derechos reservados.",
     developerLabel: "Desarrollado por DEVB",
     privacyLabel: "Política de Privacidad",
     cookiesLabel: "Política de Cookies",
@@ -383,7 +383,7 @@ export const defaultSiteContent: SiteContent = {
       { label: "Domingo", value: "Cerrado" },
     ],
     addressTitle: "Dirección",
-    addressText: "Herencia Floristería",
+    addressText: "Tropical Plants",
     mapButtonLabel: "Ver en Google Maps",
     mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3037.5!2d-3.7!3d40.4!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDDCsDI0JzAwLjAiTiAzwrA0MicwMC4wIlc!5e0!3m2!1sen!2ses!4v1234567890",
     helpTitle: "¿Necesitas ayuda?",
@@ -597,7 +597,7 @@ export function createBuilderBlock(
       visible: true,
       data: {
         heading: "Lo que dicen nuestros clientes",
-        description: "Experiencias reales de quienes confían en Herencia.",
+        description: "Experiencias reales de quienes confían en Tropical Plants.",
         items: [],
       },
       design: defaultBlockDesign(type),
@@ -610,7 +610,7 @@ export function createBuilderBlock(
     name: "Texto + imagen",
     visible: true,
     data: {
-      eyebrow: "HERENCIA",
+      eyebrow: "TROPICAL PLANTS",
       heading: "Una historia que merece ser contada",
       text: "Añade aquí el contenido que quieras destacar.",
       button: { label: "Saber más", href: "/servicios" },
@@ -764,11 +764,33 @@ export function syncLegacyToBuilder(site: SiteContent): SiteContent {
   return { ...site, builder: { ...site.builder, blocks } };
 }
 
+// Rebrand saved storefront text without touching API routes, identifiers, links or product IDs.
+export function tropicalizeDisplayContent<T>(value: T, field = ""): T {
+  if (typeof value === "string") {
+    if (/^(https?:\/\/|\/|data:|mailto:|tel:|@)/i.test(value) || /(?:url|href|id|key|slug|path|icon|phone)$/i.test(field)) return value;
+    return value
+      .replace(/Herenc\(IA\)/gi, "Tropical IA")
+      .replace(/Herencia IA/gi, "Tropical IA")
+      .replace(/Herencia Floristería/gi, "Tropical Plants")
+      .replace(/Herencia Market/gi, "Tropical Plants")
+      .replace(/Herencia Sales/gi, "Tropical Sales")
+      .replace(/\bHerencia\b/gi, "Tropical Plants") as T;
+  }
+  if (Array.isArray(value)) return value.map(item => tropicalizeDisplayContent(item)) as T;
+  if (value && typeof value === "object") return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, tropicalizeDisplayContent(item, key)])
+  ) as T;
+  return value;
+}
+
 export function parseSiteContent(raw: string | null): SiteContent {
   if (!raw) return copy(defaultSiteContent);
 
   try {
-    const parsed = JSON.parse(raw) || {};
+    const saved = JSON.parse(raw) || {};
+    const oldBrand = /herencia/i.test(String(saved.brand?.name || "")) || /herencia/i.test(String(saved.brand?.logoAlt || ""));
+    const parsed = tropicalizeDisplayContent(saved);
+    if (oldBrand) parsed.brand = { ...(parsed.brand || {}), logoUrl: "/logo.svg" };
     const result: SiteContent = {
       ...defaultSiteContent,
       ...parsed,
