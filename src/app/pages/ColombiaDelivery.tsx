@@ -130,7 +130,7 @@ export function ColombiaDelivery() {
     const site = parseSiteContent(backendStorage.getItem("siteContent"));
     const phone = String(site.floatingWhatsapp?.phone || site.footer?.whatsappPhone || defaultSiteContent.floatingWhatsapp.phone || "").replace(/\D/g, "");
     const lines = [
-      "Hola Herencia 🌿 Quiero enviar un regalo en Colombia.",
+      "Hola Tropical Plants 🌿 Quiero enviar un regalo en Colombia.",
       "",
       `🇨🇴 Zona: ${zone?.name || "Cali / Candelaria"}`,
       `🎁 Producto: ${product.name}`,
@@ -179,7 +179,7 @@ export function ColombiaDelivery() {
 
     const text = encodeURIComponent(lines.join("\n"));
     if (phone) window.open(`https://wa.me/${phone}?text=${text}`, "_blank", "noopener,noreferrer");
-    else window.location.href = `mailto:?subject=${encodeURIComponent("Domicilio Herencia en Colombia")}&body=${text}`;
+    else window.location.href = `mailto:?subject=${encodeURIComponent("Domicilio Tropical Plants en Colombia")}&body=${text}`;
   };
 
   if (!settings.enabled) {
@@ -191,7 +191,7 @@ export function ColombiaDelivery() {
       <section className="relative overflow-hidden bg-[#193628]">
         <img
           src={settings.heroImageUrl}
-          alt="Herencia Colombia en Cali"
+          alt="Tropical Plants Colombia en Cali"
           className="absolute inset-0 h-full w-full object-cover object-[50%_42%]"
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(18,36,26,.12)_0%,rgba(18,36,26,.18)_28%,rgba(18,36,26,.58)_43%,rgba(18,36,26,.38)_72%,rgba(18,36,26,.16)_100%)]" />
