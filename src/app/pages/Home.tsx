@@ -205,8 +205,10 @@ export function Home() {
     DEFAULT_HERO;
   const referenceMode = market.home.referenceHero !== false;
   // A new sales layout must NEVER swap the administrator's saved hero photo.
-  const heroImage = shopFirst ? originalHeroImage
-    : referenceMode ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
+  // When the reference banner is ON, its editor fields take precedence.
+  // When OFF, the original hero remains exactly as configured in Administration.
+  const heroImage = referenceMode
+    ? safeHeroImage(market.home.referenceHeroImageUrl) || originalHeroImage
     : originalHeroImage;
   const displayHeroTitle = referenceMode
     ? market.home.referenceHeroTitle || market.home.title
@@ -338,9 +340,11 @@ export function Home() {
   // The reference layout must never invent categories or override Administration.
   // Styling is selected in the editor; content, destinations and visibility come
   // exclusively from the actual published market.home.categories collection.
-  const displayedHomeCategories = visibleHomeCategories
-    .filter((item) => String(item.href || "").split("?")[0] !== "/colombia" || colombiaDelivery.enabled)
-    .slice(0, Math.max(1, Math.min(12, Number(market.home.categoryGridLimit || 8))));
+  const availableHomeCategories = visibleHomeCategories
+    .filter((item) => String(item.href || "").split("?")[0] !== "/colombia" || colombiaDelivery.enabled);
+  const displayedHomeCategories = Number(market.home.categoryGridLimit) === 0
+    ? availableHomeCategories
+    : availableHomeCategories.slice(0, Math.max(1, Math.min(100, Number(market.home.categoryGridLimit || 5))));
 
 
   const toggleFavorite = async (productId: unknown) => {
