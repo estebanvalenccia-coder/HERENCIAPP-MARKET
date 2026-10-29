@@ -393,7 +393,7 @@ export function Products() {
     <div className="min-h-screen">
       <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <p className="mb-2 text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Tropical Plants</p>
           <h1 className="mb-3 text-4xl font-medium text-[#173126] md:text-5xl">{selectedCollection === "jardineria" ? "Artículos de jardinería" : site.productsPage.title}</h1>
           <p className="max-w-2xl leading-7 text-[#66736b]">{selectedCollection === "jardineria" ? "Huerto urbano, herramientas, riego, fertilizantes y productos para el cuidado de las plantas." : site.productsPage.subtitle}</p>
         </div>
