@@ -230,7 +230,7 @@ export function Cart() {
           </span>
           <h1 className="mt-6 text-4xl font-medium">Tu carrito está vacío</h1>
           <p className="mt-3 text-sm leading-6 text-[#6c786f]">
-            Explora plantas, jardín, decoración, Dulce, Moda y servicios de Herencia.
+            Explora plantas, jardín, decoración, Dulce, Moda y servicios de Tropical Plants.
           </p>
           <Link to="/productos" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#315b42] px-6 py-3 text-sm font-black text-white">
             Ver productos <ArrowRight className="h-4 w-4" />
@@ -244,7 +244,7 @@ export function Cart() {
     <div className="bg-[#fbfaf6] text-[#173126]">
       <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Tropical Plants</p>
           <h1 className="mt-2 text-4xl font-medium sm:text-5xl">{onlyServices ? "Tu reserva" : "Tu carrito"}</h1>
           <p className="mt-2 text-sm text-[#66736b]">
             {onlyServices
@@ -378,7 +378,7 @@ export function Cart() {
               <p className="mt-1 text-xs leading-5 text-[#6c786f]">
                 {hasServices
                   ? "El envío se calcula únicamente para los productos físicos. Los servicios se cobran por las horas reservadas."
-                  : "Herencia Market funciona exclusivamente con entrega. No disponemos de recogida en tienda."}
+                  : "Tropical Plants funciona exclusivamente con entrega. No disponemos de recogida en tienda."}
               </p>
             </div>
           )}
