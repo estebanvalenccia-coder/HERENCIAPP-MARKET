@@ -527,7 +527,7 @@ export function Home() {
         </div>
         <StorefrontComponentBoundary id="home.heroIA" controls={market.componentControls} now={scheduleNow}
           enabled={assistantEnabled && site.navigation.herencia.visible !== false}>
-          <Link to={site.navigation.herencia.href || "/herencia"}
+          <Link to={site.navigation.herencia.href || "/tropical-ia"}
             className="absolute right-5 top-7 hidden w-[290px] flex-col rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-5 text-[#193527] shadow-[0_15px_45px_rgba(0,0,0,.2)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex xl:right-8">
             <span className="flex items-center gap-3">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-7 w-7"/></span>
@@ -546,7 +546,7 @@ export function Home() {
         </StorefrontComponentBoundary>
         <StorefrontComponentBoundary id="home.heroIA" controls={market.componentControls} now={scheduleNow}
           enabled={assistantEnabled && site.navigation.herencia.visible !== false}>
-          <Link to={site.navigation.herencia.href || "/herencia"}
+          <Link to={site.navigation.herencia.href || "/tropical-ia"}
             className="mx-5 mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-4 text-[#193527] shadow-xl backdrop-blur lg:hidden">
             <span className="flex items-center gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-6 w-6"/></span>
