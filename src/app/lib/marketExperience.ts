@@ -36,7 +36,7 @@ export type MarketHomeProductDisplay = {
 };
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
   title: "Plantas para dar vida a cada espacio",
-  subtitle: "Plantas naturales seleccionadas por Herencia para tu hogar.",
+  subtitle: "Plantas naturales seleccionadas por Tropical Plants para tu hogar.",
   mode: "plants",
   limit: 12,
   columns: 6,
@@ -319,7 +319,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       creations3d: true,
       trust: true,
     },
-    kicker: "HERENCIA MARKET",
+    kicker: "Tropical Plants",
     title: "Haz de tu hogar un espacio con vida",
     description: "Plantas, decoración, productos, servicios y detalles únicos para crear espacios que te hagan bien.",
     heroImageUrl: "/herencia-portada.avif",
@@ -427,7 +427,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     shopFirst: true,
     productDisplay: DEFAULT_HOME_PRODUCT_DISPLAY,
     selectionDisplay: DEFAULT_HOME_SELECTION_DISPLAY,
-    featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
+    featuredSubtitle: "Una selección de Tropical Plants para tu casa, tu jardín y tus momentos especiales.",
     trust: [
       { title: "Calidad seleccionada", description: "Productos y servicios elegidos con cuidado." },
       { title: "Envíos en Barcelona", description: "Entrega clara y seguimiento de tu pedido." },
@@ -453,12 +453,12 @@ export const defaultMarketExperience: MarketExperienceContent = {
     href: "/moda",
     buttonLabel: "Ver colección",
     pageTitle: "Moda con propósito",
-    pageSubtitle: "Prendas y accesorios funcionales, cómodos y con una estética coherente con el universo Herencia.",
+    pageSubtitle: "Prendas y accesorios funcionales, cómodos y con una estética coherente con el universo Tropical Plants.",
   },
   about: {
-    kicker: "SOBRE HERENCIA",
+    kicker: "SOBRE TROPICAL PLANTS",
     title: "Naturaleza, hogar y detalles con alma",
-    description: "Herencia une productos, servicios y experiencias alrededor de una idea sencilla: ayudarte a crear espacios más vivos, cuidados y personales.",
+    description: "Tropical Plants une productos, servicios y experiencias alrededor de una idea sencilla: ayudarte a crear espacios más vivos, cuidados y personales.",
     imageUrl: "https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&w=1600&q=88",
     values: [
       { title: "Naturaleza cercana", description: "Lo verde forma parte de la vida cotidiana, no solo de ocasiones especiales." },
@@ -471,7 +471,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     position: "left",
     bottomOffset: 24,
     buttonColor: "#25D366",
-    message: "Hola, vengo de Herencia Market y necesito ayuda con un producto.",
+    message: "Hola, vengo de Tropical Plants y necesito ayuda con un producto.",
   },
   support: {
     position: "right",
@@ -484,10 +484,10 @@ export const defaultMarketExperience: MarketExperienceContent = {
     position: "right",
     bottomOffset: 24,
     buttonColor: "#173d2a",
-    buttonLabel: "Herencia Sales",
-    title: "HERENCIA SALES",
+    buttonLabel: "Tropical Sales",
+    title: "Tropical Sales",
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
-    helperText: "Solo compras, personalización y productos de Herencia.",
+    helperText: "Solo compras, personalización y productos de Tropical Plants.",
     quickActions: [
       { id: "plant", label: "Plantas", prompt: "Muéstrame plantas disponibles para comprar." },
       { id: "sweet", label: "Dulces", prompt: "Muéstrame dulces, tartas, chocolates, galletas y cajas regalo disponibles." },
@@ -496,10 +496,10 @@ export const defaultMarketExperience: MarketExperienceContent = {
       { id: "soil", label: "Tierra y sustratos", prompt: "Muéstrame tierra, sustratos, humus, compost y productos relacionados disponibles." },
       { id: "decor", label: "Decoración", prompt: "Muéstrame productos de decoración disponibles para comprar." },
       { id: "fashion", label: "Moda", prompt: "Muéstrame productos de moda disponibles, incluyendo tallas, colores y variantes." },
-      { id: "services", label: "Servicios", prompt: "Muéstrame los servicios de Herencia que puedo contratar." },
+      { id: "services", label: "Servicios", prompt: "Muéstrame los servicios de Tropical Plants que puedo contratar." },
       { id: "photo", label: "Buscar por foto", prompt: "" },
       { id: "gift", label: "Buscar un regalo", prompt: "Quiero encontrar un regalo usando productos reales disponibles." },
-      { id: "surprise", label: "Sorpréndeme", prompt: "Sorpréndeme con algo real que pueda comprar ahora en Herencia." },
+      { id: "surprise", label: "Sorpréndeme", prompt: "Sorpréndeme con algo real que pueda comprar ahora en Tropical Plants." },
     ],
   },
 };
@@ -656,8 +656,8 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     sales: {
       ...defaultMarketExperience.sales,
       ...salesIncoming,
-      buttonLabel: String(salesIncoming.buttonLabel || defaultMarketExperience.sales.buttonLabel).trim() === "Crear con Herencia"
-        ? "Herencia Sales"
+      buttonLabel: String(salesIncoming.buttonLabel || defaultMarketExperience.sales.buttonLabel).trim() === "Crear con Tropical Plants"
+        ? "Tropical Sales"
         : String(salesIncoming.buttonLabel || defaultMarketExperience.sales.buttonLabel),
       quickActions: mergeSalesActions(defaultMarketExperience.sales.quickActions, salesIncoming.quickActions),
     },
