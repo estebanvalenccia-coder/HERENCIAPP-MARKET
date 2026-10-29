@@ -57,6 +57,7 @@ import { AdminUsersManager, AdminPasswordChange } from "../components/admin/Admi
 import { AdminDashboardHome } from "../components/admin/AdminDashboardHome";
 import { AdminOrders } from "../components/admin/AdminOrders";
 import { AdminSalesCalculator } from "../components/admin/AdminSalesCalculator";
+import { Admin3DPrintCalculator } from "../components/admin/Admin3DPrintCalculator";
 import { AdminFlowerCosts } from "../components/admin/AdminFlowerCosts";
 import { AdminBouquetCatalog } from "../components/admin/AdminBouquetCatalog";
 import { AdminAIBouquetDesigner } from "../components/admin/AdminAIBouquetDesigner";
@@ -98,6 +99,7 @@ type AdminSection =
   | "orders"
   | "finance"
   | "calculator"
+  | "calculator-3d"
   | "flower-costs"
   | "bouquet-catalog"
   | "content"
@@ -448,6 +450,7 @@ export function AdminDashboard() {
       badge: "PRO",
     },
     { id: "calculator" as AdminSection, label: "Calculadora", icon: Calculator },
+    { id: "calculator-3d" as AdminSection, label: "Calculadora 3D", icon: Calculator, badge: "NUEVO" },
     { id: "flower-costs" as AdminSection, label: "Coste flores", icon: Flower2 },
     { id: "bouquet-catalog" as AdminSection, label: "Flores del creador", icon: Flower2, badge: "EDITAR" },
     { id: "content" as AdminSection, label: "Contenido", icon: ImageIcon },
@@ -1003,6 +1006,8 @@ export function AdminDashboard() {
           {currentSection === "finance" && <AdminFinance />}
 
           {currentSection === "calculator" && <AdminSalesCalculator />}
+
+          {currentSection === "calculator-3d" && <Admin3DPrintCalculator />}
 
           {currentSection === "flower-costs" && <AdminFlowerCosts />}
 
