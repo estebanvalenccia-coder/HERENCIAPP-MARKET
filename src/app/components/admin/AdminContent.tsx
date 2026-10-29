@@ -218,7 +218,7 @@ export function AdminContent({
       }
       // La portada visible de Home usa marketExperience.home.heroImageUrl.
       // Mantener ambos modelos sincronizados evita que el editor legacy y el
-      // editor de HERENCIA MARKET se sobrescriban entre sí al publicar.
+      // editor de Tropical Plants se sobrescriban entre sí al publicar.
       const market = (site as any).marketExperience;
       let heroImageUrl = String(market?.home?.heroImageUrl || site.hero.imageUrl || "").trim();
 
@@ -356,7 +356,7 @@ export function AdminContent({
         <p className="mb-5 text-sm text-muted-foreground">Puedes cambiar tanto el nombre visible como la ruta/URL que abre cada botón.</p>
         <div className="space-y-3">
           {(["home", "products", "services", "herencia"] as const).map((key) => (
-            <LinkEditor key={key} title={key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Herenc(IA)"} value={site.navigation[key]} onChange={(value) => setSite({ ...site, navigation: { ...site.navigation, [key]: value } })} />
+            <LinkEditor key={key} title={key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Tropical IA"} value={site.navigation[key]} onChange={(value) => setSite({ ...site, navigation: { ...site.navigation, [key]: value } })} />
           ))}
           <div className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-2">
             <Field label="Destino icono carrito" value={site.headerActions.cartHref} onChange={(cartHref) => setSite({ ...site, headerActions: { ...site.headerActions, cartHref } })} />
