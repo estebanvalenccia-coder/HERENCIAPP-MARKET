@@ -25,7 +25,7 @@ import { SlidersHorizontal,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
+const logo = "/logo.svg";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import {
   BuilderBlock,
@@ -808,7 +808,7 @@ export function AdminVisualBuilder({
       await backendStorage.removeItem("visualBuilderAuxDraft");
       setDraftState("guardado");
       window.dispatchEvent(new Event("backend-storage"));
-      toast.success("Cambios publicados en Herencia");
+      toast.success("Cambios publicados en Tropical Plants");
       onPublished?.();
     } catch (error: any) {
       toast.error(error?.message || "No se pudo publicar");
@@ -888,7 +888,7 @@ export function AdminVisualBuilder({
             <span className="hidden sm:inline">Panel</span>
           </button>
           <div className="hidden min-w-0 md:block">
-            <p className="truncate font-black">Constructor visual · Herencia</p>
+            <p className="truncate font-black">Constructor visual · Tropical Plants</p>
             <p className="text-xs text-slate-500">
               {draftState === "guardando"
                 ? "Guardando borrador…"
@@ -1049,7 +1049,7 @@ export function AdminVisualBuilder({
                 ["moda", "Moda"],
                 ["about", "Nosotros"],
                 ["contact", "Contacto"],
-                ["herencia", "Herenc(IA)"],
+                ["herencia", "Tropical IA"],
               ] as const).map(([mode, label]) => (
                 <button
                   key={mode}
@@ -1166,7 +1166,7 @@ export function AdminVisualBuilder({
                       : pageMode === "dulce" ? "Página Dulce"
                       : pageMode === "moda" ? "Página Moda"
                       : pageMode === "about" ? "Página Nosotros"
-                      : pageMode === "herencia" ? "Página Herenc(IA)"
+                      : pageMode === "herencia" ? "Página Tropical IA"
                       : "Página de Contacto"}
                   </p>
                   <p className="text-xs text-slate-500">
@@ -1234,7 +1234,7 @@ export function AdminVisualBuilder({
               <option value="moda">Moda</option>
               <option value="about">Nosotros</option>
               <option value="contact">Contacto</option>
-              <option value="herencia">Herenc(IA)</option>
+              <option value="herencia">Tropical IA</option>
             </select>
             <div className="flex rounded-lg bg-slate-100 p-1">
               {([
@@ -1289,7 +1289,7 @@ export function AdminVisualBuilder({
                 <p className="border-b border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-black text-emerald-900">Haz clic en cualquier bloque registrado para modificarlo. Esta vista muestra el borrador sin publicar.</p>
                 <iframe
                   ref={livePreviewRef}
-                  title="Vista real de Herencia Market con borrador administrativo"
+                  title="Vista real de Tropical Plants con borrador administrativo"
                   src="/?__herencia_preview=1"
                   onLoad={() => livePreviewRef.current?.contentWindow?.postMessage({ type: "herencia:editor:sync", siteRaw: JSON.stringify(site) }, window.location.origin)}
                   className="h-[1050px] w-full bg-white"
@@ -1427,7 +1427,7 @@ export function AdminVisualBuilder({
                       : selected === "dulce" ? "Dulce"
                       : selected === "moda" ? "Moda"
                       : selected === "about" ? "Nosotros"
-                      : selected === "herencia" ? "Herenc(IA)"
+                      : selected === "herencia" ? "Tropical IA"
                       : "Contacto"
                   )}
                 </h2>
@@ -1641,7 +1641,7 @@ function HeaderEditor({
       {(["home", "products", "services", "herencia"] as const).map((key) => (
         <LinkFields
           key={key}
-          label={key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Herenc(IA)"}
+          label={key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Tropical IA"}
           value={site.navigation[key]}
           onChange={(value) => updateSite((current) => ({ ...current, navigation: { ...current.navigation, [key]: value } }))}
         />
@@ -1651,7 +1651,7 @@ function HeaderEditor({
         {(["home", "products", "services", "herencia"] as const).map((key) => (
           <label key={key} className="block text-xs font-bold text-slate-700">
             <span className="mb-1.5 block">
-              {key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Herenc(IA)"}
+              {key === "home" ? "Inicio" : key === "products" ? "Productos" : key === "services" ? "Servicios" : "Tropical IA"}
             </span>
             <select
               value={menuIcons[key]}
@@ -1667,7 +1667,7 @@ function HeaderEditor({
       </div>
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <label className="flex items-center justify-between text-sm font-bold">
-          Mostrar Herenc(IA) en el menú
+          Mostrar Tropical IA en el menú
           <input
             type="checkbox"
             checked={herenciaSettings.enabled}
@@ -1677,7 +1677,7 @@ function HeaderEditor({
           />
         </label>
         <TextField
-          label="URL interna/configuración Herenc(IA)"
+          label="URL interna/configuración Tropical IA"
           value={herenciaSettings.url}
           onChange={(url) => setHerenciaSettings({ ...herenciaSettings, url })}
           placeholder="Opcional"
@@ -2720,7 +2720,7 @@ function ProductDetailTemplatePreview({
   const config = site.productDetailPage;
   const sample = product || {
     id: "preview",
-    name: "Producto Herencia",
+    name: "Producto Tropical Plants",
     description: "Descripción del producto y sus características principales.",
     price: 29.9,
     image: "",
@@ -2881,7 +2881,7 @@ function ProductsPreview({
       <div className="border-b border-slate-200 bg-[#f4f1e8] px-8 py-9">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">HERENCIA MARKET</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Tropical Plants</p>
             <h1 className="mt-2 text-3xl font-black text-[#173126]">{site.productsPage.title}</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-500">{site.productsPage.subtitle}</p>
           </div>
@@ -3012,7 +3012,7 @@ function ServicesPreview({
   return (
     <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
       <div className="bg-[#173d2a] px-8 py-10 text-white">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">SERVICIOS HERENCIA</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">SERVICIOS TROPICAL PLANTS</p>
         <h1 className="mt-2 text-4xl font-black">{site.servicesPage.title}</h1>
         <p className="mt-3 max-w-2xl text-sm text-white/70">{site.servicesPage.subtitle}</p>
       </div>
@@ -3132,7 +3132,7 @@ function HerenciaPreview({
   return (
     <button type="button" onClick={onSelect} className={`block w-full text-left ${selected ? "ring-4 ring-inset ring-emerald-600" : ""}`}>
       <div className="bg-gradient-to-br from-[#173d2a] to-[#315b42] p-10 text-white">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#e7d7a8]">HERENC(IA) · SALES</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#e7d7a8]">Tropical IA · SALES</p>
         <h1 className="mt-3 text-4xl font-black">{sales.title}</h1>
         <p className="mt-3 max-w-2xl text-sm text-white/75">{sales.helperText}</p>
         <div className="mt-6 flex flex-wrap gap-2">
