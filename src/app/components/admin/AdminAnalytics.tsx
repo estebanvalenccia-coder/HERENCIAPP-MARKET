@@ -85,7 +85,7 @@ export function AdminAnalytics() {
           <div>
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/65">
               <BarChart3 className="h-4 w-4" />
-              Analítica de Herencia Market
+              Analítica de Tropical Plants
             </div>
             <h2 className="mt-2 text-2xl font-black">Visitas y procedencia</h2>
             <p className="mt-1 max-w-2xl text-sm text-white/75">
