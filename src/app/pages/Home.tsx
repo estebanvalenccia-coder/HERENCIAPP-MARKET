@@ -486,7 +486,7 @@ export function Home() {
             }}
           >
             <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/10 px-4 py-2 text-[10px] font-black tracking-[0.22em] text-white shadow-sm backdrop-blur">
-              <Leaf className="h-3.5 w-3.5" /> HERENCIA MARKET
+              <Leaf className="h-3.5 w-3.5" /> Tropical Plants
             </span>
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#dfd2a9]">
               {market.home.kicker}
@@ -531,7 +531,7 @@ export function Home() {
             className="absolute right-5 top-7 hidden w-[290px] flex-col rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-5 text-[#193527] shadow-[0_15px_45px_rgba(0,0,0,.2)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex xl:right-8">
             <span className="flex items-center gap-3">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-7 w-7"/></span>
-              <span><strong className="block font-serif text-2xl font-semibold">Herenc(IA)</strong>
+              <span><strong className="block font-serif text-2xl font-semibold">Tropical IA</strong>
                 <span className="text-xs text-[#627468]">Tu asistente inteligente</span></span>
             </span>
             <span className="mt-4 space-y-2 text-xs leading-5 text-[#3c5544]">
@@ -540,7 +540,7 @@ export function Home() {
               <span className="block">✓ Recomendaciones personalizadas</span>
             </span>
             <span className="mt-4 flex items-center justify-center gap-2 rounded-full bg-[#173d2a] px-4 py-3 text-sm font-semibold text-white">
-              Habla con Herenc(IA) <ArrowRight className="h-4 w-4"/>
+              Habla con Tropical IA <ArrowRight className="h-4 w-4"/>
             </span>
           </Link>
         </StorefrontComponentBoundary>
@@ -550,7 +550,7 @@ export function Home() {
             className="mx-5 mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-4 text-[#193527] shadow-xl backdrop-blur lg:hidden">
             <span className="flex items-center gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-6 w-6"/></span>
-              <span><strong className="block font-serif text-xl font-semibold">Herenc(IA)</strong><span className="text-xs text-[#627468]">Tu asistente de Herencia Market</span></span>
+              <span><strong className="block font-serif text-xl font-semibold">Tropical IA</strong><span className="text-xs text-[#627468]">Tu asistente de Tropical Plants</span></span>
             </span>
             <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#173d2a] px-3 py-2 text-xs font-bold text-white">Hablar <ArrowRight className="h-3.5 w-3.5"/></span>
           </Link>
@@ -563,7 +563,7 @@ export function Home() {
             <div className="flex items-start gap-4">
               <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-2xl shadow-sm">🇨🇴</div>
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#6d7d72]">Herencia internacional</p>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#6d7d72]">Tropical Plants internacional</p>
                 <h2 className="mt-1 text-2xl font-semibold text-[#173126]">Ahora también entregamos en {colombiaDelivery.regionLabel}</h2>
                 <p className="mt-1 text-sm leading-6 text-[#637168]">Envía plantas y regalos a tus seres queridos en Colombia con entrega local.</p>
               </div>
@@ -581,7 +581,7 @@ export function Home() {
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#738174]">Encuentra lo que buscas</p>
-              <h2 className="mt-1 font-serif text-2xl text-[#1c3c2b] sm:text-3xl">Explora Herencia Market</h2>
+              <h2 className="mt-1 font-serif text-2xl text-[#1c3c2b] sm:text-3xl">Explora Tropical Plants</h2>
             </div>
             <Link to="/productos" className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-[#315b42] hover:underline">
               Ver tienda <ArrowRight className="h-4 w-4" />
@@ -755,7 +755,7 @@ export function Home() {
       <section style={{ order: sectionOrder("featured") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="sr-only">Selección Herencia</p>
+            <p className="sr-only">Selección Tropical Plants</p>
             <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight sm:text-4xl">{shopFirst ? productDisplay.title : market.home.featuredTitle}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">
               {shopFirst ? productDisplay.subtitle : market.home.featuredSubtitle}
@@ -863,7 +863,7 @@ export function Home() {
             />
             <div className={`relative flex min-h-[300px] max-w-md flex-col justify-center p-8 text-white ${promo.design?.textAlign === "center" ? "mx-auto items-center text-center" : promo.design?.textAlign === "right" ? "ml-auto items-end text-right" : "items-start text-left"}`}
               style={{ minHeight: Math.max(240, Math.min(620, Number(promo.design?.minHeight ?? 300))) }}>
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-white/75">{"kicker" in promo ? promo.kicker : "HERENCIA"}</p>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-white/75">{"kicker" in promo ? promo.kicker : "TROPICAL PLANTS"}</p>
               <h2 className="mt-3 text-4xl font-medium">{promo.title}</h2>
               <p className="mt-3 text-sm leading-6 text-white/88">{promo.subtitle}</p>
               <span className="mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-black text-[#193325]">
@@ -890,7 +890,7 @@ export function Home() {
             <div className="absolute inset-0 bg-gradient-to-t from-[#0a281d] via-[#0a281d]/90 to-[#0a281d]/15 md:bg-gradient-to-r md:from-[#0a281d] md:via-[#0a281d]/95 md:to-transparent" />
             <div className="relative z-10 flex min-h-[375px] max-w-[620px] flex-col justify-end px-6 pb-8 pt-44 sm:px-10 md:min-h-[330px] md:justify-center md:py-10">
               <span className="mb-3 w-fit rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/90 backdrop-blur-sm">
-                HERENCIA MARKET · DISEÑO 3D
+                Tropical Plants · DISEÑO 3D
               </span>
               <h2 className="font-serif text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl">
                 {market.home.creations3D.title}
@@ -977,7 +977,7 @@ export function Home() {
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#ece5d8] via-[#ece5d8]/95 to-[#ece5d8]/15" />
           </>}
           <Sparkles className="pointer-events-none absolute right-8 top-8 h-20 w-20 text-[#315b42]/15" />
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#315b42]/70">HERENCIA</p>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#315b42]/70">TROPICAL PLANTS</p>
           <h2 className="relative mt-2 max-w-2xl font-serif text-3xl font-medium sm:text-4xl">
             {site.cta.title}
           </h2>
@@ -986,7 +986,7 @@ export function Home() {
             to={site.cta.button.href || "/productos"}
             className="relative mt-6 inline-flex items-center gap-2 rounded-md bg-[#254932] px-5 py-3 text-sm font-semibold text-white"
           >
-            {site.cta.button.label || "Explorar Herencia"} <ArrowRight className="h-4 w-4" />
+            {site.cta.button.label || "Explorar Tropical Plants"} <ArrowRight className="h-4 w-4" />
           </Link>}
         </div>
       </section></StorefrontComponentBoundary>
