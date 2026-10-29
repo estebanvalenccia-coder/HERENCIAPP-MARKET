@@ -185,7 +185,7 @@ function loadPersistedMessages(): ChatMessage[] {
     return parsed.slice(-40).map((message: any) => ({
       id: String(message?.id || newId()),
       role: message?.role === "user" ? "user" : "assistant",
-      content: String(message?.content || ""),
+      content: String(message?.content || "").replace(/Herenc\\(IA\\)/gi, "Tropical IA").replace(/Herencia Market/gi, "Tropical Plants").replace(/Herencia Sales/gi, "Tropical Sales"),
       productIds: Array.isArray(message?.productIds) ? message.productIds.map(String) : undefined,
       bouquetDraft: message?.bouquetDraft || null,
     }));
