@@ -66,10 +66,10 @@ const priorities: Array<{ value: SupportPriority; label: string }> = [
 ];
 
 const quickReplies = [
-  { label: "Saludo", content: "¡Hola! Gracias por escribir a Herencia Market. Estoy revisando tu consulta y te ayudaré encantado." },
+  { label: "Saludo", content: "¡Hola! Gracias por escribir a Tropical Plants. Estoy revisando tu consulta y te ayudaré encantado." },
   { label: "Pedido", content: "Gracias por contactar. Voy a comprobar el estado de tu pedido y te confirmo la información en este chat." },
   { label: "Incidencia", content: "Lamento la incidencia. ¿Puedes indicarnos qué ha ocurrido y, si corresponde, el número de pedido? Lo revisaremos personalmente." },
-  { label: "Despedida", content: "Gracias por contactar con Herencia Market. Si necesitas cualquier otra cosa, estaremos encantados de ayudarte." },
+  { label: "Despedida", content: "Gracias por contactar con Tropical Plants. Si necesitas cualquier otra cosa, estaremos encantados de ayudarte." },
 ];
 
 const statusLabels: Record<SupportStatus, string> = {
@@ -169,7 +169,7 @@ export function AdminSupportPro() {
           const previous = seenMessageRef.current[row.id];
           if (previous && last && previous !== last.id && last.role === "customer" &&
               typeof Notification !== "undefined" && Notification.permission === "granted") {
-            new Notification("Nuevo mensaje · Herencia", {
+            new Notification("Nuevo mensaje · Tropical Plants", {
               body: (row.customerName || "Cliente") + ": " + last.text.slice(0, 110),
               tag: "herencia-support-" + row.id,
             });
@@ -220,7 +220,7 @@ export function AdminSupportPro() {
       setAutomation(response.settings);
       setError("");
     } catch (cause:any) {
-      setError(cause.message || "No se pudo guardar la configuración de Herencia IA");
+      setError(cause.message || "No se pudo guardar la configuración de Tropical IA");
     } finally { setSavingSettings(false); }
   }
 
@@ -328,7 +328,7 @@ export function AdminSupportPro() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.17em] text-[#74907c]">
               <span className="h-2 w-2 rounded-full bg-[#69a179]" />
-              HERENCIA MARKET · SOPORTE
+              Tropical Plants · SOPORTE
             </div>
             <h1 className="text-3xl font-semibold tracking-tight text-[#1b3828] sm:text-4xl">Servicio al cliente</h1>
             <p className="mt-2 text-sm text-[#7b887e]">Gestiona consultas, responde mensajes y acompaña a tus clientes desde una sola bandeja.</p>
@@ -350,7 +350,7 @@ export function AdminSupportPro() {
               <Sparkles size={20} className="text-[#356749]"/>
               <div>
                 <h2 className="text-sm font-bold text-[#254c33]">Inteligencia de Atención</h2>
-                <p className="text-xs text-[#76917a]">Controla cómo Herencia IA atiende a tus clientes.</p>
+                <p className="text-xs text-[#76917a]">Controla cómo Tropical IA atiende a tus clientes.</p>
               </div>
             </div>
             <button type="button" onClick={() => setSettingsOpen(open => !open)}
@@ -365,7 +365,7 @@ export function AdminSupportPro() {
                   checked={automation?.assistantEnabled ?? true}
                   disabled={!automation || savingSettings}
                   onChange={event => void updateAutomation("assistantEnabled", event.target.checked)} />
-                <span><strong className="block text-sm text-[#2c533b]">Herencia IA atiende automáticamente</strong>
+                <span><strong className="block text-sm text-[#2c533b]">Tropical IA atiende automáticamente</strong>
                   <small className="mt-1 block text-xs leading-5 text-[#758a78]">La IA intenta resolver. Si la desactivas, las nuevas consultas pasan directamente al equipo humano.</small></span>
               </label>
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#dce9dd] bg-white p-4">
@@ -380,7 +380,7 @@ export function AdminSupportPro() {
                 <input type="checkbox" checked disabled className="mt-0.5 h-4 w-4 accent-[#2b6041]"/>
                 <div>
                   <strong className="block text-sm text-[#2c533b]">Aprobación humana para reembolsos</strong>
-                  <p className="mt-1 text-xs leading-5 text-[#758a78]">Protección obligatoria: Herencia IA puede orientar, pero nunca autoriza ni ejecuta reembolsos. Amigo Plantil interviene cuando sea necesario.</p>
+                  <p className="mt-1 text-xs leading-5 text-[#758a78]">Protección obligatoria: Tropical IA puede orientar, pero nunca autoriza ni ejecuta reembolsos. Amigo Plantil interviene cuando sea necesario.</p>
                 </div>
               </div>
               <AdminSupportKnowledge />
@@ -553,7 +553,7 @@ export function AdminSupportPro() {
                             "border border-[#e9ede6] bg-white text-[#324a37]")}>
                           <span className={"mb-1 flex items-center gap-1.5 text-[11px] font-semibold " + (message.role === "agent" ? "text-[#deeadf]" : "text-[#71917b]")}>
                             {message.role === "assistant" ? <Sparkles size={13}/> : message.role === "agent" ? <Headphones size={13}/> : <UserRound size={13}/>}
-                            {message.role === "internal" ? "Nota interna · solo Administración" : message.role === "agent" ? "Equipo Herencia" : message.role === "assistant" ? "Herencia IA" : active.customerName || "Cliente"}
+                            {message.role === "internal" ? "Nota interna · solo Administración" : message.role === "agent" ? "Equipo Tropical Plants" : message.role === "assistant" ? "Tropical IA" : active.customerName || "Cliente"}
                           </span>
                           <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.text}</p>
                           {message.attachmentId && (
