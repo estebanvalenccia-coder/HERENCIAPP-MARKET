@@ -117,7 +117,7 @@ async function loadAuthoritativeSalesCatalog(clientCatalog) {
         source = "neon";
       }
     } catch (error) {
-      console.warn("[HERENCIA SALES] no se pudo cargar catálogo autoritativo desde Neon:", error?.message || error);
+      console.warn("[Tropical Sales] no se pudo cargar catálogo autoritativo desde Neon:", error?.message || error);
     }
   }
 
@@ -144,7 +144,7 @@ async function persistGeneratedImage(dataUrl, filename = "herencia-sales") {
     const media = await uploadR2Media({ dataUrl, filename });
     return media.url;
   } catch (error) {
-    console.warn("[HERENCIA SALES] no se pudo persistir imagen IA en R2:", error?.message || error);
+    console.warn("[Tropical Sales] no se pudo persistir imagen IA en R2:", error?.message || error);
     return dataUrl;
   }
 }
@@ -269,11 +269,11 @@ async function generateGeminiSpacePreview({ roomData, roomMimeType, product }) {
   try {
     productReference = await imageReferenceFromUrl(product?.image);
   } catch (error) {
-    console.warn("[HERENCIA SALES] referencia visual producto:", error?.message || error);
+    console.warn("[Tropical Sales] referencia visual producto:", error?.message || error);
   }
 
   const prompt = `Edita la PRIMERA imagen, que es la fotografía real del espacio del cliente.
-Inserta de forma fotorealista el producto de Herencia Market llamado "${clampText(product?.name, 140)}".
+Inserta de forma fotorealista el producto de Tropical Plants llamado "${clampText(product?.name, 140)}".
 Categoría: ${clampText(product?.category, 80)}.
 Descripción del producto: ${clampText(product?.description, 300)}.
 
@@ -322,12 +322,12 @@ async function identifyWithGemini({ data, mimeType, catalog }) {
 
   const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
   const catalogText = JSON.stringify(catalog);
-  const prompt = `Eres Herenc(IA), asistente experto y polivalente de Herencia Market especializado en plantas, botánica práctica y jardinería.
+  const prompt = `Eres Tropical IA, tu amiga Tropical de Tropical Plants, experta en plantas, botánica práctica y jardinería. No te presentes con el nombre antiguo.
 Identifica la planta o producto y analiza, cuando sea relevante, signos visibles compatibles con problemas de riego, luz, humedad, sustrato, nutrientes, plagas u hongos.
 Puedes explicar cuidados, prevención, recuperación, propagación, trasplante, poda y jardinería. Si la imagen no permite un diagnóstico fiable, dilo y pide el dato mínimo que falte. No presentes una sospecha visual como certeza.
 También puedes relacionar la consulta con productos REALES del catálogo cuando sean útiles, sin forzar una venta.
-El catálogo es la fuente de verdad y puede contener productos temporalmente agotados: available=true se puede comprar ahora; available=false significa que el producto existe en Herencia pero está agotado/no disponible.
-Si la planta o producto identificado coincide por nombre, nombre científico, categoría o etiqueta con un artículo del catálogo, devuelve su ID exacto aunque available=false y explica claramente su disponibilidad. No digas que Herencia no lo vende si sí aparece en el catálogo.
+El catálogo es la fuente de verdad y puede contener productos temporalmente agotados: available=true se puede comprar ahora; available=false significa que el producto existe en Tropical Plants pero está agotado/no disponible.
+Si la planta o producto identificado coincide por nombre, nombre científico, categoría o etiqueta con un artículo del catálogo, devuelve su ID exacto aunque available=false y explica claramente su disponibilidad. No digas que Tropical Plants no lo vende si sí aparece en el catálogo.
 Catálogo real completo: ${catalogText}
 Devuelve SOLO JSON:
 {
@@ -366,8 +366,8 @@ Los IDs pueden ser texto. Usa únicamente IDs exactos que existan en el catálog
   return safeJson(content, {});
 }
 
-function salesSystemPrompt(catalog) {
-  return `Eres Herenc(IA), el asistente polivalente de Herencia Market especializado en plantas y también asistente de compra.
+function salesSystemPrompt(catalog, assistantName = "Tropical Sales") {
+  return `Eres ${assistantName}, de Tropical Plants. Si eres Tropical IA, preséntate como «tu amiga Tropical»; si eres Tropical Sales, preséntate como «Tropical Sales, tu asistente de compras». Nunca uses el nombre antiguo. Ayuda con plantas y compras.
 
 Tu misión principal es ayudar de verdad. NO estás limitado a vender.
 
@@ -375,17 +375,17 @@ Puedes responder sobre identificación de plantas; riego; luz; humedad; temperat
 
 Responde primero a la pregunta del cliente. No conviertas automáticamente cada conversación en una venta. Da instrucciones prácticas y paso a paso cuando ayuden. En diagnósticos distingue síntomas, causas probables y confirmación; si faltan datos, pregunta lo mínimo necesario. No afirmes una enfermedad, plaga o carencia como certeza si no puede confirmarse.
 
-Además puedes buscar, comparar, personalizar y vender productos de Herencia. Recomienda productos solo cuando sean realmente útiles. Si Herencia no vende algo apropiado, ayuda igualmente y no fuerces una venta.
+Además puedes buscar, comparar, personalizar y vender productos de Tropical Plants. Recomienda productos solo cuando sean realmente útiles. Si Tropical Plants no vende algo apropiado, ayuda igualmente y no fuerces una venta.
 
-CATÁLOGO REAL COMPLETO DE HERENCIA:
+CATÁLOGO REAL COMPLETO DE TROPICAL PLANTS:
 ${JSON.stringify(catalog)}
 
 REGLAS COMERCIALES:
 - Este catálogo es la fuente de verdad. Incluye productos activos disponibles y productos activos temporalmente agotados.
-- available=true significa que se puede comprar ahora. available=false significa que el producto SÍ existe en Herencia pero ahora mismo no está disponible para compra.
+- available=true significa que se puede comprar ahora. available=false significa que el producto SÍ existe en Tropical Plants pero ahora mismo no está disponible para compra.
 - Solo usa IDs exactos del catálogo.
 - No inventes stock, precios, productos, promociones ni disponibilidad.
-- Si el cliente pregunta por una planta o producto que aparece por nombre, nombre científico, categoría o etiqueta, NO digas que Herencia no lo vende. Si está agotado, dilo claramente y ofrece alternativas disponibles.
+- Si el cliente pregunta por una planta o producto que aparece por nombre, nombre científico, categoría o etiqueta, NO digas que Tropical Plants no lo vende. Si está agotado, dilo claramente y ofrece alternativas disponibles.
 - No afirmes que "solo disponemos" de un único producto salvo que el catálogo completo tenga literalmente un único producto activo.
 - Puedes devolver el ID exacto de un producto agotado si es el producto que el cliente preguntó o identificó, para que la interfaz lo muestre como agotado. Las alternativas recomendadas sí deben estar disponibles.
 - Respeta price, salePrice y variantes.
@@ -411,7 +411,7 @@ Si intent=bouquet, bouquet puede ser:
   "readyToGenerate": true
 }
 
-Los precios los calcula Herencia Market. No digas que algo está disponible si el catálogo no lo contiene.`;
+Los precios los calcula Tropical Plants. No digas que algo está disponible si el catálogo no lo contiene.`;
 }
 
 async function salesChatHandler(req, res) {
@@ -431,11 +431,11 @@ async function salesChatHandler(req, res) {
   try {
     const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
     if (!catalog.length) {
-      return res.status(503).json({ error: "El catálogo real de Herencia no está disponible ahora mismo." });
+      return res.status(503).json({ error: "El catálogo real de Tropical Plants no está disponible ahora mismo." });
     }
 
     const content = await callGroq([
-      { role: "system", content: salesSystemPrompt(catalog) },
+      { role: "system", content: salesSystemPrompt(catalog, String(body.conversationId || "").startsWith("herencia-ia-native") ? "Tropical IA" : "Tropical Sales") },
       ...history,
       { role: "user", content: message },
     ]);
@@ -454,7 +454,7 @@ async function salesChatHandler(req, res) {
     }
 
     res.json({
-      reply: clampText(result.reply, 1200) || "Puedo ayudarte a encontrar o crear algo para comprar en Herencia.",
+      reply: clampText(result.reply, 1200) || "Puedo ayudarte a encontrar o crear algo para comprar en Tropical Plants.",
       intent: result.intent || "other",
       productIds: result.productIds,
       bouquet: result.bouquet || null,
@@ -462,7 +462,7 @@ async function salesChatHandler(req, res) {
       catalogSource,
     });
   } catch (error) {
-    console.error("[HERENCIA SALES] chat:", error);
+    console.error("[Tropical Sales] chat:", error);
     res.status(502).json({ error: error?.message || "No se pudo responder ahora mismo." });
   }
 }
@@ -517,9 +517,9 @@ Si existe catálogo floral, utiliza únicamente flores y verdes de ese catálogo
       ], { temperature: 0.55 });
       proposal = safeJson(content, {});
     } catch (groqError) {
-      console.warn("[HERENCIA SALES] propuesta Groq fallback:", groqError?.message || groqError);
+      console.warn("[Tropical Sales] propuesta Groq fallback:", groqError?.message || groqError);
       proposal = {
-        name: "Ramo personalizado Herencia",
+        name: "Ramo personalizado Tropical Plants",
         description: "Diseño floral personalizado creado según tus preferencias.",
         recommendedFlowers: [],
         imagePrompt: `Ramo premium ${clampText(body.style, 80)} en tonos ${clampText(body.color, 100)}, tamaño ${size}. ${clampText(body.description, 500)}`,
@@ -563,7 +563,7 @@ Si existe catálogo floral, utiliza únicamente flores y verdes de ese catálogo
 
     res.json({
       proposal: {
-        name: clampText(proposal.name, 120) || "Ramo personalizado Herencia",
+        name: clampText(proposal.name, 120) || "Ramo personalizado Tropical Plants",
         description: clampText(proposal.description, 500),
         recommendedFlowers: recommendedNames,
         imagePrompt,
@@ -575,7 +575,7 @@ Si existe catálogo floral, utiliza únicamente flores y verdes de ese catálogo
       disclaimer: "La imagen es una referencia visual. Las flores naturales pueden variar y se podrán sustituir por equivalentes según disponibilidad.",
     });
   } catch (error) {
-    console.error("[HERENCIA SALES] bouquet:", error);
+    console.error("[Tropical Sales] bouquet:", error);
     res.status(502).json({ error: error?.message || "No se pudo generar el diseño." });
   }
 }
@@ -594,7 +594,7 @@ async function salesIdentifyHandler(req, res) {
   try {
     const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
     if (!catalog.length) {
-      return res.status(503).json({ error: "El catálogo real de Herencia no está disponible ahora mismo." });
+      return res.status(503).json({ error: "El catálogo real de Tropical Plants no está disponible ahora mismo." });
     }
 
     const result = await identifyWithGemini({ data, mimeType, catalog });
@@ -612,7 +612,7 @@ async function salesIdentifyHandler(req, res) {
       catalogSource,
     });
   } catch (error) {
-    console.error("[HERENCIA SALES] identify:", error);
+    console.error("[Tropical Sales] identify:", error);
     res.status(502).json({ error: error?.message || "No se pudo analizar la imagen." });
   }
 }
@@ -633,7 +633,7 @@ async function salesSpacePreviewHandler(req, res) {
     const { catalog, source: catalogSource } = await loadAuthoritativeSalesCatalog(body.catalog);
     const product = catalog.find((item) => String(item.id) === productId);
     if (!product) {
-      return res.status(400).json({ error: "Selecciona un producto real del catálogo de Herencia." });
+      return res.status(400).json({ error: "Selecciona un producto real del catálogo de Tropical Plants." });
     }
 
     const image = await generateGeminiSpacePreview({ roomData, roomMimeType, product });
@@ -649,7 +649,7 @@ async function salesSpacePreviewHandler(req, res) {
       catalogSource,
     });
   } catch (error) {
-    console.error("[HERENCIA SALES] space preview:", error);
+    console.error("[Tropical Sales] space preview:", error);
     res.status(502).json({ error: error?.message || "No se pudo generar la visualización en tu espacio." });
   }
 }
@@ -692,4 +692,4 @@ express.application.listen = function patchedListen(...args) {
   return originalListen.apply(this, args);
 };
 
-console.log("HERENCIA SALES AI PRO preparada: catálogo real, stock/variantes, búsqueda visual, visualizador, ramos y límites de coste.");
+console.log("Tropical Sales AI PRO preparada: catálogo real, stock/variantes, búsqueda visual, visualizador, ramos y límites de coste.");
