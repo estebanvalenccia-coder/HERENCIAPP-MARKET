@@ -263,7 +263,7 @@ export function AdminOrders() {
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
                       <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
-                      {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">HERENCIA SALES</span>}
+                      {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">Tropical Sales</span>}
                       {order.metadata?.source === "colombia_checkout" && <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-900 font-black">🇨🇴 COLOMBIA · COP</span>}
                     </div>
 
