@@ -297,7 +297,7 @@ export const defaultSiteContent: SiteContent = {
     whatsappPhone: "34624239598",
     callLabel: "Llamar",
     callPhone: "+34624239598",
-    instagramLabel: "@floristeriaherencia",
+    instagramLabel: "Instagram",
     instagramUrl: "https://instagram.com/floristeriaherencia",
     mapsLabel: "Cómo llegar",
     mapsUrl: "https://maps.app.goo.gl/WLihx3aD1Xhqc9WT8",
@@ -790,6 +790,7 @@ export function parseSiteContent(raw: string | null): SiteContent {
     const saved = JSON.parse(raw) || {};
     const oldBrand = /herencia/i.test(String(saved.brand?.name || "")) || /herencia/i.test(String(saved.brand?.logoAlt || ""));
     const parsed = tropicalizeDisplayContent(saved);
+    if (/herencia/i.test(String(saved.footer?.instagramLabel || ""))) parsed.footer = { ...(parsed.footer || {}), instagramLabel: "Instagram" };
     if (oldBrand) parsed.brand = { ...(parsed.brand || {}), logoUrl: "/logo.svg" };
     const result: SiteContent = {
       ...defaultSiteContent,
