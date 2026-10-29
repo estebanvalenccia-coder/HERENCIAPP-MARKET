@@ -6,8 +6,8 @@ export type PublicationWindow = { startAt?: string; endAt?: string };
 // Visual storefront preset: matches the reference composition while leaving the
 // section order fully editable in the existing administration builder.
 export const DEFAULT_HOME_SECTION_ORDER = [
-  "hero", "categoryStrip", "categoriesGrid", "featured", "creations3d", "trust", "feed",
-  "bottomCta", "delivery", "plantCta", "services", "promotions",
+  "hero", "categoryStrip", "featured", "creations3d", "promotions", "trust",
+  "categoriesGrid", "feed", "bottomCta", "delivery", "plantCta", "services",
 ] as const;
 const LEGACY_HOME_SECTION_ORDER = [
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
@@ -16,8 +16,8 @@ const LEGACY_HOME_SECTION_ORDER = [
 export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
 /** Optional shop-first template. It reuses all the existing home sections. */
 export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
-  "hero", "categoryStrip", "featured", "creations3d", "categoriesGrid", "trust",
-  "promotions", "services", "feed", "bottomCta", "delivery", "plantCta",
+  "hero", "categoryStrip", "featured", "creations3d", "promotions", "trust",
+  "categoriesGrid", "feed", "bottomCta", "delivery", "plantCta", "services",
 ];
 export type MarketHomeProductDisplay = {
   title: string;
@@ -34,8 +34,8 @@ export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
   title: "Nuestra selección de plantas",
   subtitle: "Plantas naturales disponibles para tu hogar.",
   mode: "plants",
-  limit: 16,
-  columns: 8,
+  limit: 6,
+  columns: 6,
   imageAspect: "portrait",
   cardRadius: 10,
   filtersEnabled: true,
@@ -293,7 +293,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     heroOverlayOpacity: 90,
     heroOverlayWidth: 72,
     categoriesTitle: "Todo para un estilo de vida más verde",
-    categoryGridLimit: 8,
+    categoryGridLimit: 5,
     referenceNavigation: true,
     referenceCategories: true,
     referenceHero: true,
@@ -303,52 +303,34 @@ export const defaultMarketExperience: MarketExperienceContent = {
     campaigns: [],
     categories: [
       {
-        title: "Plantas",
-        subtitle: "Verde para cada rincón",
+        title: "Plantas de interior",
+        subtitle: "Llena tu hogar de vida",
         imageUrl: "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=700&q=82",
-        href: "/productos?coleccion=plantas",
+        href: "/productos?coleccion=plantas&categoria=plantas-interior",
       },
       {
-        title: "Semillas",
-        subtitle: "Pequeños comienzos",
+        title: "Cactus y suculentas",
+        subtitle: "Pequeñas maravillas",
         imageUrl: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=700&q=82",
-        href: "/productos?coleccion=semillas",
+        href: "/productos?coleccion=plantas&categoria=cactus-suculentas",
       },
       {
-        title: "Artículos de jardinería",
-        subtitle: "Herramientas y accesorios",
+        title: "Macetas 3D de autor",
+        subtitle: "Diseños únicos",
+        imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=700&q=82",
+        href: "/productos?buscar=3D",
+      },
+      {
+        title: "Regalos de Colombia",
+        subtitle: "Tradición que enamora",
+        imageUrl: "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=700&q=82",
+        href: "/colombia",
+      },
+      {
+        title: "Accesorios de jardinería",
+        subtitle: "Todo para tus plantas",
         imageUrl: "https://images.unsplash.com/photo-1617576683096-00fc8eecb3af?auto=format&fit=crop&w=700&q=82",
         href: "/productos?coleccion=jardineria",
-      },
-      {
-        title: "Tierra y sustratos",
-        subtitle: "La base de un buen cultivo",
-        imageUrl: "https://images.unsplash.com/photo-1627920769842-6887c6df05ca?auto=format&fit=crop&w=700&q=82",
-        href: "/productos?coleccion=sustratos",
-      },
-      {
-        title: "Decoración",
-        subtitle: "Hogar con identidad",
-        imageUrl: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=700&q=82",
-        href: "/productos?coleccion=decoracion",
-      },
-      {
-        title: "Servicios",
-        subtitle: "Te acompañamos en tu proyecto",
-        imageUrl: "https://images.unsplash.com/photo-1598902108854-10e335adac99?auto=format&fit=crop&w=700&q=82",
-        href: "/servicios",
-      },
-      {
-        title: "Dulce",
-        subtitle: "Momentos que se celebran",
-        imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=700&q=82",
-        href: "/dulce",
-      },
-      {
-        title: "Moda",
-        subtitle: "Funcionalidad con estilo",
-        imageUrl: "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&w=700&q=82",
-        href: "/moda",
       },
     ],
     servicesTitle: "Nuestros servicios",
@@ -404,7 +386,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       href: "/productos?buscar=3D",
       mode: "automatic",
       productIds: [],
-      limit: 4,
+      limit: 6,
     },
     featuredTitle: "Productos destacados",
     featuredLimit: 6,
@@ -584,7 +566,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
         productIds: Array.isArray(homeIncoming.creations3D?.productIds)
           ? [...new Set(homeIncoming.creations3D.productIds.map(String))].slice(0, 60)
           : [],
-        limit: Math.max(1, Math.min(12, Number(homeIncoming.creations3D?.limit ?? 4))),
+        limit: Math.max(1, Math.min(12, Number(homeIncoming.creations3D?.limit ?? defaultMarketExperience.home.creations3D.limit))),
       },
       shopFirst: hasExplicitShopChoice ? homeIncoming.shopFirst : true,
       sectionOrder: initialShopOrder,
