@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, PackagePlus, Upload, X } from "lucide-react";
+import { ArrowLeft, PackagePlus, Printer, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../../lib/backendStorage";
 import { COLOMBIA_DELIVERY_STORAGE_KEY, parseColombiaDeliverySettings } from "../../lib/internationalDelivery";
@@ -877,7 +877,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
             </p>
             <h2 className="mt-2 text-3xl font-black text-foreground">Crear artículo para vender</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Crea plantas, moda, dulce, servicios, decoración y cualquier artículo comercial desde un único formulario conectado a Neon.
+              Crea plantas, macetas impresas en 3D, moda, dulce, servicios y decoración desde un único formulario conectado al catálogo.
             </p>
           </div>
           <div className="rounded-2xl bg-muted px-4 py-3 text-sm">
@@ -897,7 +897,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   type="button"
                   onClick={() => changeCollection(item.id)}
                   className={`rounded-2xl border p-4 text-left transition ${
-                    formData.collection === item.id && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
+                    formData.collection === item.id && !(item.id === "decoracion" && formData.category === "macetas-3d") && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
                       ? "border-primary bg-primary/10 ring-2 ring-primary/15"
                       : "border-border bg-background hover:bg-muted/50"
                   }`}
@@ -914,6 +914,18 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   </p>
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => { changeCollection("decoracion"); patch({ category: "macetas-3d" }); }}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  formData.collection === "decoracion" && formData.category === "macetas-3d"
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/15"
+                    : "border-border bg-background hover:bg-muted/50"
+                }`}
+              >
+                <p className="flex items-center gap-2 font-black"><Printer className="h-4 w-4" /> Macetas impresas en 3D</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Crea la ficha de la maceta física con fotos, precio y stock. Al publicarla, aparecerá en el escaparate Creaciones 3D.</p>
+              </button>
               <button
                 type="button"
                 onClick={() => { changeCollection("jardineria"); patch({ category: "huerto-urbano" }); }}

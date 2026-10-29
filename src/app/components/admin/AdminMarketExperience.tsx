@@ -802,7 +802,7 @@ export function AdminMarketExperience({
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h4 className="text-lg font-black text-[#1e4932]">Creaciones 3D · Escaparate</h4>
-                  <p className="text-xs text-[#66776b]">Selecciona productos del catálogo existente. Quitarlos de esta sección no los elimina de la tienda.</p>
+                  <p className="text-xs text-[#66776b]">Las macetas creadas como “Macetas impresas en 3D” se añaden aquí al publicarlas. También puedes seleccionar otros productos del catálogo.</p>
                 </div>
                 <label className="flex items-center gap-2 text-sm font-bold">
                   <input type="checkbox" checked={market.home.sections.creations3d}
@@ -894,7 +894,7 @@ export function AdminMarketExperience({
                   </div>
                 </div>
               )}
-              <p className="mt-4 text-xs text-[#657669]">Para crear un artículo nuevo, usa la gestión de Productos que ya existe en Administración. Después selecciónalo aquí. Las modificaciones siguen el flujo Guardar borrador → Guardar y publicar.</p>
+              <p className="mt-4 text-xs text-[#657669]">Para añadir una maceta nueva, ve a Administración → Añadir uno → Macetas impresas en 3D. Al publicarla, aparecerá aquí automáticamente. Si la guardas como borrador, no se mostrará en la tienda.</p>
             </section>
             <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
               className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">

@@ -314,7 +314,18 @@ export function Home() {
             ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ");
           return /(?:3d|impresi[oó]n\s*3d|maceta\s*3d|diseño\s*3d)/i.test(text);
         });
-    return selected.slice(0, Math.max(1, Math.min(12, Number(config.limit || 4)))) as any[];
+    // Products created from the dedicated 3D product type always belong in
+    // this shelf, even when the admin is manually curating additional items.
+    const dedicated3D = eligible.filter((product) =>
+      String(product.category || product.subcategory || "").trim().toLowerCase() === "macetas-3d"
+    );
+    const seen3D = new Set<string>();
+    return [...dedicated3D, ...selected].filter((product) => {
+      const id = String(product.id);
+      if (seen3D.has(id)) return false;
+      seen3D.add(id);
+      return true;
+    }).slice(0, Math.max(1, Math.min(12, Number(config.limit || 4)))) as any[];
   }, [catalog, market.home.creations3D, market.dulce.enabled, market.moda.enabled]);
 
   // Curated storefront collections are derived from the real, administrator-controlled cards.

@@ -86,6 +86,7 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
     inventoryDefault: true,
     categories: [
       { id: "macetas", name: "Macetas" },
+      { id: "macetas-3d", name: "Macetas impresas en 3D" },
       { id: "jarrones", name: "Jarrones" },
       { id: "hogar", name: "Hogar" },
       { id: "regalos", name: "Regalos" },
