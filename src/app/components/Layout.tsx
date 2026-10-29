@@ -24,7 +24,7 @@ import { StorefrontComponentBoundary } from "./StorefrontComponentBoundary";
 import { FloatingCustomerSupportV2 } from "./CustomerSupportV2";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { AccessibilityPanel } from "./AccessibilityPanel";
-import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
+const logo = "/logo.svg";
 
 export function Layout() {
   const location = useLocation();
@@ -269,7 +269,7 @@ export function Layout() {
               alt={site.brand.logoAlt || site.brand.name}
               className="mx-auto h-28 w-auto object-contain"
             />
-            <h1 className="mt-8 text-4xl font-medium">Herencia está preparando algo bonito</h1>
+            <h1 className="mt-8 text-4xl font-medium">Tropical Plants está preparando algo bonito</h1>
             <p className="mt-4 text-lg text-[#6d776f]">
               La tienda está temporalmente en mantenimiento. Volveremos a estar disponibles en cuanto terminemos.
             </p>
@@ -342,7 +342,7 @@ export function Layout() {
                 <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                   <MarketNavLink
                     href={site.navigation.herencia.href || "/herencia"}
-                    label={site.navigation.herencia.label || "Herenc(IA)"}
+                    label={site.navigation.herencia.label || "Tropical IA"}
                     active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                     icon={<Bot className="h-3.5 w-3.5" />}
                   />
@@ -377,7 +377,7 @@ export function Layout() {
                 <StorefrontComponentBoundary id="header.search" controls={market.componentControls} now={scheduleNow} enabled={market.layout.search}>
                   <button type="button"
                   onClick={() => {
-                    const query = window.prompt("¿Qué quieres buscar en Herencia?", search);
+                    const query = window.prompt("¿Qué quieres buscar en Tropical Plants?", search);
                     if (query === null) return;
                     setSearch(query);
                     navigate(query.trim() ? `/productos?buscar=${encodeURIComponent(query.trim())}` : "/productos");
@@ -435,7 +435,7 @@ export function Layout() {
               <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/herencia"}
-                  label={site.navigation.herencia.label || "Herenc(IA)"}
+                  label={site.navigation.herencia.label || "Tropical IA"}
                   active={isPathActive(location.pathname, site.navigation.herencia.href || "/herencia")}
                   mobile
                 />
@@ -534,10 +534,10 @@ export function Layout() {
       <StorefrontComponentBoundary id="floating.herenciaIA" controls={market.componentControls} now={scheduleNow}
         enabled={herenciaEnabled && site.navigation.herencia.visible !== false && !location.pathname.startsWith("/checkout") && !location.pathname.startsWith("/pago")}>
         <Link to={site.navigation.herencia.href || "/herencia"}
-          aria-label="Abrir asistente Herenc(IA)"
+          aria-label="Abrir asistente Tropical IA"
           className="group fixed bottom-[260px] right-4 z-[95] inline-flex items-center gap-2 rounded-full border border-[#b3c8b5] bg-[#fffdf9] px-3 py-2.5 text-sm font-semibold text-[#173d2a] shadow-[0_6px_24px_rgba(9,42,20,.18)] transition duration-300 hover:-translate-y-1 hover:border-[#5b8464] hover:shadow-[0_12px_30px_rgba(9,42,20,.22)] sm:right-6">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e2efdf] text-[#28573b]"><Bot className="h-6 w-6"/></span>
-          <span className="hidden sm:inline">{site.navigation.herencia.label || "Herenc(IA)"}</span>
+          <span className="hidden sm:inline">{site.navigation.herencia.label || "Tropical IA"}</span>
         </Link>
       </StorefrontComponentBoundary>
       <StorefrontComponentBoundary id="floating.sales" controls={market.componentControls} now={scheduleNow} enabled={market.sales.enabled}>
