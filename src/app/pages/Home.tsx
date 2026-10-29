@@ -314,28 +314,13 @@ export function Home() {
   }, [catalog, market.home.creations3D, market.dulce.enabled, market.moda.enabled]);
 
   // Curated storefront collections are derived from the real, administrator-controlled cards.
-  // Disabled collections remain disabled; no demo products or invented prices.
-  const editorial3D = visibleHomeCategories.find((item) =>
-    /(?:3d|impresi[oó]n)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
-  );
-  const editorialColombia = visibleHomeCategories.find((item) =>
-    /(?:colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`)
-  );
-  const spotlightCollections = [
-    editorial3D || {
-      title: "Creaciones 3D",
-      subtitle: "Macetas, diseños y detalles personalizados",
-      imageUrl: creations3D[0]?.image || site.cta.imageUrl || REFERENCE_3D_VISUAL,
-      href: creations3D[0] ? `/producto/${creations3D[0].id}` :
-        assistantEnabled ? (site.navigation.herencia.href || "/herencia") : "/productos?buscar=3D",
-    },
-    editorialColombia || (colombiaDelivery.enabled ? {
-      title: "Regalos de Colombia",
-      subtitle: colombiaDelivery.description,
-      imageUrl: colombiaDelivery.heroImageUrl,
-      href: "/colombia",
-    } : null),
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+  // Editorial collection cards only appear when their corresponding
+  // administrator-managed categories are active; no invented fallback banners.
+  const spotlightCollections = visibleHomeCategories.filter((item) => {
+    const is3D = /(?:3d|impresi[oó]n)/i.test(`${item.title} ${item.subtitle} ${item.href}`);
+    const isColombia = /(?:colombia|regalos?)/i.test(`${item.title} ${item.subtitle} ${item.href}`);
+    return is3D || (isColombia && colombiaDelivery.enabled);
+  });
 
   // The reference layout must never invent categories or override Administration.
   // Styling is selected in the editor; content, destinations and visibility come
