@@ -52,7 +52,7 @@ const sizes = [
 
 function suggestedName(description: string, color: string) {
   const clean = description.trim().replace(/^quiero\s+/i, "");
-  if (!clean) return `Ramo ${color} Herencia`;
+  if (!clean) return `Ramo ${color} Tropical Plants`;
   const base = clean.length > 34 ? `${clean.slice(0, 34)}...` : clean;
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
@@ -70,7 +70,7 @@ function createLocalProposal(description: string, budget: number, style: string,
   return {
     name,
     shortDescription: `Ramo ${style.toLowerCase()} tamaño ${size} desde ${Number(budget || 0).toFixed(2)} €`,
-    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Herencia Market. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
+    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Tropical Plants. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
     recommendedFlowers,
     sellingTip: "Ideal para vender como ramo premium personalizado.",
   };
@@ -140,7 +140,7 @@ export function AdminAIBouquetDesigner() {
 
   const fallbackName = useMemo(() => suggestedName(description, color), [description, color]);
   const productName = proposal?.name || proposal?.title || fallbackName;
-  const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado para Herencia Market. Ideal para regalo, ocasiones especiales y detalles únicos.`;
+  const productDescription = proposal?.description || `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, diseñado para Tropical Plants. Ideal para regalo, ocasiones especiales y detalles únicos.`;
 
   const loadFlowerRequests = () => {
     setRequestsLoading(true);
