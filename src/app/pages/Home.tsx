@@ -196,8 +196,8 @@ export function Home() {
   const heroDesign = heroBlock?.design;
   // The legacy builder shipped with a 650px hero. Match the reference's
   // shorter editorial banner, but continue to honor other admin-set sizes.
-  const heroConfiguredHeight = Number(heroDesign?.minHeight || 460);
-  const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 460 : heroConfiguredHeight));
+  const heroConfiguredHeight = Number(heroDesign?.minHeight || 420);
+  const heroMinHeight = Math.max(340, Math.min(760, heroConfiguredHeight === 650 ? 420 : heroConfiguredHeight));
   const originalHeroImage =
     safeHeroImage(heroBlock?.data?.imageUrl) ||
     safeHeroImage(market.home.heroImageUrl) ||
@@ -335,39 +335,13 @@ export function Home() {
     } : null),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
-  // Seven circular shelves follow the design reference. Every link resolves to
-  // the existing catalog, Colombia flow, or assistant; admin category entries
-  // override the displayed art and can disable individual destinations.
-  const shelfDefinitions = [
-    {title:"Plantas de interior", match:/interior/i, href:"/productos?coleccion=plantas&categoria=plantas-interior", image:"https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=320&q=85"},
-    {title:"Plantas de exterior", match:/exterior/i, href:"/productos?coleccion=plantas&categoria=plantas-exterior", image:"https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=320&q=85"},
-    {title:"Macetas", match:/macetas?/i, href:"/productos?buscar=macetas", image:"https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=320&q=85"},
-    {title:"Creaciones 3D", match:/3d|impresi[oó]n/i, href:"/productos?buscar=3D", image:"https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=320&q=85"},
-    {title:"Accesorios", match:/jardiner|accesorios/i, href:"/productos?coleccion=jardineria", image:"https://images.unsplash.com/photo-1617576683096-00fc8eecb3af?auto=format&fit=crop&w=320&q=85"},
-    {title:"Regalos de Colombia", match:/colombia|regalos/i, href:"/colombia", image:colombiaDelivery.heroImageUrl},
-    {title:"Detalles personalizados", match:/personaliz|detalles/i, href:"/productos?buscar=personalizados", image:"https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=320&q=85"},
-  ];
-  const referenceHomeCategories = shelfDefinitions.flatMap((definition) => {
-    if (definition.href === "/colombia" && !colombiaDelivery.enabled) return [];
-    const configured = market.home.categories.find((c) => definition.match.test(c.title));
-    if (configured && !visibleHomeCategories.includes(configured)) return [];
-    const plants = visibleHomeCategories.find((c) => /plantas?/i.test(c.title));
-    const fallback = definition.title.startsWith("Plantas") ? plants : undefined;
-    const category = configured || fallback;
-    const matchingProduct = catalog.find((p) =>
-      p.active !== false && !p.deletedAt && Boolean(p.image) &&
-      (definition.match.test(String(p.name || "")) || definition.match.test(String(p.category || "")))
-    );
-    const href = configured?.href || definition.href;
-    if (!isMarketDestinationEnabled(market, href)) return [];
-    return [{
-      title: configured?.title || definition.title,
-      subtitle: configured?.subtitle || "",
-      href,
-      imageUrl: configured?.imageUrl || matchingProduct?.image || category?.imageUrl || definition.image,
-    }];
-  });
-  const displayedHomeCategories = market.home.referenceCategories === false ? visibleHomeCategories : referenceHomeCategories;
+  // The reference layout must never invent categories or override Administration.
+  // Styling is selected in the editor; content, destinations and visibility come
+  // exclusively from the actual published market.home.categories collection.
+  const displayedHomeCategories = visibleHomeCategories
+    .filter((item) => String(item.href || "").split("?")[0] !== "/colombia" || colombiaDelivery.enabled)
+    .slice(0, Math.max(1, Math.min(12, Number(market.home.categoryGridLimit || 8))));
+
 
   const toggleFavorite = async (productId: unknown) => {
     const id = String(productId);
@@ -469,7 +443,7 @@ export function Home() {
             ? heroDesign.overlayColor
             : market.home.heroOverlayColor && market.home.heroOverlayColor !== "#102b20"
               ? market.home.heroOverlayColor
-              : "#efe8dc";
+              : "#102b20";
           const color = hexToRgb(chosen);
           return (
             <div
@@ -496,7 +470,7 @@ export function Home() {
           <div
             className="max-w-2xl"
             style={{
-              color: heroDesign?.textColor && heroDesign.textColor !== "#ffffff" ? heroDesign.textColor : "#173d2a",
+              color: heroDesign?.textColor && heroDesign.textColor !== "#ffffff" ? heroDesign.textColor : "#fffdf5",
               textAlign:
                 heroDesign?.alignment === "center"
                   ? "center"
@@ -507,13 +481,13 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#31513b]">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#dfd2a9]">
               {market.home.kicker}
             </p>
             <h1 className="max-w-xl font-serif text-5xl font-normal leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
               {displayHeroTitle}
             </h1>
-            <p className="mt-3 max-w-xl text-base leading-7 text-[#334e3b] sm:text-lg">
+            <p className="mt-3 max-w-xl text-base leading-7 text-[#fffdf5]/90 sm:text-lg">
               {displayHeroDescription}
             </p>
             <div
@@ -544,17 +518,25 @@ export function Home() {
             </div>
           </div>
         </div>
-        {assistantEnabled && site.navigation.herencia.visible !== false &&
+        <StorefrontComponentBoundary id="home.heroIA" controls={market.componentControls} now={scheduleNow}
+          enabled={assistantEnabled && site.navigation.herencia.visible !== false}>
           <Link to={site.navigation.herencia.href || "/herencia"}
-            className="absolute right-5 top-6 hidden max-w-[285px] items-center gap-3 rounded-2xl border border-white/75 bg-[#fffdf9]/95 p-4 text-[#173d2a] shadow-[0_12px_40px_rgba(0,0,0,.12)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex">
-            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[#e5ede3] text-[#244c32]"><Bot className="h-8 w-8"/></span>
-            <span className="flex flex-col">
-              <span className="font-serif text-xl">Herenc(IA)</span>
-              <span className="mt-0.5 text-xs text-[#4d6352]">¿En qué puedo ayudarte hoy?</span>
-              <span className="mt-2 inline-flex text-xs font-semibold text-[#234b35]">Hablar con Herenc(IA) <ArrowRight className="ml-1 h-3 w-3"/></span>
+            className="absolute right-5 top-7 hidden w-[290px] flex-col rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-5 text-[#193527] shadow-[0_15px_45px_rgba(0,0,0,.2)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex xl:right-8">
+            <span className="flex items-center gap-3">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-7 w-7"/></span>
+              <span><strong className="block font-serif text-2xl font-semibold">Herencia IA</strong>
+                <span className="text-xs text-[#627468]">Tu asistente inteligente</span></span>
+            </span>
+            <span className="mt-4 space-y-2 text-xs leading-5 text-[#3c5544]">
+              <span className="block">✓ Te ayuda a elegir tus plantas</span>
+              <span className="block">✓ Responde tus dudas</span>
+              <span className="block">✓ Recomendaciones personalizadas</span>
+            </span>
+            <span className="mt-4 flex items-center justify-center gap-2 rounded-full bg-[#173d2a] px-4 py-3 text-sm font-semibold text-white">
+              Habla con Herencia IA <ArrowRight className="h-4 w-4"/>
             </span>
           </Link>
-        }
+        </StorefrontComponentBoundary>
       </section></StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.delivery" order={sectionOrder("delivery")} controls={market.componentControls} now={scheduleNow} enabled={sections.delivery && colombiaDelivery.enabled}>
@@ -578,18 +560,39 @@ export function Home() {
       <StorefrontComponentBoundary id="home.categoryStrip" order={sectionOrder("categoryStrip")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
-          <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
-            {displayedHomeCategories.map((item) => (
-              <Link key={item.title} to={item.href} className="group text-center">
-                <div className="mx-auto h-20 w-20 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2e6d5] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md sm:h-24 sm:w-24">
-                  <img src={item.imageUrl} alt="" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />
-                </div>
-                <p className="mx-auto mt-2 max-w-32 font-serif text-sm font-medium leading-tight text-[#1f3b2d] sm:text-base">
-                  {item.title}
-                </p>
-              </Link>
-            ))}
-          </div>
+          {market.home.referenceCategories !== false ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {displayedHomeCategories.map((item, index) => (
+                <Link key={`${item.href}-${index}`} to={item.href}
+                  className="group relative flex min-h-[146px] flex-col justify-between overflow-hidden border border-[#e8e1d6] bg-[#e9e4d9] p-4 text-[#172f21] shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                  style={{ borderRadius: Math.max(0, Math.min(48, Number(item.design?.radius ?? 10))), backgroundColor: item.design?.backgroundColor || undefined }}>
+                  {item.imageUrl && <img src={item.imageUrl} alt="" loading="lazy"
+                    onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
+                    className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    style={{ objectPosition: item.design?.imagePosition || "center" }} />}
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#f6f0e6]/95 via-[#f6f0e6]/80 to-[#f6f0e6]/10" />
+                  <div className="relative max-w-[79%]">
+                    <h2 className="font-serif text-lg font-semibold leading-tight sm:text-xl">{item.title}</h2>
+                    {item.subtitle && <p className="mt-1 line-clamp-2 text-xs text-[#4c554a]">{item.subtitle}</p>}
+                  </div>
+                  <span className="relative mt-3 grid h-8 w-8 place-items-center rounded-full bg-[#143c27] text-white transition group-hover:translate-x-1" aria-hidden="true">
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 lg:grid-cols-7">
+              {displayedHomeCategories.map((item, index) => (
+                <Link key={`${item.href}-${index}`} to={item.href} className="group text-center">
+                  <div className="mx-auto h-20 w-20 max-w-full overflow-hidden rounded-full border border-[#e3ddd2] bg-[#f2e6d5] transition duration-300 group-hover:-translate-y-1 group-hover:shadow-md sm:h-24 sm:w-24">
+                    {item.imageUrl && <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} className="h-full w-full object-cover" />}
+                  </div>
+                  <p className="mx-auto mt-2 max-w-32 font-serif text-sm font-medium leading-tight text-[#1f3b2d] sm:text-base">{item.title}</p>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section></StorefrontComponentBoundary>
 
@@ -821,62 +824,67 @@ export function Home() {
       
       <StorefrontComponentBoundary id="home.creations3d" order={sectionOrder("creations3d")}
         controls={market.componentControls} now={scheduleNow} enabled={sections.creations3d}>
-        <section aria-label="Creaciones 3D" className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
-          <div className="overflow-hidden rounded-2xl border border-[#d8e2d7] bg-[#eef1e8] md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-            <div className="flex min-h-[235px] flex-col justify-center bg-gradient-to-r from-[#183e2c] to-[#315d42] p-7 text-white sm:p-9">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d5e8d5]">DISEÑADO EN HERENCIA</span>
-              <h2 className="mt-2 font-serif text-3xl font-medium sm:text-4xl">{market.home.creations3D.title}</h2>
-              <p className="mt-3 max-w-lg text-sm leading-6 text-white/85">{market.home.creations3D.subtitle}</p>
-              <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
-                className="mt-5 inline-flex w-fit items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-bold text-[#20442f] transition hover:-translate-y-0.5 hover:bg-[#e8f2e8]">
-                {market.home.creations3D.buttonLabel || "Explorar creaciones"}
-                <ArrowRight className="h-4 w-4"/>
-              </Link>
+        <section aria-label="Creaciones 3D" className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-serif text-3xl font-semibold text-[#172d20] sm:text-4xl">{market.home.creations3D.title}</h2>
+              <p className="mt-1 text-sm text-[#687567]">{market.home.creations3D.subtitle}</p>
             </div>
-            <div className="relative min-h-[210px] overflow-hidden bg-[#cdddc9]">
-              {(market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image) ? (
-                <img src={market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image}
-                  alt={market.home.creations3D.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 hover:scale-105"
-                  onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}/>
+            <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-[#234b35] hover:underline">
+              {market.home.creations3D.buttonLabel || "Ver todas"} <ArrowRight className="h-4 w-4"/>
+            </Link>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
+            <div>
+              {storefrontCreations3D.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                  {storefrontCreations3D.map((product) => {
+                    const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
+                    return (
+                      <article key={product.id} className="group relative flex flex-col overflow-hidden rounded-xl border border-[#e5e9df] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-md">
+                        <button type="button" onClick={() => void toggleFavorite(product.id)}
+                          aria-label={(favorites.includes(String(product.id)) ? "Quitar de" : "Añadir a") + " favoritos: " + product.name}
+                          className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-[#244b35] shadow-sm">
+                          <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
+                        </button>
+                        <Link to={"/producto/" + product.id} className="block aspect-[4/4.3] overflow-hidden bg-[#f0efe9]">
+                          <img src={product.image} alt={product.name} loading="lazy" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"/>
+                        </Link>
+                        <div className="flex flex-1 flex-col p-2.5">
+                          <Link to={"/producto/" + product.id} className="line-clamp-2 min-h-9 text-xs font-semibold leading-snug text-[#1c3b29] hover:underline">{product.name}</Link>
+                          <p className="mt-1 text-sm font-bold text-[#28563b]">{money(price)}</p>
+                          <button type="button" onClick={() => addToCart(product)}
+                            className="mt-auto inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-[#244c34] px-2 py-2 text-xs font-bold text-white hover:bg-[#173b27]">
+                            <ShoppingCart className="h-3.5 w-3.5"/> {needsExplicitVariantSelection(product) ? "Elegir opciones" : "Añadir"}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               ) : (
-                <div className="flex h-full min-h-[210px] items-center justify-center bg-[radial-gradient(circle_at_center,#6b9877,#275138)]">
-                  <Sparkles className="h-20 w-20 text-[#e1f1dc]"/>
+                <div className="flex min-h-[240px] items-center rounded-xl border border-dashed border-[#cfdbce] bg-[#f5f7f2] p-6 text-sm text-[#586d5d]">
+                  Los diseños 3D publicados y disponibles se mostrarán aquí cuando se asignen desde Administración.
                 </div>
               )}
             </div>
+            <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
+              className="group relative flex min-h-[240px] flex-col justify-end overflow-hidden rounded-xl bg-[#dfd2b8] p-5 text-[#173126]">
+              {(market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image) && (
+                <img src={market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image}
+                  alt="" loading="lazy" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
+                  className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+              )}
+              <span className="absolute inset-0 bg-gradient-to-t from-[#efe5d4] via-[#efe5d4]/85 to-transparent"/>
+              <span className="relative text-[10px] font-semibold uppercase tracking-[0.2em]">Diseños que inspiran</span>
+              <span className="relative mt-2 font-serif text-2xl font-semibold leading-tight">{market.home.creations3D.title}</span>
+              <span className="relative mt-3 inline-flex w-fit items-center gap-2 rounded-full bg-[#173d2a] px-4 py-2 text-xs font-semibold text-white">
+                {market.home.creations3D.buttonLabel || "Ver colección"} <ArrowRight className="h-3.5 w-3.5"/>
+              </span>
+            </Link>
           </div>
-          {storefrontCreations3D.length > 0 && (
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {storefrontCreations3D.map((product) => {
-                const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
-                return (
-                  <article key={product.id} className="group relative overflow-hidden rounded-xl border border-[#e5e9df] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-                    <button type="button" onClick={() => void toggleFavorite(product.id)}
-                      aria-label={(favorites.includes(String(product.id)) ? "Quitar de" : "Añadir a") + " favoritos: " + product.name}
-                      className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#244b35] shadow">
-                      <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
-                    </button>
-                    <Link to={"/producto/" + product.id} className="block aspect-[4/4.3] overflow-hidden bg-[#f0efe9]">
-                      <img src={product.image} alt={product.name} loading="lazy"
-                        onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"/>
-                    </Link>
-                    <div className="space-y-2 p-3">
-                      <Link to={"/producto/" + product.id} className="block min-h-[40px] text-sm font-semibold leading-snug text-[#1c3b29] hover:underline">{product.name}</Link>
-                      <p className="text-sm font-bold text-[#28563b]">{money(price)}</p>
-                      <button type="button" onClick={() => addToCart(product)}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#244c34] px-3 py-2 text-xs font-bold text-white hover:bg-[#173b27]">
-                        <ShoppingCart className="h-4 w-4"/> Añadir al carrito
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-          {storefrontCreations3D.length === 0 && (
-            <p className="mt-3 text-xs text-[#586d5d]">Explora nuestra sección de diseños 3D. Los productos disponibles aparecerán aquí cuando estén publicados y seleccionados desde Administración.</p>
-          )}
         </section>
       </StorefrontComponentBoundary>
 
