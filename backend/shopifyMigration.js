@@ -94,7 +94,7 @@ export function buildShopifyDraftCatalog({products=[], variants=[], images=[], r
       rows.push({
         "URL handle":handle, "Title":index === 0 ? name : "",
         "Description":index === 0 ? value(product.description) : "",
-        "Vendor":index === 0 ? "Herencia Market" : "",
+        "Vendor":index === 0 ? "Tropical Plants" : "",
         "Type":index === 0 ? value(product.type) : "",
         "Tags":index === 0 ? tags : "",
         "Published on online store":"false", "Status":"draft",

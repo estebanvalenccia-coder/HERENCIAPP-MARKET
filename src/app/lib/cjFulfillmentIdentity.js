@@ -21,7 +21,7 @@ export function assessCjPublicProductStatus(product) {
   const blockers=[],warnings=[];
   if (!String(meta.supplierId||"").trim()) blockers.push("Falta vincular el proveedor CJ.");
   if (!String(meta.cjPreferredLogisticName||"").trim())
-    warnings.push("Herencia elegirá automáticamente la tarifa CJ válida al confirmar la dirección. Si no hay ruta con precio completo, no se cobrará.");
+    warnings.push("Tropical Plants elegirá automáticamente la tarifa CJ válida al confirmar la dirección. Si no hay ruta con precio completo, no se cobrará.");
   if (!variants.length && (!String(meta.supplierVariantId||meta.cjVid||"").trim() ||
     !String(meta.supplierSku||meta.cjSku||"").trim()))
     blockers.push("Faltan identificadores VID y SKU reales de la variante CJ.");

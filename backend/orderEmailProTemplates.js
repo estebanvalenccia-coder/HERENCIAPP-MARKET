@@ -94,7 +94,7 @@ function infoRow(label, value) {
 export function renderOrderEmailPro(order, recipientType = "customer") {
   const o = normalizeOrderForEmail(order);
   const isAdmin = recipientType === "admin";
-  const title = isAdmin ? "Nuevo pedido en Herencia Market" : "¡Gracias por tu compra!";
+  const title = isAdmin ? "Nuevo pedido en Tropical Plants" : "¡Gracias por tu compra!";
   const subtitle = isAdmin
     ? `Se ha recibido una compra de ${escapeHtml(o.customerName)}. Revisa los datos para preparar el pedido.`
     : `Hola ${escapeHtml(o.customerName)}, hemos recibido tu compra correctamente. Aquí tienes el resumen.`;
@@ -150,7 +150,7 @@ export function renderOrderEmailPro(order, recipientType = "customer") {
           </div>
 
           <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#8b6b61;text-align:center;">
-            ${isAdmin ? "Este correo es interno para gestionar el pedido." : "Gracias por confiar en Herencia Market. Prepararemos tu pedido con mucho cariño."}
+            ${isAdmin ? "Este correo es interno para gestionar el pedido." : "Gracias por confiar en Tropical Plants. Prepararemos tu pedido con mucho cariño."}
           </p>
         </td></tr>
       </table>

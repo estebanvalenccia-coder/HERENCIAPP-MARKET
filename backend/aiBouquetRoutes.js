@@ -3,7 +3,7 @@ function cleanJsonContent(content = "{}") {
 }
 
 function buildBouquetPrompt({ description, budget, style, color, size }) {
-  return `Crea una propuesta profesional para Herencia Market, una floristería premium.
+  return `Crea una propuesta profesional para Tropical Plants, una floristería premium.
 Descripción del ramo: ${description || "ramo elegante de flores frescas"}
 Presupuesto aproximado: ${budget || 49.9} euros
 Estilo: ${style || "Elegante"}

@@ -53,7 +53,7 @@ export const storefrontPlacementOptions = [
 
 const TYPE_LABELS: Record<StorefrontPostType, string> = {
   offer: "OFERTA", new: "NUEVO", product: "DESTACADO", service: "SERVICIO", announcement: "ANUNCIO",
-  campaign: "CAMPAÑA", inspiration: "INSPIRACIÓN", event: "EVENTO", free: "HERENCIA",
+  campaign: "CAMPAÑA", inspiration: "INSPIRACIÓN", event: "EVENTO", free: "TROPICAL",
 };
 
 export function storefrontPostTypeLabel(type: StorefrontPostType) { return TYPE_LABELS[type] || "HERENCIA"; }

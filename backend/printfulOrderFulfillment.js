@@ -15,7 +15,7 @@ const numericId=v=>/^[1-9][0-9]{0,19}$/.test(id(v));
  */
 export function printfulExternalOrderId(orderId){
  const normalized=id(orderId).toLowerCase();
- if(!/^[a-z0-9-]{8,100}$/.test(normalized))fail("Pedido Herencia inválido",422);
+ if(!/^[a-z0-9-]{8,100}$/.test(normalized))fail("Pedido inválido",422);
  return "HERENCIA-"+createHash("sha256").update(normalized).digest("base64url").slice(0,22);
 }
 export function preparePrintfulDraft(order,products){

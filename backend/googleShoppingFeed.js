@@ -39,5 +39,5 @@ export function buildGoogleShoppingFeed(products, origin = "https://herenciamark
     if (p.category) tags.push(["g:product_type", text(p.category)]);
     return "    <item>\n" + tags.map(([key, value]) => "      <" + key + ">" + xml(value) + "</" + key + ">").join("\n") + "\n    </item>";
   });
-  return '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n  <channel>\n    <title>Herencia Market</title>\n    <link>' + xml(origin) + '</link>\n    <description>Catálogo público de productos de Herencia Market</description>\n' + items.join("\n") + '\n  </channel>\n</rss>\n';
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n  <channel>\n    <title>Tropical Plants</title>\n    <link>' + xml(origin) + '</link>\n    <description>Catálogo público de productos de Tropical Plants</description>\n' + items.join("\n") + '\n  </channel>\n</rss>\n';
 }

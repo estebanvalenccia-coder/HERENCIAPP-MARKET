@@ -232,7 +232,7 @@ child.on("error",error=>console.error("[legacy] spawn failed",error?.message||St
 
 const server=http.createServer(async(req,res)=>{try{
   const path=new URL(req.url,"http://localhost").pathname;
-  if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Herencia hybrid gateway",neon,legacy:true});}
+  if(path==="/api/health"&&req.method==="GET"){let neon=false;try{neon=await neonReady();}catch{}return json(res,200,{ok:true,service:"Tropical Plants hybrid gateway",neon,legacy:true});}
   if(path==="/api/admin/integrations/aliexpress/automation-health"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
     const raw=await readNeonStorageValue("posOperations");
@@ -439,7 +439,7 @@ const server=http.createServer(async(req,res)=>{try{
         model:process.env.GROQ_MODEL||"openai/gpt-oss-120b",
         temperature:0.3,max_tokens:360,
         messages:[
-          {role:"system",content:"Redacta en español una descripción clara de comercio electrónico para Herencia Market (60 a 100 palabras). Utiliza solo datos que el comercio te haya proporcionado y evita inventar materiales, especificaciones técnicas, compatibilidades, dimensiones, certificados, envío, garantía o beneficios. No afirmes que todas las variantes están disponibles. No incluyas precios, promociones ni referencias al proveedor. Devuelve únicamente texto plano, sin títulos, JSON ni Markdown."},
+          {role:"system",content:"Redacta en español una descripción clara de comercio electrónico para Tropical Plants (60 a 100 palabras). Utiliza solo datos que el comercio te haya proporcionado y evita inventar materiales, especificaciones técnicas, compatibilidades, dimensiones, certificados, envío, garantía o beneficios. No afirmes que todas las variantes están disponibles. No incluyas precios, promociones ni referencias al proveedor. Devuelve únicamente texto plano, sin títulos, JSON ni Markdown."},
           {role:"user",content:JSON.stringify({nombre:name,categoria:category,datosConfirmados:facts,opcionesConocidas:variantNames})}
         ]
       })
@@ -755,7 +755,7 @@ const server=http.createServer(async(req,res)=>{try{
     if(storeId&&!/^[0-9]{1,20}$/.test(storeId))return json(res,422,{error:"Tienda Printful inválida"});
     if(!syncId||!/^[0-9]{1,20}$/.test(syncId))return json(res,422,{error:"Selecciona un producto sincronizado Printful válido"});
     const existing=productId?await getNeonCommerceProduct(productId,{includeArchived:true}):null;
-    if(productId&&(!existing||existing.status==="archived"))return json(res,404,{error:"Producto de Herencia no encontrado"});
+    if(productId&&(!existing||existing.status==="archived"))return json(res,404,{error:"Producto de Tropical Plants no encontrado"});
     if(existing?.metadata?.printfulSyncProductId&&String(existing.metadata.printfulSyncProductId)!==syncId)
       return json(res,409,{error:"La ficha está vinculada a otro producto Printful; desvincúlala antes de cambiar de origen"});
     if(existing?.metadata?.printfulStoreId&&String(existing.metadata.printfulStoreId)!==storeId)
@@ -764,7 +764,7 @@ const server=http.createServer(async(req,res)=>{try{
     if(!response.variants.length)return json(res,502,{error:"Printful no devolvió variantes; no se modifica el catálogo"});
     const conflicts=(await listNeonCommerceProducts({includeArchived:true})).filter(p=>
       String(p.metadata?.printfulSyncProductId||"")===syncId && String(p.id)!==productId);
-    if(conflicts.length)return json(res,409,{error:"Ese producto Printful ya está vinculado a otra ficha de Herencia"});
+    if(conflicts.length)return json(res,409,{error:"Ese producto Printful ya está vinculado a otra ficha de Tropical Plants"});
     // First-time import is draft: merchant must review prices, images and publication.
     const merged={
       ...(existing||{}), name:existing?.name||response.name,
@@ -1496,7 +1496,7 @@ const server=http.createServer(async(req,res)=>{try{
     return json(res,200,{ok:true,productId,selectedVariant:identity.name,
       ...availability,
       message:availability.mode==="factory"
-        ? "CJ confirmó abastecimiento en fábrica, sin inventario propio de Herencia. El checkout verificará de nuevo suministro, plazo, precio y transporte."
+        ? "CJ confirmó abastecimiento en fábrica, sin inventario propio de Tropical Plants. El checkout verificará de nuevo suministro, plazo, precio y transporte."
         : "Inventario consultado a CJ en segundo plano. El checkout verifica de nuevo precio, suministro y transporte."});
   }
 
@@ -1653,7 +1653,7 @@ server.listen(publicPort,"0.0.0.0",async()=>{
     linkingInterval.unref?.();
     cjStockObserverInterval.unref?.();
   }
-  console.log(`Herencia hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
+  console.log(`Tropical Plants hybrid gateway listening on ${publicPort}; legacy backend on ${legacyPort}`);
   aliexpressConnector.startAutomation();
   if(process.env.ALIEXPRESS_UNPAID_ORDER_AUTO_ENABLED==="true"){
     const aeTimer=setInterval(()=>void aliexpressUnpaidRunner.sweep()

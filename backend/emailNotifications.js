@@ -1,3 +1,4 @@
+import { tropicalEmailSender } from "./brandEmailSender.js";
 function deliveryLabelForEmail(value) {
   const method = String(value || "").toLowerCase();
   if (method === "envio") return "Envío a domicilio";
@@ -32,7 +33,7 @@ function orderText(order, customer = false) {
     .map((item) => `- ${item.name} x${item.quantity || 1}: ${money(Number(item.price || 0) * Number(item.quantity || 1), currency)}`)
     .join("\n");
 
-  return `${customer ? "Gracias por tu compra en Herencia Floristería" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${deliveryLabelForEmail(order.delivery_method)}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal, currency)}\nEnvío: ${money(order.shipping, currency)}\nTotal: ${money(order.total, currency)}\n\nNotas:\n${metadata.notes || ""}\n`;
+  return `${customer ? "Gracias por tu compra en Tropical Plants" : "Nuevo pedido recibido"}\n\nCliente:\nNombre: ${order.customer_name || ""}\nEmail: ${order.customer_email || ""}\nTeléfono: ${metadata.phone || ""}\n\nEntrega: ${deliveryLabelForEmail(order.delivery_method)}\nPago: ${order.payment_method || ""}\nEstado: ${order.status || ""}\n\nDirección:\n${address.address || ""}\n${address.postalCode || ""} ${address.city || ""}\n${address.province || ""}\n\nProductos:\n${items}\n\nSubtotal: ${money(order.subtotal, currency)}\nEnvío: ${money(order.shipping, currency)}\nTotal: ${money(order.total, currency)}\n\nNotas:\n${metadata.notes || ""}\n`;
 }
 
 function orderHtml(order, customer = false) {
@@ -48,13 +49,13 @@ function orderHtml(order, customer = false) {
     </tr>`).join("");
 
   const title = customer ? "Gracias por tu compra" : "Nuevo pedido recibido";
-  const intro = customer ? "Hemos recibido tu pedido correctamente. Te contactaremos pronto para confirmar todos los detalles." : "Tienes un nuevo pedido en Herencia Floristería. Aquí tienes el resumen completo.";
+  const intro = customer ? "Hemos recibido tu pedido correctamente. Te contactaremos pronto para confirmar todos los detalles." : "Tienes un nuevo pedido en Tropical Plants. Aquí tienes el resumen completo.";
 
   return `<!doctype html><html><body style="margin:0;background:#f4f7ef;font-family:Arial,sans-serif;color:#263326;">
     <div style="max-width:680px;margin:0 auto;padding:28px 14px;">
       <div style="background:#2f6b3f;color:white;border-radius:22px 22px 0 0;padding:28px;text-align:center;">
         <div style="font-size:34px;line-height:1;">🌿</div>
-        <h1 style="margin:10px 0 4px;font-size:28px;">Herencia Floristería</h1>
+        <h1 style="margin:10px 0 4px;font-size:28px;">Tropical Plants</h1>
         <p style="margin:0;color:#dfeee1;">${title}</p>
       </div>
       <div style="background:white;border:1px solid #e1ead8;border-top:0;border-radius:0 0 22px 22px;padding:28px;">
@@ -80,7 +81,7 @@ function orderHtml(order, customer = false) {
         </div>
 
         ${metadata.notes ? `<div style="margin-top:20px;padding:16px;background:#f7faf4;border-radius:14px;"><strong>Notas:</strong><br>${safe(metadata.notes)}</div>` : ""}
-        <p style="text-align:center;color:#70806b;font-size:13px;margin:24px 0 0;">Gracias por confiar en Herencia Floristería 🌸</p>
+        <p style="text-align:center;color:#70806b;font-size:13px;margin:24px 0 0;">Gracias por confiar en Tropical Plants 🌸</p>
       </div>
     </div>
   </body></html>`;
@@ -99,7 +100,7 @@ async function sendEmail({ to, subject, text, html }) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.EMAIL_FROM || "Herencia Floristería <onboarding@resend.dev>",
+      from: tropicalEmailSender(process.env.EMAIL_FROM),
       to,
       subject,
       text,
@@ -121,7 +122,7 @@ export async function notifyOrder(order) {
   if (order.customer_email) {
     await sendEmail({
       to: order.customer_email,
-      subject: "🌿 Hemos recibido tu pedido en Herencia Floristería",
+      subject: "🌿 Hemos recibido tu pedido en Tropical Plants",
       text: orderText(order, true),
       html: orderHtml(order, true),
     });

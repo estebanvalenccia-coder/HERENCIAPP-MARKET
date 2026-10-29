@@ -1,3 +1,4 @@
+import { tropicalEmailSender } from "./brandEmailSender.js";
 import { answerOwnOrderStatus } from "./supportOrders.js";
 import { parseSupportAutomationSettings, validateSupportAutomationPatch } from "./supportAutomationSettings.js";
 import { normalizeSupportKnowledge, validateSupportKnowledgePayload, knowledgeContext } from "./supportKnowledge.js";
@@ -29,7 +30,8 @@ export function validateSupportAttachment(dataUrl) {
 
 async function sendSupportEmail(to, subject, body, ticketId, messageId) {
   const apiKey = String(process.env.RESEND_API_KEY || "").trim();
-  const sender = String(process.env.EMAIL_FROM || "").trim();
+  const configuredSender = String(process.env.EMAIL_FROM || "").trim();
+  const sender = configuredSender ? tropicalEmailSender(configuredSender) : "";
   if (!apiKey || !sender || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to || ""))) return false;
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -235,7 +237,7 @@ export function registerSupportV2(app, db) {
       const publishedKnowledge=knowledgeContext(
         await readStorageValue(KNOWLEDGE_KEY), input
       );
-      const context = publishedKnowledge + "\nHerencia Market, Barcelona. Horario publicado: " + hours.slice(0, 650) +
+      const context = publishedKnowledge + "\nTropical Plants, Barcelona. Horario publicado: " + hours.slice(0, 650) +
         ". Productos publicados (referencias, no confirmar existencias sin comprobar): " + known.slice(0, 700) +
         ". Para pedidos, devoluciones y pagos, ofrece orientación general sin inventar datos; nunca afirmes haber consultado un pedido real.";
       const previousMessages = ticket.messages.slice(0,-1).filter(m=>m.role==="customer"||m.role==="assistant").slice(-8);
@@ -333,7 +335,7 @@ export function registerSupportV2(app, db) {
     const updated = await withAI(ticket, text);
     if (updated.humanRequested && updated.status === "open" && process.env.STORE_EMAIL) {
       void sendSupportEmail(process.env.STORE_EMAIL, "Nueva consulta de Herencia · " + updated.ticketId,
-        "Hay una nueva consulta pendiente en Herencia Market. Ábrela desde Administración > Servicio al cliente.\n\nhttps://www.herenciamarket.es/admin",
+        "Hay una nueva consulta pendiente en Tropical Plants. Ábrela desde Administración > Servicio al cliente.\n\nhttps://www.herenciamarket.es/admin",
         updated.ticketId, updated.messages[0].id);
     }
     res.status(201).json({ thread: internalView(updated) });
@@ -362,7 +364,7 @@ export function registerSupportV2(app, db) {
     });
     if(firstRequest && process.env.STORE_EMAIL){
       void sendSupportEmail(process.env.STORE_EMAIL,"Amigo Plantil · consulta pendiente "+thread.ticketId,
-        "Una persona solicita atención humana desde Herencia Market.\n\nEntra a Administración > Servicio al cliente:\nhttps://www.herenciamarket.es/admin",
+        "Una persona solicita atención humana desde Tropical Plants.\n\nEntra a Administración > Servicio al cliente:\nhttps://www.herenciamarket.es/admin",
         thread.ticketId,thread.messages.at(-1)?.id||crypto.randomUUID());
     }
     res.json({thread:internalView(thread)});
@@ -459,7 +461,7 @@ export function registerSupportV2(app, db) {
     });
     if(!note && thread.ownerType==="customer" && thread.customerEmail) {
       void sendSupportEmail(thread.customerEmail, "Herencia ha respondido · " + thread.ticketId,
-        "El equipo de Herencia Market ha respondido a tu consulta.\n\nPara consultar la respuesta, entra a tu cuenta:\nhttps://www.herenciamarket.es/perfil",
+        "El equipo de Tropical Plants ha respondido a tu consulta.\n\nPara consultar la respuesta, entra a tu cuenta:\nhttps://www.herenciamarket.es/perfil",
         thread.ticketId,thread.messages.at(-1)?.id||crypto.randomUUID());
     }
     res.json({thread});

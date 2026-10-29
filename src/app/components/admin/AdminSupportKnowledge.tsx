@@ -42,14 +42,14 @@ export function AdminSupportKnowledge(){
     try{
       const result=await knowledgeApi("PUT",articles);
       setArticles(result.articles);setDirty(false);
-      setFeedback("Respuestas guardadas. Herencia IA ya podrá usarlas para consultas relacionadas.");
+      setFeedback("Respuestas guardadas. Tropical IA ya podrá usarlas para consultas relacionadas.");
     }catch(cause:any){setIsError(true);setFeedback(cause.message||"Error al guardar respuestas")}
     finally{setSaving(false)}
   }
   return <div className="space-y-3 rounded-2xl border border-[#d8e5d8] bg-white p-4 sm:col-span-2">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h3 className="flex items-center gap-2 text-sm font-bold text-[#2d523b]"><BookOpen size={18}/> Base de conocimientos de Herencia IA</h3>
+        <h3 className="flex items-center gap-2 text-sm font-bold text-[#2d523b]"><BookOpen size={18}/> Base de conocimientos de Tropical IA</h3>
         <p className="mt-1 max-w-xl text-xs leading-5 text-[#78907b]">Escribe las políticas y respuestas aprobadas de Herencia: devoluciones, horarios, servicios y cuidados. Solo se consultarán las respuestas activadas y relacionadas con la pregunta. No incluyas datos privados.</p>
       </div>
       <div className="flex gap-2">

@@ -63,7 +63,7 @@ function createFallbackProposal(payload = {}) {
   return {
     name: suggestedName(description, color),
     shortDescription: `Ramo ${style.toLowerCase()} tamaño ${size} desde ${budget.toFixed(2)} €`,
-    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Herencia Market. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
+    description: `Ramo ${style.toLowerCase()} en tonos ${color.toLowerCase()}, pensado para Tropical Plants. Una composición fresca, bonita y comercial para regalar en ocasiones especiales.`,
     recommendedFlowers,
     imagePrompt: `Fotografía profesional, realista y premium de ecommerce de UN RAMO COMPLETO de flores frescas, estilo ${style.toLowerCase()}, color principal ${color.toLowerCase()}, presupuesto ${budget.toFixed(2)} €, tamaño ${size}. Idea del cliente: ${description}. El ramo debe verse entero, centrado, con envoltorio elegante de floristería, composición abundante y bonita, luz cálida natural, fondo limpio, sin texto, sin logos, sin marcas de agua, sin personas, sin manos, sin jarrón si no se pide.`,
     sellingTip: "Ideal para vender como ramo premium personalizado.",
@@ -73,7 +73,7 @@ function createFallbackProposal(payload = {}) {
 function buildGroqPrompt(payload = {}) {
   const fallback = createFallbackProposal(payload);
 
-  return `Crea una propuesta profesional para Herencia Market, floristería premium.
+  return `Crea una propuesta profesional para Tropical Plants, floristería premium.
 Descripción: ${normalizeText(payload.description, "ramo elegante")}
 Presupuesto: ${Number(payload.budget || 49.9)} euros
 Estilo: ${normalizeText(payload.style, "Elegante")}

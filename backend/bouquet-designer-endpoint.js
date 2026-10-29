@@ -32,7 +32,7 @@ export async function registerBouquetDesignerEndpoint(app) {
         proposal: {
           name: description || 'Bouquet premium',
           shortDescription: `${style || 'Elegante'} ${color || 'Mix'}`,
-          description: `Ramo ${style || 'premium'} generado por IA para Herencia Market.`,
+          description: `Ramo ${style || 'premium'} generado por IA para Tropical Plants.`,
           recommendedFlowers: ['Rosas', 'Tulipanes', 'Paniculata', 'Eucalipto'],
           sellingTip: 'Diseño generado mediante inteligencia artificial.',
         },
