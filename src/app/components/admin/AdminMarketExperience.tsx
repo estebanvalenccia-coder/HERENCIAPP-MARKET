@@ -664,6 +664,8 @@ export function AdminMarketExperience({
                     sectionOrder: [...PLANT_SHOP_HOME_SECTION_ORDER],
                     referenceNavigation: true,
                     referenceCategories: true,
+                    referenceHero: true,
+                    categoryGridLimit: 5,
                     productDisplay: { ...productDisplay, mode: "plants", limit: 6, columns: 6, filtersEnabled: false },
                     creations3D: { ...market.home.creations3D, limit: 6 },
                   })}
