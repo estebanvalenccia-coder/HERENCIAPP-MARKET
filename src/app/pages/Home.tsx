@@ -27,6 +27,7 @@ import { StorefrontComponentBoundary } from "../components/StorefrontComponentBo
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
 const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
+const DEFAULT_3D_SHOWCASE = "https://cdn.shopify.com/s/files/1/1105/9209/8695/files/herencia-market-creaciones-3d-escaparate.webp?v=1793281597";
 
 function safeHeroImage(value: unknown): string {
   const image = String(value || "").trim();
@@ -866,18 +867,42 @@ export function Home() {
       <StorefrontComponentBoundary id="home.creations3d" order={sectionOrder("creations3d")}
         controls={market.componentControls} now={scheduleNow} enabled={sections.creations3d}>
         <section aria-label="Creaciones 3D" style={{ order: sectionOrder("creations3d") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="font-serif text-3xl font-semibold text-[#172d20] sm:text-4xl">{market.home.creations3D.title}</h2>
-              <p className="mt-1 text-sm text-[#687567]">{market.home.creations3D.subtitle}</p>
+          <div className="group relative mb-6 overflow-hidden rounded-[1.75rem] border border-[#dbe4d8] bg-[#112f22] text-white shadow-[0_20px_55px_rgba(13,43,28,0.16)]">
+            <img
+              src={market.home.creations3D.imageUrl || DEFAULT_3D_SHOWCASE}
+              alt="Escaparate de macetas, jarrones, figuras y accesorios creados con impresión 3D"
+              loading="lazy"
+              decoding="async"
+              onError={(event) => imageFallback(event, storefrontCreations3D[0]?.image || IMAGE_FALLBACKS.category)}
+              className="absolute inset-y-0 right-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.04] sm:w-[72%] lg:w-[60%]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a281d] via-[#0a281d]/90 to-[#0a281d]/15 md:bg-gradient-to-r md:from-[#0a281d] md:via-[#0a281d]/95 md:to-transparent" />
+            <div className="relative z-10 flex min-h-[375px] max-w-[620px] flex-col justify-end px-6 pb-8 pt-44 sm:px-10 md:min-h-[330px] md:justify-center md:py-10">
+              <span className="mb-3 w-fit rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/90 backdrop-blur-sm">
+                HERENCIA MARKET · DISEÑO 3D
+              </span>
+              <h2 className="font-serif text-3xl font-semibold leading-tight sm:text-4xl lg:text-5xl">
+                {market.home.creations3D.title}
+              </h2>
+              <p className="mt-3 max-w-lg text-sm leading-6 text-white/85 sm:text-base">
+                {market.home.creations3D.subtitle}
+              </p>
+              <Link
+                to={market.home.creations3D.href || "/productos?buscar=3D"}
+                className="mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[#173d2a] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f4f4e9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                {market.home.creations3D.buttonLabel || "Explorar creaciones 3D"}
+                <ArrowRight className="h-4 w-4"/>
+              </Link>
             </div>
+          </div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-serif text-2xl font-semibold text-[#172d20]">Descubre las piezas</h3>
             <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
               className="inline-flex items-center gap-2 text-sm font-semibold text-[#234b35] hover:underline">
-              {market.home.creations3D.buttonLabel || "Ver todas"} <ArrowRight className="h-4 w-4"/>
+              Ver colección <ArrowRight className="h-4 w-4"/>
             </Link>
           </div>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
-            <div>
               {storefrontCreations3D.length > 0 ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
                   {storefrontCreations3D.map((product) => {
@@ -910,22 +935,6 @@ export function Home() {
                   Los diseños 3D publicados y disponibles se mostrarán aquí cuando se asignen desde Administración.
                 </div>
               )}
-            </div>
-            <Link to={market.home.creations3D.href || "/productos?buscar=3D"}
-              className="group relative flex min-h-[240px] flex-col justify-end overflow-hidden rounded-xl bg-[#dfd2b8] p-5 text-[#173126]">
-              {(market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image) && (
-                <img src={market.home.creations3D.imageUrl || storefrontCreations3D[0]?.image}
-                  alt="" loading="lazy" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
-                  className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-              )}
-              <span className="absolute inset-0 bg-gradient-to-t from-[#efe5d4] via-[#efe5d4]/85 to-transparent"/>
-              <span className="relative text-[10px] font-semibold uppercase tracking-[0.2em]">Diseños que inspiran</span>
-              <span className="relative mt-2 font-serif text-2xl font-semibold leading-tight">{market.home.creations3D.title}</span>
-              <span className="relative mt-3 inline-flex w-fit items-center gap-2 rounded-full bg-[#173d2a] px-4 py-2 text-xs font-semibold text-white">
-                {market.home.creations3D.buttonLabel || "Ver colección"} <ArrowRight className="h-3.5 w-3.5"/>
-              </span>
-            </Link>
-          </div>
         </section>
       </StorefrontComponentBoundary>
 
