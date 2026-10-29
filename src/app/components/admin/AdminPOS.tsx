@@ -2182,7 +2182,7 @@ export function AdminPOS() {
         <div className="hidden print:block print:p-8">
           <div className="mx-auto max-w-2xl text-black">
             <div className="border-b pb-4">
-              <h1 className="text-2xl font-bold">{previewReceipt.fiscal.businessName || "Herencia Market"}</h1>
+              <h1 className="text-2xl font-bold">{previewReceipt.fiscal.businessName || "Tropical Plants"}</h1>
               {previewReceipt.fiscal.nif && <p>NIF/CIF: {previewReceipt.fiscal.nif}</p>}
               {previewReceipt.fiscal.address && <p>{previewReceipt.fiscal.address}</p>}
               {previewReceipt.fiscal.email && <p>{previewReceipt.fiscal.email}</p>}
