@@ -95,7 +95,7 @@ export function Admin() {
       enabled: herenciaEnabled,
     }));
     window.dispatchEvent(new Event("storage"));
-    toast.success("Configuración de Herenc(IA) guardada");
+    toast.success("Configuración de Tropical IA guardada");
   };
 
   const applyTheme = () => {
@@ -333,17 +333,17 @@ export function Admin() {
               </div>
             </div>
 
-            {/* Herenc(IA) */}
+            {/* Tropical IA */}
             <div className="bg-card border border-border rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-6">
                 <Bot className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-bold text-foreground">Herenc(IA)</h2>
+                <h2 className="text-xl font-bold text-foreground">Tropical IA</h2>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    URL de Herenc(IA)
+                    URL de Tropical IA
                   </label>
                   <input
                     type="url"
@@ -358,7 +358,7 @@ export function Admin() {
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
-                  <span className="text-sm font-medium text-foreground">Activar Herenc(IA)</span>
+                  <span className="text-sm font-medium text-foreground">Activar Tropical IA</span>
                   <button
                     onClick={() => setHerenciaEnabled(!herenciaEnabled)}
                     className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -381,7 +381,7 @@ export function Admin() {
                     className="flex items-center justify-center gap-2 w-full py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    Abrir Herenc(IA)
+                    Abrir Tropical IA
                   </a>
                 )}
 
@@ -566,7 +566,7 @@ export function Admin() {
                     className="p-6"
                     style={{ backgroundColor: theme.primaryColor, color: "#ffffff" }}
                   >
-                    <h3 className="text-2xl font-bold mb-2">Herencia Floristería</h3>
+                    <h3 className="text-2xl font-bold mb-2">Tropical Plants</h3>
                     <p className="opacity-90">Vista previa del tema personalizado</p>
                   </div>
 
