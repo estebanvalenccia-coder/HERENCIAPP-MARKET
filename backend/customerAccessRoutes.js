@@ -1,3 +1,4 @@
+import { tropicalEmailSender } from "./brandEmailSender.js";
 import express from "express";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
@@ -48,12 +49,12 @@ async function writeStorage(db, key, value) {
 }
 async function sendResetEmail(to, resetUrl) {
   if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY no configurada");
-  const from = process.env.EMAIL_FROM || "Herencia Market <onboarding@resend.dev>";
+  const from = tropicalEmailSender(process.env.EMAIL_FROM);
   const payload = {
     from,
     to,
-    subject: "Recupera tu contraseña de Herencia Market",
-    html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><h1 style="margin:0">Herencia Market</h1></td></tr><tr><td style="padding:28px"><h2>Recupera tu contraseña</h2><p style="line-height:1.6">Hemos recibido una solicitud para cambiar la contraseña de tu cuenta.</p><p style="margin:28px 0;text-align:center"><a href="${resetUrl}" style="display:inline-block;background:#426047;color:#fff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:13px;color:#718078">Este enlace caduca en 30 minutos y solo puede utilizarse una vez. Si no pediste este cambio, ignora este correo.</p></td></tr></table></td></tr></table></body></html>`,
+    subject: "Recupera tu contraseña de Tropical Plants",
+    html: `<!doctype html><html lang="es"><body style="margin:0;background:#f7f4ee;font-family:Arial,sans-serif;color:#213128"><table role="presentation" width="100%"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:620px;background:#fff;border-radius:24px;overflow:hidden"><tr><td style="background:#426047;color:#fff;padding:28px;text-align:center"><h1 style="margin:0">Tropical Plants</h1></td></tr><tr><td style="padding:28px"><h2>Recupera tu contraseña</h2><p style="line-height:1.6">Hemos recibido una solicitud para cambiar la contraseña de tu cuenta.</p><p style="margin:28px 0;text-align:center"><a href="${resetUrl}" style="display:inline-block;background:#426047;color:#fff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:13px;color:#718078">Este enlace caduca en 30 minutos y solo puede utilizarse una vez. Si no pediste este cambio, ignora este correo.</p></td></tr></table></td></tr></table></body></html>`,
   };
 
   let lastError = null;
