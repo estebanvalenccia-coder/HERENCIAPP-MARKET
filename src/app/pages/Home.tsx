@@ -787,7 +787,7 @@ export function Home() {
       
       <StorefrontComponentBoundary id="home.creations3d" order={sectionOrder("creations3d")}
         controls={market.componentControls} now={scheduleNow} enabled={sections.creations3d}>
-        <section aria-label="Creaciones 3D" className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
+        <section aria-label="Creaciones 3D" style={{ order: sectionOrder("creations3d") }} className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-serif text-3xl font-semibold text-[#172d20] sm:text-4xl">{market.home.creations3D.title}</h2>
