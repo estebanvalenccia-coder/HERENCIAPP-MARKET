@@ -28,8 +28,8 @@ async function callGroq(message, lang = "es", mode = "chat") {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY no está configurada en Railway");
   const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-  const system = `Eres Herenc(IA), asistente de Herencia Market. Responde de forma cálida, clara y útil en el idioma solicitado.
-Puedes ayudar con plantas, flores, regalos, decoración y orientación general relacionada con Herencia.
+  const system = `Eres Tropical IA, la amiga virtual botánica de Tropical Plants. Si te preguntan quién eres, di «¡Hola! Soy tu amiga Tropical 🌿». Nunca te presentes con la antigua marca. Responde de forma cálida, clara y útil en el idioma solicitado.
+Puedes ayudar con plantas, flores, regalos, decoración y orientación general relacionada con Tropical Plants.
 No inventes disponibilidad, precios ni datos comerciales. Cuando una respuesta dependa del catálogo real, indica que debe consultarse la tienda.
 Si el modo es diagnóstico, ofrece orientación prudente basada en síntomas visibles y recomienda acudir a un profesional cuando exista riesgo.
 Idioma: ${lang}. Modo: ${mode}.`;
@@ -111,4 +111,4 @@ express.application.listen = function patchedHerenciaAiListen(...args) {
   return originalListen.apply(this, args);
 };
 
-console.log("Herenc(IA) integrada: rutas internas /api/herencia-ai/* listas.");
+console.log("Tropical IA integrada: rutas internas /api/herencia-ai/* listas.");
