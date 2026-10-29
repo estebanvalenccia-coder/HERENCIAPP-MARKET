@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { Home, Leaf } from "lucide-react";
 import { motion } from "motion/react";
-import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
+const logo = "/logo.svg";
 
 export function NotFound() {
   return (
@@ -14,7 +14,7 @@ export function NotFound() {
         <div className="inline-flex items-center justify-center mb-6">
           <img
             src={logo}
-            alt="Herencia Floristería"
+            alt="Tropical Plants"
             className="h-24 w-auto opacity-50"
           />
         </div>
