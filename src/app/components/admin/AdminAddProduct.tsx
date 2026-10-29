@@ -148,17 +148,17 @@ export function AdminAddProduct({ onBack }: { onBack: () => void }) {
   const [visualReferences, setVisualReferences] = useState<SelectedImage[]>([]);
   const [visualMode, setVisualMode] = useState<"own" | "automatic" | "house" | "clear">("automatic");
   const visualOptions = [
-    { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Herencia no las modifica." },
-    { id: "automatic", title: "Automático Herencia", description: "Usa Casa Herencia como identidad principal y conserva el mismo lenguaje visual." },
-    { id: "house", title: "Casa Herencia", description: "Fondo oficial Herencia: crema cálido, madera, luz dorada y sombras de ventana." },
-    { id: "clear", title: "Herencia Claro", description: "Versión limpia en marfil cálido manteniendo luz y materiales Herencia." },
+    { id: "own", title: "Mis propias fotos", description: "Hasta 8 imágenes. Tropical Plants no las modifica." },
+    { id: "automatic", title: "Automático Tropical Plants", description: "Usa Casa Tropical Plants como identidad principal y conserva el mismo lenguaje visual." },
+    { id: "house", title: "Casa Tropical Plants", description: "Fondo oficial Tropical Plants: crema cálido, madera, luz dorada y sombras de ventana." },
+    { id: "clear", title: "Tropical Plants Claro", description: "Versión limpia en marfil cálido manteniendo luz y materiales Tropical Plants." },
   ] as const;
 
   const HERENCIA_HOUSE_MASTER_PROMPT = `
-IDENTIDAD VISUAL MAESTRA — CASA HERENCIA.
+IDENTIDAD VISUAL MAESTRA — CASA TROPICAL PLANTS.
 Esta instrucción NO es inspiración opcional: es el aspecto obligatorio de la imagen.
 
-La escena debe parecer fotografiada dentro de la misma Casa Herencia de todo el catálogo:
+La escena debe parecer fotografiada dentro de la misma Casa Tropical Plants de todo el catálogo:
 - pared crema / beige marfil muy cálida, mate y luminosa;
 - luz natural dorada entrando lateralmente por una ventana real;
 - sombras lineales de marco/persiana de ventana claramente visibles sobre pared, suelo y parcialmente sobre el producto;
@@ -174,7 +174,7 @@ MUY IMPORTANTE:
 Todas las imágenes deben sentirse como diferentes fotografías de LA MISMA CASA y LA MISMA SESIÓN DE MARCA.
 No inventes un salón distinto, una arquitectura distinta o una paleta distinta en cada generación.
 No uses fondos oscuros, grises fríos, blancos clínicos, colores fuertes, neón ni decoración recargada.
-No uses fondos de estudio genéricos cuando el modo sea Casa Herencia.
+No uses fondos de estudio genéricos cuando el modo sea Casa Tropical Plants.
 No añadas texto, logos, marcas de agua ni personas.
 
 FOTOGRAFÍA:
@@ -191,8 +191,8 @@ apariencia CGI o 3D, plástico, hojas enceradas artificiales, simetría perfecta
 `.trim();
 
   const HERENCIA_CLEAR_MASTER_PROMPT = `
-IDENTIDAD VISUAL — HERENCIA CLARO.
-Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textura mineral muy sutil, superficie crema o piedra clara, luz natural lateral dorada y sombras suaves reales. Mantener la misma temperatura, macetas neutras y fotorealismo editorial de Casa Herencia, pero con un escenario más limpio y minimalista. Debe parecer una fotografía comercial real tomada con cámara: textura orgánica, pequeñas imperfecciones naturales, exposición normal y profundidad óptica. Sin texto, logos, personas, marcas de agua, CGI, 3D, plástico, HDR exagerado ni apariencia de render.
+IDENTIDAD VISUAL — TROPICAL PLANTS CLARO.
+Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textura mineral muy sutil, superficie crema o piedra clara, luz natural lateral dorada y sombras suaves reales. Mantener la misma temperatura, macetas neutras y fotorealismo editorial de Casa Tropical Plants, pero con un escenario más limpio y minimalista. Debe parecer una fotografía comercial real tomada con cámara: textura orgánica, pequeñas imperfecciones naturales, exposición normal y profundidad óptica. Sin texto, logos, personas, marcas de agua, CGI, 3D, plástico, HDR exagerado ni apariencia de render.
 `.trim();
 
   useEffect(() => {
@@ -375,7 +375,7 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
 
 PRODUCTO: ${formData.name.trim()}.
 TOMA: principal de catálogo, cámara a la altura del producto, planta grande y protagonista ocupando aproximadamente 70–85% del área útil.
-Mantén proporciones naturales y una maceta Herencia neutra. La imagen final debe poder colocarse junto a las fotografías existentes de Palma Areca, Calathea Orbifolia, Philodendron Brasil, Zamioculca y Begonia maculata sin que parezca otra marca u otra casa.`,
+Mantén proporciones naturales y una maceta Tropical Plants neutra. La imagen final debe poder colocarse junto a las fotografías existentes de Palma Areca, Calathea Orbifolia, Philodendron Brasil, Zamioculca y Begonia maculata sin que parezca otra marca u otra casa.`,
         references: masterReferences(),
       });
       if (!result.image) throw new Error("La IA no devolvió imagen");
@@ -384,9 +384,9 @@ Mantén proporciones naturales y una maceta Herencia neutra. La imagen final deb
       if (!url) throw new Error("No se pudo guardar la imagen generada en R2");
       setSelectedImages((current) => [...current, { id: `ai-${Date.now()}`, remoteUrl: url, preview: url }].slice(0, 8));
       setVisualProgress("Imagen generada y guardada.");
-      toast.success("Imagen Herencia generada y añadida a la galería");
+      toast.success("Imagen Tropical Plants generada y añadida a la galería");
     } catch (error: any) {
-      const message = error?.message || "No se pudo generar la imagen Herencia";
+      const message = error?.message || "No se pudo generar la imagen Tropical Plants";
       setVisualError(message);
       setVisualProgress("");
       toast.error(message);
@@ -413,7 +413,7 @@ Mantén proporciones naturales y una maceta Herencia neutra. La imagen final deb
 
 PRODUCTO: ${formData.name.trim()}.
 TOMA: ${shots[index]}.
-Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas las imágenes de esta galería. Cambia únicamente el encuadre, distancia o ángulo indicado. La planta debe seguir siendo protagonista y el fondo debe conservar pared crema cálida, madera/material natural, luz dorada lateral y sombras de ventana coherentes. Botánica fiel y proporciones naturales.`,
+Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Tropical Plants entre todas las imágenes de esta galería. Cambia únicamente el encuadre, distancia o ángulo indicado. La planta debe seguir siendo protagonista y el fondo debe conservar pared crema cálida, madera/material natural, luz dorada lateral y sombras de ventana coherentes. Botánica fiel y proporciones naturales.`,
           references: masterReferences(),
         });
         if (!result.image) throw new Error("No se pudo generar una imagen");
@@ -423,7 +423,7 @@ Conserva el MISMO producto, la MISMA maceta y la MISMA Casa Herencia entre todas
         setSelectedImages((current) => [...current, { id: `ai-${Date.now()}-${index}`, remoteUrl: url, preview: url }].slice(0, 8));
       }
       setVisualProgress(`Galería terminada: ${count} imágenes.`);
-      toast.success(`Galería Herencia generada: ${count} imágenes`);
+      toast.success(`Galería Tropical Plants generada: ${count} imágenes`);
     } catch (error: any) {
       const message = error?.message || "No se pudo completar la galería";
       setVisualError(message);
@@ -450,7 +450,7 @@ PRODUCTO: ${formData.name.trim()}.
 
 CREA UNA SOLA IMAGEN FINAL CUADRADA 1:1 TIPO COLLAGE EDITORIAL, SIN TEXTO, SIN RÓTULOS Y SIN MARCOS DECORATIVOS.
 MUY IMPORTANTE: GALERÍA y COLLAGE son funciones distintas. Esta función debe devolver UNA ÚNICA IMAGEN 1:1 que ya contiene varias fotografías maquetadas dentro de ella; NO devuelvas fotos individuales.
-COMPOSICIÓN COMO LA REFERENCIA VISUAL DEL COLLAGE DE HERENCIA:
+COMPOSICIÓN COMO LA REFERENCIA VISUAL DEL COLLAGE DE TROPICAL PLANTS:
 - una fotografía principal grande de la planta completa ocupando la mayor parte del lienzo;
 - alrededor, entre 5 y 7 recuadros secundarios de distintos tamaños con acercamientos y vistas complementarias;
 - incluir detalles de hoja, nervaduras/textura, reverso de hoja cuando corresponda, brote/tallo, base/sustrato y al menos otra vista completa de la misma planta;
@@ -474,7 +474,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
       if (!url) throw new Error("No se pudo guardar el collage en R2");
       setSelectedImages((current) => [...current, { id: `collage-${Date.now()}`, remoteUrl: url, preview: url }].slice(0, 8));
       setVisualProgress("Collage generado y añadido sin eliminar ninguna foto.");
-      toast.success("Collage Herencia añadido a la galería");
+      toast.success("Collage Tropical Plants añadido a la galería");
     } catch (error: any) {
       const message = error?.message || "No se pudo generar el collage";
       setVisualError(message);
@@ -869,11 +869,11 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
         Volver al catálogo
       </button>
 
-      <div className="mb-5 rounded-3xl border border-primary/20 bg-primary/5 p-5"><p className="text-sm font-black uppercase tracking-[.16em] text-primary">¿Dónde quieres venderlo?</p><div className="mt-3 grid gap-3 sm:grid-cols-3">{[["main","Herencia principal","Solo catálogo de Barcelona"],["colombia","Colombianísimas","Solo experiencia Cali / Colombia"],["both","En ambos","Herencia principal + Colombianísimas"]].map(([id,title,detail]) => (<button key={id} type="button" onClick={()=>setPublishDestination(id as any)} className={`rounded-2xl border p-4 text-left transition ${publishDestination===id?"border-primary bg-background ring-2 ring-primary/15":"bg-background hover:border-primary/40"}`}><span className="block font-bold">{title}</span><span className="mt-1 block text-xs text-muted-foreground">{detail}</span></button>))}</div></div>\n\n      <div className="rounded-3xl border border-border bg-card p-5 sm:p-8">
+      <div className="mb-5 rounded-3xl border border-primary/20 bg-primary/5 p-5"><p className="text-sm font-black uppercase tracking-[.16em] text-primary">¿Dónde quieres venderlo?</p><div className="mt-3 grid gap-3 sm:grid-cols-3">{[["main","Tropical Plants principal","Solo catálogo de Barcelona"],["colombia","Colombianísimas","Solo experiencia Cali / Colombia"],["both","En ambos","Tropical Plants principal + Colombianísimas"]].map(([id,title,detail]) => (<button key={id} type="button" onClick={()=>setPublishDestination(id as any)} className={`rounded-2xl border p-4 text-left transition ${publishDestination===id?"border-primary bg-background ring-2 ring-primary/15":"bg-background hover:border-primary/40"}`}><span className="block font-bold">{title}</span><span className="mt-1 block text-xs text-muted-foreground">{detail}</span></button>))}</div></div>\n\n      <div className="rounded-3xl border border-border bg-card p-5 sm:p-8">
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">
-              Catálogo Herencia
+              Catálogo Tropical Plants
             </p>
             <h2 className="mt-2 text-3xl font-black text-foreground">Crear artículo para vender</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -955,7 +955,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
 
           {plantLike && (
             <section className="rounded-2xl border border-border bg-muted/20 p-5">
-              <h3 className="text-lg font-black">2. Plantillas visuales Herencia</h3>
+              <h3 className="text-lg font-black">2. Plantillas visuales Tropical Plants</h3>
               <p className="mt-1 text-xs text-muted-foreground">Mejora la galería sin cambiar el formulario actual. Tus fotos propias nunca se retocan ni regeneran.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {visualOptions.map((option) => (
@@ -970,7 +970,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                 <div className="mt-4 rounded-2xl border border-border bg-background p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-black text-foreground">Referencias maestras Casa Herencia</p>
+                      <p className="font-black text-foreground">Referencias maestras Casa Tropical Plants</p>
                       <p className="mt-1 text-xs text-muted-foreground">Hasta 5 fotos. Gemini las usa solo para copiar luz, interiorismo, paleta, encuadre y maceta; la especie siempre será la del producto.</p>
                     </div>
                     <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-black">{visualReferences.length}/5</span>
@@ -996,7 +996,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               )}
 
               <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-5 text-muted-foreground">
-                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Casa Herencia usa como estándar el fondo crema cálido, madera, luz dorada lateral y sombras de ventana del catálogo actual. Las referencias maestras sirven para reforzar todavía más esa continuidad."}
+                {visualMode === "own" ? "Fotos originales: máximo 8. Solo se guardan, ordenan y publican; no pasan por IA." : "Casa Tropical Plants usa como estándar el fondo crema cálido, madera, luz dorada lateral y sombras de ventana del catálogo actual. Las referencias maestras sirven para reforzar todavía más esa continuidad."}
                 {visualMode !== "own" && (
                   <>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1102,7 +1102,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   <span className="text-xs font-semibold text-muted-foreground" aria-live="polite">{selectedImages.length} de 8 fotos</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pega la URL directa de una foto o el enlace de un producto público. Herencia intentará extraer su imagen y guardarla en la biblioteca multimedia.
+                  Pega la URL directa de una foto o el enlace de un producto público. Tropical Plants intentará extraer su imagen y guardarla en la biblioteca multimedia.
                 </p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                   <input
@@ -1165,7 +1165,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                     service
                       ? "Ej: Instalación de huerto urbano en terraza"
                       : fashion
-                        ? "Ej: Tote bag Herencia"
+                        ? "Ej: Tote bag Tropical Plants"
                         : food
                           ? "Ej: Tarta de tres leches"
                           : "Ej: Monstera deliciosa"
