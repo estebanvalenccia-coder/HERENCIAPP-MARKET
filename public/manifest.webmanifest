@@ -1,7 +1,7 @@
 {
-  "name": "Herencia Floristería",
-  "short_name": "Herencia",
-  "description": "Herencia Floristería",
+  "name": "Tropical Plants",
+  "short_name": "Tropical",
+  "description": "Tropical Plants",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
