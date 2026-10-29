@@ -3,7 +3,7 @@ import { Mail, Lock, User, Phone, MapPin } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import logo from "figma:asset/8c5f2b4f88c45fd4812e5bb91610bff5272333d7.png";
+const logo = "/logo.svg";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 
 function normalizeEmail(email: string) { return email.trim().toLowerCase(); }
@@ -90,11 +90,11 @@ export function Login() {
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="w-full max-w-md">
         <div className="bg-card/95 backdrop-blur border border-border rounded-3xl p-7 sm:p-8 shadow-xl">
           <div className="flex justify-center mb-7">
-            <img src={logo} alt="Herencia Floristería" className="h-20 w-auto"/>
+            <img src={logo} alt="Tropical Plants" className="h-20 w-auto"/>
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-semibold tracking-tight">{isLogin ? "Bienvenido a Herencia" : "Crea tu cuenta"}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{isLogin ? "Bienvenido a Tropical Plants" : "Crea tu cuenta"}</h1>
             <p className="text-sm text-muted-foreground mt-1.5">
               {isLogin ? "Accede a tus pedidos, favoritos y perfil." : "Guarda tus pedidos, favoritos y datos de compra."}
             </p>
@@ -131,7 +131,7 @@ export function Login() {
             <button onClick={()=>setIsLogin(!isLogin)} className="text-primary font-medium hover:underline">{isLogin?"Regístrate":"Inicia sesión"}</button>
           </p>
           <p className="text-center text-xs text-muted-foreground mt-4 leading-relaxed">
-            Al continuar aceptas las condiciones de Herencia y su política de privacidad.
+            Al continuar aceptas las condiciones de Tropical Plants y su política de privacidad.
           </p>
         </div>
       </motion.div>
