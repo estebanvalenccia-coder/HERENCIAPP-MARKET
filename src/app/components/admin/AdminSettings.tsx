@@ -305,10 +305,10 @@ export function AdminSettings() {
       };
       backendStorage.setItem("herenciaSettings", JSON.stringify(settings));
       window.dispatchEvent(new Event("storage"));
-      console.log("✅ Herenc(IA) guardado:", settings);
-      toast.success("✅ Configuración de Herenc(IA) guardada correctamente");
+      console.log("✅ Tropical IA guardado:", settings);
+      toast.success("✅ Configuración de Tropical IA guardada correctamente");
     } catch (error) {
-      console.error("❌ Error al guardar Herenc(IA):", error);
+      console.error("❌ Error al guardar Tropical IA:", error);
       toast.error("Error al guardar la configuración");
     }
   };
@@ -324,7 +324,7 @@ export function AdminSettings() {
       const url = String(uploaded.media?.url || ""); if (!url) throw new Error("No se pudo guardar la imagen en R2");
       setHerenciaBackgroundUrl(url);
       const current = JSON.parse(backendStorage.getItem("herenciaSettings") || "{}"); backendStorage.setItem("herenciaSettings", JSON.stringify({ ...current, backgroundUrl: url })); window.dispatchEvent(new Event("storage"));
-      toast.success("Fondo de Herenc(IA) subido y aplicado");
+      toast.success("Fondo de Tropical IA subido y aplicado");
     } catch (error: any) { toast.error(error?.message || "No se pudo subir el fondo"); } finally { setHerenciaBackgroundUploading(false); }
   };
 
@@ -520,8 +520,8 @@ export function AdminSettings() {
     console.log("");
 
     const herencia = backendStorage.getItem("herenciaSettings");
-    console.log("Herenc(IA) RAW:", herencia);
-    console.log("Herenc(IA) PARSED:", herencia ? JSON.parse(herencia) : "❌ No guardado");
+    console.log("Tropical IA RAW:", herencia);
+    console.log("Tropical IA PARSED:", herencia ? JSON.parse(herencia) : "❌ No guardado");
     console.log("");
 
     const stripe = backendStorage.getItem("stripeSettings");
@@ -555,8 +555,8 @@ export function AdminSettings() {
     console.log("");
 
     console.log("=== ESTADO ACTUAL EN MEMORIA ===");
-    console.log("Herenc(IA) URL actual:", herenciaUrl);
-    console.log("Herenc(IA) enabled actual:", herenciaEnabled);
+    console.log("Tropical IA URL actual:", herenciaUrl);
+    console.log("Tropical IA enabled actual:", herenciaEnabled);
     console.log("Stripe key actual:", stripePublishableKey ? "***" + stripePublishableKey.slice(-10) : "vacío");
     console.log("Stripe enabled actual:", stripeEnabled);
     console.log("");
@@ -643,18 +643,18 @@ export function AdminSettings() {
         </div>
       </div>
 
-      {/* Herenc(IA) */}
+      {/* Tropical IA */}
       <div className="bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-6">
           <Bot className="w-5 h-5 text-primary" />
-          <h3 className="text-xl font-bold text-foreground">Herenc(IA)</h3>
+          <h3 className="text-xl font-bold text-foreground">Tropical IA</h3>
         </div>
 
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-muted/40 p-4">
             <p className="text-sm font-semibold text-foreground">Origen de la aplicación</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Elige la app integrada en Herencia Market o conserva una URL externa como alternativa.
+              Elige la app integrada en Tropical Plants o conserva una URL externa como alternativa.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
@@ -686,7 +686,7 @@ export function AdminSettings() {
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
               <p className="font-bold text-emerald-800">App integrada seleccionada</p>
               <p className="mt-1 text-xs text-emerald-700">
-                Se abre dentro de Herencia Market y utiliza GROQ_API_KEY desde Railway. La clave nunca se expone al navegador.
+                Se abre dentro de Tropical Plants y utiliza GROQ_API_KEY desde Railway. La clave nunca se expone al navegador.
               </p>
               <a href="/ia" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 font-semibold text-emerald-800">
                 <ExternalLink className="h-4 w-4" /> Probar /ia
@@ -695,7 +695,7 @@ export function AdminSettings() {
           ) : (
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                URL externa de Herenc(IA)
+                URL externa de Tropical IA
               </label>
               <input
                 type="url"
@@ -711,9 +711,9 @@ export function AdminSettings() {
           )}
 
           <div className="rounded-xl border border-border bg-muted/30 p-4">
-            <p className="text-sm font-semibold text-foreground">Apariencia · Fondo de Herenc(IA)</p>
+            <p className="text-sm font-semibold text-foreground">Apariencia · Fondo de Tropical IA</p>
             <p className="mt-1 text-xs text-muted-foreground">Sube aquí el fondo en alta resolución. Se guarda en Cloudflare R2 y se aplica detrás del chat transparente.</p>
-            {herenciaBackgroundUrl ? <div className="mt-4 overflow-hidden rounded-xl border border-border bg-background"><img src={herenciaBackgroundUrl} alt="Fondo actual de Herenc(IA)" className="h-44 w-full object-cover" /></div> : null}
+            {herenciaBackgroundUrl ? <div className="mt-4 overflow-hidden rounded-xl border border-border bg-background"><img src={herenciaBackgroundUrl} alt="Fondo actual de Tropical IA" className="h-44 w-full object-cover" /></div> : null}
             <div className="mt-4 flex flex-wrap gap-2">
               <label className="cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">{herenciaBackgroundUploading ? "Subiendo…" : "Subir imagen de fondo"}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={herenciaBackgroundUploading} onChange={uploadHerenciaBackground} /></label>
               {herenciaBackgroundUrl ? <button type="button" onClick={() => setHerenciaBackgroundUrl("")} className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground">Quitar fondo personalizado</button> : null}
@@ -760,7 +760,7 @@ export function AdminSettings() {
           <div className="rounded-xl border border-border bg-muted/30 p-4">
             <p className="text-sm font-semibold text-foreground">Límites de uso</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Se guardan en el backend por visitante o cliente. Los cambios afectan a Herenc(IA) sin tocar código.
+              Se guardan en el backend por visitante o cliente. Los cambios afectan a Tropical IA sin tocar código.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <label className="text-xs font-semibold text-muted-foreground">
@@ -801,7 +801,7 @@ export function AdminSettings() {
 
           <div className="flex items-center justify-between p-3 bg-muted rounded-xl">
             <div>
-              <span className="text-sm font-medium text-foreground">Activar Herenc(IA)</span>
+              <span className="text-sm font-medium text-foreground">Activar Tropical IA</span>
               <p className="text-xs text-muted-foreground">Controla si aparece y puede abrirse desde la tienda.</p>
             </div>
             <button
@@ -824,7 +824,7 @@ export function AdminSettings() {
             onClick={saveHerenciaSettings}
             className="w-full py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm"
           >
-            Guardar Herenc(IA)
+            Guardar Tropical IA
           </button>
         </div>
       </div>
@@ -1227,7 +1227,7 @@ export function AdminSettings() {
             icons={availableIcons}
           />
           <IconSelector
-            label="Icono Herenc(IA)"
+            label="Icono Tropical IA"
             value={menuIcons.herencia}
             onChange={(icon) => setMenuIcons({ ...menuIcons, herencia: icon })}
             icons={availableIcons}
