@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 175" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 510 175" role="img" aria-labelledby="title desc">
 <title id="title">Tropical Plants</title><desc id="desc">Logotipo minimalista con hoja estilizada y texto Tropical Plants.</desc>
 <g fill="#193e2e"><text x="20" y="107" font-family="Georgia, 'Times New Roman', serif" font-size="83" letter-spacing="-3">TROPICAL</text>
-<text x="334" y="151" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="500" letter-spacing="13">PLANTS</text></g>
+<text x="250" y="151" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="500" letter-spacing="13">PLANTS</text></g>
 <path d="M306 25 C318 8 337 12 349 0 C354 21 342 39 321 34 C315 33 311 30 306 25Z" fill="#3f7852"/>
 <path d="M321 33 Q335 16 349 0" stroke="#f7f5ed" stroke-width="2.4" fill="none"/>
 <path d="M322 33 Q318 41 315 51" stroke="#3f7852" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
