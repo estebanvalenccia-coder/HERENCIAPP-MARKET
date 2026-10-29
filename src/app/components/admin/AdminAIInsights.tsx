@@ -28,7 +28,7 @@ export function AdminAIInsights(){
         <div className='relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
           <div>
             <div className='mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-black'>
-              IA Herencia activa
+              Tropical IA activa
             </div>
 
             <h1 className='max-w-3xl text-5xl font-black tracking-tight'>

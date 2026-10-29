@@ -28,7 +28,7 @@ export function AdminMarketingHub(){
     catch(e:any){toast.error(e?.message||"No se pudo guardar");}finally{setSaving(false);}
   };
   const addFaq=()=>setData({...data,faqs:[...(data.faqs||[]),{id:crypto.randomUUID(),question:"",answer:""}]});
-  const addCampaign=()=>setData({...data,campaigns:[...(data.campaigns||[]),{id:crypto.randomUUID(),slug:`campana-${Date.now().toString().slice(-5)}`,title:"Nueva campaña",eyebrow:"HERENCIA",description:"",imageUrl:"",buttonLabel:"Ver productos",buttonHref:"/productos",active:false,startAt:"",endAt:""}]});
+  const addCampaign=()=>setData({...data,campaigns:[...(data.campaigns||[]),{id:crypto.randomUUID(),slug:`campana-${Date.now().toString().slice(-5)}`,title:"Nueva campaña",eyebrow:"TROPICAL PLANTS",description:"",imageUrl:"",buttonLabel:"Ver productos",buttonHref:"/productos",active:false,startAt:"",endAt:""}]});
 
   return <div className="space-y-6 pb-16">
     <section className="rounded-3xl border border-border bg-gradient-to-br from-primary/10 via-card to-secondary/10 p-6">

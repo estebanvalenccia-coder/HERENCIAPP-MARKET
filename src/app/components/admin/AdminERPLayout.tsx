@@ -65,7 +65,7 @@ export function AdminERPLayout(){
           <section className='rounded-[2.5rem] border border-emerald-100 bg-white/90 p-8 shadow-2xl backdrop-blur-xl'>
             <div className='flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between'>
               <div>
-                <div className='mb-3 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700'>HERENCIAPP-MARKET ERP</div>
+                <div className='mb-3 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700'>TROPICAL PLANTS ERP</div>
                 <h1 className='text-5xl font-black tracking-tight text-zinc-950'>Sistema empresarial conectado</h1>
                 <p className='mt-4 max-w-3xl text-lg font-medium text-zinc-500'>TPV, stock, clientes, finanzas, tickets, facturación, caja, mermas y analíticas sincronizadas en tiempo real.</p>
               </div>

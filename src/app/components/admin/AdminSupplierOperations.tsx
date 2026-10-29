@@ -219,7 +219,7 @@ export function AdminSupplierOperations({
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-xs font-semibold">ID de pedido existente
           <input value={orderId} onChange={e=>setOrderId(e.target.value.slice(0,110))}
-            placeholder="ID del pedido de Herencia"
+            placeholder="ID del pedido de Tropical Plants"
             className="mt-1 block w-full rounded-lg border border-border bg-background p-2.5"/>
         </label>
         <label className="text-xs font-semibold">Proveedor

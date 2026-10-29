@@ -123,7 +123,7 @@ export function AdminBusinessSuite() {
       <div className="rounded-3xl border border-border bg-gradient-to-br from-primary/10 via-card to-secondary/10 p-6 md:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-5 w-5" /><span className="text-sm font-bold uppercase tracking-wider">Herencia Business OS</span></div>
+            <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-5 w-5" /><span className="text-sm font-bold uppercase tracking-wider">Tropical Plants Business OS</span></div>
             <h2 className="text-3xl font-black text-foreground">Centro de Negocio</h2>
             <p className="mt-2 max-w-3xl text-muted-foreground">Unifica ecommerce, TPV, CRM, inventario, marketing y operaciones. Los ajustes de esta pantalla quedan persistidos en el backend de configuración de Herencia.</p>
           </div>

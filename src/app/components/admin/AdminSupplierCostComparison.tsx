@@ -126,7 +126,7 @@ export function AdminSupplierCostComparison({ suppliers = [] }: { suppliers?: an
         <p className="text-sm">Beneficio estimado antes de otros gastos: {eur(Number(calculated.ranked[0].profit))}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {country} · {postalCode.trim()} · Solo una unidad. Para automatizar la compra,
-          Herencia tendrá que volver a obtener cotizaciones y existencias verificadas desde las APIs autorizadas.
+          Tropical Plants tendrá que volver a obtener cotizaciones y existencias verificadas desde las APIs autorizadas.
         </p>
       </>}
     </div>
