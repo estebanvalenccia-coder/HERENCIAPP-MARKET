@@ -1,10 +1,10 @@
 /**
- * chat_unificado_compatible.js — HERENC(IA) Frontend Controller (FINAL v1.6)
+ * chat_unificado_compatible.js — Tropical IA Frontend Controller (FINAL v1.6)
  * Mantiene el HTML visual intacto. Solo añade lógica + DevMenu extendido.
  */
 
-const WATERMARK_TEXT_MARKER = "Created: HERENC(IA)";
-const WATERMARK_TEXT = "Created: HERENC(IA) – HERENCIA.  •  BY: VALENCIA BRAVO D.E  •  Slogan: HERENCIA DE NUESTRAS RAÍCES";
+const WATERMARK_TEXT_MARKER = "Created: Tropical IA";
+const WATERMARK_TEXT = "Created: Tropical IA – TROPICAL PLANTS.  •  BY: VALENCIA BRAVO D.E  •  Slogan: TROPICAL PLANTS DE NUESTRAS RAÍCES";
 const API_BASE = ""; // mismo origen (servido por backend)
 
 // UI state
@@ -33,7 +33,7 @@ function stripSignatureText(text){
   const lines = String(text).split("\n");
   const out = [];
   for(const ln of lines){
-    if(ln.includes("Created: HERENC(IA)")) break;
+    if(ln.includes("Created: Tropical IA")) break;
     out.push(ln);
   }
   return out.join("\n").trim();
@@ -294,7 +294,7 @@ async function addHerenciaProductToCart(product, goCheckout){
   await persistCart(cart);
 
   if(goCheckout){
-    addMsg("bot", `${product.name} está listo. Te llevo al pago seguro de Herencia Market.`);
+    addMsg("bot", `${product.name} está listo. Te llevo al pago seguro de Tropical Plants.`);
     try{ window.parent.location.href="/checkout"; }catch(_){ window.location.href="/checkout"; }
   }else{
     addMsg("bot", `${product.name} se ha añadido a tu carrito.`);
@@ -346,7 +346,7 @@ function updateAccessSidebar(){
   if(!el) return;
   const state=herenciaServerAccess;
   if(!state){
-    el.textContent="Comprobando tu acceso a Herenc(IA)…";
+    el.textContent="Comprobando tu acceso a Tropical IA…";
     return;
   }
   if(state.vip || state.unlimited){
@@ -370,7 +370,7 @@ function applyHerenciaUsageState(){
   send.style.opacity = exhausted ? "0.5" : "1";
   send.style.cursor = exhausted ? "not-allowed" : "pointer";
   input.placeholder = exhausted
-    ? "Has alcanzado tu límite diario de Herenc(IA)"
+    ? "Has alcanzado tu límite diario de Tropical IA"
     : "Escribe tu pregunta aquí...";
 }
 
@@ -427,9 +427,9 @@ async function sendChat(){
       herenciaServerAccess = { ...herenciaServerAccess, ...access };
       applyHerenciaUsageState();
       updateAccessSidebar();
-      addMsg("bot", access?.error || "Has alcanzado tu límite diario de Herenc(IA).");
+      addMsg("bot", access?.error || "Has alcanzado tu límite diario de Tropical IA.");
     }else{
-      addMsg("bot", "⚠️ Error de conexión con Herenc(IA). Tu mensaje no se ha descontado.");
+      addMsg("bot", "⚠️ Error de conexión con Tropical IA. Tu mensaje no se ha descontado.");
     }
   }finally{
     showTyping(false);
@@ -1005,7 +1005,7 @@ function wireDevMenu(){
     }
 
     if(t?.id === "testVoiceBtn"){
-      speak("Hola, soy Herenc(IA). Te leo con esta voz.");
+      speak("¡Hola! Soy tu amiga Tropical. Te leo con esta voz.");
       addDevLog("🔊 Probando voz…");
     }
 
@@ -1232,4 +1232,4 @@ void loadHerenciaFeatureFlags();
 updateAccessSidebar();
 injectWatermark();
 
-addMsg("bot", "🌿 Hola, soy Herenc(IA). ¿Qué planta quieres cuidar hoy?");
+addMsg("bot", "🌿 ¡Hola! Soy tu amiga Tropical. ¿Qué planta quieres cuidar hoy?");
