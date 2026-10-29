@@ -236,28 +236,16 @@ export function Layout() {
     ? { ...item, children: item.children.filter((child) => isMarketDestinationEnabled(market, child.href)) }
     : item);
 
-  // Reference storefront layout: commercial navigation driven by the original
-  // market configuration and product collection routes. The admin may disable the
-  // preset; visibility settings on existing nav items are respected.
-  const referenceMenu = [
-    { label: "Plantas", href: "/productos?coleccion=plantas", pattern: /plantas?/i },
-    { label: "Macetas", href: "/productos?buscar=macetas", pattern: /macetas?/i },
-    { label: "Creaciones 3D", href: "/productos?buscar=3D", pattern: /3d|impresi[oó]n/i },
-    { label: "Accesorios", href: "/productos?coleccion=jardineria", pattern: /accesorios|jardiner[ií]a/i },
-    { label: "Regalos de Colombia", href: "/colombia", pattern: /colombia|regalos/i },
-  ];
-  const referenceNavigation = referenceMenu.flatMap(({label, href, pattern}) => {
-    if (href === "/colombia" && !colombiaEnabled) return [];
-    const existing = market.navigation.find(item => pattern.test(item.label));
-    if (existing?.visible === false) return [];
-    const matched = visibleNavigation.find(item => pattern.test(item.label));
-    const homeCategory = market.home.categories.find(item => pattern.test(item.title));
-    if (homeCategory?.visible === false || !isMarketDestinationEnabled(market, matched?.href || href)) return [];
-    const item = matched || { label, href: homeCategory?.href || href };
-    return [{...item, label, href: item.href || href}];
-  });
+  // The reference changes presentation and order, never the administrator's links.
+  // An OFF link stays OFF; labels, destinations, submenus and custom items survive.
+  const menuPriority = [/^inicio$/i, /plantas?/i, /3d|impresi[oó]n/i, /colombia|regalos/i, /jardiner[ií]a|accesorios/i, /ofertas|promociones/i];
+  const navPriority = (label: string) => {
+    const index = menuPriority.findIndex((pattern) => pattern.test(label));
+    return index === -1 ? menuPriority.length : index;
+  };
   const storefrontNavigation = market.home.referenceNavigation === false
-    ? visibleNavigation : referenceNavigation;
+    ? visibleNavigation
+    : [...visibleNavigation].sort((a, b) => navPriority(a.label) - navPriority(b.label));
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
