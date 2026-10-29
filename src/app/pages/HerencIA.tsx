@@ -109,7 +109,7 @@ export function HerencIA() {
       setMessages([{
         id: "welcome",
         role: "assistant",
-        content: "Hola 🌿 Soy Herenc(IA). Cuéntame qué estás buscando y te ayudo a encontrar plantas, regalos y productos reales de Herencia Market.",
+        content: "Hola 🌿 Soy Tropical IA. Cuéntame qué estás buscando y te ayudo a encontrar plantas, regalos y productos reales de Tropical Plants.",
       }]);
     }
   }, []);
@@ -260,7 +260,7 @@ export function HerencIA() {
       setMessages(prev => [...prev, {
         id: id(),
         role: "assistant",
-        content: String(data?.reply || "Puedo ayudarte a encontrar algo de Herencia."),
+        content: String(data?.reply || "Puedo ayudarte a encontrar algo de Tropical Plants."),
         productIds: Array.isArray(data?.productIds) ? data.productIds.map(String) : undefined,
       }]);
     } catch (err) {
@@ -349,7 +349,7 @@ export function HerencIA() {
   };
 
   if (!enabled) {
-    return <div className="grid min-h-[70vh] place-items-center bg-[#edf3e7]"><p className="text-[#315b42]">Herenc(IA) está desactivada desde Administración.</p></div>;
+    return <div className="grid min-h-[70vh] place-items-center bg-[#edf3e7]"><p className="text-[#315b42]">Tropical IA está desactivada desde Administración.</p></div>;
   }
 
   return (
@@ -373,14 +373,14 @@ export function HerencIA() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="font-serif text-[27px] font-semibold tracking-tight text-[#fff9ec]">Herenc(IA)</h1>
+                  <h1 className="font-serif text-[27px] font-semibold tracking-tight text-[#fff9ec]">Tropical IA</h1>
                   <Sparkles className="h-4 w-4 text-[#d8bd7a]" />
                 </div>
                 <p className="mt-1 text-sm text-white/65">Tu asesora de plantas, decoración y regalos</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20" onClick={() => { stageSupportHandoff("Herenc(IA)", messages); navigate("/contacto"); }}>Servicio al cliente</button>
+              <button type="button" className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20" onClick={() => { stageSupportHandoff("Tropical IA", messages); navigate("/contacto"); }}>Servicio al cliente</button>
               <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80">
                 {groq === null ? "Conectando…" : groq.ok ? `● Groq${groq.model ? ` · ${groq.model}` : ""}` : "● Sin conexión"}
               </span>
@@ -410,7 +410,7 @@ export function HerencIA() {
                         {message.imagePreview ? (
                           <img
                             src={message.imagePreview}
-                            alt="Imagen enviada a Herenc(IA)"
+                            alt="Imagen enviada a Tropical IA"
                             className="mb-3 max-h-72 w-full rounded-2xl object-cover"
                           />
                         ) : null}
@@ -447,7 +447,7 @@ export function HerencIA() {
               {sending && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-[1.5rem] rounded-bl-md border border-white/35 bg-[#fffaf0]/92 px-4 py-3 text-sm text-[#315b42] shadow-lg backdrop-blur-xl">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Herenc(IA) está pensando…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Tropical IA está pensando…
                   </div>
                 </div>
               )}
@@ -515,18 +515,18 @@ export function HerencIA() {
 
           <div className="rounded-[26px] border border-[#e0c585]/30 bg-[linear-gradient(145deg,rgba(151,103,24,.90),rgba(106,67,15,.86))] p-5 text-white shadow-xl backdrop-blur-2xl">
             <div className="flex items-center gap-2 text-[#f4dfaa]"><Crown className="h-5 w-5" /><strong>Acceso VIP</strong></div>
-            <p className="mt-3 text-sm leading-6 text-white/70">Con {Number(access?.vipPlantSpend || 50).toFixed(0)} € o más en compras pagadas de plantas, Herenc(IA) pasa a uso ilimitado.</p>
+            <p className="mt-3 text-sm leading-6 text-white/70">Con {Number(access?.vipPlantSpend || 50).toFixed(0)} € o más en compras pagadas de plantas, Tropical IA pasa a uso ilimitado.</p>
             {access?.authenticated ? <p className="mt-3 text-xs font-semibold text-[#f4dfaa]">Llevas {Number(access.plantSpend || 0).toFixed(2)} € en plantas.</p> : null}\n            <button type="button" className="mt-4 w-full rounded-full bg-[#fff1cf] px-4 py-2.5 text-sm font-bold text-[#493313]">Ver mis beneficios VIP →</button>
           </div>
 
           <div className="rounded-[26px] border border-[#f0d99d]/35 bg-[#123a27]/82 p-5 text-white shadow-xl backdrop-blur-xl">
             <div className="flex items-center gap-2"><ShoppingBag className="h-5 w-5 text-[#f0d79d]" /><h3 className="font-serif text-lg font-semibold">Compra desde el chat</h3></div>
-            <p className="mt-3 text-sm leading-6 text-white/65">Herenc(IA) recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
+            <p className="mt-3 text-sm leading-6 text-white/65">Tropical IA recomienda productos reales y te lleva al carrito o directamente al checkout.</p>
           </div>
 
           <div className="relative min-h-[205px] flex-1 overflow-hidden rounded-[26px] border border-white/25 bg-[url('https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=900&q=92')] bg-cover bg-center shadow-xl">
             <div className="absolute inset-0 bg-gradient-to-t from-[#173b29]/75 via-transparent to-transparent" />
-            <div className="absolute bottom-5 left-5 right-5"><p className="font-serif text-[23px] leading-[1.05] text-white">Más que plantas, un hogar con vida.</p><button type="button" onClick={() => navigate("/")} className="mt-3 rounded-full bg-[#fff1cf] px-4 py-2 text-xs font-bold text-[#173126]">Descubrir Herencia →</button></div>
+            <div className="absolute bottom-5 left-5 right-5"><p className="font-serif text-[23px] leading-[1.05] text-white">Más que plantas, un hogar con vida.</p><button type="button" onClick={() => navigate("/")} className="mt-3 rounded-full bg-[#fff1cf] px-4 py-2 text-xs font-bold text-[#173126]">Descubrir Tropical Plants →</button></div>
           </div>
         </aside>
       </div>
