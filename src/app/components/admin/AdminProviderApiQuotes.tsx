@@ -11,7 +11,7 @@ const money = (amount: number) =>
 
 /**
  * Separate, non-order-capable provider quoting UI. Only numeric Printful catalog
- * variant IDs and EU delivery postcodes are transmitted to the Herencia server.
+ * variant IDs and EU delivery postcodes are transmitted to the Tropical Plants server.
  * Never accept or expose bearer tokens, checkout data or customer identity.
  */
 export function AdminProviderApiQuotes() {
@@ -76,7 +76,7 @@ export function AdminProviderApiQuotes() {
     if(!syncProductId)return;
     setSyncBusy(true);setSyncError("");setSyncSuccess("");
     try{const result=await backendApi.syncPrintfulProduct(syncProductId,herenciaProductId.trim()||undefined,storeId);
-      setSyncSuccess("Guardadas "+result.variantCount+" variantes reales en Herencia. Producto: "+String(result.product.id)+". Revisa precios y publicación en Productos.");
+      setSyncSuccess("Guardadas "+result.variantCount+" variantes reales en Tropical Plants. Producto: "+String(result.product.id)+". Revisa precios y publicación en Productos.");
     }catch(error:any){setSyncError(error?.message||"Printful no pudo sincronizar las variantes. La ficha anterior se conserva.");}
     finally{setSyncBusy(false);}
   };
@@ -162,7 +162,7 @@ export function AdminProviderApiQuotes() {
             {syncProducts.map(p=><option key={p.id} value={p.id}>{p.name} · {p.variants} variantes · #{p.id}</option>)}
           </select>
         </label>
-        <label className="block text-xs font-bold">ID de la ficha Herencia existente (opcional)
+        <label className="block text-xs font-bold">ID de la ficha Tropical Plants existente (opcional)
           <input value={herenciaProductId} onChange={e=>setHerenciaProductId(e.target.value.trim())} placeholder="Déjalo vacío para importar como borrador nuevo" className="mt-1 w-full rounded-lg border bg-background p-2"/>
         </label>
         <button type="button" onClick={()=>void syncProduct()} disabled={syncBusy||!syncProductId} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">Sincronizar variantes con Printful</button>
@@ -173,9 +173,9 @@ export function AdminProviderApiQuotes() {
 
     <section className="mt-4 rounded-xl border border-border p-4" aria-label="Pedidos de Printful">
       <h3 className="font-bold">Pedidos Printful · preparación y seguimiento</h3>
-      <p className="mt-1 text-xs text-muted-foreground">Al confirmar un pago Stripe de un pedido exclusivamente Printful, Herencia prepara un borrador. La producción se confirma solo si los límites automáticos están activados y se verifica el margen y el coste real.</p>
-      <label className="mt-3 block text-xs font-bold">ID completo del pedido Herencia
-        <input className="mt-1 w-full rounded-lg border bg-background p-2" value={printfulOrderId} onChange={event=>setPrintfulOrderId(event.target.value.trim())} placeholder="Referencia del pedido Herencia"/>
+      <p className="mt-1 text-xs text-muted-foreground">Al confirmar un pago Stripe de un pedido exclusivamente Printful, Tropical Plants prepara un borrador. La producción se confirma solo si los límites automáticos están activados y se verifica el margen y el coste real.</p>
+      <label className="mt-3 block text-xs font-bold">ID completo del pedido Tropical Plants
+        <input className="mt-1 w-full rounded-lg border bg-background p-2" value={printfulOrderId} onChange={event=>setPrintfulOrderId(event.target.value.trim())} placeholder="Referencia del pedido Tropical Plants"/>
       </label>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={printfulOrderBusy||!printfulOrderId} onClick={()=>void estimateOrder()}
