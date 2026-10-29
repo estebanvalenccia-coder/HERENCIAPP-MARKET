@@ -38,7 +38,7 @@ function formatDate(value: string) {
 }
 
 function roleName(role: Message["role"]) {
-  return role === "assistant" ? "Asistente IA" : role === "agent" ? "Equipo Herencia" : "Tú";
+  return role === "assistant" ? "Asistente IA" : role === "agent" ? "Equipo Tropical Plants" : "Tú";
 }
 
 export function CustomerSupport({ compact = false }: { compact?: boolean }) {
@@ -104,7 +104,7 @@ export function CustomerSupport({ compact = false }: { compact?: boolean }) {
         <div className="min-w-0">
           <h2 className="text-lg font-bold sm:text-xl">Servicio al cliente</h2>
           <p className="text-xs text-[#6c786f]">
-            {thread?.ticketId ? thread.ticketId + " · " : ""}Chat conectado con Herencia
+            {thread?.ticketId ? thread.ticketId + " · " : ""}Chat conectado con Tropical Plants
           </p>
         </div>
       </div>
@@ -125,7 +125,7 @@ export function CustomerSupport({ compact = false }: { compact?: boolean }) {
           >
             {!thread?.messages?.length && (
               <div className="space-y-2 text-sm text-[#6c786f]">
-                <p>¡Hola! 👋 Estamos aquí para ayudarte con Herencia Market.</p>
+                <p>¡Hola! 👋 Estamos aquí para ayudarte con Tropical Plants.</p>
                 <p>Escríbenos tu consulta. Puedes elegir atención automática para preguntas generales o hablar con nuestro equipo.</p>
               </div>
             )}
@@ -323,7 +323,7 @@ export function AdminSupport() {
               <div className="my-4 h-80 space-y-3 overflow-auto rounded-xl bg-gray-50 p-3" role="log">
                 {active.messages.map(message => (
                   <div key={message.id} className={"rounded-xl p-3 text-sm " + (message.role === "agent" ? "ml-8 bg-green-100" : "mr-8 bg-white")}>
-                    <strong>{message.role === "agent" ? "Equipo Herencia" : message.role === "assistant" ? "Asistente IA" : "Cliente"}</strong>
+                    <strong>{message.role === "agent" ? "Equipo Tropical Plants" : message.role === "assistant" ? "Asistente IA" : "Cliente"}</strong>
                     <p className="whitespace-pre-wrap break-words">{message.text}</p>
                     <time className="mt-1 block text-xs opacity-60">{formatDate(message.createdAt)}</time>
                   </div>
