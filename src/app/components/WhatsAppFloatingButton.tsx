@@ -1,7 +1,7 @@
 import React from "react";
 
 const DEFAULT_PHONE = "34624239598";
-const DEFAULT_MESSAGE = "Hola, vengo de Herencia Market y necesito ayuda con un producto.";
+const DEFAULT_MESSAGE = "Hola, vengo de Tropical Plants y necesito ayuda con un producto.";
 
 export function WhatsAppFloatingButton({
   phone = DEFAULT_PHONE,
@@ -28,7 +28,7 @@ export function WhatsAppFloatingButton({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Hablar con Herencia Market por WhatsApp"
+      aria-label="Hablar con Tropical Plants por WhatsApp"
       title="¿Necesitas ayuda? Escríbenos por WhatsApp"
       style={{
         position: "fixed",
