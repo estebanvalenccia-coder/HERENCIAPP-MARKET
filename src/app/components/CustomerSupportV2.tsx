@@ -35,7 +35,7 @@ async function api<T>(endpoint: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "No se ha podido conectar con Herencia");
+  if (!response.ok) throw new Error(result.error || "No se ha podido conectar con Tropical Plants");
   return result as T;
 }
 function niceDate(value: string) {
@@ -186,8 +186,8 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
       <div className="flex items-center gap-3">
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#2c6545] text-white"><Headphones size={19}/></span>
         <div>
-          <h2 className="text-lg font-bold">Herencia IA · Atención al cliente</h2>
-          <p className="text-xs text-[#6d8573]">{actor?.type === "customer" ? "Ayuda automática y equipo humano cuando lo necesites" : "Primero te ayuda Herencia IA; después tu Amigo Plantil"}</p>
+          <h2 className="text-lg font-bold">Tropical IA · Atención al cliente</h2>
+          <p className="text-xs text-[#6d8573]">{actor?.type === "customer" ? "Ayuda automática y equipo humano cuando lo necesites" : "Primero te ayuda Tropical IA; después tu Amigo Plantil"}</p>
         </div>
       </div>
       {!creating && <button type="button" onClick={startNew} className="flex items-center gap-1 rounded-xl bg-[#28543a] px-3 py-2 text-xs font-bold text-white" aria-label="Nueva consulta"><Plus size={15}/> Nueva</button>}
@@ -217,7 +217,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
         <div className="flex items-center justify-between gap-2 bg-[#fcfdfa] px-4 py-2 text-xs text-[#859688]">
           <span>{active.ticketId} · {active.subject || "Consulta"}</span>
           <div className="flex items-center gap-2">
-            <span>{active.humanRequested ? "Atención humana" : active.status==="handoff" ? "Tu Amigo Plantil puede ayudarte" : active.status==="resolved"?"Resuelta":active.status==="open"?"Consultando":"Herencia IA"}</span>
+            <span>{active.humanRequested ? "Atención humana" : active.status==="handoff" ? "Tu Amigo Plantil puede ayudarte" : active.status==="resolved"?"Resuelta":active.status==="open"?"Consultando":"Tropical IA"}</span>
             {active.id.startsWith("t_") && <button type="button" onClick={() => void deleteTicket()} disabled={busy}
               className="rounded-lg p-1 text-[#9f6565] hover:bg-red-50" aria-label="Eliminar consulta y adjuntos"><Trash2 size={15}/></button>}
           </div>
@@ -227,7 +227,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
             <div key={message.id} className={"flex " + (message.role==="customer"?"justify-end":"justify-start")}>
               <div className={"max-w-[88%] rounded-2xl px-3 py-2 text-sm shadow-sm " +
                 (message.role==="customer"?"bg-[#315e43] text-white":"border border-[#dfe9df] bg-white")}>
-                <p className="mb-1 text-[10px] font-bold opacity-75">{message.role==="customer"?"Tú":message.role==="assistant"?"Asistente Herencia":"Equipo Herencia"}</p>
+                <p className="mb-1 text-[10px] font-bold opacity-75">{message.role==="customer"?"Tú":message.role==="assistant"?"Asistente Tropical Plants":"Equipo Tropical Plants"}</p>
                 <p className="whitespace-pre-wrap break-words leading-5">{message.text}</p>
                 {message.attachmentId && <a className="mt-2 inline-flex items-center gap-2 text-xs underline" target="_blank" rel="noopener noreferrer"
                   href={path+"/tickets/"+encodeURIComponent(active.id)+"/attachments/"+encodeURIComponent(message.attachmentId)}>
@@ -243,7 +243,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
       {active && !creating && !active.humanRequested && active.status === "handoff" && (
         <div className="mx-4 my-3 rounded-2xl border border-[#d6e8d8] bg-[#f0f7ef] p-3">
           {active.status === "handoff" ? (
-            <p className="mb-2 text-sm font-semibold text-[#2e6243]">Herencia IA necesita la ayuda de tu Amigo Plantil para resolver esta consulta.</p>
+            <p className="mb-2 text-sm font-semibold text-[#2e6243]">Tropical IA necesita la ayuda de tu Amigo Plantil para resolver esta consulta.</p>
           ) : (
             <p className="mb-2 text-xs text-[#51755b]">¿Prefieres que una persona revise tu consulta?</p>
           )}
@@ -275,7 +275,7 @@ export function CustomerSupportV2({ compact = false }: { compact?: boolean }) {
           </button>
         </div>
         <p className="text-[11px] leading-5 text-[#738779]">
-          Te atiende primero Herencia IA. Las preguntas generales pueden procesarse mediante nuestro proveedor de IA.
+          Te atiende primero Tropical IA. Las preguntas generales pueden procesarse mediante nuestro proveedor de IA.
           Si necesita ayuda o prefieres hablar con una persona, podrás contactar con tu Amigo Plantil desde este chat.
           No escribas contraseñas ni datos bancarios.
         </p>
