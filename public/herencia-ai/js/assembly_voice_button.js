@@ -39,7 +39,7 @@
     b.id='assemblyVoiceCallButton';
     b.type='button';
     b.className='assembly-call-shell';
-    b.title='Llamada online con HERENC(IA)';
+    b.title='Llamada online con Tropical IA';
     b.innerHTML='<div class="assembly-call-orb">'+icon()+'</div>';
     b.dataset.assemblyVisualBound='1';
     mic.parentElement.insertBefore(b,mic.nextSibling);
