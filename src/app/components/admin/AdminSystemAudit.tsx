@@ -198,12 +198,12 @@ export function AdminSystemAudit() {
     try {
       const neural = await backendApi.neuralSelfTest();
       out.push({
-        name: "HERENCIA Neural",
+        name: "TROPICAL PLANTS Neural",
         ok: neural?.ok !== false,
         detail: neural?.ok === false ? neural?.error || "Autotest con incidencias" : "Core Neural responde",
       });
     } catch (error: any) {
-      out.push({ name: "HERENCIA Neural", ok: false, detail: error?.message || "Sin respuesta" });
+      out.push({ name: "TROPICAL PLANTS Neural", ok: false, detail: error?.message || "Sin respuesta" });
     }
 
     try {
