@@ -169,7 +169,7 @@ export function Profile() {
   };
 
   const deleteAccount = async () => {
-    if (!confirm("¿Eliminar tu cuenta de Herencia? Esta acción no se puede deshacer. Los registros fiscales/ventas que legalmente deban conservarse pueden mantenerse.")) return;
+    if (!confirm("¿Eliminar tu cuenta de Tropical Plants? Esta acción no se puede deshacer. Los registros fiscales/ventas que legalmente deban conservarse pueden mantenerse.")) return;
     try {
       const result = await backendApi.customerPrivacyDeleteAccount();
       await backendStorage.removeItem("user");
@@ -215,7 +215,7 @@ export function Profile() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 lg:col-span-2">
-            <h2 className="font-bold text-lg">Invita a alguien a Herencia</h2>
+            <h2 className="font-bold text-lg">Invita a alguien a Tropical Plants</h2>
             <p className="mt-1 text-sm text-muted-foreground">Tu recompensa se contabiliza cuando la persona referida realiza una compra válida.</p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <div className="flex flex-1 items-center justify-between rounded-xl border border-border bg-muted/30 px-4 py-3"><span className="font-mono text-lg font-bold tracking-wider">{user.referralCode}</span><button onClick={() => void copyReferral()} className="p-2 hover:bg-accent rounded-lg"><Copy className="w-4 h-4" /></button></div>
@@ -226,7 +226,7 @@ export function Profile() {
 
         <section className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-xl font-bold">Fechas importantes</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Herencia puede avisarte por email antes de cumpleaños, aniversarios u otras fechas.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Tropical Plants puede avisarte por email antes de cumpleaños, aniversarios u otras fechas.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_140px_auto]">
             <input value={reminderForm.title} onChange={(e)=>setReminderForm({...reminderForm,title:e.target.value})} placeholder="Ej: Cumpleaños de mamá" className="rounded-xl border border-border bg-background p-3"/>
             <input type="date" value={reminderForm.date} onChange={(e)=>setReminderForm({...reminderForm,date:e.target.value})} className="rounded-xl border border-border bg-background p-3"/>
@@ -290,7 +290,7 @@ export function Profile() {
         </section>
 
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 text-sm">
-          <div className="flex gap-3"><Bell className="w-5 h-5 text-primary flex-shrink-0" /><div><p className="font-semibold">Programa Herencia</p><p className="text-muted-foreground">Semilla hasta 99 €, Brote desde 100 € y Jardín desde 300 € de compras válidas.</p></div></div>
+          <div className="flex gap-3"><Bell className="w-5 h-5 text-primary flex-shrink-0" /><div><p className="font-semibold">Programa Tropical Plants</p><p className="text-muted-foreground">Semilla hasta 99 €, Brote desde 100 € y Jardín desde 300 € de compras válidas.</p></div></div>
         </div>
       </div>
     </div>
