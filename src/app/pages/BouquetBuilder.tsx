@@ -76,7 +76,7 @@ const sizes = ["S", "M", "L", "XL"];
 const styles = ["Romántico", "Elegante", "Colorido", "Natural", "Premium"];
 function descriptionFor(items: any[], style: string, size: string) {
   if (!items.length) return "Selecciona flores para crear tu ramo personalizado.";
-  return `Ramo ${style.toLowerCase()} tamaño ${size}, compuesto por ${items.map((item) => `${item.quantity} ${item.name}`).join(", ")}. Preparado artesanalmente por Herencia Market.`;
+  return `Ramo ${style.toLowerCase()} tamaño ${size}, compuesto por ${items.map((item) => `${item.quantity} ${item.name}`).join(", ")}. Preparado artesanalmente por Tropical Plants.`;
 }
 
 export function BouquetBuilder() {
