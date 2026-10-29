@@ -39,7 +39,7 @@ export function About() {
         <div className="overflow-hidden rounded-[2rem] border border-[#ded9cd] bg-[#f0ede5]">
           <img
             src={market.about.imageUrl}
-            alt="Universo Herencia"
+            alt="Universo Tropical Plants"
             className="h-[430px] w-full object-cover"
           />
         </div>
@@ -74,7 +74,7 @@ export function About() {
           </h2>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-white/78">
             Plantas y jardín conviven con decoración, servicios, detalles dulces, moda funcional
-            y encargos personalizados. Esa amplitud es parte de la identidad de Herencia.
+            y encargos personalizados. Esa amplitud es parte de la identidad de Tropical Plants.
           </p>
         </div>
       </section>
