@@ -74,7 +74,7 @@ function buildProductImagePrompt(product: Product, customPrompt: string) {
   const idea = customPrompt.trim() || `${product.name}. ${product.description || ""}`;
   const collection = getCommerceCollection(primaryCollectionOf(product)).name;
 
-  return `Crea una fotografía comercial premium para Herencia Market.
+  return `Crea una fotografía comercial premium para Tropical Plants.
 Artículo: ${idea}
 Colección: ${collection}.
 Estilo: ecommerce elegante, natural, contemporáneo, iluminación cuidada, producto protagonista, fondo limpio y coherente con la categoría, alta calidad, sin texto, sin logos y sin marcas de agua.`;
@@ -988,7 +988,7 @@ export function AdminProducts({
     const popup = window.open("", "_blank", "width=520,height=700");
     if (!popup) return toast.error("El navegador bloqueó la ventana");
     const sale = product.onSale && product.salePrice ? product.salePrice : product.price;
-    popup.document.write(`<!doctype html><html><head><title>${product.name}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#24352b}.label{border:2px solid #426047;border-radius:22px;padding:24px;max-width:390px;margin:auto;text-align:center}.brand{font-weight:900;letter-spacing:2px;color:#426047}.name{font-size:25px;font-weight:800;margin:14px 0}.price{font-size:28px;font-weight:900}.meta{font-size:13px;color:#66756c;margin:6px}.qr{width:170px;height:170px;margin:16px auto 6px}@media print{button{display:none}body{padding:0}}</style></head><body><div class="label"><div class="brand">HERENCIA</div><div class="name">${product.name}</div><div class="price">€${Number(sale||0).toFixed(2)}</div><div class="meta">SKU: ${product.sku||product.id}</div><img class="qr" src="${qr}" alt="QR"/><div class="meta">${url}</div></div><p style="text-align:center"><button onclick="window.print()">Imprimir etiqueta</button></p></body></html>`);
+    popup.document.write(`<!doctype html><html><head><title>${product.name}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#24352b}.label{border:2px solid #426047;border-radius:22px;padding:24px;max-width:390px;margin:auto;text-align:center}.brand{font-weight:900;letter-spacing:2px;color:#426047}.name{font-size:25px;font-weight:800;margin:14px 0}.price{font-size:28px;font-weight:900}.meta{font-size:13px;color:#66756c;margin:6px}.qr{width:170px;height:170px;margin:16px auto 6px}@media print{button{display:none}body{padding:0}}</style></head><body><div class="label"><div class="brand">TROPICAL PLANTS</div><div class="name">${product.name}</div><div class="price">€${Number(sale||0).toFixed(2)}</div><div class="meta">SKU: ${product.sku||product.id}</div><img class="qr" src="${qr}" alt="QR"/><div class="meta">${url}</div></div><p style="text-align:center"><button onclick="window.print()">Imprimir etiqueta</button></p></body></html>`);
     popup.document.close();
   }
 
@@ -1609,7 +1609,7 @@ export function AdminProducts({
                 <div className="rounded-2xl border border-border p-4">
                   <div className="mb-3">
                     <p className="font-black">Completa tu compra</p>
-                    <p className="text-xs text-muted-foreground">Elige hasta 8 productos relacionados. Si no eliges ninguno, Herencia seguirá recomendando automáticamente.</p>
+                    <p className="text-xs text-muted-foreground">Elige hasta 8 productos relacionados. Si no eliges ninguno, Tropical Plants seguirá recomendando automáticamente.</p>
                   </div>
 
                   <input
