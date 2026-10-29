@@ -61,7 +61,7 @@ export function AdminHerenciaNeural(){
  const [message,setMessage]=useState("");
  const [goal,setGoal]=useState("");
  const [memoryQuery,setMemoryQuery]=useState("");
- const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"Estoy activa y conectada a Herencia. Puedes hablar conmigo normalmente, preguntarme por el negocio o darme una orden concreta.",kind:"conversation"}]);
+ const [messages,setMessages]=useState<Message[]>([{role:"neural",text:"Estoy activa y conectada a Tropical Plants. Puedes hablar conmigo normalmente, preguntarme por el negocio o darme una orden concreta.",kind:"conversation"}]);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState<string|null>(null);
  const [brief,setBrief]=useState<any>(null);
@@ -445,7 +445,7 @@ export function AdminHerenciaNeural(){
  return <div className="space-y-6">
   <div className="rounded-3xl border bg-gradient-to-r from-emerald-950 to-emerald-800 text-white p-6 shadow-xl">
    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-    <div className="flex gap-4 items-center"><div className="p-3 bg-white/10 rounded-2xl"><Brain className="w-9 h-9"/></div><div><h1 className="text-3xl font-black">HERENCIA Neural</h1><p className="text-emerald-100">Neural OS independiente · memoria persistente · autonomía gobernada</p></div></div>
+    <div className="flex gap-4 items-center"><div className="p-3 bg-white/10 rounded-2xl"><Brain className="w-9 h-9"/></div><div><h1 className="text-3xl font-black">TROPICAL PLANTS Neural</h1><p className="text-emerald-100">Neural OS independiente · memoria persistente · autonomía gobernada</p></div></div>
     <div className="flex flex-wrap gap-3 items-center">
      <Badge text={error?"Neural desconectada":autonomy?"Neural activa":"Autonomía detenida"} ok={!error&&autonomy}/>
      <span className="px-4 py-2 rounded-xl bg-white/10">{stats.agents} células</span><span className="px-4 py-2 rounded-xl bg-white/10">{stats.tasks} tareas</span><button type="button" onClick={()=>setTab("approvals")} className={`px-4 py-2 rounded-xl font-bold transition ${stats.approvals?"bg-amber-400 text-amber-950 hover:bg-amber-300":"bg-white/10"}`} title="Ver aprobaciones pendientes">{stats.approvals} aprobaciones</button>
@@ -453,13 +453,13 @@ export function AdminHerenciaNeural(){
      <button onClick={()=>void toggleAutonomy()} disabled={Boolean(error)} className={`px-5 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50 ${autonomy?"bg-red-500 hover:bg-red-600":"bg-emerald-500 hover:bg-emerald-600"}`}><Power className="w-5 h-5"/>{autonomy?"DETENER AUTONOMÍA":"REACTIVAR"}</button>
     </div>
    </div>
-   {error&&<div className="mt-4 rounded-xl bg-red-500/20 px-4 py-3 text-sm"><b>Conexión:</b> {error}. Configura NEURAL_SERVICE_URL y NEURAL_ADMIN_TOKEN en el backend de Herencia.</div>}
+   {error&&<div className="mt-4 rounded-xl bg-red-500/20 px-4 py-3 text-sm"><b>Conexión:</b> {error}. Configura NEURAL_SERVICE_URL y NEURAL_ADMIN_TOKEN en el backend de Tropical Plants.</div>}
   </div>
 
   <div className="flex gap-2 overflow-x-auto pb-1">{tabs.map(([id,label,Icon])=><button key={id} onClick={()=>setTab(id)} className={`whitespace-nowrap px-4 py-2.5 rounded-xl border flex items-center gap-2 font-semibold ${tab===id?"bg-primary text-primary-foreground border-primary":"bg-card hover:bg-muted"}`}><Icon className="w-4 h-4"/>{label}</button>)}</div>
 
   {tab==="command"&&<div className="grid xl:grid-cols-3 gap-5">
-   <Panel title="Hablar con HERENCIA Neural" icon={Sparkles} className="xl:col-span-2">
+   <Panel title="Hablar con TROPICAL PLANTS Neural" icon={Sparkles} className="xl:col-span-2">
     <div className="h-72 overflow-y-auto space-y-3 pr-2">{messages.map((m,i)=><div key={i} className={`max-w-[88%] rounded-2xl p-4 ${m.role==="user"?"ml-auto bg-primary text-primary-foreground":"bg-muted"}`}><div>{m.text}</div>{m.role==="neural"&&m.activity?.length?<div className="mt-3 flex flex-wrap gap-1.5">{m.activity.map((step,j)=><span key={`${i}-${j}`} className="rounded-full border bg-background/60 px-2 py-1 text-[10px] text-muted-foreground">{step}</span>)}</div>:null}</div>)}</div>
     {chatStage&&<div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700"><RefreshCw className="h-3.5 w-3.5 animate-spin"/>{chatStage}</div>}<div className="flex gap-2 mt-4"><input value={message} disabled={Boolean(chatStage)} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&void send()} className="flex-1 border bg-background rounded-xl px-4 disabled:opacity-60" placeholder="Habla con Neural o pide: revisa el stock y dime qué necesita atención"/><button disabled={Boolean(chatStage)} onClick={()=>void send()} className="p-3 rounded-xl bg-primary text-primary-foreground disabled:opacity-50"><Send/></button></div>
    </Panel>
@@ -468,7 +468,7 @@ export function AdminHerenciaNeural(){
     <Metric icon={Database} label="Memoria" value={status?.memory?.total!=null?`${status.memory.total} recuerdos`:"—"}/>
     <Metric icon={Bot} label="Células" value={String(agents.length)}/>
     <Metric icon={Package} label="Señales" value={String(signals.length)}/>
-    <button onClick={()=>void observe()} className="w-full mt-4 py-3 rounded-xl border font-bold hover:bg-muted">Observar Herencia ahora</button>
+    <button onClick={()=>void observe()} className="w-full mt-4 py-3 rounded-xl border font-bold hover:bg-muted">Observar Tropical Plants ahora</button>
    </Panel>
    <Panel title="Señales detectadas" icon={AlertTriangle} className="xl:col-span-2">
     {signals.length? <div className="grid md:grid-cols-2 gap-3">{signals.map((s:any,i)=><div key={s.entity||i} className="border rounded-2xl p-4"><div className="font-bold">{s.message||s.type}</div><div className="text-xs text-muted-foreground mt-1">{s.severity||"signal"} · {s.type}</div></div>)}</div>:<Empty text="No hay señales detectadas en el Digital Twin actual."/>}
@@ -480,9 +480,9 @@ export function AdminHerenciaNeural(){
       <Metric icon={Package} label="Productos" value={String(brief.business?.products||0)}/>
       <Metric icon={AlertTriangle} label="Atención" value={String((brief.attention?.signals||[]).length)}/>
       <div className="md:col-span-4 rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
-        Neural resume únicamente el estado que observa en Herencia. Las ventas e ingresos aquí mostrados proceden de pedidos con estado verificado.
+        Neural resume únicamente el estado que observa en Tropical Plants. Las ventas e ingresos aquí mostrados proceden de pedidos con estado verificado.
       </div>
-    </div>:<Empty text="El brief aparecerá cuando Neural pueda observar Herencia."/>}
+    </div>:<Empty text="El brief aparecerá cuando Neural pueda observar Tropical Plants."/>}
    </Panel>
    <Panel title="Autodiagnóstico" icon={CheckCircle2}>
     {diagnostic?<div className="space-y-2"><div className={`rounded-xl p-3 text-sm font-black ${diagnostic.ok?"bg-emerald-50 text-emerald-800":"bg-amber-50 text-amber-900"}`}>{diagnostic.ok?"Núcleo verificado":"Hay elementos pendientes de configuración o verificación"}</div>{(diagnostic.tests||[]).map((x:any)=><div key={x.name} className="flex items-start justify-between gap-3 border-b py-2 last:border-0"><div><b className="text-sm">{x.name}</b><p className="text-xs text-muted-foreground">{x.detail}</p></div><span className={`text-xs font-black ${x.ok?"text-emerald-700":"text-amber-700"}`}>{x.ok?"OK":"PENDIENTE"}</span></div>)}</div>:<Empty text="Diagnóstico no disponible."/>}
@@ -607,7 +607,7 @@ export function AdminHerenciaNeural(){
    </div>})}</div>:<Empty text="No hay aprobaciones pendientes ahora mismo."/>}
   </Panel>}
 
-  {tab==="brain"&&<Panel title="Cerebro / Self Model" icon={Brain}>{selfModel?<div className="grid gap-5 xl:grid-cols-3"><div className="xl:col-span-2 rounded-2xl border p-5"><div className="text-xs uppercase tracking-wider text-muted-foreground">Identidad persistente</div><h3 className="mt-1 text-2xl font-black">{selfModel.identity||"HERENCIA Neural"}</h3><p className="mt-3 text-muted-foreground">{selfModel.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(selfModel.principles||[]).map((x:string)=><span key={x} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><div className="text-sm font-black">Continuidad</div><div className="mt-3 space-y-2 text-sm"><Row label="Versión" value={selfModel.version||"—"}/><Row label="Generación" value={String(selfModel.generation||1)}/><Row label="Capacidades" value={String((selfModel.capabilities||[]).length)}/><Row label="Limitaciones" value={String((selfModel.limitations||[]).length)}/><Row label="Aprendizajes" value={String((selfModel.learnings||[]).length)}/></div></div><div className="rounded-2xl border p-5"><b>Capacidades</b><div className="mt-3 flex flex-wrap gap-2">{(selfModel.capabilities||[]).map((x:string)=><span key={x} className="rounded-lg bg-muted px-2 py-1 text-xs">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><b>Limitaciones conocidas</b>{(selfModel.limitations||[]).length?<ul className="mt-3 space-y-2 text-sm">{selfModel.limitations.map((x:string)=><li key={x}>• {x}</li>)}</ul>:<p className="mt-3 text-sm text-muted-foreground">No hay limitaciones registradas en el Self Model actual.</p>}</div><div className="rounded-2xl border p-5"><div className="flex items-center justify-between gap-3"><b>Estado cognitivo</b><button onClick={()=>void reflectNow()} className="rounded-xl border px-3 py-2 text-xs font-bold hover:bg-muted">Reflexionar ahora</button></div><div className="mt-3 space-y-2 text-sm"><Row label="Tareas activas" value={String((selfModel.tasks||[]).length)}/><Row label="Errores recientes" value={String((selfModel.errors||[]).length)}/><Row label="Correcciones" value={String((selfModel.corrections||[]).length)}/></div></div></div>:<Empty text="Self Model no disponible."/>}</Panel>}
+  {tab==="brain"&&<Panel title="Cerebro / Self Model" icon={Brain}>{selfModel?<div className="grid gap-5 xl:grid-cols-3"><div className="xl:col-span-2 rounded-2xl border p-5"><div className="text-xs uppercase tracking-wider text-muted-foreground">Identidad persistente</div><h3 className="mt-1 text-2xl font-black">{selfModel.identity||"TROPICAL PLANTS Neural"}</h3><p className="mt-3 text-muted-foreground">{selfModel.purpose}</p><div className="mt-4 flex flex-wrap gap-2">{(selfModel.principles||[]).map((x:string)=><span key={x} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><div className="text-sm font-black">Continuidad</div><div className="mt-3 space-y-2 text-sm"><Row label="Versión" value={selfModel.version||"—"}/><Row label="Generación" value={String(selfModel.generation||1)}/><Row label="Capacidades" value={String((selfModel.capabilities||[]).length)}/><Row label="Limitaciones" value={String((selfModel.limitations||[]).length)}/><Row label="Aprendizajes" value={String((selfModel.learnings||[]).length)}/></div></div><div className="rounded-2xl border p-5"><b>Capacidades</b><div className="mt-3 flex flex-wrap gap-2">{(selfModel.capabilities||[]).map((x:string)=><span key={x} className="rounded-lg bg-muted px-2 py-1 text-xs">{x}</span>)}</div></div><div className="rounded-2xl border p-5"><b>Limitaciones conocidas</b>{(selfModel.limitations||[]).length?<ul className="mt-3 space-y-2 text-sm">{selfModel.limitations.map((x:string)=><li key={x}>• {x}</li>)}</ul>:<p className="mt-3 text-sm text-muted-foreground">No hay limitaciones registradas en el Self Model actual.</p>}</div><div className="rounded-2xl border p-5"><div className="flex items-center justify-between gap-3"><b>Estado cognitivo</b><button onClick={()=>void reflectNow()} className="rounded-xl border px-3 py-2 text-xs font-bold hover:bg-muted">Reflexionar ahora</button></div><div className="mt-3 space-y-2 text-sm"><Row label="Tareas activas" value={String((selfModel.tasks||[]).length)}/><Row label="Errores recientes" value={String((selfModel.errors||[]).length)}/><Row label="Correcciones" value={String((selfModel.corrections||[]).length)}/></div></div></div>:<Empty text="Self Model no disponible."/>}</Panel>}
 
   {tab==="learning"&&<Panel title="Aprendizaje y patrones" icon={Sparkles}><div className="grid gap-5 xl:grid-cols-2">
    <div className="xl:col-span-2 rounded-2xl border p-5">
@@ -651,7 +651,7 @@ export function AdminHerenciaNeural(){
 
   {tab==="automations"&&<Panel title="Automatizaciones y ciclos autónomos" icon={Activity}><div className="grid gap-5 xl:grid-cols-3">
     <div className="rounded-2xl border p-5"><b>Scheduler cognitivo</b><div className="mt-3 space-y-2 text-sm"><Row label="Activo" value={scheduler?.cognitive?.running?"Sí":"No"}/><Row label="Ticks" value={String(scheduler?.cognitive?.ticks||0)}/><Row label="Intervalo" value={scheduler?.cognitive?.intervalMs?Math.round(scheduler.cognitive.intervalMs/1000)+" s":"—"}/><Row label="Reflexión cada" value={String(scheduler?.cognitive?.reflectionEvery||"—")}/></div></div>
-    <div className="rounded-2xl border p-5"><b>Observador de Herencia</b><div className="mt-3 space-y-2 text-sm"><Row label="Activo" value={scheduler?.observer?.running?"Sí":"No"}/><Row label="Intervalo" value={scheduler?.observer?.intervalMs?Math.round(scheduler.observer.intervalMs/1000)+" s":"—"}/><Row label="Autonomía" value={autonomy?"ACTIVE":"STOPPED"}/></div></div>
+    <div className="rounded-2xl border p-5"><b>Observador de Tropical Plants</b><div className="mt-3 space-y-2 text-sm"><Row label="Activo" value={scheduler?.observer?.running?"Sí":"No"}/><Row label="Intervalo" value={scheduler?.observer?.intervalMs?Math.round(scheduler.observer.intervalMs/1000)+" s":"—"}/><Row label="Autonomía" value={autonomy?"ACTIVE":"STOPPED"}/></div></div>
     <div className="rounded-2xl border p-5"><b>Recursos</b><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{JSON.stringify(resources||{},null,2)}</pre></div>
     <div className="rounded-2xl border p-5 xl:col-span-3"><b>Motor proactivo</b><p className="mt-1 text-sm text-muted-foreground">Convierte señales repetidas o críticas en tareas sin saltarse el Permission Kernel.</p><pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{JSON.stringify(proactive||{},null,2)}</pre></div>
   </div></Panel>}
@@ -684,7 +684,7 @@ function MentorPanel(){
  const teach=async()=>{if(!topic.trim()||busy)return;setBusy(true);try{const r=await backendApi.neuralMentorTeach(topic.trim(),true);if(r?.ok)toast.success("Sesión Mentor completada: aprendizaje provisional guardado");else toast.error(r?.skipped||"No se pudo entrenar");await load()}catch(e:any){toast.error(e.message||"No se pudo ejecutar Mentor")}finally{setBusy(false)}};
  const cycle=async()=>{if(busy)return;setBusy(true);try{const r=await backendApi.neuralMentorCycle();toast.success(r?.skipped?"Ciclo revisado: "+r.skipped:"Ciclo automático completado");await load()}catch(e:any){toast.error(e.message)}finally{setBusy(false)}};
  const approve=async(id:string)=>{try{await backendApi.neuralMentorApprove(id);toast.success("Lección verificada y convertida en conocimiento");await load()}catch(e:any){toast.error(e.message)}};
- const reject=async(id:string)=>{const reason=window.prompt("¿Por qué rechazas esta lección?","No encaja con Herencia")||"No aprobado";try{await backendApi.neuralMentorReject(id,reason);toast.success("Lección rechazada y registrada como corrección");await load()}catch(e:any){toast.error(e.message)}};
+ const reject=async(id:string)=>{const reason=window.prompt("¿Por qué rechazas esta lección?","No encaja con Tropical Plants")||"No aprobado";try{await backendApi.neuralMentorReject(id,reason);toast.success("Lección rechazada y registrada como corrección");await load()}catch(e:any){toast.error(e.message)}};
  return <div className="rounded-2xl border p-5">
   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
    <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-black text-lg">Mentor externo · Groq</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${status?.connected?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-900"}`}>{status?.connected?`CONECTADO · ${String(status.provider||"modelo").toUpperCase()}`:"NO CONECTADO"}</span></div><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Groq actúa como profesor opcional. Propone lecciones e hipótesis, pero no controla Neural ni puede cambiar permisos. Todo lo que enseña entra como provisional hasta verificarse.</p></div>
@@ -798,8 +798,8 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
        </label>
        <button type="button" onClick={()=>void openMedia()} disabled={mediaLoading} className="mt-3 rounded-lg border px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50">{mediaLoading?"Cargando…":"Abrir biblioteca multimedia"}</button>
        {uploading&&<p className="mt-2 text-xs font-bold text-emerald-700">Subiendo a Supabase Storage…</p>}{imageUrl&&<img src={imageUrl} alt="Preview subida" className="mt-3 h-32 w-full rounded-xl object-cover"/>}
-       {media.length>0&&<div className="mt-3"><p className="mb-2 text-xs font-bold">Biblioteca de Herencia</p><div className="grid max-h-44 grid-cols-3 gap-2 overflow-auto">{media.slice(0,30).map(item=><button type="button" key={item.path} onClick={()=>setImageUrl(item.url)} title={item.name} className={`overflow-hidden rounded-lg border ${imageUrl===item.url?"ring-2 ring-primary":""}`}><img src={item.url} alt={item.name} className="h-20 w-full object-cover"/></button>)}</div></div>}
-       <p className="mt-2 text-xs text-muted-foreground">Puedes subir una imagen nueva o reutilizar una de la biblioteca multimedia real de Herencia.</p>
+       {media.length>0&&<div className="mt-3"><p className="mb-2 text-xs font-bold">Biblioteca de Tropical Plants</p><div className="grid max-h-44 grid-cols-3 gap-2 overflow-auto">{media.slice(0,30).map(item=><button type="button" key={item.path} onClick={()=>setImageUrl(item.url)} title={item.name} className={`overflow-hidden rounded-lg border ${imageUrl===item.url?"ring-2 ring-primary":""}`}><img src={item.url} alt={item.name} className="h-20 w-full object-cover"/></button>)}</div></div>}
+       <p className="mt-2 text-xs text-muted-foreground">Puedes subir una imagen nueva o reutilizar una de la biblioteca multimedia real de Tropical Plants.</p>
       </div>}
       <button disabled={loading||uploading||!title.trim()} onClick={()=>void create()} className="w-full rounded-xl bg-primary px-5 py-3 font-black text-primary-foreground disabled:opacity-50">{loading?"Creando…":"Crear borrador"}</button>
      </div>
@@ -820,7 +820,7 @@ function DesignerPanel({onChanged}:{onChanged:()=>Promise<void>}){
       <div className="max-h-[760px] overflow-auto">
        {previewBlocks.map((block:any)=><StorefrontBlock key={block.id} block={block} site={previewSite} heroFallback="" ctaFallback="" logoFallback="" preview />)}
       </div>
-     </div>:<div className="rounded-2xl border"><Empty text="Selecciona o crea un borrador para verlo exactamente como lo renderiza Herencia."/></div>}
+     </div>:<div className="rounded-2xl border"><Empty text="Selecciona o crea un borrador para verlo exactamente como lo renderiza Tropical Plants."/></div>}
    </div>
   </div>
  </Panel>
