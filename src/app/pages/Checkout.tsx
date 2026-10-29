@@ -45,7 +45,7 @@ function trackSalesPurchase(amount: number, conversationId = "") {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         eventType: "sales_purchase",
-        eventLabel: "Compra atribuida a HERENCIA SALES",
+        eventLabel: "Compra atribuida a Tropical Sales",
         amount,
         sessionId: conversationId,
         path: window.location.pathname + window.location.search,
@@ -470,7 +470,7 @@ export function Checkout() {
     <div className="bg-[#fbfaf6] text-[#173126]">
       <div className="border-b border-[#ded9cd] bg-[#f4f1e8]">
         <div className="mx-auto max-w-5xl px-4 py-10">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">HERENCIA MARKET</p>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#718076]">Tropical Plants</p>
           <h1 className="mt-2 text-4xl font-medium">
             {onlyServices ? "Confirma tu reserva" : hasServices ? "Finaliza tu compra y reserva" : "Finaliza tu compra"}
           </h1>
