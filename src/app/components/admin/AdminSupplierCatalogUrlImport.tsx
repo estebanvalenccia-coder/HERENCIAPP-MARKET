@@ -337,7 +337,7 @@ export function AdminSupplierCatalogUrlImport({ onOpenProduct }: { onOpenProduct
             <div className="min-w-0 flex-1">
               <p className="font-bold text-foreground">Importar desde URL del proveedor</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pega una página de catálogo. Herencia detecta los productos, te deja elegir cuáles traer y copia sus imágenes a Cloudflare R2.
+                Pega una página de catálogo. Tropical Plants detecta los productos, te deja elegir cuáles traer y copia sus imágenes a Cloudflare R2.
               </p>
             </div>
           </div>
