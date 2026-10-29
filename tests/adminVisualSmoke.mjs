@@ -24,6 +24,9 @@ try {
     iframe.src = "/?__herencia_preview=1";
     iframe.style.width = "1100px";
     iframe.style.height = "850px";
+    iframe.style.position = "fixed";
+    iframe.style.inset = "0 auto auto 0";
+    iframe.style.zIndex = "100000";
     document.body.appendChild(iframe);
   });
 
@@ -61,6 +64,8 @@ try {
 
   const previewUrl = await page.locator("#admin-e2e-preview").evaluate((frame) => frame.contentWindow.location.pathname);
   assert.equal(previewUrl, "/", "Clicking a component must not navigate away from the preview");
+
+  await page.evaluate(() => document.querySelector("#admin-e2e-preview")?.remove());
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
   await mobile.goto(origin + "/", { waitUntil: "domcontentloaded" });
