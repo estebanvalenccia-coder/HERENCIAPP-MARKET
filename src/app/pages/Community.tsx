@@ -6,8 +6,8 @@ import { toast } from "sonner";
 
 const updates = [
   {
-    title: "Lo nuevo en Herencia",
-    description: "Descubre plantas, colecciones, ideas y novedades seleccionadas por Herencia.",
+    title: "Lo nuevo en Tropical Plants",
+    description: "Descubre plantas, colecciones, ideas y novedades seleccionadas por Tropical Plants.",
     image: "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=1200&q=84",
   },
   {
@@ -16,7 +16,7 @@ const updates = [
     image: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=1200&q=84",
   },
   {
-    title: "Detrás de Herencia",
+    title: "Detrás de Tropical Plants",
     description: "Procesos, inspiración y pequeñas historias que forman parte de nuestro día a día.",
     image: "https://images.unsplash.com/photo-1497250681960-ef046c08a56e?auto=format&fit=crop&w=1200&q=84",
   },
@@ -121,11 +121,11 @@ export function Community() {
         <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10 lg:py-20">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#d8d2c5] bg-white/70 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#315b42]">
-              <Sparkles className="h-4 w-4" /> Comunidad Herencia
+              <Sparkles className="h-4 w-4" /> Comunidad Tropical Plants
             </div>
             <h1 className="mt-6 text-4xl font-medium tracking-tight sm:text-5xl lg:text-6xl">Un lugar para compartir lo que nos inspira.</h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-[#657169] sm:text-lg">
-              Novedades, ideas y contenido de Herencia en un espacio tranquilo. La conversación continúa en nuestras redes y canales sociales.
+              Novedades, ideas y contenido de Tropical Plants en un espacio tranquilo. La conversación continúa en nuestras redes y canales sociales.
             </p>
           </div>
         </div>
@@ -173,10 +173,10 @@ export function Community() {
       <section className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
         <div className="mb-7 flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#718076]">Hoy en Herencia</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#718076]">Hoy en Tropical Plants</p>
             <h2 className="mt-2 text-3xl font-medium">Novedades</h2>
           </div>
-          <span className="hidden text-sm text-[#718076] sm:block">Contenido seleccionado por Herencia</span>
+          <span className="hidden text-sm text-[#718076] sm:block">Contenido seleccionado por Tropical Plants</span>
         </div>
         <div className="grid gap-5 md:grid-cols-3">
           {visibleUpdates.map((item: any) => (
@@ -230,7 +230,7 @@ export function Community() {
               <ExternalLink className="h-5 w-5 text-[#718076]" />
             </div>
             <h2 className="mt-8 text-2xl font-medium">Instagram</h2>
-            <p className="mt-2 max-w-lg text-sm leading-6 text-[#6d776f]">Historias, inspiración, nuevos productos y el día a día visual de Herencia.</p>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-[#6d776f]">Historias, inspiración, nuevos productos y el día a día visual de Tropical Plants.</p>
             <span className="mt-6 inline-flex text-sm font-black text-[#315b42]">Abrir Instagram</span>
           </a>
 
@@ -240,13 +240,13 @@ export function Community() {
               <ExternalLink className="h-5 w-5 text-white/60" />
             </div>
             <h2 className="mt-8 text-2xl font-medium">Comunidad y WhatsApp</h2>
-            <p className="mt-2 max-w-lg text-sm leading-6 text-white/70">Un acceso preparado para conectar la comunidad con los canales de Herencia sin convertir la tienda en una red social pesada.</p>
-            <span className="mt-6 inline-flex text-sm font-black text-white">Conectar con Herencia</span>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-white/70">Un acceso preparado para conectar la comunidad con los canales de Tropical Plants sin convertir la tienda en una red social pesada.</p>
+            <span className="mt-6 inline-flex text-sm font-black text-white">Conectar con Tropical Plants</span>
           </a>
         </div>
 
         <div className="mt-8 rounded-[28px] border border-[#d8d2c5] bg-[#f7f4ed] p-6 text-sm leading-6 text-[#657169]">
-          <strong className="text-[#173126]">Participa con tu cuenta Herencia:</strong> los corazones y publicaciones guardadas quedan asociados a tu usuario. Puedes crear la cuenta con email o continuar con Google desde el acceso de clientes.
+          <strong className="text-[#173126]">Participa con tu cuenta Tropical Plants:</strong> los corazones y publicaciones guardadas quedan asociados a tu usuario. Puedes crear la cuenta con email o continuar con Google desde el acceso de clientes.
         </div>
       </section>
     </div>
