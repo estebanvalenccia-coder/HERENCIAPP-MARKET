@@ -50,10 +50,19 @@ export function MarketNavigationMenu({
         <div className="max-h-[70vh] overflow-y-auto rounded-2xl border border-[#e4ded4] bg-[#fffdf9] p-3 shadow-[0_18px_55px_rgba(31,62,44,0.16)]">
           <div className="grid gap-1 sm:grid-cols-2">
             {links.map((link, index) => (
-              <Link key={`${link.href}-${index}`} to={link.href} className="block rounded-xl px-3 py-2.5 transition hover:bg-[#eef2eb]">
-                <span className="block text-sm font-black text-[#244a35]">{link.label}</span>
-                {link.description ? <span className="mt-0.5 block text-xs text-[#718076]">{link.description}</span> : null}
-              </Link>
+              <div key={`${link.href}-${index}`} className="rounded-xl transition hover:bg-[#eef2eb]">
+                <Link to={link.href} className="block px-3 py-2.5">
+                  <span className="block text-sm font-black text-[#244a35]">{link.label}</span>
+                  {link.description ? <span className="mt-0.5 block text-xs text-[#718076]">{link.description}</span> : null}
+                </Link>
+                {link.children?.filter((child) => child.visible !== false &&
+                  child.showDesktop !== false && isWithinPublicationWindow(child.schedule, now)).map((child, nestedIndex) => (
+                  <Link key={`${child.href}-${nestedIndex}`} to={child.href}
+                    className="mb-1 block rounded-md px-4 py-1.5 text-xs text-[#506653] hover:bg-white hover:underline">
+                    {child.label}
+                  </Link>
+                ))}
+              </div>
             ))}
           </div>
         </div>
