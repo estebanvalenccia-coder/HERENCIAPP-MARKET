@@ -114,7 +114,7 @@ export function ProductDetail() {
     if (!product) return;
     trackTikTokCommerceEvent("ViewContent", [{ id: product.id, price: product.price, quantity: 1 }]);
     const previousTitle = document.title;
-    document.title = `${product.seoTitle || product.name} | Herencia`;
+    document.title = `${product.seoTitle || product.name} | Tropical Plants`;
 
     let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
     const created = !meta;
@@ -720,10 +720,10 @@ export function ProductDetail() {
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-6">
           <h2 className="text-2xl font-bold">Preguntas sobre este producto</h2>
-          <div className="mt-5 space-y-3">{questions.length===0?<p className="text-sm text-muted-foreground">Todavía no hay preguntas respondidas.</p>:questions.map((q:any)=><div key={q.id} className="rounded-xl border border-border p-4"><p className="font-semibold">P: {q.question}</p><p className="mt-2 text-sm text-muted-foreground"><strong className="text-foreground">Herencia:</strong> {q.answer}</p></div>)}</div>
+          <div className="mt-5 space-y-3">{questions.length===0?<p className="text-sm text-muted-foreground">Todavía no hay preguntas respondidas.</p>:questions.map((q:any)=><div key={q.id} className="rounded-xl border border-border p-4"><p className="font-semibold">P: {q.question}</p><p className="mt-2 text-sm text-muted-foreground"><strong className="text-foreground">Tropical Plants:</strong> {q.answer}</p></div>)}</div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-6">
-          <h2 className="text-2xl font-bold">Pregunta a Herencia</h2>
+          <h2 className="text-2xl font-bold">Pregunta a Tropical Plants</h2>
           <div className="mt-4 space-y-3"><input value={questionForm.name} onChange={(e)=>setQuestionForm({...questionForm,name:e.target.value})} placeholder="Nombre" className="w-full rounded-xl border border-border p-3"/><input type="email" value={questionForm.email} onChange={(e)=>setQuestionForm({...questionForm,email:e.target.value})} placeholder="Email" className="w-full rounded-xl border border-border p-3"/><textarea value={questionForm.question} onChange={(e)=>setQuestionForm({...questionForm,question:e.target.value})} placeholder="¿Qué quieres saber?" className="min-h-28 w-full rounded-xl border border-border p-3"/><button onClick={()=>void submitQuestion()} className="rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground">Enviar pregunta</button></div>
         </div>
       </section>
