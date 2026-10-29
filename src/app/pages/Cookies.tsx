@@ -64,7 +64,7 @@ export function Cookies() {
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground text-sm">
                   <li>Páginas visitadas y eventos básicos de navegación</li>
                   <li>Dispositivo, navegador y origen aproximado del tráfico</li>
-                  <li>Eventos de conversión de HERENCIA SALES cuando corresponde</li>
+                  <li>Eventos de conversión de Tropical Sales cuando corresponde</li>
                 </ul>
               </div>
 
@@ -108,7 +108,7 @@ export function Cookies() {
             <h2 className="text-2xl font-bold mb-4">Cookies de Terceros</h2>
             <p className="text-muted-foreground">
               Determinados proveedores necesarios para funciones que solicites pueden utilizar tecnologías propias,
-              por ejemplo el procesador de pagos. Herencia no declara utilizar Google Analytics ni cookies publicitarias
+              por ejemplo el procesador de pagos. Tropical Plants no declara utilizar Google Analytics ni cookies publicitarias
               de terceros salvo que se integren expresamente y se actualice esta política.
             </p>
           </section>
@@ -119,7 +119,7 @@ export function Cookies() {
               Si tienes preguntas sobre nuestra política de cookies, contáctanos en:
             </p>
             <p className="text-muted-foreground mt-2">
-              Utiliza los canales publicados en la página de Contacto de Herencia Market.
+              Utiliza los canales publicados en la página de Contacto de Tropical Plants.
             </p>
           </section>
         </motion.div>
