@@ -141,7 +141,7 @@ function CollectionPage({ kind }: { kind: Kind }) {
       <section className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">Colección Herencia</p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#718076]">Colección Tropical Plants</p>
             <h2 className="mt-2 text-3xl font-medium">{content.title}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6c786f]">{content.subtitle}</p>
           </div>
@@ -182,7 +182,7 @@ function CollectionPage({ kind }: { kind: Kind }) {
               aparecerán aquí automáticamente manteniendo esta misma estética.
             </p>
             <Link to="/contacto" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#315b42] px-5 py-3 text-sm font-black text-white">
-              Consultar en Herencia <ArrowRight className="h-4 w-4" />
+              Consultar en Tropical Plants <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         )}
