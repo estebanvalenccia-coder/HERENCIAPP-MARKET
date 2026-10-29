@@ -795,7 +795,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
   const generateDsersOwnSkus = async () => {
     const candidates = dsersMissingOwnSku;
     if (dsersBusy || !candidates.length) return;
-    if (!window.confirm(`Se asignará un SKU interno HM-<ID> a ${candidates.length} productos de AliExpress que no tienen SKU. Se guardará en el catálogo de Herencia. No se modifica el SKU del proveedor ni se crea ninguna compra. ¿Continuar?`)) return;
+    if (!window.confirm(`Se asignará un SKU interno HM-<ID> a ${candidates.length} productos de AliExpress que no tienen SKU. Se guardará en el catálogo de Tropical Plants. No se modifica el SKU del proveedor ni se crea ninguna compra. ¿Continuar?`)) return;
     setDsersBusy(true);
     let updated = 0;
     let failed = 0;
@@ -1199,7 +1199,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
       <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-emerald-100/60 blur-3xl"/>
       <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="max-w-3xl">
-          <p className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.18em] text-primary"><Layers3 className="h-4 w-4"/>HERENCIA · COMERCIO MULTIPROVEEDOR</p>
+          <p className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.18em] text-primary"><Layers3 className="h-4 w-4"/>TROPICAL PLANTS · COMERCIO MULTIPROVEEDOR</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Central de Dropshipping</h1>
           <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">
             CJdropshipping, Printful y todos tus proveedores en un solo lugar.
@@ -1343,7 +1343,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         <p className="text-sm font-bold uppercase tracking-wider text-primary">Importación rápida · se conserva el flujo actual</p>
         <h2 className="text-xl font-bold">Pega la URL del producto</h2>
         <p className="text-sm text-muted-foreground">
-          Herencia analiza la ficha, copia las imágenes disponibles a su biblioteca y crea un borrador. Si el dominio coincide con un proveedor registrado, lo enlaza automáticamente.
+          Tropical Plants analiza la ficha, copia las imágenes disponibles a su biblioteca y crea un borrador. Si el dominio coincide con un proveedor registrado, lo enlaza automáticamente.
         </p>
       </div>
       <div className="mt-4 flex flex-col gap-3 lg:flex-row">
@@ -1388,7 +1388,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
           )}
           <SupplierImportImages images={manualUploadedImages} onChange={setManualUploadedImages} onBusyChange={setManualUploading} disabled={importingUrl}/>
           <button type="button" disabled={importingUrl || manualUploading || !manualName.trim()} onClick={() => void saveManualImport()} className="rounded-lg bg-amber-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{importingUrl ? "Guardando…" : manualUploading ? "Copiando fotos…" : (manualUploadedImages.length || manualImageUrl.trim()) ? "Guardar borrador con fotos" : "Guardar borrador SIN fotos"}</button>
-          <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Abre la ficha original, haz clic derecho sobre la fotografía → «Copiar dirección de imagen» y pega esa URL arriba. Herencia intentará copiarla a la biblioteca. Si la foto está protegida, súbela manualmente después. No habilita la compra automática.</p>
+          <p className="text-xs font-semibold">Si dejas la imagen vacía, el borrador quedará SIN FOTO. Abre la ficha original, haz clic derecho sobre la fotografía → «Copiar dirección de imagen» y pega esa URL arriba. Tropical Plants intentará copiarla a la biblioteca. Si la foto está protegida, súbela manualmente después. No habilita la compra automática.</p>
         </div>
       )}
       {importFeedback && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${importFeedback.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>{importFeedback.message}</p>}
@@ -1839,11 +1839,11 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
               <div key={entry.cjOrderId || entry.orderNumber} className="rounded-lg border border-border p-3">
                 <p className="font-semibold">CJ {entry.cjOrderId || "sin ID"} · {entry.status}</p>
                 <p className="text-xs">Referencia: {entry.orderNumber || "No disponible"} · {entry.amountUsd == null ? "Importe sin confirmar" : "$" + Number(entry.amountUsd).toFixed(2) + " USD"}</p>
-                <p className="text-xs">{entry.localOrderId ? "Pedido Herencia #" + String(entry.localOrderId).slice(0, 8) : "Sin vínculo confirmado en la cola de Herencia"}</p>
+                <p className="text-xs">{entry.localOrderId ? "Pedido Tropical Plants #" + String(entry.localOrderId).slice(0, 8) : "Sin vínculo confirmado en la cola de Tropical Plants"}</p>
               </div>)}</div>
-          : <p className="text-sm text-muted-foreground">No se observaron pedidos Herencia en las páginas consultadas de CJ. Esto no demuestra que no existan pedidos antiguos.</p>}
+          : <p className="text-sm text-muted-foreground">No se observaron pedidos Tropical Plants en las páginas consultadas de CJ. Esto no demuestra que no existan pedidos antiguos.</p>}
         <div className="space-y-1">
-          <p className="font-semibold">Comparación con la cola de Herencia</p>
+          <p className="font-semibold">Comparación con la cola de Tropical Plants</p>
           {(cjOrderAudit.localQueue || []).slice(0, 30).map((entry: any) =>
             <p key={entry.fulfillmentId} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
               Pedido #{String(entry.orderId).slice(0, 8)} · {entry.status} · {money(entry.estimatedCostEur)} estimados ·
@@ -2109,7 +2109,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
             onClick={() => { setCjApprovalAction(null); setCjApprovalPreview(null); }}
             className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold"><X className="h-4 w-4"/>Cerrar</button>
         </div>
-        <p className="mb-3 text-sm text-muted-foreground">Pedido Herencia #{String(cjApprovalPreview.orderId).slice(0, 8)}. Son dos decisiones distintas: primero crear en CJ sin pagar, después autorizar el pago.</p>
+        <p className="mb-3 text-sm text-muted-foreground">Pedido Tropical Plants #{String(cjApprovalPreview.orderId).slice(0, 8)}. Son dos decisiones distintas: primero crear en CJ sin pagar, después autorizar el pago.</p>
         <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
           <p><strong>Cliente pagó:</strong> {cjApprovalPreview.customerTotalEur == null ? "No verificado" : money(cjApprovalPreview.customerTotalEur)}</p>
           <p><strong>Coste proveedor estimado:</strong> {money(cjApprovalPreview.estimatedSupplierCostEur)}</p>
@@ -2122,7 +2122,7 @@ export function AdminSuppliersPanel({ onOpenProduct }: { onOpenProduct: (product
         {cjApprovalPreview.merchantFunded && <label className="mt-4 flex items-start gap-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
           <input type="checkbox" checked={cjMerchantPaysAcknowledged} onChange={(event) => setCjMerchantPaysAcknowledged(event.target.checked)}
             className="mt-1 h-4 w-4" />
-          Acepto expresamente que Herencia asume el coste de este pedido con descuento o cupón, aunque el cliente haya pagado 0,00 €.
+          Acepto expresamente que Tropical Plants asume el coste de este pedido con descuento o cupón, aunque el cliente haya pagado 0,00 €.
         </label>}
         <label className="mt-4 block text-sm font-semibold">
           Límite máximo que autorizas para esta operación (USD)
@@ -2472,7 +2472,7 @@ function ImportedProductRow({
       {sourceUrl && <button onClick={()=>window.open(sourceUrl,"_blank","noopener,noreferrer")} className="rounded-xl border border-border p-3" title="Abrir producto"><ExternalLink className="h-4 w-4"/></button>}
       <button disabled={saving} onClick={()=>void onSave(product,supplierId,mode,cost,supplierVariantId,supplierSku,String(metadata.cjPreferredLogisticName || ""))} className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Guardando…" : "Conectar"}</button>
     </div>
-    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && !selectedConnector?.automaticOrders && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación manual. DSers por CSV no crea ni paga pedidos automáticamente desde Herencia; requiere un conector autorizado.</p>}
+    {normalizedSupplierDomain(sourceHost) === "aliexpress.com" && !selectedConnector?.automaticOrders && <p className="text-xs font-semibold text-amber-700 xl:col-span-6">AliExpress: enlace guardado para preparación manual. DSers por CSV no crea ni paga pedidos automáticamente desde Tropical Plants; requiere un conector autorizado.</p>}
     {cjSellability.cj && (cjSellability.blockers.length > 0 || cjSellability.warnings.length > 0) &&
       <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 xl:col-span-6">
         <strong>Revisión obligatoria antes de vender:</strong>
