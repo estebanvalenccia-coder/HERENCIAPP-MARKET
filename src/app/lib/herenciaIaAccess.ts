@@ -30,7 +30,7 @@ export function getHerenciaIaAccessMessage({
   }
 
   if (remainingMessages <= 0) {
-    return "Has consumido tus mensajes de Herenc(IA) de hoy. Vuelve mañana o supera 50 € en compras pagadas de plantas para seguir usándola.";
+    return "Has consumido tus mensajes de Tropical IA de hoy. Vuelve mañana o supera 50 € en compras pagadas de plantas para seguir usándola.";
   }
 
   if (!email) return "Acceso de visitante disponible.";
