@@ -11,7 +11,7 @@ export function Returns() {
             <span className="rounded-xl bg-primary/10 p-3 text-primary"><RotateCcw className="h-7 w-7" /></span>
             <h1 className="text-3xl font-bold sm:text-4xl">Política de devoluciones y reembolsos</h1>
           </div>
-          <p className="text-muted-foreground">Herencia Market · Última actualización: 27 de octubre de 2026</p>
+          <p className="text-muted-foreground">Tropical Plants · Última actualización: 27 de octubre de 2026</p>
           <p className="mt-3 text-muted-foreground">Esta política se aplica a compras realizadas por consumidores desde España y complementa los derechos que reconoce la legislación vigente.</p>
         </div>
       </header>
@@ -27,7 +27,7 @@ export function Returns() {
           <ol className="list-decimal space-y-2 pl-6"><li>Comunícanos la devolución mediante nuestros <Link to="/contacto" className="text-primary underline">canales de contacto</Link>.</li><li>Te indicaremos una dirección válida para la devolución, que puede variar según el origen del producto. No envíes artículos sin obtener previamente esa dirección.</li><li>Remite el producto dentro de los 14 días naturales siguientes a tu comunicación de desistimiento, salvo que acordemos recogerlo.</li><li>Protege y embala el artículo adecuadamente; puedes examinarlo como lo harías en una tienda física, pero responderás de la disminución de valor derivada de manipulaciones no necesarias para comprobar su naturaleza, características y funcionamiento.</li></ol>
         </section>
         <section><h2 className="mb-3 text-2xl font-semibold">3. Gastos de devolución</h2>
-          <p>En devoluciones por desistimiento, el cliente asume los costes directos de devolver el producto cuando se le haya informado previamente de ello, excepto si Herencia Market acuerda asumirlos. En casos de falta de conformidad, daños o errores imputables a la venta, la solución legal correspondiente no supondrá costes para el consumidor.</p>
+          <p>En devoluciones por desistimiento, el cliente asume los costes directos de devolver el producto cuando se le haya informado previamente de ello, excepto si Tropical Plants acuerda asumirlos. En casos de falta de conformidad, daños o errores imputables a la venta, la solución legal correspondiente no supondrá costes para el consumidor.</p>
         </section>
         <section><h2 className="mb-3 text-2xl font-semibold">4. Reembolsos</h2>
           <p>Cuando proceda el desistimiento, reembolsaremos los pagos recibidos, incluidos los gastos de entrega ordinaria iniciales cuando legalmente corresponda, sin demora indebida y dentro de los 14 días naturales desde que nos informes de tu decisión. Podemos retener el reembolso hasta recibir los bienes o hasta que aportes prueba de su devolución, lo que ocurra primero. Utilizaremos el mismo medio de pago original salvo acuerdo expreso distinto, sin cargos por el reembolso.</p>
@@ -39,7 +39,7 @@ export function Returns() {
           <p>Si un artículo llega dañado, presenta una falta de conformidad o no coincide con tu pedido, contacta con nosotros e indica el número de pedido y una descripción del problema. Si dispones de fotografías, puedes aportarlas para agilizar la revisión, pero ello no limita tus derechos. Aplicaremos la reparación, sustitución, rebaja del precio o resolución contractual según corresponda conforme a la garantía legal.</p>
         </section>
         <section><h2 className="mb-3 text-2xl font-semibold">7. Productos enviados por proveedores externos</h2>
-          <p>Algunos accesorios y artículos de jardinería pueden enviarse desde proveedores colaboradores. La gestión logística y dirección de devolución pueden variar, pero eso no reduce los derechos del consumidor frente a Herencia Market como vendedor.</p>
+          <p>Algunos accesorios y artículos de jardinería pueden enviarse desde proveedores colaboradores. La gestión logística y dirección de devolución pueden variar, pero eso no reduce los derechos del consumidor frente a Tropical Plants como vendedor.</p>
         </section>
         <section><h2 className="mb-3 text-2xl font-semibold">8. Atención al cliente</h2>
           <p>Para solicitar una devolución, ejercer el desistimiento o comunicar una incidencia, utiliza nuestra <Link to="/contacto" className="text-primary underline">página de contacto</Link>. Incluye, si lo tienes disponible, el número de pedido, producto y motivo de contacto. También puedes consultar nuestros <Link to="/terminos" className="text-primary underline">términos y condiciones</Link>.</p>
