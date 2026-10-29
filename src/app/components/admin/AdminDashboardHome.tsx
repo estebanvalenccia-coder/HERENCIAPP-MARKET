@@ -298,7 +298,7 @@ export function AdminDashboardHome({ onNavigate }: AdminDashboardHomeProps = {})
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
             <Sparkles className="h-3.5 w-3.5" />
-            Panel vivo de Herencia Market
+            Panel vivo de Tropical Plants
           </div>
           <h1 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
             Dashboard <span className="text-emerald-600">floral</span>
