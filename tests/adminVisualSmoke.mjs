@@ -5,11 +5,20 @@ const origin = process.env.ADMIN_E2E_ORIGIN || "http://127.0.0.1:4173";
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1365, height: 900 } });
+  // Preserve essential-only consent while avoiding the public cookie overlay in layout captures.
+  await page.addInitScript(() => {
+    localStorage.setItem("herencia_ads_consent_v1", "rejected");
+    localStorage.setItem("herencia_cookie_consent", "essential");
+  });
   await page.goto(origin + "/", { waitUntil: "domcontentloaded" });
   await page.locator('[data-storefront-component="home.hero"] h1').waitFor({ timeout: 30_000 });
   const originalTitle = await page.locator('[data-storefront-component="home.hero"] h1').textContent();
   assert.ok(originalTitle?.trim(), "The published hero should render normally");
   assert.equal(await page.locator('[data-storefront-component="home.hero"]').count(), 1);
+  const heroPosition = await page.locator('[data-storefront-component="home.hero"] section').boundingBox();
+  const threeDPosition = await page.locator('[data-storefront-component="home.creations3d"] section').boundingBox();
+  assert.ok(heroPosition && threeDPosition && heroPosition.y < threeDPosition.y,
+    "The hero must render above the 3D shelf in the admin-controlled commercial order.");
 
   await page.evaluate(() => {
     window.__adminSelected = null;
@@ -68,9 +77,19 @@ try {
   await page.evaluate(() => document.querySelector("#admin-e2e-preview")?.remove());
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+  await mobile.addInitScript(() => {
+    localStorage.setItem("herencia_ads_consent_v1", "rejected");
+    localStorage.setItem("herencia_cookie_consent", "essential");
+  });
   await mobile.goto(origin + "/", { waitUntil: "domcontentloaded" });
   await mobile.locator('[data-storefront-component="home.hero"]').waitFor({ timeout: 30_000 });
   assert.equal(await mobile.locator('[data-storefront-component="home.hero"]').isVisible(), true);
+  // The build-only server has no backend. Keep backend-unavailable notifications
+  // out of visual comparisons without altering real storefront error handling.
+  await page.addStyleTag({ content: "[data-sonner-toaster] { display: none !important; }" });
+  await mobile.addStyleTag({ content: "[data-sonner-toaster] { display: none !important; }" });
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await mobile.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await page.screenshot({ path: "admin-e2e-desktop.png", fullPage: false });
   await mobile.screenshot({ path: "admin-e2e-mobile.png", fullPage: false });
   await mobile.close();
