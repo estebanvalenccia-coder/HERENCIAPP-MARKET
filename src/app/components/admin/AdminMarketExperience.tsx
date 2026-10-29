@@ -499,10 +499,10 @@ export function AdminMarketExperience({
               <Layers3 className="h-4 w-4" />
               Frontend sincronizado
             </div>
-            <h3 className="mt-2 text-2xl font-black">HERENCIA MARKET · Contenido visible</h3>
+            <h3 className="mt-2 text-2xl font-black">Tropical Plants · Contenido visible</h3>
             <p className="mt-1 max-w-3xl text-sm text-white/80">
               Esta zona corresponde directamente a la nueva cara de la tienda. Lo que edites aquí cambia
-              Inicio, Servicios, Dulce, Moda, Nosotros y HERENCIA SALES al publicar.
+              Inicio, Servicios, Dulce, Moda, Nosotros y Tropical Sales al publicar.
             </p>
           </div>
           <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold">
@@ -898,7 +898,7 @@ export function AdminMarketExperience({
             </section>
             <button type="button" onClick={() => patchHome({ sectionOrder: [...DEFAULT_HOME_SECTION_ORDER] })}
               className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[#b9cdbb] bg-white px-4 py-2 text-sm font-semibold text-[#244a35] hover:bg-[#e9f3e8]">
-              <Sparkles className="h-4 w-4" /> Aplicar orden del boceto de Herencia
+              <Sparkles className="h-4 w-4" /> Aplicar orden del boceto de Tropical Plants
             </button>
             <p className="mb-4 text-xs text-muted-foreground">El botón solo cambia el orden del borrador: usa Guardar y Publicar para reflejarlo en la tienda.</p>
             <div className="grid gap-2 md:grid-cols-2">
@@ -1428,7 +1428,7 @@ export function AdminMarketExperience({
           <div id="market-editor-sales" className="mb-5 flex items-center gap-2 scroll-mt-6">
             <WandSparkles className="h-5 w-5 text-primary" />
             <div>
-              <h4 className="font-black">HERENCIA SALES · “Crear con Herencia”</h4>
+              <h4 className="font-black">Tropical Sales · “Crear con Tropical Plants”</h4>
               <p className="text-sm text-muted-foreground">
                 Este es el chat comercial del frontend. No es asesoría gratuita: está orientado a crear, encontrar y vender.
               </p>
@@ -1444,7 +1444,7 @@ export function AdminMarketExperience({
                 } })
               }
             />
-            Mostrar “Crear con Herencia”
+            Mostrar “Crear con Tropical Plants”
           </label>
           <div className="mb-5 grid gap-4 rounded-xl border border-[#dce6dc] bg-[#f5f9f5] p-4 sm:grid-cols-3">
             <label className="block text-sm font-bold">
@@ -1521,7 +1521,7 @@ export function AdminMarketExperience({
         <div className="rounded-2xl border border-border bg-white p-5">
           <div className="mb-5 flex items-center gap-2">
             <Store className="h-5 w-5 text-primary" />
-            <h4 className="font-black">Sobre Herencia</h4>
+            <h4 className="font-black">Sobre Tropical Plants</h4>
           </div>
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="space-y-4">
