@@ -2,7 +2,7 @@
 export type StorefrontComponentLocation = "header" | "home" | "floating" | "footer";
 export type StorefrontComponentKey =
   | "header.announcement" | "header.search" | "header.account" | "header.favorites" | "header.cart"
-  | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.delivery" | "home.categoryStrip"
+  | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.heroIA" | "home.delivery" | "home.categoryStrip"
   | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
   | "home.featured" | "home.promotions" | "home.creations3d" | "home.trust" | "home.bottomCta"
   | "floating.herenciaIA" | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
@@ -36,14 +36,15 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"header.deliverySelector", name:"Selector de entrega", location:"header", editingSection:"navegacion", description:"Destinos de entrega disponibles" },
   { id:"header.herenciaIA", name:"Acceso Herencia IA", location:"header", editingSection:"navegacion", description:"Acceso al asistente de IA cuando esté habilitado" },
   { id:"home.hero", name:"Portada principal", location:"home", editingSection:"portada", description:"Imagen, textos y botones principales" },
+  { id:"home.heroIA", name:"Herencia IA en el banner", location:"home", editingSection:"portada", description:"Tarjeta del asistente en la portada; necesita la IA activa" },
   { id:"home.delivery", name:"Banner de entrega internacional", location:"home", editingSection:"portada", description:"Envíos a Colombia" },
-  { id:"home.categoryStrip", name:"Categorías circulares", location:"home", editingSection:"portada", description:"Fila de categorías redondas" },
+  { id:"home.categoryStrip", name:"Categorías de portada", location:"home", editingSection:"portada", description:"Tarjetas editoriales o circulares con datos del editor" },
   { id:"home.plantCta", name:"Botón descubrir plantas", location:"home", editingSection:"portada", description:"Acceso principal al catálogo de plantas" },
   { id:"home.feed", name:"Contenido dinámico", location:"home", editingSection:"portada", description:"Bloques alimentados desde el escaparate" },
   { id:"home.categoriesGrid", name:"Tarjetas de categorías", location:"home", editingSection:"portada", description:"Cuadrícula de colecciones" },
   { id:"home.services", name:"Servicios", location:"home", editingSection:"servicios", description:"Tarjetas de servicios" },
   { id:"home.featured", name:"Productos destacados", location:"home", editingSection:"portada", description:"Selección de productos disponibles" },
-  { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Banners Dulce y Moda" },
+  { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Promociones y campañas activas desde Administración" },
   { id:"home.creations3d", name:"Creaciones 3D", location:"home", editingSection:"portada", description:"Escaparate 3D con productos reales seleccionables" },
   { id:"home.trust", name:"Ventajas de Herencia", location:"home", editingSection:"portada", description:"Beneficios de compra y asistencia" },
   { id:"home.bottomCta", name:"Banner inferior", location:"home", editingSection:"promociones", description:"Llamada a la acción de la portada" },

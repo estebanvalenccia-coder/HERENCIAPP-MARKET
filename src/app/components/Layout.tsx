@@ -236,28 +236,21 @@ export function Layout() {
     ? { ...item, children: item.children.filter((child) => isMarketDestinationEnabled(market, child.href)) }
     : item);
 
-  // Reference storefront layout: commercial navigation driven by the original
-  // market configuration and product collection routes. The admin may disable the
-  // preset; visibility settings on existing nav items are respected.
-  const referenceMenu = [
-    { label: "Plantas", href: "/productos?coleccion=plantas", pattern: /plantas?/i },
-    { label: "Macetas", href: "/productos?buscar=macetas", pattern: /macetas?/i },
-    { label: "Creaciones 3D", href: "/productos?buscar=3D", pattern: /3d|impresi[oó]n/i },
-    { label: "Accesorios", href: "/productos?coleccion=jardineria", pattern: /accesorios|jardiner[ií]a/i },
-    { label: "Regalos de Colombia", href: "/colombia", pattern: /colombia|regalos/i },
-  ];
-  const referenceNavigation = referenceMenu.flatMap(({label, href, pattern}) => {
-    if (href === "/colombia" && !colombiaEnabled) return [];
-    const existing = market.navigation.find(item => pattern.test(item.label));
-    if (existing?.visible === false) return [];
-    const matched = visibleNavigation.find(item => pattern.test(item.label));
-    const homeCategory = market.home.categories.find(item => pattern.test(item.title));
-    if (homeCategory?.visible === false || !isMarketDestinationEnabled(market, matched?.href || href)) return [];
-    const item = matched || { label, href: homeCategory?.href || href };
-    return [{...item, label, href: item.href || href}];
-  });
+  // The reference changes presentation and order, never the administrator's links.
+  // An OFF link stays OFF; labels, destinations, submenus and custom items survive.
+  const menuPriority = [/^inicio$/i, /plantas?/i, /3d|impresi[oó]n/i, /colombia|regalos/i, /jardiner[ií]a|accesorios/i, /ofertas|promociones/i];
+  const navPriority = (label: string) => {
+    const index = menuPriority.findIndex((pattern) => pattern.test(label));
+    return index === -1 ? menuPriority.length : index;
+  };
   const storefrontNavigation = market.home.referenceNavigation === false
-    ? visibleNavigation : referenceNavigation;
+    ? visibleNavigation
+    : [...visibleNavigation].sort((a, b) => navPriority(a.label) - navPriority(b.label));
+  // Preserve every active admin link without letting a long menu cover the logo,
+  // search field or customer actions. Secondary links live under "Más".
+  const desktopNavigation = storefrontNavigation.filter((item) => item.showDesktop !== false);
+  const primaryNavigation = desktopNavigation.slice(0, 5);
+  const additionalNavigation = desktopNavigation.slice(5);
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -329,19 +322,22 @@ export function Layout() {
                   className="w-auto object-contain"
                   style={{ height: Math.max(28, Math.min(65, Number(site.builder.headerStyle.logoHeight) || 50)) }}
                 />
-                <span className="hidden flex-col justify-center text-[#1d3828] sm:flex" aria-hidden="true">
-                  <span className="text-[19px] font-semibold leading-none tracking-[.15em]">HERENCIA</span>
-                  <span className="mt-1 text-[9px] font-semibold leading-none tracking-[.55em]">MARKET</span>
-                </span>
               </Link>
 
               <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-0.5 lg:flex">
-                {storefrontNavigation.filter((item) => item.showDesktop !== false).map((item, index) =>
+                {primaryNavigation.map((item, index) =>
                   item.children?.length ? (
                     <MarketNavigationMenu key={`${item.href}-${index}`} item={item} now={scheduleNow} active={isPathActive(location.pathname, item.href)} />
                   ) : (
                     <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
+                )}
+                {additionalNavigation.length > 0 && (
+                  <MarketNavigationMenu
+                    item={{ label: "Más", href: "/productos", children: additionalNavigation }}
+                    now={scheduleNow}
+                    active={additionalNavigation.some((item) => isPathActive(location.pathname, item.href))}
+                  />
                 )}
                 <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                   <MarketNavLink
