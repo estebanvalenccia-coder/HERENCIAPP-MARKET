@@ -394,7 +394,7 @@ export function AdminDashboard() {
     } catch (error: any) {
       const message = String(error?.message || "No se pudo iniciar sesión");
       setLoginError(message === "Código de verificación incorrecto"
-        ? "Código de verificación incorrecto. Introduce el código actual de la aplicación autenticadora vinculada a Herencia Market. Comprueba que la fecha y hora del móvil estén en automático."
+        ? "Código de verificación incorrecto. Introduce el código actual de la aplicación autenticadora vinculada a Tropical Plants. Comprueba que la fecha y hora del móvil estén en automático."
         : message);
       if (message === "Código de verificación incorrecto") setOtp("");
     } finally {
@@ -420,7 +420,7 @@ export function AdminDashboard() {
   const menuItems = [
     { id: "dashboard" as AdminSection, label: "Dashboard", icon: LayoutDashboard },
     { id: "analytics" as AdminSection, label: "Analítica / Visitas", icon: BarChart3, badge: "LIVE" },
-    { id: "herencia-sales" as AdminSection, label: "HERENCIA SALES", icon: Bot, badge: "PRO" },
+    { id: "herencia-sales" as AdminSection, label: "Tropical Sales", icon: Bot, badge: "PRO" },
     {
       id: "pos" as AdminSection,
       label: "TPV / Caja",
@@ -454,7 +454,7 @@ export function AdminDashboard() {
     { id: "community" as AdminSection, label: "Comunidad / Novedades", icon: MessageCircleHeart, badge: "NUEVO" },
     { id: "international-delivery" as AdminSection, label: "Colombia / Internacional", icon: Globe2, badge: "🇨🇴" },
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
-    { id: "neural" as AdminSection, label: "HERENCIA Neural", icon: Brain, badge: "NEURAL" },
+    { id: "neural" as AdminSection, label: "TROPICAL PLANTS Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "business-suite" as AdminSection, label: "Centro de Negocio", icon: Rocket, badge: "NUEVO" },
     { id: "crm" as AdminSection, label: "Clientes / CRM", icon: Users, badge: "REAL" },
@@ -554,7 +554,7 @@ export function AdminDashboard() {
             </h2>
 
             <p className="text-muted-foreground text-center mb-8">
-              Panel de Administración - Herencia Floristería
+              Panel de Administración - Tropical Plants
             </p>
 
             {!backendApi.enabled && (
@@ -672,7 +672,7 @@ export function AdminDashboard() {
                   Admin Panel
                 </h1>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Herencia Floristería
+                  Tropical Plants
                 </p>
               </div>
 
