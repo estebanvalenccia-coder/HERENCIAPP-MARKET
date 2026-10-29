@@ -34,7 +34,7 @@ export function Contact() {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const text = [
-      "Hola, contacto desde la web de Herencia.",
+      "Hola, contacto desde la web de Tropical Plants.",
       name.trim() ? `Nombre: ${name.trim()}` : "",
       message.trim() ? `Mensaje: ${message.trim()}` : "",
     ]
