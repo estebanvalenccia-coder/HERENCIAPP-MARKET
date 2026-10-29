@@ -11,7 +11,7 @@ const sections = [
   { icon: Package2, label: 'Mermas' },
   { icon: Truck, label: 'Repartos' },
   { icon: BarChart3, label: 'Facturación' },
-  { icon: BrainCircuit, label: 'IA Herencia' },
+  { icon: BrainCircuit, label: 'IA Tropical Plants' },
   { icon: Settings, label: 'Configuración' },
 ]
 
@@ -23,7 +23,7 @@ export function AdminERPLayout(){
           <div className='mb-8 flex items-center gap-4 rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-lg'>
             <div className='grid h-16 w-16 place-items-center rounded-[1.7rem] bg-gradient-to-br from-emerald-100 to-emerald-50 text-3xl'>🌿</div>
             <div>
-              <h1 className='text-2xl font-black tracking-tight text-zinc-950'>HERENCIA</h1>
+              <h1 className='text-2xl font-black tracking-tight text-zinc-950'>TROPICAL PLANTS</h1>
               <p className='text-sm font-bold text-emerald-700'>ERP Floristería Premium</p>
             </div>
           </div>
@@ -51,13 +51,13 @@ export function AdminERPLayout(){
           <div className='mt-8 rounded-[2rem] border border-emerald-100 bg-gradient-to-br from-emerald-500 to-green-600 p-6 text-white shadow-2xl'>
             <p className='text-sm font-bold text-emerald-50'>Sistema empresarial</p>
             <h3 className='mt-2 text-3xl font-black'>ERP + TPV + IA</h3>
-            <p className='mt-3 text-sm text-emerald-50'>Todo conectado en el mismo ecosistema Herencia.</p>
+            <p className='mt-3 text-sm text-emerald-50'>Todo conectado en el mismo ecosistema Tropical Plants.</p>
           </div>
 
           <div className='mt-6 rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-lg'>
             <p className='text-xs font-black uppercase tracking-wider text-zinc-400'>Desarrollado por</p>
             <h3 className='mt-2 text-xl font-black text-zinc-950'>D.E.V.B</h3>
-            <p className='mt-1 text-sm font-semibold text-zinc-500'>Propiedad de Herencia Floristería</p>
+            <p className='mt-1 text-sm font-semibold text-zinc-500'>Propiedad de Tropical Plants</p>
           </div>
         </aside>
 
