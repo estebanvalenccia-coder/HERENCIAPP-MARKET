@@ -88,7 +88,7 @@ export function HerencIA() {
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const rows = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]");
-      return Array.isArray(rows) ? rows : [];
+      return Array.isArray(rows) ? rows.map((row: Message) => ({ ...row, content: String(row.content || "").replace(/Herenc\\(IA\\)/gi, "Tropical IA").replace(/Herencia Market/gi, "Tropical Plants").replace(/Herencia Sales/gi, "Tropical Sales") })) : [];
     } catch {
       return [];
     }
@@ -109,7 +109,7 @@ export function HerencIA() {
       setMessages([{
         id: "welcome",
         role: "assistant",
-        content: "Hola 🌿 Soy Tropical IA. Cuéntame qué estás buscando y te ayudo a encontrar plantas, regalos y productos reales de Tropical Plants.",
+        content: "¡Holaaa! 🌿 Soy tu amiga Tropical, la IA de Tropical Plants. Estoy aquí para ayudarte con tus plantas, encontrar productos y resolver tus dudas. ¿Qué aventura verde comenzamos hoy?",
       }]);
     }
   }, []);
