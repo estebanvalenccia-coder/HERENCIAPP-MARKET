@@ -331,7 +331,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     referenceNavigation: true,
     referenceCategories: true,
     referenceHero: true,
-    referenceHeroImageUrl: "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88",
+    referenceHeroImageUrl: "/herencia-banner-botanico.webp",
     referenceHeroTitle: "La naturaleza inspira tu hogar",
     referenceHeroDescription: "Plantas únicas, macetas de diseño, creaciones 3D y regalos de Colombia, en un solo lugar.",
     campaigns: [],
@@ -505,7 +505,6 @@ export const defaultMarketExperience: MarketExperienceContent = {
 };
 
 const LEGACY_HOME_HERO_URLS = new Set([
-  "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=2000&q=88",
   "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=86",
 ]);
 
@@ -582,6 +581,7 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   const savedReferenceHeroImageUrl = String(homeIncoming.referenceHeroImageUrl || "").trim();
   const referenceHeroImagePath = savedReferenceHeroImageUrl.split("?")[0];
   const isLegacyReferenceHero =
+    referenceHeroImagePath.includes("photo-1618220179428-22790b461013") ||
     referenceHeroImagePath.includes("photo-1485955900006-10f4d324d411") ||
     referenceHeroImagePath.endsWith("/herencia-portada.avif");
   const resolvedReferenceHeroImageUrl = !savedReferenceHeroImageUrl || isLegacyReferenceHero
