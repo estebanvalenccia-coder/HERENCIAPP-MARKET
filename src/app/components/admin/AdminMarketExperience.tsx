@@ -427,6 +427,7 @@ export function AdminMarketExperience({
 }) {
   const market = getMarketExperience(site);
   const productDisplay = market.home.productDisplay!;
+  const selectionDisplay = market.home.selectionDisplay!;
   const [managedCategory, setManagedCategory] = useState<{ title: string; key: string } | null>(null);
   const [draggedSection, setDraggedSection] = useState<MarketHomeSectionId | null>(null);
   const [products3D, setProducts3D] = useState<Array<{id: string | number; name: string; image?: string; status?: string; active?: boolean; deletedAt?: unknown}>>([]);
@@ -666,7 +667,7 @@ export function AdminMarketExperience({
                     referenceCategories: true,
                     referenceHero: true,
                     categoryGridLimit: 5,
-                    productDisplay: { ...productDisplay, mode: "plants", limit: 6, columns: 6, filtersEnabled: false },
+                    productDisplay: { ...productDisplay, mode: "plants", limit: 12, columns: 6, filtersEnabled: false },
                     creations3D: { ...market.home.creations3D, limit: 6 },
                   })}
                   className="rounded-lg bg-[#234b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#173d2a]">
@@ -761,6 +762,39 @@ export function AdminMarketExperience({
                     className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm"/>
                 </label>
               )}
+              <section className="rounded-2xl border border-[#dce6dc] bg-white p-4" aria-label="Configurar complementos de tienda en Inicio">
+                <div className="mb-4">
+                  <h4 className="font-black text-[#234b35]">Complementos para hogar y jardín</h4>
+                  <p className="mt-1 text-xs leading-5 text-[#657669]">Muestra macetas, herramientas y otros complementos publicados en tu catálogo. Las plantas y Creaciones 3D se mantienen en sus escaparates propios.</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Título" value={selectionDisplay.title}
+                    onChange={(title) => patchHome({ selectionDisplay: { ...selectionDisplay, title } })}/>
+                  <Field label="Texto debajo del título" value={selectionDisplay.subtitle}
+                    onChange={(subtitle) => patchHome({ selectionDisplay: { ...selectionDisplay, subtitle } })}/>
+                  <Field label="Texto del botón" value={selectionDisplay.buttonLabel}
+                    onChange={(buttonLabel) => patchHome({ selectionDisplay: { ...selectionDisplay, buttonLabel } })}/>
+                  <Field label="Enlace del botón" value={selectionDisplay.href}
+                    onChange={(href) => patchHome({ selectionDisplay: { ...selectionDisplay, href } })}/>
+                  <Field label="Etiqueta de envío especial" value={selectionDisplay.specialShippingLabel}
+                    onChange={(specialShippingLabel) => patchHome({ selectionDisplay: { ...selectionDisplay, specialShippingLabel } })}/>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-semibold">Productos visibles
+                    <input type="number" min="1" max="12" value={selectionDisplay.limit}
+                      onChange={(event) => patchHome({ selectionDisplay: { ...selectionDisplay, limit: Math.max(1, Math.min(12, Number(event.target.value) || 1)) } })}
+                      className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm"/>
+                  </label>
+                  <label className="block text-xs font-semibold">Columnas en ordenador
+                    <select value={selectionDisplay.columns}
+                      onChange={(event) => patchHome({ selectionDisplay: { ...selectionDisplay, columns: Number(event.target.value) === 4 ? 4 : 6 } })}
+                      className="mt-1 w-full rounded-lg border border-[#c7d8c7] bg-white p-2.5 text-sm">
+                      <option value={4}>4 · Tarjetas grandes</option>
+                      <option value={6}>6 · Más productos</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
               <p className="text-xs text-[#526c55]">Los precios, fotos, existencias, carrito y favoritos siguen conectados al catálogo original. No se publicarán artículos ficticios para rellenar huecos.</p>
             </div>
 
@@ -870,9 +904,9 @@ export function AdminMarketExperience({
             <div className="grid gap-2 md:grid-cols-2">
               {market.home.sectionOrder.map((key, index) => {
                 const names: Record<MarketHomeSectionId, string> = {
-                  hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías redondas",
+                  hero: "Portada principal", delivery: "Envíos a Colombia", categoryStrip: "Categorías visuales",
                   plantCta: "Botón descubrir plantas", feed: "Contenido dinámico", categoriesGrid: "Colecciones y banners de portada",
-                  services: "Servicios", featured: "Productos destacados", promotions: "Banners promocionales", creations3d: "Creaciones 3D",
+                  services: "Servicios", featured: "Plantas destacadas", selection: "Complementos de hogar y jardín", promotions: "Banners promocionales", creations3d: "Creaciones 3D",
                   trust: "Beneficios", bottomCta: "Banner CTA inferior",
                 };
                 return (

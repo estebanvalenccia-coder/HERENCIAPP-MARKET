@@ -3,7 +3,7 @@ export type StorefrontComponentLocation = "header" | "home" | "floating" | "foot
 export type StorefrontComponentKey =
   | "header.announcement" | "header.search" | "header.account" | "header.favorites" | "header.cart"
   | "header.deliverySelector" | "header.herenciaIA" | "home.hero" | "home.heroIA" | "home.delivery" | "home.categoryStrip"
-  | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.services"
+  | "home.plantCta" | "home.feed" | "home.categoriesGrid" | "home.selection" | "home.services"
   | "home.featured" | "home.promotions" | "home.creations3d" | "home.trust" | "home.bottomCta"
   | "floating.herenciaIA" | "floating.sales" | "floating.support" | "floating.whatsapp" | "floating.accessibility" | "footer.main";
 
@@ -42,6 +42,7 @@ export const STOREFRONT_COMPONENT_REGISTRY: readonly StorefrontComponentDefiniti
   { id:"home.plantCta", name:"Botón descubrir plantas", location:"home", editingSection:"portada", description:"Acceso principal al catálogo de plantas" },
   { id:"home.feed", name:"Contenido dinámico", location:"home", editingSection:"portada", description:"Bloques alimentados desde el escaparate" },
   { id:"home.categoriesGrid", name:"Tarjetas de categorías", location:"home", editingSection:"portada", description:"Cuadrícula de colecciones" },
+  { id:"home.selection", name:"Complementos para el hogar", location:"home", editingSection:"portada", description:"Productos complementarios disponibles del catálogo" },
   { id:"home.services", name:"Servicios", location:"home", editingSection:"servicios", description:"Tarjetas de servicios" },
   { id:"home.featured", name:"Productos destacados", location:"home", editingSection:"portada", description:"Selección de productos disponibles" },
   { id:"home.promotions", name:"Promociones", location:"home", editingSection:"promociones", description:"Promociones y campañas activas desde Administración" },

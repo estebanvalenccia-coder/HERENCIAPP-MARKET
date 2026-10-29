@@ -26,9 +26,6 @@ import { StorefrontFeed } from "../components/site/StorefrontFeed";
 import { StorefrontComponentBoundary } from "../components/StorefrontComponentBoundary";
 
 // El archivo AVIF antiguo quedó truncado en el repositorio; usar una fotografía válida mientras se reemplaza el recurso local.
-// Preview artwork cropped from the user-provided reference; replaced automatically
-// when a real Creaciones 3D photograph is configured in the existing admin.
-const REFERENCE_3D_VISUAL = "data:image/webp;base64,UklGRsgDAABXRUJQVlA4ILwDAACQGACdASpgAFUAPxV0sVOspiQirjUMAZAiiWMAyYDNA+3Ds8nsHWv2Ju94LlHSRur5VnBxmLTYhIP++4FqbgBINGOIeKmCHuW7zXr7ampaL89rSock7GNtYoUSDs+vFdNkbgFs78NlmFG0h/oXJh0c33MJLl+gBSEZEW1IFBnL4OhkC0Ksrjr1X0RKKZEQ2NbNBFpZrTyl8/73mTziI2FqisR4l1u9gemnxdhWv4908gC0yqb4ox7jGY7K/mK1QfoXK/XJFR7HpZruXDAAAP7LPp/FzUTZKA82VoasbVW/9cSK4SCW3bdBbxq/W1PUY6pkSXYRlhk7cJ+kPYZY7i0wK+LvK4uqjKsBfmOfr3o0QWDWxkw4A4tVp6PXRX4FA3EtShewHzPotJrQ4qgCI80xuPJFoqy2ASIkDDl/XL0CKdTEsdggZ1Q5Bf4JjlzOT/f7dES+Ohf8kWnXSJE25+fewU8h7HHRdKuiT2Qg9VLBX6IbyLvGdih/ZQ0nf3Bc4JmQlixE2zhM3uZD75ZjCWzXyrRPJeP/VxUVTBR98L12yjAk4r0GC28/OplnTquo3EuiJ+k1uQ9JTyUPGo8AeKgPeKRwYNkNgYZz2zYQn+Ob9gXG67QLBBLDHRj2NJM6fHyKnJ3OlYaCFnDtRoX4jcxXr2VLw0OBaV5M42OR9RJm3b03ZCojnJuTWOx1aYAqlo/cxfRF2FLOEcoGA2qG0Twqp07pkd2SEz0b7pwa4Kh5K/vV00vVA9z8oVanzGVpkzEwGEvUn3l8J4wWn4Cp4GOz7eCs1f8MZBAhobLGeK29BsRih29us2M7rNekkeyXtnwaYUvIRVFF1dKHih4Yo/l+1mSJD/x2c51GTbTHs5GxSsjGUuBgV2+bqYPMKHuiuRgcC2xXHsQHikWwM47IIsTiSpgKPQ80us2nGzsjPxN1xTOth9VVBA91+OLDWyJDo5MczH7BSzHO0ZyNt99qK/kgCjqAVDInTkoxi90CMuS6ghf3AmshbPYJYVA+6XDuh9srEKGwCwIZs1ocWbm2hv3d9+G141vH2/sNuQpYuH6B8cuO8+9WnZN/sSEmCUQkXWayoL73LWxJaQ7khoR2fJs++YBJW6iCr0DWwcIRJObZC5UxrA272Oy3GMKvrI2DjQhRebfr3NRMqSEFhB7wtq6xtsFS/rIeeDmb+6k26288XDW1T7XR+8axmEHCKvoS+n7XNA3aRWhp7hTZDZZ6UMUgH6DoynO/TVr6QC/0v3hN2RZsjYsFFLVctWWQAA==";
 const DEFAULT_HERO = "https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=2000&q=86";
 
 function safeHeroImage(value: unknown): string {
@@ -231,6 +228,7 @@ export function Home() {
   }, [catalog, market.home.featuredLimit, market.dulce.enabled, market.moda.enabled]);
 
   const productDisplay = market.home.productDisplay!;
+  const selectionDisplay = market.home.selectionDisplay!;
   const productTags = (product: any) => [
     product.name, product.category, product.subcategory, product.collection,
     product.description, ...(Array.isArray(product.tags) ? product.tags : []),
@@ -271,6 +269,21 @@ export function Home() {
         (productDisplay.mode !== "plants" || productBelongsToCollection(product,"plantas"))
         && productMatchesChip(product, label)))
     ) : [];
+  const selectionProducts = useMemo(() => catalog
+    .filter((product: any) => product && product.active !== false && !product.deletedAt && !["draft", "archived", "inactive"].includes(String(product.status || "active")))
+    .filter((product: any) => Boolean(product.image) && Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0) > 0)
+    .filter((product: any) => product.trackInventory === false || Number(product.stock || 0) > 0 ||
+      (Array.isArray(product.variants) && product.variants.some((variant: any) => Number(variant.stock || 0) > 0)))
+    .filter((product: any) => !productBelongsToCollection(product, "plantas"))
+    .filter((product: any) => {
+      const text = [product.name, product.category, product.subcategory, product.collection,
+        ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ");
+      return !/(?:3d|impresi[oó]n\s*3d|diseño\s*3d)/i.test(text);
+    })
+    .filter((product: any) => isMarketDestinationEnabled(market, `/productos?coleccion=${primaryCollectionOf(product)}`))
+    .sort((a: any, b: any) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)))
+    .slice(0, Math.max(1, Math.min(12, Number(selectionDisplay.limit || 6)))),
+  [catalog, market.dulce.enabled, market.moda.enabled, selectionDisplay.limit]);
   const gridColumns = shopFirst ? productDisplay.columns : 6;
   const shopGridClass = gridColumns === 8
     ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
@@ -460,6 +473,9 @@ export function Home() {
               marginRight: heroDesign?.alignment === "center" ? "auto" : undefined,
             }}
           >
+            <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/10 px-4 py-2 text-[10px] font-black tracking-[0.22em] text-white shadow-sm backdrop-blur">
+              <Leaf className="h-3.5 w-3.5" /> HERENCIA MARKET
+            </span>
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#dfd2a9]">
               {market.home.kicker}
             </p>
@@ -503,7 +519,7 @@ export function Home() {
             className="absolute right-5 top-7 hidden w-[290px] flex-col rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-5 text-[#193527] shadow-[0_15px_45px_rgba(0,0,0,.2)] backdrop-blur-lg transition hover:-translate-y-1 lg:flex xl:right-8">
             <span className="flex items-center gap-3">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-7 w-7"/></span>
-              <span><strong className="block font-serif text-2xl font-semibold">Herencia IA</strong>
+              <span><strong className="block font-serif text-2xl font-semibold">Herenc(IA)</strong>
                 <span className="text-xs text-[#627468]">Tu asistente inteligente</span></span>
             </span>
             <span className="mt-4 space-y-2 text-xs leading-5 text-[#3c5544]">
@@ -512,8 +528,19 @@ export function Home() {
               <span className="block">✓ Recomendaciones personalizadas</span>
             </span>
             <span className="mt-4 flex items-center justify-center gap-2 rounded-full bg-[#173d2a] px-4 py-3 text-sm font-semibold text-white">
-              Habla con Herencia IA <ArrowRight className="h-4 w-4"/>
+              Habla con Herenc(IA) <ArrowRight className="h-4 w-4"/>
             </span>
+          </Link>
+        </StorefrontComponentBoundary>
+        <StorefrontComponentBoundary id="home.heroIA" controls={market.componentControls} now={scheduleNow}
+          enabled={assistantEnabled && site.navigation.herencia.visible !== false}>
+          <Link to={site.navigation.herencia.href || "/herencia"}
+            className="mx-5 mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/70 bg-[#fffcf5]/95 p-4 text-[#193527] shadow-xl backdrop-blur lg:hidden">
+            <span className="flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#e6ecdf] text-[#244c32]"><Bot className="h-6 w-6"/></span>
+              <span><strong className="block font-serif text-xl font-semibold">Herenc(IA)</strong><span className="text-xs text-[#627468]">Tu asistente de Herencia Market</span></span>
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#173d2a] px-3 py-2 text-xs font-bold text-white">Hablar <ArrowRight className="h-3.5 w-3.5"/></span>
           </Link>
         </StorefrontComponentBoundary>
       </section></StorefrontComponentBoundary>
@@ -539,6 +566,15 @@ export function Home() {
       <StorefrontComponentBoundary id="home.categoryStrip" order={sectionOrder("categoryStrip")} controls={market.componentControls} now={scheduleNow} enabled={sections.categoryStrip}>
       <section style={{ order: sectionOrder("categoryStrip") }} className="border-b border-[#eae6de] bg-[#fffdf9]">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-8 lg:px-10">
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#738174]">Encuentra lo que buscas</p>
+              <h2 className="mt-1 font-serif text-2xl text-[#1c3c2b] sm:text-3xl">Explora Herencia Market</h2>
+            </div>
+            <Link to="/productos" className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-[#315b42] hover:underline">
+              Ver tienda <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
           {market.home.referenceCategories !== false ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {displayedHomeCategories.map((item, index) => (
@@ -577,7 +613,7 @@ export function Home() {
 
       <StorefrontComponentBoundary id="home.plantCta" order={sectionOrder("plantCta")} controls={market.componentControls} now={scheduleNow} enabled={sections.plantCta}><div style={{ order: sectionOrder("plantCta") }} className="mx-auto max-w-7xl px-5 py-4 sm:px-8 lg:px-10 text-center">
         <Link
-          to="/catalogo/plantas"
+          to="/productos?coleccion=plantas"
           className="inline-flex items-center gap-2 rounded-lg bg-[#254932] px-6 py-3.5 font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#173d2a]"
         >
           Descubre nuestras plantas
@@ -593,12 +629,7 @@ export function Home() {
           <div className="grid gap-3 md:grid-cols-2">
             {spotlightCollections.map((collection) => (
               <Link key={collection.href} to={collection.href} className="group relative flex min-h-[215px] items-end overflow-hidden rounded-lg border border-[#e9e5dc] bg-[#1d412e] text-white shadow-sm md:min-h-[245px] xl:min-h-[260px]">
-                {collection.imageUrl === REFERENCE_3D_VISUAL ? (
-                  <>
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,#6b8e59,#183e29_68%)]"/>
-                    <img src={REFERENCE_3D_VISUAL} alt="" className="absolute right-0 top-0 h-full w-[44%] object-cover object-center opacity-95 transition-transform duration-700 group-hover:scale-105" />
-                  </>
-                ) : collection.imageUrl
+                {collection.imageUrl
                   ? <img src={collection.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)} />
                   : <div aria-hidden="true" className="absolute inset-0 flex items-center justify-end bg-[radial-gradient(circle_at_75%_50%,#718e6d,#224b32_65%,#153322)] pr-12"><Sparkles className="h-32 w-32 text-white/35" /></div>
                 }
@@ -615,6 +646,53 @@ export function Home() {
         {/* Existing category cards remain in admin; the homepage uses the reference's
             compact round categories above and two editorial banners here. */}
       </section></StorefrontComponentBoundary>
+
+      <StorefrontComponentBoundary id="home.selection" order={sectionOrder("selection")} controls={market.componentControls} now={scheduleNow} enabled={sections.selection && selectionProducts.length > 0}>
+        <section style={{ order: sectionOrder("selection") }} className="bg-[#f8f6f0]">
+          <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#738174]">Más para completar tu espacio</p>
+                <h2 className="mt-2 font-serif text-3xl font-normal tracking-tight text-[#1b3c2a] sm:text-4xl">{selectionDisplay.title}</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#68756a]">{selectionDisplay.subtitle}</p>
+              </div>
+              <Link to={selectionDisplay.href || "/productos"} className="inline-flex w-fit items-center gap-2 rounded-full border border-[#b7c7b5] px-5 py-2.5 text-sm font-bold text-[#315b42] transition hover:bg-[#e9f0e6]">
+                {selectionDisplay.buttonLabel || "Ver toda la tienda"}<ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            <div className={`mt-7 grid gap-4 ${selectionDisplay.columns === 4 ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"}`}>
+              {selectionProducts.map((product: any) => {
+                const price = Number(product.onSale && product.salePrice ? product.salePrice : product.price || 0);
+                const productTags = [product.vendor, product.fulfillmentType, product.shippingProfile,
+                  ...(Array.isArray(product.tags) ? product.tags : [])].filter(Boolean).join(" ");
+                const specialShipping = /dropship|printful|env[ií]o\s*especial/i.test(productTags);
+                return (
+                  <article key={product.id} className="group relative overflow-hidden rounded-2xl border border-[#e8e4da] bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg">
+                    <button type="button" onClick={() => void toggleFavorite(product.id)}
+                      aria-label={favorites.includes(String(product.id)) ? `Quitar ${product.name} de favoritos` : `Guardar ${product.name} en favoritos`}
+                      className="absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-[#294a35] shadow-sm">
+                      <Heart className="h-4 w-4" fill={favorites.includes(String(product.id)) ? "currentColor" : "none"}/>
+                    </button>
+                    {specialShipping && <span className="absolute left-2 top-2 z-10 rounded-full bg-[#f3ead6] px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-[#705c32]">{selectionDisplay.specialShippingLabel}</span>}
+                    <Link to={`/producto/${product.id}`} className="block aspect-[4/4.3] overflow-hidden bg-[#f1eee7]">
+                      <img src={product.image} alt={product.name} loading="lazy" onError={(event) => imageFallback(event, IMAGE_FALLBACKS.category)}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/>
+                    </Link>
+                    <div className="p-3">
+                      <Link to={`/producto/${product.id}`} className="line-clamp-2 min-h-10 text-sm font-black text-[#213b2a]">{product.name}</Link>
+                      <p className="mt-2 text-base font-black text-[#315b42]">{money(price)}</p>
+                      <button type="button" onClick={() => addToCart(product)}
+                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#285a3d] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#173d2a]">
+                        <ShoppingCart className="h-3.5 w-3.5"/> {needsExplicitVariantSelection(product) ? "Elegir opciones" : "Añadir al carrito"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      </StorefrontComponentBoundary>
 
       <StorefrontComponentBoundary id="home.services" order={sectionOrder("services")} controls={market.componentControls} now={scheduleNow} enabled={sections.services}>
       <section style={{ order: sectionOrder("services") }} className="bg-[#f4f1e8]">

@@ -6,18 +6,22 @@ export type PublicationWindow = { startAt?: string; endAt?: string };
 // Visual storefront preset: matches the reference composition while leaving the
 // section order fully editable in the existing administration builder.
 export const DEFAULT_HOME_SECTION_ORDER = [
-  "hero", "categoryStrip", "featured", "creations3d", "promotions", "trust",
-  "categoriesGrid", "feed", "bottomCta", "delivery", "plantCta", "services",
+  "hero", "delivery", "categoryStrip", "featured", "plantCta", "categoriesGrid",
+  "selection", "creations3d", "services", "feed", "trust", "promotions", "bottomCta",
 ] as const;
 const LEGACY_HOME_SECTION_ORDER = [
   "hero", "delivery", "categoryStrip", "plantCta", "feed", "categoriesGrid",
   "services", "featured", "promotions", "trust", "bottomCta",
 ];
+const PREVIOUS_REFERENCE_HOME_SECTION_ORDER = [
+  "hero", "categoryStrip", "featured", "creations3d", "promotions", "trust",
+  "categoriesGrid", "feed", "bottomCta", "delivery", "plantCta", "services",
+];
 export type MarketHomeSectionId = (typeof DEFAULT_HOME_SECTION_ORDER)[number];
 /** Optional shop-first template. It reuses all the existing home sections. */
 export const PLANT_SHOP_HOME_SECTION_ORDER: MarketHomeSectionId[] = [
-  "hero", "categoryStrip", "featured", "creations3d", "promotions", "trust",
-  "categoriesGrid", "feed", "bottomCta", "delivery", "plantCta", "services",
+  "hero", "delivery", "categoryStrip", "featured", "plantCta", "categoriesGrid",
+  "selection", "creations3d", "services", "feed", "trust", "promotions", "bottomCta",
 ];
 export type MarketHomeProductDisplay = {
   title: string;
@@ -31,10 +35,10 @@ export type MarketHomeProductDisplay = {
   filterLabels: string[];
 };
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
-  title: "Plantas destacadas",
-  subtitle: "Las plantas más especiales, seleccionadas para ti.",
+  title: "Plantas para dar vida a cada espacio",
+  subtitle: "Plantas naturales seleccionadas por Herencia para tu hogar.",
   mode: "plants",
-  limit: 6,
+  limit: 12,
   columns: 6,
   imageAspect: "portrait",
   cardRadius: 10,
@@ -42,13 +46,34 @@ export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
   filterLabels: ["Todas", "Purificadoras", "Fáciles de cuidar", "Con flor", "Colgantes", "Tropicales", "Pequeñas", "Grandes"],
 };
 
+export type MarketHomeSelectionDisplay = {
+  title: string;
+  subtitle: string;
+  limit: number;
+  columns: 4 | 6;
+  buttonLabel: string;
+  href: string;
+  specialShippingLabel: string;
+};
+
+export const DEFAULT_HOME_SELECTION_DISPLAY: MarketHomeSelectionDisplay = {
+  title: "Novedades para tu hogar y jardín",
+  subtitle: "Macetas, herramientas, sustratos y accesorios que completan tu espacio.",
+  limit: 6,
+  columns: 6,
+  buttonLabel: "Ver toda la tienda",
+  href: "/productos",
+  specialShippingLabel: "Envío especial",
+};
+
 
 export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionId[] {
   if (!Array.isArray(incoming)) return [...DEFAULT_HOME_SECTION_ORDER];
   // Earlier installs persisted the previous factory order, even when the
   // administrator never customized it. Migrate only that exact untouched order.
-  if (incoming.length === LEGACY_HOME_SECTION_ORDER.length &&
-      incoming.every((id, index) => id === LEGACY_HOME_SECTION_ORDER[index])) {
+  const isKnownFactoryOrder = [LEGACY_HOME_SECTION_ORDER, PREVIOUS_REFERENCE_HOME_SECTION_ORDER]
+    .some((order) => incoming.length === order.length && order.every((id, index) => incoming[index] === id));
+  if (isKnownFactoryOrder) {
     return [...DEFAULT_HOME_SECTION_ORDER];
   }
   const allowed = new Set<string>(DEFAULT_HOME_SECTION_ORDER);
@@ -59,6 +84,12 @@ export function normalizeHomeSectionOrder(incoming: unknown): MarketHomeSectionI
   if (!unique.includes("creations3d")) {
     const afterFeatured = unique.indexOf("featured");
     unique.splice(afterFeatured >= 0 ? afterFeatured + 1 : unique.length, 0, "creations3d");
+  }
+  if (!unique.includes("selection")) {
+    const creationsIndex = unique.indexOf("creations3d");
+    const categoriesIndex = unique.indexOf("categoriesGrid");
+    const insertAt = creationsIndex >= 0 ? creationsIndex : categoriesIndex >= 0 ? categoriesIndex + 1 : unique.length;
+    unique.splice(insertAt, 0, "selection");
   }
   for (const id of DEFAULT_HOME_SECTION_ORDER) if (!unique.includes(id)) unique.push(id);
   return unique;
@@ -140,6 +171,7 @@ export type MarketExperienceContent = {
       categoriesGrid: boolean;
       services: boolean;
       featured: boolean;
+      selection: boolean;
       promotions: boolean;
       creations3d: boolean;
       trust: boolean;
@@ -181,6 +213,7 @@ export type MarketExperienceContent = {
     shopFirst?: boolean;
     shopFirstPreviousSectionOrder?: MarketHomeSectionId[];
     productDisplay?: MarketHomeProductDisplay;
+    selectionDisplay?: MarketHomeSelectionDisplay;
     trust: Array<{ title: string; description: string; visible?: boolean; schedule?: PublicationWindow }>;
   };
   dulce: MarketPromo & {
@@ -281,6 +314,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       categoriesGrid: true,
       services: true,
       featured: true,
+      selection: true,
       promotions: true,
       creations3d: true,
       trust: true,
@@ -392,6 +426,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     featuredLimit: 6,
     shopFirst: true,
     productDisplay: DEFAULT_HOME_PRODUCT_DISPLAY,
+    selectionDisplay: DEFAULT_HOME_SELECTION_DISPLAY,
     featuredSubtitle: "Una selección de Herencia para tu casa, tu jardín y tus momentos especiales.",
     trust: [
       { title: "Calidad seleccionada", description: "Productos y servicios elegidos con cuidado." },
@@ -449,7 +484,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
     position: "right",
     bottomOffset: 24,
     buttonColor: "#173d2a",
-    buttonLabel: "Crear con Herencia",
+    buttonLabel: "Herencia Sales",
     title: "HERENCIA SALES",
     prompt: "¿Qué quieres crear o encontrar hoy? 🌿",
     helperText: "Solo compras, personalización y productos de Herencia.",
@@ -508,6 +543,8 @@ function isDisabledSalesAction(item: any) {
   const id = String(item?.id || "").toLowerCase();
   const label = String(item?.label || "").toLowerCase();
   return (
+    id === "bouquet" ||
+    label.includes("crear un ramo") ||
     id.includes("florist") ||
     id.includes("florister") ||
     id.includes("handoff") ||
@@ -586,6 +623,12 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
           ? homeIncoming.productDisplay.filterLabels.filter((name): name is string => typeof name === "string").slice(0, 12)
           : [...DEFAULT_HOME_PRODUCT_DISPLAY.filterLabels],
       },
+      selectionDisplay: {
+        ...DEFAULT_HOME_SELECTION_DISPLAY,
+        ...(homeIncoming.selectionDisplay || {}),
+        limit: Math.max(1, Math.min(12, Number(homeIncoming.selectionDisplay?.limit ?? DEFAULT_HOME_SELECTION_DISPLAY.limit))),
+        columns: Number(homeIncoming.selectionDisplay?.columns) === 4 ? 4 : 6,
+      },
       heroImageUrl: resolvedHeroImageUrl,
       categories: mergeList(defaultMarketExperience.home.categories, homeIncoming.categories),
       campaigns: Array.isArray(homeIncoming.campaigns) ? homeIncoming.campaigns : [],
@@ -604,6 +647,9 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
     sales: {
       ...defaultMarketExperience.sales,
       ...salesIncoming,
+      buttonLabel: String(salesIncoming.buttonLabel || defaultMarketExperience.sales.buttonLabel).trim() === "Crear con Herencia"
+        ? "Herencia Sales"
+        : String(salesIncoming.buttonLabel || defaultMarketExperience.sales.buttonLabel),
       quickActions: mergeSalesActions(defaultMarketExperience.sales.quickActions, salesIncoming.quickActions),
     },
   };
