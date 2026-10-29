@@ -34,7 +34,7 @@ export function Terms() {
           <section>
             <h2 className="text-2xl font-bold mb-4">1. Aceptación de los Términos</h2>
             <p className="text-muted-foreground">
-              Al acceder y utilizar el sitio web de Herencia Floristería, aceptas estar sujeto a estos términos y condiciones,
+              Al acceder y utilizar el sitio web de Tropical Plants, aceptas estar sujeto a estos términos y condiciones,
               todas las leyes y regulaciones aplicables. Si no estás de acuerdo con alguno de estos términos, se te prohíbe
               usar o acceder a este sitio.
             </p>
@@ -113,7 +113,7 @@ export function Terms() {
               pueden estar sujetos a excepciones legales específicas.
             </p>
             <p className="text-muted-foreground">
-              Si un pedido llega dañado, incompleto o no se corresponde con lo comprado, contacta con Herencia lo antes
+              Si un pedido llega dañado, incompleto o no se corresponde con lo comprado, contacta con Tropical Plants lo antes
               posible desde la página de Contacto indicando el número de pedido y, cuando sea útil, fotografías del producto.
             </p>
           </section>
@@ -122,7 +122,7 @@ export function Terms() {
             <h2 className="text-2xl font-bold mb-4">7. Propiedad Intelectual</h2>
             <p className="text-muted-foreground">
               Todo el contenido de este sitio web, incluyendo texto, gráficos, logos, imágenes y software, es propiedad
-              de Herencia Floristería y está protegido por las leyes de propiedad intelectual. No puedes reproducir,
+              de Tropical Plants y está protegido por las leyes de propiedad intelectual. No puedes reproducir,
               distribuir o modificar ningún contenido sin autorización escrita.
             </p>
           </section>
@@ -130,7 +130,7 @@ export function Terms() {
           <section>
             <h2 className="text-2xl font-bold mb-4">8. Limitación de Responsabilidad</h2>
             <p className="text-muted-foreground">
-              Herencia Floristería no será responsable de daños indirectos, incidentales, especiales o consecuentes que
+              Tropical Plants no será responsable de daños indirectos, incidentales, especiales o consecuentes que
               resulten del uso o la imposibilidad de usar nuestros productos o servicios. Nuestra responsabilidad total
               no excederá el monto pagado por el producto o servicio en cuestión.
             </p>
@@ -159,8 +159,8 @@ export function Terms() {
               Para preguntas sobre estos términos y condiciones, contáctanos:
             </p>
             <p className="text-muted-foreground mt-2">
-              Utiliza los canales de contacto publicados y actualizados en la página de Contacto de Herencia Market.
-              Herencia Market opera con entrega a domicilio y no ofrece recogida en tienda.
+              Utiliza los canales de contacto publicados y actualizados en la página de Contacto de Tropical Plants.
+              Tropical Plants opera con entrega a domicilio y no ofrece recogida en tienda.
             </p>
           </section>
         </motion.div>
