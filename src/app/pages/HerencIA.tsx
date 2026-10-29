@@ -88,7 +88,7 @@ export function HerencIA() {
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const rows = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]");
-      return Array.isArray(rows) ? rows.map((row: Message) => ({ ...row, content: String(row.content || "").replace(/Herenc\\(IA\\)/gi, "Tropical IA").replace(/Herencia Market/gi, "Tropical Plants").replace(/Herencia Sales/gi, "Tropical Sales") })) : [];
+      return Array.isArray(rows) ? rows.map((row: Message) => ({ ...row, content: String(row.content || "").replace(/Herenc\(IA\)/gi, "Tropical IA").replace(/Herencia Market/gi, "Tropical Plants").replace(/Herencia Sales/gi, "Tropical Sales") })) : [];
     } catch {
       return [];
     }
