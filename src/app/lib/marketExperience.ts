@@ -31,8 +31,8 @@ export type MarketHomeProductDisplay = {
   filterLabels: string[];
 };
 export const DEFAULT_HOME_PRODUCT_DISPLAY: MarketHomeProductDisplay = {
-  title: "Nuestra selección de plantas",
-  subtitle: "Plantas naturales disponibles para tu hogar.",
+  title: "Plantas destacadas",
+  subtitle: "Las plantas más especiales, seleccionadas para ti.",
   mode: "plants",
   limit: 6,
   columns: 6,
@@ -285,7 +285,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       creations3d: true,
       trust: true,
     },
-    kicker: "PLANTAS · HOGAR · NATURALEZA",
+    kicker: "HERENCIA MARKET",
     title: "Haz de tu hogar un espacio con vida",
     description: "Plantas, decoración, productos, servicios y detalles únicos para crear espacios que te hagan bien.",
     heroImageUrl: "/herencia-portada.avif",
@@ -298,8 +298,8 @@ export const defaultMarketExperience: MarketExperienceContent = {
     referenceCategories: true,
     referenceHero: true,
     referenceHeroImageUrl: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=2000&q=85",
-    referenceHeroTitle: "Naturaleza que te inspira",
-    referenceHeroDescription: "Plantas, macetas, creaciones 3D y regalos únicos para un hogar más vivo y feliz.",
+    referenceHeroTitle: "La naturaleza inspira tu hogar",
+    referenceHeroDescription: "Plantas únicas, macetas de diseño, creaciones 3D y regalos de Colombia, en un solo lugar.",
     campaigns: [],
     categories: [
       {
@@ -379,7 +379,7 @@ export const defaultMarketExperience: MarketExperienceContent = {
       },
     ],
     creations3D: {
-      title: "Creaciones 3D",
+      title: "Creaciones 3D de autor",
       subtitle: "Macetas de diseño, piezas personalizadas y detalles únicos fabricados en 3D.",
       imageUrl: "",
       buttonLabel: "Explorar creaciones 3D",
