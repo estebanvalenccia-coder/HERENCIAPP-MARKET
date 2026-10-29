@@ -222,7 +222,7 @@ export const defaultSiteContent: SiteContent = {
     home: { label: "Inicio", href: "/" },
     products: { label: "Productos", href: "/productos" },
     services: { label: "Servicios", href: "/servicios" },
-    herencia: { label: "Tropical IA", href: "/herencia" },
+    herencia: { label: "Tropical IA", href: "/tropical-ia" },
   },
   headerActions: {
     cartHref: "/carrito",
@@ -790,6 +790,7 @@ export function parseSiteContent(raw: string | null): SiteContent {
     const saved = JSON.parse(raw) || {};
     const oldBrand = /herencia/i.test(String(saved.brand?.name || "")) || /herencia/i.test(String(saved.brand?.logoAlt || ""));
     const parsed = tropicalizeDisplayContent(saved);
+    if (parsed.navigation?.herencia?.href === "/herencia") parsed.navigation.herencia.href = "/tropical-ia";
     if (/herencia/i.test(String(saved.footer?.instagramLabel || ""))) parsed.footer = { ...(parsed.footer || {}), instagramLabel: "Instagram" };
     if (oldBrand) parsed.brand = { ...(parsed.brand || {}), logoUrl: "/logo.svg" };
     const result: SiteContent = {
