@@ -377,7 +377,7 @@ export function SalesChatWidget() {
           if (next.length) return;
         }
       } catch (error) {
-        console.warn("[HERENCIA SALES] catálogo Commerce no disponible:", error);
+        console.warn("[Tropical Sales] catálogo Commerce no disponible:", error);
       } finally {
         if (active) setCatalogLoading(false);
       }
@@ -510,7 +510,7 @@ export function SalesChatWidget() {
             "Ahora mismo la IA no puede responder, pero sigo conectado al catálogo real. Puedes usar las acciones rápidas, buscar por foto o abrir la tienda.",
         },
       ]);
-      toast.error(error instanceof Error ? error.message : "Error en Herencia Sales");
+      toast.error(error instanceof Error ? error.message : "Error en Tropical Sales");
     } finally {
       setLoading(false);
     }
@@ -533,7 +533,7 @@ export function SalesChatWidget() {
         const assistantMessage: ChatMessage = {
           id: newId(),
           role: "assistant",
-          content: `Estas son opciones reales de ${action.label.toLowerCase()} disponibles ahora en Herencia. Puedes ver detalles, elegir variantes, añadir al carrito o comprar directamente.`,
+          content: `Estas son opciones reales de ${action.label.toLowerCase()} disponibles ahora en Tropical Plants. Puedes ver detalles, elegir variantes, añadir al carrito o comprar directamente.`,
           productIds: ids,
         };
         setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -675,7 +675,7 @@ export function SalesChatWidget() {
     const image = String(result.image || "");
     cart.push({
       id: `sales-ai-${Date.now()}`,
-      name: result.proposal.name || "Ramo personalizado Herencia",
+      name: result.proposal.name || "Ramo personalizado Tropical Plants",
       price: Number(result.price),
       quantity: 1,
       image: image.startsWith("data:") ? fallbackBouquetImage : image || fallbackBouquetImage,
@@ -863,7 +863,7 @@ export function SalesChatWidget() {
   const openSales = () => {
     window.dispatchEvent(new Event("herencia:sales-open"));
     setOpen(true);
-    trackSalesEvent("sales_open", { conversationId, eventLabel: "HERENCIA SALES" });
+    trackSalesEvent("sales_open", { conversationId, eventLabel: "Tropical Sales" });
   };
 
   return (
@@ -877,7 +877,7 @@ export function SalesChatWidget() {
           onClick={openSales}
           className={`fixed z-[90] inline-flex h-14 items-center gap-2 rounded-full border border-white/20 px-5 text-sm font-black text-white shadow-[0_16px_42px_rgba(23,61,42,.32)] transition hover:-translate-y-1 hover:brightness-110 ${sales.position === "left" ? "left-5 sm:left-7" : "right-5 sm:right-7"}`}
           style={{ bottom: `${Math.max(12, Math.min(200, Number(sales.bottomOffset || 24)))}px`, backgroundColor: /^#[0-9a-fA-F]{6}$/.test(sales.buttonColor) ? sales.buttonColor : "#173d2a" }}
-          aria-label="Abrir HERENCIA SALES"
+          aria-label="Abrir Tropical Sales"
           title={sales.buttonLabel}
         >
           <Sparkles className="h-5 w-5 text-[#e7d7a8]" />
@@ -890,7 +890,7 @@ export function SalesChatWidget() {
           <header className="border-b border-white/10 bg-[#173d2a] px-5 pb-5 pt-4 text-white">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <button type="button" onClick={goBack} className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20" aria-label="Volver al inicio de HERENCIA SALES">
+                <button type="button" onClick={goBack} className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/20" aria-label="Volver al inicio de Tropical Sales">
                   <ArrowLeft className="h-4 w-4" /> Atrás
                 </button>
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/65">
@@ -902,7 +902,7 @@ export function SalesChatWidget() {
                   {catalogLoading ? "Sincronizando catálogo…" : catalog.length ? `${catalog.length} productos reales conectados` : "Catálogo real conectado desde servidor"}
                 </p>
               </div>
-              <button type="button" onClick={() => { stageSupportHandoff("HERENCIA SALES", messages); setOpen(false); navigate("/contacto"); }} className="rounded-full border border-white/25 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10" aria-label="Enviar conversación a atención al cliente">
+              <button type="button" onClick={() => { stageSupportHandoff("Tropical Sales", messages); setOpen(false); navigate("/contacto"); }} className="rounded-full border border-white/25 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10" aria-label="Enviar conversación a atención al cliente">
                 Atención al cliente
               </button>
               <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 transition hover:bg-white/10" aria-label="Cerrar">
@@ -1061,7 +1061,7 @@ export function SalesChatWidget() {
                         </span>
                         <span className="block text-sm font-black leading-tight">{action.label}</span>
                         <span className="mt-1 block text-[10px] font-medium leading-snug text-[#7a847d]">
-                          {actionDescriptions[action.id] || "Explorar en Herencia"}
+                          {actionDescriptions[action.id] || "Explorar en Tropical Plants"}
                         </span>
                       </button>
                     );
