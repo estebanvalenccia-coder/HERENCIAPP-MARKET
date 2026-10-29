@@ -121,7 +121,7 @@ export function AdminInternationalDelivery() {
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-primary/10 p-3 text-primary"><Globe2 className="h-6 w-6" /></div>
             <div>
-              <p className="text-xs font-black uppercase tracking-[.18em] text-muted-foreground">Herencia internacional</p>
+              <p className="text-xs font-black uppercase tracking-[.18em] text-muted-foreground">Tropical Plants internacional</p>
               <h2 className="text-2xl font-bold">Colombia · Cali, Candelaria, Palmira y alrededores</h2>
             </div>
           </div>
@@ -154,7 +154,7 @@ export function AdminInternationalDelivery() {
               <ToggleCard label="Entrega sorpresa" checked={settings.surpriseEnabled} onChange={(checked)=>setSettings({...settings,surpriseEnabled:checked})} detail="Ocultar precio al destinatario." />
               <ToggleCard label="Fecha y horario" checked={settings.schedulingEnabled} onChange={(checked)=>setSettings({...settings,schedulingEnabled:checked})} detail="Permitir programar la entrega." />
             </div>
-            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Cobra pedidos Colombia en COP usando la misma cuenta Stripe de Herencia." />
+            <ToggleCard label="Pago online Colombia" checked={settings.paymentEnabled} onChange={(checked)=>setSettings({...settings,paymentEnabled:checked})} detail="Cobra pedidos Colombia en COP usando la misma cuenta Stripe de Tropical Plants." />
             <div className="grid gap-4 lg:grid-cols-2">
               <label><span className="mb-2 block text-sm font-bold">Sello sobre la portada</span><input value={settings.heroKicker} onChange={(e)=>setSettings({...settings,heroKicker:e.target.value})} placeholder="COLOMBIANÍSIMAS" className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Cobertura visible</span><input value={settings.regionLabel} onChange={(e)=>setSettings({...settings,regionLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
@@ -185,7 +185,7 @@ export function AdminInternationalDelivery() {
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="lg:col-span-2 rounded-2xl border bg-card p-4"><span className="mb-2 block text-sm font-bold">Subir foto de portada</span><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground"><ImageIcon className="h-4 w-4"/>{uploadingHero ? "Subiendo…" : "Subir foto"}<input type="file" accept="image/*" className="hidden" disabled={uploadingHero} onChange={uploadHero}/></label><p className="mt-2 text-xs text-muted-foreground">Se guarda en la biblioteca multimedia de Herencia y queda lista para Colombianísimas.</p></div>
+              <div className="lg:col-span-2 rounded-2xl border bg-card p-4"><span className="mb-2 block text-sm font-bold">Subir foto de portada</span><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground"><ImageIcon className="h-4 w-4"/>{uploadingHero ? "Subiendo…" : "Subir foto"}<input type="file" accept="image/*" className="hidden" disabled={uploadingHero} onChange={uploadHero}/></label><p className="mt-2 text-xs text-muted-foreground">Se guarda en la biblioteca multimedia de Tropical Plants y queda lista para Colombianísimas.</p></div>
               <label className="lg:col-span-2"><span className="mb-2 block text-sm font-bold">O usar URL de fondo</span><input value={settings.heroImageUrl} onChange={(e)=>setSettings({...settings,heroImageUrl:e.target.value})} placeholder="https://..." className="w-full rounded-xl border bg-background px-4 py-3" /><span className="mt-1 block text-xs text-muted-foreground">Pega aquí la URL de la nueva imagen y verás la vista previa arriba.</span></label>
               <label><span className="mb-2 block text-sm font-bold">Sello</span><input value={settings.heroKicker} onChange={(e)=>setSettings({...settings,heroKicker:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
               <label><span className="mb-2 block text-sm font-bold">Botón principal</span><input value={settings.heroCtaLabel} onChange={(e)=>setSettings({...settings,heroCtaLabel:e.target.value})} className="w-full rounded-xl border bg-background px-4 py-3" /></label>
@@ -265,7 +265,7 @@ export function AdminInternationalDelivery() {
         {tab === "orders" && (
           <div className="mt-6">
             <h3 className="text-xl font-bold">Pedidos Colombia</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Pedidos reales cobrados por Stripe y gestionados desde Herencia.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Pedidos reales cobrados por Stripe y gestionados desde Tropical Plants.</p>
             <div className="mt-5 space-y-3">
               {orders.length === 0 ? (
                 <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Todavía no hay pedidos Colombia.</div>
