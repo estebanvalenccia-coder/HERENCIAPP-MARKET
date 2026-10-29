@@ -5,8 +5,8 @@ import { AdminPromoDesignFields } from "./AdminVisualStyleFields";
 import type { MarketCampaign } from "../../lib/marketExperience";
 
 const templates = [
-  { id: "general", name: "Campaña personalizada", kicker: "HERENCIA MARKET", title: "Nueva promoción", subtitle: "", buttonLabel: "Descubrir" },
-  { id: "navidad", name: "Navidad", kicker: "ESPECIAL NAVIDAD", title: "Navidad con Herencia", subtitle: "Regalos especiales para esta temporada.", buttonLabel: "Descubrir regalos" },
+  { id: "general", name: "Campaña personalizada", kicker: "Tropical Plants", title: "Nueva promoción", subtitle: "", buttonLabel: "Descubrir" },
+  { id: "navidad", name: "Navidad", kicker: "ESPECIAL NAVIDAD", title: "Navidad con Tropical Plants", subtitle: "Regalos especiales para esta temporada.", buttonLabel: "Descubrir regalos" },
   { id: "sanvalentin", name: "San Valentín", kicker: "ESPECIAL SAN VALENTÍN", title: "Detalles con amor", subtitle: "Regalos para celebrar momentos especiales.", buttonLabel: "Ver regalos" },
   { id: "temporada", name: "Cambio de temporada", kicker: "NUEVA TEMPORADA", title: "Novedades de temporada", subtitle: "Descubre nuestra nueva selección.", buttonLabel: "Explorar novedades" },
 ] as const;
