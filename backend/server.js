@@ -1,3 +1,4 @@
+import { tropicalEmailSender } from "./brandEmailSender.js";
 import { sendTikTokPaidOrder } from "./tiktokEventsApi.js";
 import { registerSupportV2 } from "./supportV2.js";
 import { verifyAdminPassword } from "./adminAccounts.js";
@@ -617,21 +618,21 @@ function renderOrderEmail(order, recipientType = "customer") {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Confirmación de compra Herencia Market</title>
+    <title>Confirmación de compra Tropical Plants</title>
   </head>
-  <body style="margin:0;background:#fff7f2;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
+  <body style="margin:0;background:#f6f6f0;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      ${isAdminEmail ? "Nuevo pedido recibido" : "Gracias por tu compra"} en Herencia Market.
+      ${isAdminEmail ? "Nuevo pedido recibido" : "Gracias por tu compra"} en Tropical Plants.
     </div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fff7f2;padding:28px 12px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f6f0;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:28px;overflow:hidden;box-shadow:0 16px 50px rgba(96,46,24,.12);">
             <tr>
-              <td style="background:linear-gradient(135deg,#ff6f91,#ff9671,#ffc75f);padding:34px 28px;text-align:center;color:#fff;">
-                <div style="font-size:42px;line-height:1;margin-bottom:10px;">🌸</div>
+              <td style="background:linear-gradient(135deg,#173d2a,#426a4b);padding:34px 28px;text-align:center;color:#fff;">
+                <div style="font-size:13px;letter-spacing:4px;font-weight:800;margin-bottom:12px;">TROPICAL PLANTS</div><div style="font-size:34px;line-height:1;margin-bottom:10px;">🌿</div>
                 <h1 style="margin:0;font-size:28px;line-height:1.15;">${
-                  isAdminEmail ? "Nuevo pedido en Herencia Market" : "¡Gracias por tu compra!"
+                  isAdminEmail ? "Nuevo pedido en Tropical Plants" : "¡Gracias por tu compra!"
                 }</h1>
                 <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Documento #${escapeHtml(
                   documentNumber
@@ -779,16 +780,16 @@ function renderOrderStatusEmail(order) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Actualización de pedido Herencia Market</title>
+    <title>Actualización de pedido Tropical Plants</title>
   </head>
-  <body style="margin:0;background:#fff7f2;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fff7f2;padding:28px 12px;">
+  <body style="margin:0;background:#f6f6f0;font-family:Arial,Helvetica,sans-serif;color:#2b1712;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f6f0;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:28px;overflow:hidden;box-shadow:0 16px 50px rgba(96,46,24,.12);">
             <tr>
               <td style="background:linear-gradient(135deg,#2d5f3f,#7fa88f);padding:34px 28px;text-align:center;color:#fff;">
-                <div style="font-size:42px;line-height:1;margin-bottom:10px;">🌿</div>
+                <div style="font-size:13px;letter-spacing:4px;font-weight:800;margin-bottom:12px;">TROPICAL PLANTS</div><div style="font-size:34px;line-height:1;margin-bottom:10px;">🌿</div>
                 <h1 style="margin:0;font-size:28px;line-height:1.15;">${escapeHtml(statusLabel(normalized.status))}</h1>
                 <p style="margin:10px 0 0;font-size:15px;opacity:.95;">Pedido #${escapeHtml(normalized.id)}</p>
               </td>
@@ -839,7 +840,7 @@ async function sendResendEmail({ to, subject, html, replyTo }) {
     return { skipped: true, reason: "invalid_recipient" };
   }
 
-  const from = process.env.EMAIL_FROM || "Herencia Market <onboarding@resend.dev>";
+  const from = tropicalEmailSender(process.env.EMAIL_FROM);
   const payload = {
     from,
     to,
@@ -910,7 +911,7 @@ async function sendOrderConfirmationEmails(order, reason = "order_created") {
   if (isValidEmail(normalized.customerEmail)) {
     results.customer = await sendResendEmail({
       to: normalized.customerEmail,
-      subject: `Confirmación de compra Herencia Market #${normalized.id}`,
+      subject: `Confirmación de compra Tropical Plants #${normalized.id}`,
       html: renderOrderEmail(normalized, "customer"),
       replyTo: adminEmail,
     });
@@ -921,7 +922,7 @@ async function sendOrderConfirmationEmails(order, reason = "order_created") {
   if (isValidEmail(adminEmail)) {
     results.admin = await sendResendEmail({
       to: adminEmail,
-      subject: `Nuevo pedido Herencia Market #${normalized.id}`,
+      subject: `Nuevo pedido Tropical Plants #${normalized.id}`,
       html: renderOrderEmail(normalized, "admin"),
       replyTo: normalized.customerEmail,
     });
@@ -961,7 +962,7 @@ async function sendOrderStatusUpdateEmail(order, reason = "order_status_updated"
 
   const result = await sendResendEmail({
     to: normalized.customerEmail,
-    subject: `Actualización de tu pedido Herencia Market #${normalized.id}`,
+    subject: `Actualización de tu pedido Tropical Plants #${normalized.id}`,
     html: renderOrderStatusEmail(normalized),
     replyTo: adminEmail,
   });
@@ -1560,8 +1561,8 @@ app.post("/api/admin/smoke/email", requireAdmin, async (req, res) => {
     }
     const result = await sendResendEmail({
       to: recipient,
-      subject: "Herencia Market · prueba de email transaccional",
-      html: `<div style="font-family:Arial,sans-serif;padding:24px"><h1>Herencia Market</h1><p>La prueba de email transaccional se ha enviado correctamente desde el backend de producción.</p><p style="color:#666">Fecha: ${new Date().toISOString()}</p></div>`,
+      subject: "Tropical Plants · prueba de email transaccional",
+      html: `<div style="font-family:Arial,sans-serif;padding:24px"><h1>Tropical Plants</h1><p>La prueba de email transaccional se ha enviado correctamente desde el backend de producción.</p><p style="color:#666">Fecha: ${new Date().toISOString()}</p></div>`,
     });
     if (result?.skipped) {
       return res.status(503).json({ error: result.reason || "El proveedor de email no está disponible" });
@@ -2369,7 +2370,7 @@ app.get("/api/herencia-ai/access", async (req, res) => {
     res.json({ ok: true, ...state.public });
   } catch (error) {
     console.error("HerencIA access:", error?.message || error);
-    res.status(500).json({ error: "No se pudo comprobar el acceso a Herenc(IA)" });
+    res.status(500).json({ error: "No se pudo comprobar el acceso a Tropical IA" });
   }
 });
 
@@ -2383,7 +2384,7 @@ app.post("/api/herencia-ai/consume", async (req, res) => {
 
     if (Number(state.public.remaining || 0) <= 0) {
       return res.status(429).json({
-        error: "Has alcanzado tu límite diario de Herenc(IA).",
+        error: "Has alcanzado tu límite diario de Tropical IA.",
         ...state.public,
       });
     }
@@ -2404,7 +2405,7 @@ app.post("/api/herencia-ai/consume", async (req, res) => {
     });
   } catch (error) {
     console.error("HerencIA consume:", error?.message || error);
-    res.status(500).json({ error: "No se pudo registrar el uso de Herenc(IA)" });
+    res.status(500).json({ error: "No se pudo registrar el uso de Tropical IA" });
   }
 });
 
@@ -5519,7 +5520,7 @@ async function executeCjSupplierFulfillment(record, supplier, { force = false } 
       shippingAddress: String(address.address || "").slice(0, 500),
       shippingAddress2: String(address.address2 || "").slice(0, 500),
       email: String(record.customerEmail || "").slice(0, 50),
-      remark: String(address.notes || "Pedido Herencia Market").slice(0, 500),
+      remark: String(address.notes || "Pedido Tropical Plants").slice(0, 500),
       payType: 3,
       isSandbox: sandbox ? 1 : 0,
       logisticName,
@@ -5665,7 +5666,7 @@ async function prepareCjDispute(record, { expectType = 1, messageText = "", imag
       disputeReasonId: Number(reason.disputeReasonId),
       expectType: desiredExpect,
       refundType: 1,
-      messageText: String(messageText || "Solicitud gestionada por Herencia Market").slice(0, 500),
+      messageText: String(messageText || "Solicitud gestionada por Tropical Plants").slice(0, 500),
       imageUrl: Array.isArray(imageUrl) ? imageUrl.filter(Boolean).slice(0, 10) : [],
       videoUrl: Array.isArray(videoUrl) ? videoUrl.filter(Boolean).slice(0, 5) : [],
       productInfoList: selected,
@@ -7663,7 +7664,7 @@ async function createCjAutopilotUnpaid(record,mandate,checks){
         shippingAddress:String(address.address).slice(0,500),
         shippingAddress2:String(address.address2||"").slice(0,500),
         email:String(prepared.customerEmail||"").slice(0,50),
-        remark:"Pedido Herencia Market · Autopilot",
+        remark:"Pedido Tropical Plants · Autopilot",
         payType:3,isSandbox:0,logisticName:preview.logisticName,
         fromCountryCode:String(preview.origin||"CN").slice(0,2),
         platform:"api",orderFlow:1,
@@ -7942,7 +7943,7 @@ app.post("/api/admin/supplier-fulfillments/:id/cj-create-unpaid", requireAdmin, 
         shippingAddress: String(address.address).slice(0, 500),
         shippingAddress2: String(address.address2 || "").slice(0, 500),
         email: String(reserve.customerEmail || "").slice(0, 50),
-        remark: String(address.notes || "Pedido Herencia Market").slice(0, 500),
+        remark: String(address.notes || "Pedido Tropical Plants").slice(0, 500),
         payType: 3,
         isSandbox: 0,
         logisticName: preview.logisticName,
@@ -9830,7 +9831,7 @@ app.post("/api/ai/bouquet", requireAdmin, async (req, res) => {
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: `Crea un ramo para Herencia Market. Idea: ${description}. Presupuesto: ${budget} euros. Estilo: ${style}. Color principal: ${color}. Tamano: ${size}.`,
+            content: `Crea un ramo para Tropical Plants. Idea: ${description}. Presupuesto: ${budget} euros. Estilo: ${style}. Color principal: ${color}. Tamano: ${size}.`,
           },
         ],
         temperature: 0.7,
@@ -10172,7 +10173,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     const normalizedDeliveryMethod = String(deliveryMethod || "envio").toLowerCase();
     if (!["envio", "servicio"].includes(normalizedDeliveryMethod)) {
-      return res.status(400).json({ error: "Herencia Market solo ofrece entrega a domicilio" });
+      return res.status(400).json({ error: "Tropical Plants solo ofrece entrega a domicilio" });
     }
 
     const selectedPaymentMethod = paymentMethod === "bizum" ? "bizum" : "tarjeta";
@@ -11803,7 +11804,7 @@ app.post("/api/customer/support", requireCustomer, supportLimiter, async (req, r
         const hours = Array.isArray(publicSite?.contactPage?.hours)
           ? publicSite.contactPage.hours.map(h => String(h.label || "") + ": " + String(h.value || "")).join("; ")
           : "";
-        const publicContext = "Herencia Market. Horario publicado: " + hours.slice(0, 700)
+        const publicContext = "Tropical Plants. Horario publicado: " + hours.slice(0, 700)
           + ". Para dudas de pagos, pedidos, devoluciones o reclamaciones deriva a atención humana.";
         const sourceMessageId = thread.messages?.[thread.messages.length - 1]?.id || "";
         const result = await answerGeneralSupport(text, publicContext);
