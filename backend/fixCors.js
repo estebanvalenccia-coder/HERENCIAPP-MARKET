@@ -1,6 +1,8 @@
 const defaultOrigins = [
   "https://www.herenciamarket.es",
   "https://herenciamarket.es",
+  "https://tropically.es",
+  "https://www.tropically.es",
   "https://herenciapp-market.vercel.app",
 ];
 
