@@ -5,7 +5,7 @@ import { isAllowedAdminPublicationOrigin, trustedAdminPublicationOrigins } from 
 const production = { NODE_ENV: "production" };
 
 test("the actual storefront's cookie-authenticated publish request is allowed behind Vercel→Railway", () => {
-  for (const origin of ["https://herenciamarket.es", "https://www.herenciamarket.es"]) {
+  for (const origin of ["https://herenciamarket.es", "https://www.herenciamarket.es", "https://tropically.es", "https://www.tropically.es"]) {
     assert.equal(isAllowedAdminPublicationOrigin({
       origin,
       host: "herenciapp-market-production.up.railway.app",
