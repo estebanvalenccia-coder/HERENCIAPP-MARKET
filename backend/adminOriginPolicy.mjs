@@ -10,6 +10,8 @@
 const PRODUCTION_ORIGINS = new Set([
   "https://herenciamarket.es",
   "https://www.herenciamarket.es",
+  "https://tropically.es",
+  "https://www.tropically.es",
 ]);
 
 const VERCEL_PREVIEW_HOST = /^herenciapp-market-[a-z0-9-]+-daniels-projects-b54d9ed6\.vercel\.app$/;
