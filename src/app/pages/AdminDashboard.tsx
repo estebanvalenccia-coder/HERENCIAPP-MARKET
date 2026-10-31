@@ -66,6 +66,7 @@ import { AdminFinance } from "../components/admin/AdminFinance";
 import { AdminPOS } from "../components/admin/AdminPOS";
 import { AdminHerenciaNeural } from "../components/admin/AdminHerenciaNeural";
 import { AdminDeliveryPanel } from "../components/admin/AdminDeliveryPanel";
+import { AdminShippingCarriers } from "../components/admin/AdminShippingCarriers";
 import { AdminSystemAudit } from "../components/admin/AdminSystemAudit";
 import { AdminBusinessSuite } from "../components/admin/AdminBusinessSuite";
 import { AdminCRMClients } from "../components/admin/AdminCRMClients";
@@ -107,6 +108,7 @@ type AdminSection =
   | "content"
   | "community"
   | "international-delivery"
+  | "shipping-carriers"
   | "delivery"
   | "neural"
   | "audit"
@@ -462,6 +464,7 @@ export function AdminDashboard() {
     { id: "community" as AdminSection, label: "Comunidad / Novedades", icon: MessageCircleHeart, badge: "NUEVO" },
     { id: "international-delivery" as AdminSection, label: "Colombia / Internacional", icon: Globe2, badge: "🇨🇴" },
     { id: "delivery" as AdminSection, label: "Repartos", icon: Truck, badge: "REAL" },
+    { id: "shipping-carriers" as AdminSection, label: "Envíos / Recogida", icon: Package, badge: "NUEVO" },
     { id: "neural" as AdminSection, label: "TROPICAL PLANTS Neural", icon: Brain, badge: "NEURAL" },
     { id: "audit" as AdminSection, label: "Diagnóstico", icon: Activity, badge: "TEST" },
     { id: "business-suite" as AdminSection, label: "Centro de Negocio", icon: Rocket, badge: "NUEVO" },
@@ -1033,6 +1036,8 @@ export function AdminDashboard() {
           {currentSection === "international-delivery" && <AdminInternationalDelivery />}
 
           {currentSection === "delivery" && <AdminDeliveryPanel />}
+
+          {currentSection === "shipping-carriers" && <AdminShippingCarriers />}
 
           {currentSection === "neural" && <AdminHerenciaNeural />}
 
