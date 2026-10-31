@@ -24,7 +24,7 @@ function isLegacy3D(p:any) {
   const title=String(p.name||"").toLowerCase();
   const tags=(Array.isArray(p.tags)?p.tags:[p.tags]).join(" ").toLowerCase();
   if (productBelongsToCollection(p,"creaciones-3d")) return true;
-  if (/3d|impresi[oó]n 3d|impreso en 3d/.test([collection,category,joined,tags].join(" ")))return true;
+  if (/3d|impresi[oó]n 3d|impreso en 3d/.test([collection,category,joined,tags].join(" ")) || /(?:impresi[oó]n|impreso|impresa|diseño|diseños)\s*(?:en\s*)?3d|3d\s*(?:print|impreso)/i.test(title))return true;
   // Only confidently identifiable handmade printed objects: avoid moving ordinary plants.
   if (/cortador(?:es)? de (?:galletas|masa)|tortillero|pataconera|jarr[oó]n naranja escult[oó]rico/i.test(title))return true;
   return false;
