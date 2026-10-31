@@ -49,6 +49,7 @@ import { AdminProducts } from "../components/admin/AdminProducts";
 import { AdminAddProduct } from "../components/admin/AdminAddProduct";
 import { AdminBulkProductImport } from "../components/admin/AdminBulkProductImport";
 import { AdminCollectionsManager } from "../components/admin/AdminCollectionsManager";
+import { AdminCreaciones3D } from "../components/admin/AdminCreaciones3D";
 import { AdminOffers } from "../components/admin/AdminOffers";
 import { AdminPublications } from "../components/admin/AdminPublications";
 import { AdminContent } from "../components/admin/AdminContent";
@@ -92,6 +93,7 @@ type AdminSection =
   | "add-product"
   | "bulk-product-import"
   | "collections"
+  | "creaciones-3d"
   | "pos"
   | "ai-bouquet-designer"
   | "offers"
@@ -481,6 +483,7 @@ export function AdminDashboard() {
     { id: "products" as AdminSection, label: "Ver productos", icon: Package },
     { id: "add-product" as AdminSection, label: "Añadir uno", icon: Plus },
     { id: "collections" as AdminSection, label: "Colecciones", icon: Layers3 },
+    { id: "creaciones-3d" as AdminSection, label: "Creaciones 3D / Editor visual", icon: Sparkles, badge: "3D" },
     {
       id: "bulk-product-import" as AdminSection,
       label: "Importar productos",
@@ -990,6 +993,7 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "collections" && <AdminCollectionsManager />}
+          {currentSection === "creaciones-3d" && <AdminCreaciones3D onProducts={() => setCurrentSection("products")} onNewProduct={() => setCurrentSection("add-product")} onCollections={() => setCurrentSection("collections")} />}
 
           {currentSection === "pos" && <AdminPOS />}
 
