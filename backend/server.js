@@ -52,6 +52,7 @@ import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCo
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
 import { verifyLocalPickup } from "./localPickupPolicy.js";
+import { createPacklinkClient } from "./packlinkProClient.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
@@ -1612,6 +1613,47 @@ app.get("/api/ready", async (_req, res) => {
       requestId: _req.requestId,
     });
   }
+});
+
+// Packlink PRO diagnostics: admin-only, read-only. No shipment is purchased here.
+app.get("/api/admin/shipping/packlink/status", requireAdmin, async (_req, res) => {
+  const settings = parseStoredJson(await readStorageValue("shippingSettings"), {});
+  res.json({
+    configured: Boolean(process.env.PACKLINK_API_KEY),
+    originPostalCode: String(settings?.packlink?.originPostalCode || ""),
+    source: "packlink-pro",
+    requiresLiveVerification: true,
+    checkoutEnabled: false,
+    labelsEnabled: false,
+  });
+});
+app.post("/api/admin/shipping/packlink/test", requireAdmin, async (_req, res) => {
+  try {
+    const result = await createPacklinkClient({apiKey:process.env.PACKLINK_API_KEY}).verify();
+    res.json(result);
+  } catch(error) { res.status(503).json({error:error.message || "Error al conectar con Packlink"}); }
+});
+app.post("/api/admin/shipping/packlink/quote", requireAdmin, async (req, res) => {
+  try {
+    const settings = parseStoredJson(await readStorageValue("shippingSettings"), {});
+    const fromZip = String(settings?.packlink?.originPostalCode || "").trim();
+    const result = await createPacklinkClient({apiKey:process.env.PACKLINK_API_KEY}).rates({
+      fromZip,
+      toZip: req.body?.postalCode,
+      parcel: req.body?.parcel,
+      source: process.env.PACKLINK_SERVICE_SOURCE || "PRO",
+    });
+    res.json({ ok: true, currency: "EUR", services: result, live: true,
+      notice: "Consulta informativa. No reserva precio ni genera etiqueta." });
+  } catch(error) { res.status(422).json({error:error.message || "No se pudieron consultar los transportistas"}); }
+});
+app.post("/api/admin/shipping/packlink/points", requireAdmin, async (req, res) => {
+  try {
+    const result = await createPacklinkClient({apiKey:process.env.PACKLINK_API_KEY}).dropoffs({
+      serviceId: req.body?.serviceId, postalCode: req.body?.postalCode,
+    });
+    res.json({ok:true,points:result});
+  } catch(error) { res.status(422).json({error:error.message || "No se pudieron obtener puntos de recogida"}); }
 });
 
 app.get("/api/shipping/availability", async (req, res) => {
