@@ -51,6 +51,7 @@ import {
 import { calculateCouponDiscount, normalizeCouponCode, isServiceProduct, claimCouponUse, settleCouponUse } from "./promoCodes.js";
 import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
+import { verifyLocalPickup } from "./localPickupPolicy.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
@@ -3773,6 +3774,9 @@ async function validateCommerceOrderPayload(order = {}) {
   const deliveryMethod = String(order?.deliveryMethod || "envio").toLowerCase();
 
   const hasPhysicalItems = normalizedItems.some((item) => !isServiceProduct(item));
+  const verifiedLocalPickup = source === "frontend_checkout" && hasPhysicalItems
+    ? verifyLocalPickup({shippingSettings,shippingChoice:order?.metadata?.shippingChoice,lines:normalizedItems,catalog:products})
+    : null;
   if (source === "frontend_checkout" && !["envio", "servicio"].includes(deliveryMethod)) {
     throw new Error("Método de entrega no válido");
   }
@@ -3794,8 +3798,13 @@ async function validateCommerceOrderPayload(order = {}) {
     });
     directCjShipping = cjCheckout.cjOnly;
     if (directCjShipping) {
+      if (verifiedLocalPickup) throw new Error("La recogida no está disponible para productos de proveedores");
       shippingQuote = cjCheckout.shippingQuote;
       shipping = 0; // Supplier freight is already budgeted in the product sale price.
+    } else if (verifiedLocalPickup) {
+      shipping = 0;
+      shippingQuote = { price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
+        destination: verifiedLocalPickup.label, pricing: { model: "local_pickup" } };
     } else {
       shippingQuote = await calculateShippingQuote(shippingAddress);
       const maxDeliveryKm = Math.max(0, Number(suite.maxDeliveryKm || 0));
@@ -3823,7 +3832,7 @@ async function validateCommerceOrderPayload(order = {}) {
   // A verified coupon covering the entire merchandise subtotal also covers delivery.
   if (couponCode && subtotal > 0 && discount >= subtotal - 0.001) shipping = 0;
 
-  if (hasPhysicalItems && !directCjShipping) await assertDeliveryAvailability({
+  if (hasPhysicalItems && !directCjShipping && !verifiedLocalPickup) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
     suite,
@@ -10281,11 +10290,21 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     }
 
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
+    const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
+    const verifiedLocalPickup = !serviceOnly ? verifyLocalPickup({
+      shippingSettings, shippingChoice: metadata?.shippingChoice,
+      lines: authoritativeItems, catalog,
+    }) : null;
     const shippingAddress = metadata?.shippingAddress || {};
     let shippingQuote = null;
     let authoritativeShipping = 0;
     let directCjShipping = false;
     if (!serviceOnly) {
+      if (verifiedLocalPickup) {
+        authoritativeShipping = 0;
+        shippingQuote = {price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
+          destination: verifiedLocalPickup.label, pricing: {model: "local_pickup"}};
+      } else {
       const supplierOperations = await readSupplierOperations();
       const directCj = await evaluateCjCheckout({
         lines: authoritativeItems, catalog, shippingAddress,
@@ -10311,12 +10330,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         const freeShippingFrom = Math.max(0, Number(suite.freeShippingFrom || 0));
         if (freeShippingFrom > 0 && authoritativeSubtotal >= freeShippingFrom) authoritativeShipping = 0;
       }
+      }
     }
 
     // Apply the same shipping policy as checkout, including advanced distance rules.
     // Only a server-verified full-discount coupon can make delivery free.
-    if (!serviceOnly && !directCjShipping && shippingQuote) {
-      const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
+    if (!serviceOnly && !directCjShipping && !verifiedLocalPickup && shippingQuote) {
       if (shippingSettings.advancedEnabled) {
         authoritativeShipping = shippingQuoteForCart({
           settings: shippingSettings,
@@ -10366,7 +10385,10 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       discount: authoritativeDiscount,
       coupon: couponCode || null,
       inventoryReservation: stockReservation,
-      shippingDistance: shippingQuote
+      shippingChoice: verifiedLocalPickup
+        ? {method:"local_pickup",label:verifiedLocalPickup.label,instructions:verifiedLocalPickup.instructions}
+        : {method:"delivery"},
+      shippingDistance: shippingQuote && !verifiedLocalPickup
         ? {
             distanceKm: shippingQuote.distanceKm,
             distanceText: shippingQuote.distanceText,
