@@ -165,6 +165,9 @@ export function AdminDashboard() {
   const [currentSection, setCurrentSection] =
     useState<AdminSection>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [productListPreset, setProductListPreset] = useState("todos");
+  const [newProductPreset, setNewProductPreset] = useState<string|undefined>(undefined);
+  useEffect(()=>{if(currentSection!=="products"&&currentSection!=="creaciones-3d")setProductListPreset("todos");},[currentSection]);
   const [importedProductToOpen, setImportedProductToOpen] = useState<string | null>(null);
   const openImportedProduct = (productId: string) => {
     setImportedProductToOpen(String(productId));
@@ -981,11 +984,11 @@ export function AdminDashboard() {
           {currentSection === "herencia-sales" && <AdminHerenciaSales onNavigate={(section) => setCurrentSection(section as AdminSection)} />}
 
           {currentSection === "products" && (
-            <AdminProducts onAddNew={() => setCurrentSection("add-product")} focusProductId={importedProductToOpen} onFocusHandled={() => setImportedProductToOpen(null)} />
+            <AdminProducts initialCollectionFilter={productListPreset} onAddNew={() => {setNewProductPreset(undefined);setCurrentSection("add-product");}} focusProductId={importedProductToOpen} onFocusHandled={() => setImportedProductToOpen(null)} />
           )}
 
           {currentSection === "add-product" && (
-            <AdminAddProduct onBack={() => setCurrentSection("products")} />
+            <AdminAddProduct initialCollection={newProductPreset} onBack={() => {setNewProductPreset(undefined);setCurrentSection("products");}} />
           )}
 
           {currentSection === "bulk-product-import" && (
@@ -993,7 +996,7 @@ export function AdminDashboard() {
           )}
 
           {currentSection === "collections" && <AdminCollectionsManager />}
-          {currentSection === "creaciones-3d" && <AdminCreaciones3D onProducts={() => setCurrentSection("products")} onNewProduct={() => setCurrentSection("add-product")} onCollections={() => setCurrentSection("collections")} />}
+          {currentSection === "creaciones-3d" && <AdminCreaciones3D onProducts={() => {setProductListPreset("creaciones-3d");setCurrentSection("products");}} onNewProduct={() => {setNewProductPreset("creaciones-3d");setCurrentSection("add-product");}} onCollections={() => setCurrentSection("collections")} />}
 
           {currentSection === "pos" && <AdminPOS />}
 
