@@ -31,7 +31,7 @@ const supplierFulfilled = (product = {}) => {
 export function verifyLocalPickup({ shippingSettings, shippingChoice, lines = [], catalog = [] }) {
   const method = String(shippingChoice?.method || "delivery");
   if (method !== "local_pickup") {
-    if (method !== "delivery") throw new Error("Método de entrega desconocido");
+    if (!["delivery","sendcloud","manual_shipping"].includes(method)) throw new Error("Método de entrega desconocido");
     return null;
   }
   const settings = localPickupSettings(shippingSettings);
