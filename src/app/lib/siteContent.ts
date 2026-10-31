@@ -299,8 +299,8 @@ export const defaultSiteContent: SiteContent = {
     callPhone: "+34624239598",
     instagramLabel: "Instagram",
     instagramUrl: "https://instagram.com/floristeriaherencia",
-    mapsLabel: "Cómo llegar",
-    mapsUrl: "https://maps.app.goo.gl/WLihx3aD1Xhqc9WT8",
+    mapsLabel: "Horta, Barcelona",
+    mapsUrl: "https://www.google.com/maps/search/?api=1&query=Horta%2C%20Barcelona",
     copyright: "© 2026 Tropical Plants. Todos los derechos reservados.",
     developerLabel: "Desarrollado por DEVB",
     privacyLabel: "Política de Privacidad",
@@ -383,9 +383,9 @@ export const defaultSiteContent: SiteContent = {
       { label: "Domingo", value: "Cerrado" },
     ],
     addressTitle: "Dirección",
-    addressText: "Tropical Plants",
+    addressText: "Horta, Barcelona",
     mapButtonLabel: "Ver en Google Maps",
-    mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3037.5!2d-3.7!3d40.4!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDDCsDI0JzAwLjAiTiAzwrA0MicwMC4wIlc!5e0!3m2!1sen!2ses!4v1234567890",
+    mapEmbedUrl: "https://www.google.com/maps?q=Horta%2C%20Barcelona&output=embed",
     helpTitle: "¿Necesitas ayuda?",
     helpIntro: "Nuestro equipo está disponible para ayudarte con:",
     helpItems: [
@@ -790,6 +790,24 @@ export function parseSiteContent(raw: string | null): SiteContent {
     const saved = JSON.parse(raw) || {};
     const oldBrand = /herencia/i.test(String(saved.brand?.name || "")) || /herencia/i.test(String(saved.brand?.logoAlt || ""));
     const parsed = tropicalizeDisplayContent(saved);
+    // Migrate legacy public-location defaults, preserving custom locations
+    // and never modifying addresses supplied by customers at checkout.
+    if (parsed.footer) {
+      if (["Cómo llegar", "Barcelona"].includes(String(parsed.footer.mapsLabel || "").trim())) {
+        parsed.footer.mapsLabel = "Horta, Barcelona";
+      }
+      if (parsed.footer.mapsUrl === "https://maps.app.goo.gl/WLihx3aD1Xhqc9WT8") {
+        parsed.footer.mapsUrl = defaultSiteContent.footer.mapsUrl;
+      }
+    }
+    if (parsed.contactPage) {
+      if (["Tropical Plants", "Barcelona"].includes(String(parsed.contactPage.addressText || "").trim())) {
+        parsed.contactPage.addressText = "Horta, Barcelona";
+      }
+      if (String(parsed.contactPage.mapEmbedUrl || "").includes("4v1234567890")) {
+        parsed.contactPage.mapEmbedUrl = defaultSiteContent.contactPage.mapEmbedUrl;
+      }
+    }
     if (parsed.navigation?.herencia?.href === "/herencia") parsed.navigation.herencia.href = "/tropical-ia";
     if (/herencia/i.test(String(saved.footer?.instagramLabel || ""))) parsed.footer = { ...(parsed.footer || {}), instagramLabel: "Instagram" };
     if (oldBrand) parsed.brand = { ...(parsed.brand || {}), logoUrl: "/logo.svg" };
