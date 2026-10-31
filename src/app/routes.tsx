@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { Products } from "./pages/Products";
+import { Creaciones3D } from "./pages/Creaciones3D";
 import { ProductDetail } from "./pages/ProductDetail";
 import { Services } from "./pages/Services";
 import { Contact } from "./pages/Contact";
@@ -29,7 +30,7 @@ import { ColombiaDelivery } from "./pages/ColombiaDelivery";
 
 export const router = createBrowserRouter([
   { path: "/", Component: Layout, children: [
-    { index:true, Component:Home }, { path:"productos", Component:Products }, { path:"crear-ramo", Component:BouquetBuilder }, { path:"producto/:id", Component:ProductDetail }, { path:"cuidados/:id", Component:PlantPassport }, { path:"faq", Component:FAQ }, { path:"campana/:slug", Component:CampaignPage }, { path:"servicios", Component:Services }, { path:"dulce", Component:Sweet }, { path:"moda", Component:Fashion }, { path:"nosotros", Component:About }, { path:"comunidad", Component:Community }, { path:"colombia", Component:ColombiaDelivery }, { path:"contacto", Component:Contact }, { path:"tropical-ia", Component:HerencIA }, { path:"herencia", element: <Navigate to="/tropical-ia" replace /> }, { path:"ia", element: <Navigate to="/tropical-ia" replace /> }, { path:"carrito", Component:Cart }, { path:"checkout", Component:Checkout }, { path:"pedido-confirmado", Component:OrderConfirmed }, { path:"perfil", Component:Profile }, { path:"login", Component:Login }, { path:"recuperar-contrasena", Component:ResetPassword }, { path:"privacidad", Component:Privacy }, { path:"cookies", Component:Cookies }, { path:"terminos", Component:Terms }, { path:"politica-de-devoluciones", Component:Returns }, { path:"*", Component:NotFound }
+    { index:true, Component:Home }, { path:"productos", Component:Products }, { path:"creaciones-3d", Component:Creaciones3D }, { path:"crear-ramo", Component:BouquetBuilder }, { path:"producto/:id", Component:ProductDetail }, { path:"cuidados/:id", Component:PlantPassport }, { path:"faq", Component:FAQ }, { path:"campana/:slug", Component:CampaignPage }, { path:"servicios", Component:Services }, { path:"dulce", Component:Sweet }, { path:"moda", Component:Fashion }, { path:"nosotros", Component:About }, { path:"comunidad", Component:Community }, { path:"colombia", Component:ColombiaDelivery }, { path:"contacto", Component:Contact }, { path:"tropical-ia", Component:HerencIA }, { path:"herencia", element: <Navigate to="/tropical-ia" replace /> }, { path:"ia", element: <Navigate to="/tropical-ia" replace /> }, { path:"carrito", Component:Cart }, { path:"checkout", Component:Checkout }, { path:"pedido-confirmado", Component:OrderConfirmed }, { path:"perfil", Component:Profile }, { path:"login", Component:Login }, { path:"recuperar-contrasena", Component:ResetPassword }, { path:"privacidad", Component:Privacy }, { path:"cookies", Component:Cookies }, { path:"terminos", Component:Terms }, { path:"politica-de-devoluciones", Component:Returns }, { path:"*", Component:NotFound }
   ]},
   { path:"/admin", Component:AdminDashboard },
 ]);
