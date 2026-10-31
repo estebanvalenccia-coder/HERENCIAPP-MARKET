@@ -4,6 +4,7 @@ export type CommerceCollectionId =
   | "jardineria"
   | "sustratos"
   | "decoracion"
+  | "creaciones-3d"
   | "dulce"
   | "moda"
   | "servicios";
@@ -12,7 +13,7 @@ export type CommerceCollectionDefinition = {
   id: CommerceCollectionId;
   name: string;
   description: string;
-  productType: "plant" | "seed" | "garden" | "substrate" | "decor" | "food" | "fashion" | "service";
+  productType: "plant" | "seed" | "garden" | "substrate" | "decor" | "3d" | "food" | "fashion" | "service";
   inventoryDefault: boolean;
   categories: Array<{ id: string; name: string }>;
 };
@@ -86,11 +87,27 @@ export const COMMERCE_COLLECTIONS: CommerceCollectionDefinition[] = [
     inventoryDefault: true,
     categories: [
       { id: "macetas", name: "Macetas" },
-      { id: "macetas-3d", name: "Macetas impresas en 3D" },
       { id: "jarrones", name: "Jarrones" },
       { id: "hogar", name: "Hogar" },
       { id: "regalos", name: "Regalos" },
       { id: "decoracion-otros", name: "Otros" },
+    ],
+  },
+  {
+    id: "creaciones-3d",
+    name: "Creaciones 3D",
+    description: "Diseños únicos impresos en 3D: macetas, jarrones, decoración, hogar y personalizados.",
+    productType: "3d",
+    inventoryDefault: true,
+    categories: [
+      { id: "macetas-3d", name: "Macetas y jardinería 3D" },
+      { id: "jarrones-3d", name: "Jarrones y decoración" },
+      { id: "cortadores-moldes-3d", name: "Cortadores y moldes" },
+      { id: "cocina-hogar-3d", name: "Cocina y hogar" },
+      { id: "organizacion-3d", name: "Organización y accesorios" },
+      { id: "figuras-3d", name: "Figuras y arte" },
+      { id: "personalizados-3d", name: "Personalizados" },
+      { id: "otros-3d", name: "Otros diseños 3D" },
     ],
   },
   {
@@ -157,6 +174,7 @@ export function primaryCollectionOf(product: any): CommerceCollectionId {
 
   const direct = COMMERCE_COLLECTIONS.find((item) => explicit.includes(item.id) || legacy === item.id);
   if (direct) return direct.id;
+  if (category === "macetas-3d") return "creaciones-3d";
 
   const byCategory = COMMERCE_COLLECTIONS.find((item) => item.categories.some((row) => row.id === category));
   return byCategory?.id || "plantas";
