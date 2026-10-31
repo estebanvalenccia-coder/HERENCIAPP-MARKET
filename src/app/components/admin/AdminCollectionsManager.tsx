@@ -20,6 +20,7 @@ const CORE_COLLECTIONS = new Set([
   "jardineria",
   "sustratos",
   "decoracion",
+  "creaciones-3d",
   "dulce",
   "moda",
   "servicios",
