@@ -6,7 +6,7 @@ import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
 import { localPickupSettings } from "../../../backend/localPickupPolicy.js";
-import { is3DShippingProduct } from "../../../backend/sendcloudCheckoutPolicy.js";
+import { isCarrierEligibleProduct } from "../../../backend/catalogShippingRules.js";
 import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
 import { firstUnselectedPrintfulItem } from "../lib/printfulVariantSelection.js";
 
@@ -127,6 +127,10 @@ export function Checkout() {
   const [pickupSelected, setPickupSelected] = useState(false);
   const [courierOptions,setCourierOptions] = useState<Array<{code:string,name:string,carrier:string,price:number,currency:string}>>([]);
   const [courierSelected,setCourierSelected] = useState("");
+  const [manualOptions,setManualOptions] = useState<Array<{
+    method:string,service:string,label:string,carrier:string,price:number,currency:string,
+    requiresMerchantBooking:boolean}>>([]);
+  const [manualSelected,setManualSelected] = useState("");
   const [courierLoading,setCourierLoading] = useState(false);
   const [pointLoading,setPointLoading] = useState(false);
   const [servicePoints,setServicePoints] = useState<Array<{id:number,name:string,carrier:string,street:string,city:string,postalCode:string}>>([]);
@@ -144,11 +148,14 @@ export function Checkout() {
     if (!localPickupAllowed && pickupSelected) setPickupSelected(false);
   }, [localPickupAllowed, pickupSelected]);
 
-  const courierEligible = shippingPolicy?.sendcloud?.checkoutEnabled === true &&
-    hasPhysicalItems && !hasServices && !hasCjItems && !shippingCatalogPending &&
-    shippingCartItems.length === 1 && Number(shippingCartItems[0]?.quantity) === 1 &&
-    is3DShippingProduct(shippingCartItems[0]);
+  const ownedCart = hasPhysicalItems && !hasServices && !hasCjItems && !shippingCatalogPending &&
+    !mixedCjCart && shippingCartItems.length>0;
+  const courierEligible = ownedCart && shippingPolicy?.sendcloud?.checkoutEnabled === true &&
+    shippingCartItems.every(isCarrierEligibleProduct);
+  const manualEligible = ownedCart && shippingPolicy?.manualDelivery?.enabled === true;
+  const shippingMethodsEligible = courierEligible || manualEligible;
   const selectedCourier = courierOptions.find(o=>o.code===courierSelected) || null;
+  const selectedManual = manualOptions.find(o=>o.service===manualSelected) || null;
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
   const [deliveryAvailability, setDeliveryAvailability] = useState<any>(null);
@@ -177,7 +184,9 @@ export function Checkout() {
   useEffect(()=>{
     setCourierSelected("");
     setCourierOptions([]);
-    if(!courierEligible || !/^\d{5}$/.test(form.postalCode.trim()))return;
+    setManualSelected("");
+    setManualOptions([]);
+    if(!shippingMethodsEligible || !/^\d{5}$/.test(form.postalCode.trim()))return;
     let active=true;
     const timer=window.setTimeout(async()=>{
       setCourierLoading(true);
@@ -189,13 +198,17 @@ export function Checkout() {
         });
         if(!response.ok)throw new Error("Consulta temporalmente no disponible");
         const data=await response.json();
-        if(active)setCourierOptions((data.quotes||[]).filter((q:any)=>
-          typeof q.price==="number" && Number.isFinite(q.price) && q.currency==="EUR"));
+        if(active) {
+          setCourierOptions((data.quotes||[]).filter((q:any)=>
+            typeof q.price==="number" && Number.isFinite(q.price) && q.currency==="EUR"));
+          setManualOptions((data.manualOptions||[]).filter((q:any)=>
+            q.method==="manual_shipping" && typeof q.price==="number" && Number.isFinite(q.price) && q.currency==="EUR"));
+        }
       }catch{if(active)setCourierOptions([]);}
       finally{if(active)setCourierLoading(false);}
     },600);
     return ()=>{active=false;window.clearTimeout(timer);};
-  },[courierEligible,form.postalCode,shippingCartItems,servicePointId]);
+  },[shippingMethodsEligible,form.postalCode,shippingCartItems,servicePointId]);
   useEffect(()=>{
     setServicePoints([]);setServicePointId(null);setPickupPointsVisible(false);
   },[form.postalCode, courierEligible]);
@@ -380,7 +393,7 @@ export function Checkout() {
   const fullCouponDiscount = Boolean(coupon && subtotal > 0 && discount >= subtotal - 0.001);
   // Existing home delivery calculation remains unchanged.
   const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
-  const checkoutShipping = pickupSelected && localPickupAllowed ? 0 : selectedCourier ? selectedCourier.price : shipping;
+  const checkoutShipping = pickupSelected && localPickupAllowed ? 0 : selectedManual ? selectedManual.price : selectedCourier ? selectedCourier.price : shipping;
   const total = Math.max(0, subtotal - discount + checkoutShipping);
 
   // A checkout can also be entered directly, without the cart page button.
@@ -438,22 +451,22 @@ export function Checkout() {
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && shippingLoading) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && !selectedManual && shippingLoading) {
       toast.error("Espera un momento, estamos calculando el envío");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && shippingError) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && !selectedManual && shippingError) {
       toast.error("Revisa la dirección de envío antes de continuar");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && form.requestedDate && deliveryAvailabilityError) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && !selectedManual && form.requestedDate && deliveryAvailabilityError) {
       toast.error(deliveryAvailabilityError);
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && deliveryAvailabilityLoading) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && !selectedCourier && !selectedManual && deliveryAvailabilityLoading) {
       toast.error("Espera un momento, estamos comprobando la capacidad de reparto");
       return false;
     }
@@ -486,10 +499,10 @@ export function Checkout() {
     serviceBooking: hasServices,
     serviceOnly: onlyServices,
     shippingDistance: hasPhysicalItems && !pickupSelected ? shippingInfo : null,
-    shippingChoice: pickupSelected && localPickupAllowed ? { method: "local_pickup" } : selectedCourier ? { method:"sendcloud",optionCode:selectedCourier.code,
+    shippingChoice: pickupSelected && localPickupAllowed ? { method: "local_pickup" } : selectedManual ? {method:"manual_shipping",service:selectedManual.service} : selectedCourier ? { method:"sendcloud",optionCode:selectedCourier.code,
       ...(servicePointId ? {servicePointId}: {}) } : { method:"delivery" },
-    requestedDate: cjOnly || pickupSelected || selectedCourier ? null : form.requestedDate || null,
-    requestedTimeSlot: cjOnly || pickupSelected || selectedCourier ? null : form.requestedTimeSlot || null,
+    requestedDate: cjOnly || pickupSelected || selectedCourier || selectedManual ? null : form.requestedDate || null,
+    requestedTimeSlot: cjOnly || pickupSelected || selectedCourier || selectedManual ? null : form.requestedTimeSlot || null,
     deliveryInstructions: hasPhysicalItems ? form.deliveryInstructions || null : null,
     serviceAddress: hasServices
       ? {
@@ -600,17 +613,17 @@ export function Checkout() {
             </div>
             )}
 
-            {courierEligible && !pickupSelected && (
+            {shippingMethodsEligible && !pickupSelected && (
               <fieldset className="space-y-2 rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-4">
-                <legend className="font-black">Elige tu transportista</legend>
+                <legend className="font-black">Elige cómo quieres recibir tu pedido</legend>
                 <label className="flex cursor-pointer gap-3 text-sm">
-                  <input type="radio" name="courier-choice" checked={!courierSelected}
-                    onChange={()=>setCourierSelected("")} /> Reparto habitual de la tienda
+                  <input type="radio" name="courier-choice" checked={!courierSelected && !manualSelected}
+                    onChange={()=>{setCourierSelected("");setManualSelected("");}} /> Reparto habitual de la tienda
                 </label>
-                <button type="button" onClick={loadPickupPoints} disabled={pointLoading}
+                {courierEligible && <button type="button" onClick={loadPickupPoints} disabled={pointLoading}
                   className="text-sm font-semibold text-emerald-800 underline">
                   {pointLoading ? "Buscando puntos..." : "Elegir punto de recogida del transportista"}
-                </button>
+                </button>}
                 {pickupPointsVisible && servicePoints.length>0 && <div className="max-h-48 space-y-2 overflow-auto">
                   <label className="flex gap-2 text-sm"><input type="radio" name="service-point"
                     checked={servicePointId===null} onChange={()=>setServicePointId(null)}/> A domicilio (sin punto)</label>
@@ -623,11 +636,19 @@ export function Checkout() {
                 {servicePointId && <p className="text-xs font-semibold text-emerald-800">Calculando tarifas para el punto seleccionado...</p>}
                 {courierOptions.map(option=><label key={option.code} className="flex cursor-pointer justify-between gap-3 rounded-lg border bg-white p-3 text-sm">
                   <span><input type="radio" name="courier-choice" checked={courierSelected===option.code}
-                    onChange={()=>setCourierSelected(option.code)}/> <strong>{option.carrier}</strong> · {option.name}</span>
+                    onChange={()=>{setCourierSelected(option.code);setManualSelected("");}}/> <strong>{option.carrier}</strong> · {option.name}</span>
                   <strong>{option.price.toFixed(2)} €</strong>
                 </label>)}
-                {courierLoading && <p className="text-xs text-muted-foreground">Consultando tarifas reales...</p>}
-                <p className="text-xs text-amber-800">Solo creaciones 3D con peso y medidas reales. Nunca plantas vivas por este servicio.</p>
+                {manualOptions.map(option=><label key={option.service} className="flex cursor-pointer justify-between gap-3 rounded-lg border bg-white p-3 text-sm">
+                  <span><input type="radio" name="courier-choice" checked={manualSelected===option.service}
+                    onChange={()=>{setManualSelected(option.service);setCourierSelected("");}}/>
+                    <strong> {option.label}</strong> · {option.carrier}
+                    <small className="block pl-5 text-muted-foreground">La tienda gestionará la contratación y la etiqueta de este envío.</small>
+                  </span>
+                  <strong>{option.price.toFixed(2)} €</strong>
+                </label>)}
+                {courierLoading && <p className="text-xs text-muted-foreground">Consultando métodos y tarifas...</p>}
+                <p className="text-xs text-amber-800">Los transportistas se ofrecen según el contenido del carrito, los datos del paquete y las condiciones de admisión. El envío de plantas usa un servicio confirmado por la tienda, no Packlink PRO.</p>
               </fieldset>
             )}
 
@@ -637,6 +658,8 @@ export function Checkout() {
                   <p className="text-muted-foreground">{shippingCatalogError || "Verificando el envío real de los productos..."}</p>
                 ) : pickupSelected && localPickupAllowed ? (
                   <p className="font-semibold text-emerald-800">{pickupSettings.label} · Sin gastos de envío. Acordaremos el lugar y la hora.</p>
+                ) : selectedManual ? (
+                  <p className="font-semibold text-emerald-800">{selectedManual.label} · {selectedManual.carrier} · {selectedManual.price.toFixed(2)} €</p>
                 ) : selectedCourier ? (
                   <p className="font-semibold text-emerald-800">Envío con {selectedCourier.carrier} · {selectedCourier.name} · {selectedCourier.price.toFixed(2)} €</p>
                 ) : cjOnly ? (
@@ -663,7 +686,7 @@ export function Checkout() {
               </div>
             )}
 
-            {!cjOnly && !selectedCourier && !(pickupSelected && localPickupAllowed) && businessSuite.scheduledOrdersEnabled !== false && (
+            {!cjOnly && !selectedCourier && !selectedManual && !(pickupSelected && localPickupAllowed) && businessSuite.scheduledOrdersEnabled !== false && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
@@ -751,7 +774,7 @@ export function Checkout() {
                 <>
                   <div className="flex justify-between">
                     <span>Envío</span>
-                    <span>{pickupSelected && localPickupAllowed ? "Recogida gratis" : selectedCourier ? `${selectedCourier.price.toFixed(2)} €` : shippingCatalogPending ? "Verificando..." : shippingLoading ? "Calculando..." : shipping === 0 ? "Incluido / gratis" : `€${shipping.toFixed(2)}`}</span>
+                    <span>{pickupSelected && localPickupAllowed ? "Recogida gratis" : selectedManual ? `${selectedManual.price.toFixed(2)} €` : selectedCourier ? `${selectedCourier.price.toFixed(2)} €` : shippingCatalogPending ? "Verificando..." : shippingLoading ? "Calculando..." : shipping === 0 ? "Incluido / gratis" : `€${shipping.toFixed(2)}`}</span>
                   </div>
                   {shippingInfo && !shippingLoading && (
                     <div className="text-right text-xs text-muted-foreground">
