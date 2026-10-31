@@ -237,7 +237,7 @@ export function registerSupportV2(app, db) {
       const publishedKnowledge=knowledgeContext(
         await readStorageValue(KNOWLEDGE_KEY), input
       );
-      const context = publishedKnowledge + "\nTropical Plants, Barcelona. Horario publicado: " + hours.slice(0, 650) +
+      const context = publishedKnowledge + "\nTropical Plants, ubicada en Horta, Barcelona. Horario publicado: " + hours.slice(0, 650) +
         ". Productos publicados (referencias, no confirmar existencias sin comprobar): " + known.slice(0, 700) +
         ". Para pedidos, devoluciones y pagos, ofrece orientación general sin inventar datos; nunca afirmes haber consultado un pedido real.";
       const previousMessages = ticket.messages.slice(0,-1).filter(m=>m.role==="customer"||m.role==="assistant").slice(-8);
