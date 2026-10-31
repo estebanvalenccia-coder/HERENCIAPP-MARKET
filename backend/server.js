@@ -1506,7 +1506,7 @@ app.use((req, res, next) => {
   ) {
     return passwordResetRateLimit(req, res, next);
   }
-  if (req.method === "POST" && ["/api/stripe/create-payment-intent", "/api/coupons/preview", "/api/shipping/carriers/quotes"].includes(path)) {
+  if (req.method === "POST" && ["/api/stripe/create-payment-intent", "/api/coupons/preview", "/api/shipping/carriers/quotes", "/api/shipping/carriers/points"].includes(path)) {
     return checkoutRateLimit(req, res, next);
   }
   next();
@@ -1617,6 +1617,32 @@ app.get("/api/ready", async (_req, res) => {
   }
 });
 
+async function sendcloudQuoteForPoint(client,parcel,postalCode,servicePointId) {
+  if (servicePointId === undefined || servicePointId === null) {
+    return client.quotes({...parcel,toZip:postalCode});
+  }
+  const id=Number(servicePointId);
+  if (!Number.isSafeInteger(id)||id<=0) throw new Error("Punto de recogida no válido");
+  const points=await client.points({postalCode});
+  if (!points.some(point=>point.id===id)) throw new Error("Punto de recogida no disponible");
+  return client.quotes({...parcel,toZip:postalCode,toServicePointId:id});
+}
+
+app.post("/api/shipping/carriers/points", async (req,res)=>{
+  if(!requirePrimaryDatabase(res))return;
+  try{
+    const settings=parseStoredJson(await readStorageValue("shippingSettings"),{});
+    const catalog=await loadAuthoritativeProducts();
+    const items=Array.isArray(req.body?.items)?req.body.items.slice(0,15):[];
+    const verified=verified3DParcel({items,catalog,settings});
+    if(!verified)return res.json({ok:true,eligible:false,points:[]});
+    const points=await createSendcloudClient({
+      publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
+    }).points({postalCode:req.body?.postalCode});
+    res.json({ok:true,eligible:true,points,readOnly:true});
+  }catch(error){res.status(422).json({error:error.message||"Puntos no disponibles"});}
+});
+
 // Public shipping quote is read-only and calculated from the authoritative catalog.
 // Inactive until merchant explicitly enables a known parcel size in shippingSettings.
 app.post("/api/shipping/carriers/quotes", async (req, res) => {
@@ -1627,9 +1653,10 @@ app.post("/api/shipping/carriers/quotes", async (req, res) => {
     const items=Array.isArray(req.body?.items)?req.body.items.slice(0,15):[];
     const verified=verified3DParcel({items,catalog,settings});
     if (!verified) return res.json({ok:true,eligible:false,quotes:[]});
-    const quotes=await createSendcloudClient({
+    const client=createSendcloudClient({
       publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
-    }).quotes({...verified,toZip:req.body?.postalCode});
+    });
+    const quotes=await sendcloudQuoteForPoint(client,verified,req.body?.postalCode,req.body?.servicePointId);
     res.json({ok:true,eligible:true,quotes:quotes.filter(x=>x.price!==null),readOnly:true});
   }catch(error){res.status(422).json({error:error.message||"Tarifas no disponibles"});}
 });
@@ -3913,9 +3940,11 @@ async function validateCommerceOrderPayload(order = {}) {
       shippingQuote = { price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
         destination: verifiedLocalPickup.label, pricing: { model: "local_pickup" } };
     } else if (selectedSendcloud) {
-      const available=await createSendcloudClient({
+      const client=createSendcloudClient({
         publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
-      }).quotes({...verifiedCourierParcel,toZip:shippingAddress.postalCode});
+      });
+      const available=await sendcloudQuoteForPoint(client,verifiedCourierParcel,shippingAddress.postalCode,
+        order?.metadata?.shippingChoice?.servicePointId);
       const selected=offeredShippingOption(available,order.metadata.shippingChoice);
       if(!selected)throw new Error("La tarifa de Sendcloud ya no está disponible");
       shipping=selected.price;
@@ -10427,10 +10456,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         shippingQuote = {price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
           destination: verifiedLocalPickup.label, pricing: {model: "local_pickup"}};
       } else if (selectedSendcloud) {
-        const available = await createSendcloudClient({
+        const client=createSendcloudClient({
           publicKey:process.env.SENDCLOUD_PUBLIC_KEY,
           secretKey:process.env.SENDCLOUD_SECRET_KEY,
-        }).quotes({...verifiedCourierParcel,toZip:shippingAddress.postalCode});
+        });
+        const available=await sendcloudQuoteForPoint(client,verifiedCourierParcel,shippingAddress.postalCode,
+          metadata?.shippingChoice?.servicePointId);
         const selected = offeredShippingOption(available,metadata.shippingChoice);
         if (!selected) return res.status(409).json({error:"La tarifa elegida ya no está disponible. Vuelve a seleccionar el transportista."});
         authoritativeShipping = selected.price;
@@ -10519,7 +10550,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       inventoryReservation: stockReservation,
       shippingChoice: verifiedLocalPickup
         ? {method:"local_pickup",label:verifiedLocalPickup.label,instructions:verifiedLocalPickup.instructions}
-        : selectedSendcloud ? {method:"sendcloud",optionCode:metadata.shippingChoice.optionCode,carrier:shippingQuote.distanceText}
+        : selectedSendcloud ? {method:"sendcloud",optionCode:metadata.shippingChoice.optionCode,
+          ...(metadata.shippingChoice.servicePointId ? {servicePointId:metadata.shippingChoice.servicePointId}:{}),carrier:shippingQuote.distanceText}
         : {method:"delivery"},
       shippingDistance: shippingQuote && !verifiedLocalPickup
         ? {
