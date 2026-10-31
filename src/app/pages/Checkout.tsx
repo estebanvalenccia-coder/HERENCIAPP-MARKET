@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
+import { localPickupSettings } from "../../../backend/localPickupPolicy.js";
 import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
 import { firstUnselectedPrintfulItem } from "../lib/printfulVariantSelection.js";
 
@@ -122,6 +123,19 @@ export function Checkout() {
   const [showStripe, setShowStripe] = useState(false);
   const [shippingCost, setShippingCost] = useState(5);
   const [shippingPolicy, setShippingPolicy] = useState(() => parseShippingSettings(backendStorage.getItem("shippingSettings")));
+  const [pickupSelected, setPickupSelected] = useState(false);
+  const pickupSettings = useMemo(() => localPickupSettings(shippingPolicy), [shippingPolicy]);
+  const localPickupAllowed = pickupSettings.enabled && hasPhysicalItems && !hasServices &&
+    !shippingCatalogPending && !hasCjItems &&
+    shippingCartItems.every((item: any) => {
+      const supplier = [item?.metadata?.provider, item?.provider, item?.supplierType,
+        item?.metadata?.supplier, item?.fulfillmentProvider].filter(Boolean).join(" ").toLowerCase();
+      return !/cj|aliexpress|printful|dropship|supplier|external/.test(supplier);
+    });
+  useEffect(() => {
+    if (!localPickupAllowed && pickupSelected) setPickupSelected(false);
+  }, [localPickupAllowed, pickupSelected]);
+
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
   const [deliveryAvailability, setDeliveryAvailability] = useState<any>(null);
@@ -168,6 +182,13 @@ export function Checkout() {
   }, []);
 
   useEffect(() => {
+    if (pickupSelected && localPickupAllowed) {
+      setShippingCost(0);
+      setShippingInfo(null);
+      setShippingError("");
+      setShippingLoading(false);
+      return;
+    }
     if (shippingCatalogPending) {
       // Do not quote local Barcelona delivery until we know whether CJ fulfills the cart.
       setShippingCost(0);
@@ -251,6 +272,8 @@ export function Checkout() {
     hasPhysicalItems,
     cjOnly,
     shippingCatalogPending,
+    pickupSelected,
+    localPickupAllowed,
     form.address,
     form.city,
     form.postalCode,
@@ -265,6 +288,7 @@ export function Checkout() {
     if (
       !hasPhysicalItems ||
       cjOnly ||
+      (pickupSelected && localPickupAllowed) ||
       !form.requestedDate ||
       businessSuite.scheduledOrdersEnabled === false
     ) {
@@ -297,11 +321,11 @@ export function Checkout() {
       });
 
     return () => { active = false; };
-  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, cjOnly, businessSuite.scheduledOrdersEnabled]);
+  }, [form.requestedDate, form.requestedTimeSlot, hasPhysicalItems, cjOnly, pickupSelected, localPickupAllowed, businessSuite.scheduledOrdersEnabled]);
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + lineTotal(item), 0);
   const fullCouponDiscount = Boolean(coupon && subtotal > 0 && discount >= subtotal - 0.001);
-  const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
+  const shipping = hasPhysicalItems && !fullCouponDiscount && !(pickupSelected && localPickupAllowed) ? shippingCost : 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
   // A checkout can also be entered directly, without the cart page button.
@@ -348,7 +372,7 @@ export function Checkout() {
       return false;
     }
 
-    if (!form.address) {
+    if (!form.address && !(pickupSelected && localPickupAllowed)) {
       toast.error(onlyServices ? "Introduce la dirección donde se realizará el servicio" : "Introduce la dirección de entrega");
       return false;
     }
@@ -359,22 +383,22 @@ export function Checkout() {
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && shippingLoading) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && shippingLoading) {
       toast.error("Espera un momento, estamos calculando el envío");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && shippingError) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && shippingError) {
       toast.error("Revisa la dirección de envío antes de continuar");
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && form.requestedDate && deliveryAvailabilityError) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && form.requestedDate && deliveryAvailabilityError) {
       toast.error(deliveryAvailabilityError);
       return false;
     }
 
-    if (hasPhysicalItems && !cjOnly && deliveryAvailabilityLoading) {
+    if (hasPhysicalItems && !cjOnly && !pickupSelected && deliveryAvailabilityLoading) {
       toast.error("Espera un momento, estamos comprobando la capacidad de reparto");
       return false;
     }
@@ -406,9 +430,10 @@ export function Checkout() {
     notes: form.notes,
     serviceBooking: hasServices,
     serviceOnly: onlyServices,
-    shippingDistance: hasPhysicalItems ? shippingInfo : null,
-    requestedDate: cjOnly ? null : form.requestedDate || null,
-    requestedTimeSlot: cjOnly ? null : form.requestedTimeSlot || null,
+    shippingDistance: hasPhysicalItems && !pickupSelected ? shippingInfo : null,
+    shippingChoice: pickupSelected && localPickupAllowed ? { method: "local_pickup" } : { method: "delivery" },
+    requestedDate: cjOnly || pickupSelected ? null : form.requestedDate || null,
+    requestedTimeSlot: cjOnly || pickupSelected ? null : form.requestedTimeSlot || null,
     deliveryInstructions: hasPhysicalItems ? form.deliveryInstructions || null : null,
     serviceAddress: hasServices
       ? {
@@ -420,10 +445,10 @@ export function Checkout() {
       : null,
     shippingAddress: hasPhysicalItems
       ? {
-          address: form.address,
-          city: form.city,
-          postalCode: form.postalCode,
-          province: form.province,
+          address: pickupSelected && localPickupAllowed ? "Recogida local en Horta" : form.address,
+          city: pickupSelected && localPickupAllowed ? "Barcelona" : form.city,
+          postalCode: pickupSelected && localPickupAllowed ? "08032" : form.postalCode,
+          province: pickupSelected && localPickupAllowed ? "Barcelona" : form.province,
           country: "ES",
           name: form.name,
           phone: form.phone,
@@ -495,6 +520,15 @@ export function Checkout() {
             <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Correo electrónico" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
             <input className="w-full rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-3 outline-none focus:border-[#315b42]" placeholder="Teléfono" value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} />
 
+            {localPickupAllowed && (
+              <fieldset className="rounded-2xl border border-[#ded9cd] bg-emerald-50/40 p-4">
+                <legend className="font-black">¿Cómo quieres recibir tu compra?</legend>
+                <label className="mt-2 flex cursor-pointer gap-3 text-sm"><input type="radio" name="delivery-choice" checked={!pickupSelected} onChange={() => setPickupSelected(false)} /> Envío a domicilio</label>
+                <label className="mt-2 flex cursor-pointer gap-3 text-sm"><input type="radio" name="delivery-choice" checked={pickupSelected} onChange={() => setPickupSelected(true)} /> {pickupSettings.label} · Gratis</label>
+                {pickupSelected && <p className="mt-3 text-sm text-emerald-800">{pickupSettings.instructions}</p>}
+              </fieldset>
+            )}
+            {!(pickupSelected && localPickupAllowed) && (
             <div className="rounded-2xl border border-[#ded9cd] bg-[#fbfaf6] p-4">
               <p className="mb-3 text-sm font-black">
                 {onlyServices ? "¿Dónde se realizará el servicio?" : hasServices ? "Dirección de entrega / servicio" : "Dirección de entrega"}
@@ -508,11 +542,14 @@ export function Checkout() {
                 <input className="w-full rounded-2xl border border-[#ded9cd] bg-white p-3 outline-none focus:border-[#315b42]" placeholder="Provincia" value={form.province} onChange={(e) => handleChange("province", e.target.value)} />
               </div>
             </div>
+            )}
 
             {hasPhysicalItems && (
               <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
                 {shippingCatalogPending ? (
                   <p className="text-muted-foreground">{shippingCatalogError || "Verificando el envío real de los productos..."}</p>
+                ) : pickupSelected && localPickupAllowed ? (
+                  <p className="font-semibold text-emerald-800">{pickupSettings.label} · Sin gastos de envío. Acordaremos el lugar y la hora.</p>
                 ) : cjOnly ? (
                   <div className="space-y-1">
                     <p className="font-semibold text-emerald-800">Envío directo de CJdropshipping a España</p>
@@ -537,7 +574,7 @@ export function Checkout() {
               </div>
             )}
 
-            {!cjOnly && businessSuite.scheduledOrdersEnabled !== false && (
+            {!cjOnly && !(pickupSelected && localPickupAllowed) && businessSuite.scheduledOrdersEnabled !== false && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
@@ -625,7 +662,7 @@ export function Checkout() {
                 <>
                   <div className="flex justify-between">
                     <span>Envío</span>
-                    <span>{shippingCatalogPending ? "Verificando..." : shippingLoading ? "Calculando..." : shipping === 0 ? "Incluido / gratis" : `€${shipping.toFixed(2)}`}</span>
+                    <span>{pickupSelected && localPickupAllowed ? "Recogida gratis" : shippingCatalogPending ? "Verificando..." : shippingLoading ? "Calculando..." : shipping === 0 ? "Incluido / gratis" : `€${shipping.toFixed(2)}`}</span>
                   </div>
                   {shippingInfo && !shippingLoading && (
                     <div className="text-right text-xs text-muted-foreground">
@@ -652,7 +689,7 @@ export function Checkout() {
             {!showStripe && (
               <button
                 onClick={handleSubmit}
-                disabled={loading || shippingCatalogPending || (hasPhysicalItems && shippingLoading) || !cartItems.length}
+                disabled={loading || shippingCatalogPending || (hasPhysicalItems && !pickupSelected && shippingLoading) || !cartItems.length}
                 className="mt-6 w-full rounded-full bg-[#315b42] py-3.5 font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading
