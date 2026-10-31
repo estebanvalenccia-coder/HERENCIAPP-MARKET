@@ -24,5 +24,7 @@ test("unknown modes and items fail closed",()=>{
 });
 test("normal delivery remains unchanged",()=>{
   assert.equal(verifyLocalPickup({shippingSettings:settings,shippingChoice:{method:"delivery"},lines:[{id:"maceta-1"}],catalog:[own]}),null);
+  assert.equal(verifyLocalPickup({shippingSettings:settings,shippingChoice:{method:"sendcloud"},lines:[{id:"maceta-1"}],catalog:[own]}),null);
+  assert.equal(verifyLocalPickup({shippingSettings:settings,shippingChoice:{method:"manual_shipping"},lines:[{id:"maceta-1"}],catalog:[own]}),null);
   assert.equal(localPickupSettings({}).enabled,false);
 });
