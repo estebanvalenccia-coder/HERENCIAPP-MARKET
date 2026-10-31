@@ -1,7 +1,5 @@
 import { CustomerSupportV2 } from "../components/CustomerSupportV2";
 import { FormEvent, useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
-import { toast } from "sonner";
 import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
 import {
@@ -15,11 +13,8 @@ import { getMarketExperience } from "../lib/marketExperience";
 
 export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
-  const [params] = useSearchParams();
-  const personalized3D = params.get("asunto") === "diseno-3d";
   const [name, setName] = useState("");
-  const [message, setMessage] = useState("");
-  useEffect(() => {if (personalized3D) setMessage(current => current || "Hola, quiero solicitar un diseño 3D personalizado. Mi idea es: ");}, [personalized3D]);
+  const [message, setMessage] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("asunto") === "diseno-3d" ? "Hola, quiero solicitar un diseño 3D personalizado. Mi idea es: " : "");
 
   useEffect(() => {
     const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
@@ -45,8 +40,7 @@ export function Contact() {
     ]
       .filter(Boolean)
       .join("\n");
-    if (!whatsapp) { toast.error("El número de WhatsApp no está configurado. Contacta con atención al cliente en el formulario de arriba."); return; }
-    window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`;
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -56,7 +50,6 @@ export function Contact() {
           <p className="text-xs font-black uppercase tracking-[0.25em] text-[#718076]">
             CONTACTO
           </p>
-          {personalized3D && <p className="mt-4 rounded-xl bg-[#e9eee5] px-4 py-3 text-sm font-semibold">Solicitud de diseño 3D personalizado · completa el formulario para contactar con nosotros.</p>}
           <h1 className="mt-4 text-5xl font-medium sm:text-6xl">
             {site.contactPage.title}
           </h1>
