@@ -77,6 +77,7 @@ const remotelySyncedKeys = new Set([
   "siteContent",
   "siteContentDraft",
   "siteContentHistory",
+  "creaciones3dPage",
   "herencia_finance_sales",
   "herencia_finance_expenses",
   "herencia_finance_closures",
