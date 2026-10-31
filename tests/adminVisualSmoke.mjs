@@ -22,8 +22,11 @@ try {
 
   await page.evaluate(() => {
     window.__adminSelected = null;
+    window.__adminPreviewReady = false;
     window.addEventListener("message", (event) => {
-      if (event.origin === window.location.origin && event.data?.type === "herencia:preview:select") {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "herencia:preview:ready") window.__adminPreviewReady = true;
+      if (event.data?.type === "herencia:preview:select") {
         window.__adminSelected = event.data.componentId;
       }
     });
@@ -41,6 +44,9 @@ try {
 
   const frame = page.frameLocator("#admin-e2e-preview");
   await frame.locator('[data-storefront-component="home.hero"] h1').waitFor({ timeout: 30_000 });
+  // The preview editor listens only after its effect runs. A rendered heading
+  // alone does not guarantee the postMessage listener is registered.
+  await page.waitForFunction(() => window.__adminPreviewReady === true, { timeout: 15_000 });
   await page.evaluate(() => {
     document.querySelector("#admin-e2e-preview").contentWindow.postMessage({
       type: "herencia:editor:sync",
