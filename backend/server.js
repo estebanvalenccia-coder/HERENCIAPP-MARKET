@@ -12120,7 +12120,7 @@ app.listen(port, () => {
             priced:options.filter(x=>Number.isFinite(x.price)&&x.currency==="EUR").length,readOnly:true,
           }));
         } catch(error) {
-          const reason=/HTTP (\\d{3})/.exec(String(error?.message||""));
+          const reason=/HTTP (\d{3})/.exec(String(error?.message||""));
           console.warn("[shipping.sendcloud.rates-probe]",JSON.stringify({
             ok:false,httpStatus:reason?Number(reason[1]):null,readOnly:true,
           }));
