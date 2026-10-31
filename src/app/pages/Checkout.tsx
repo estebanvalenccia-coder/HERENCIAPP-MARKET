@@ -127,6 +127,10 @@ export function Checkout() {
   const [courierOptions,setCourierOptions] = useState<Array<{code:string,name:string,carrier:string,price:number,currency:string}>>([]);
   const [courierSelected,setCourierSelected] = useState("");
   const [courierLoading,setCourierLoading] = useState(false);
+  const [pointLoading,setPointLoading] = useState(false);
+  const [servicePoints,setServicePoints] = useState<Array<{id:number,name:string,carrier:string,street:string,city:string,postalCode:string}>>([]);
+  const [servicePointId,setServicePointId] = useState<number|null>(null);
+  const [pickupPointsVisible,setPickupPointsVisible] = useState(false);
   const pickupSettings = useMemo(() => localPickupSettings(shippingPolicy), [shippingPolicy]);
   const localPickupAllowed = pickupSettings.enabled && hasPhysicalItems && !hasServices &&
     !shippingCatalogPending && !hasCjItems &&
@@ -179,7 +183,8 @@ export function Checkout() {
       try{
         const response=await fetch("/api/shipping/carriers/quotes",{
           method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({postalCode:form.postalCode,items:shippingCartItems.map((item:any)=>({id:item.id,quantity:item.quantity}))}),
+          body:JSON.stringify({postalCode:form.postalCode,items:shippingCartItems.map((item:any)=>({id:item.id,quantity:item.quantity})),
+            ...(servicePointId ? {servicePointId}:{}),}),
         });
         if(!response.ok)throw new Error("Consulta temporalmente no disponible");
         const data=await response.json();
@@ -189,7 +194,24 @@ export function Checkout() {
       finally{if(active)setCourierLoading(false);}
     },600);
     return ()=>{active=false;window.clearTimeout(timer);};
-  },[courierEligible,form.postalCode,shippingCartItems]);
+  },[courierEligible,form.postalCode,shippingCartItems,servicePointId]);
+  useEffect(()=>{
+    setServicePoints([]);setServicePointId(null);setPickupPointsVisible(false);
+  },[form.postalCode, courierEligible]);
+  const loadPickupPoints=async()=>{
+    if(!courierEligible||!/^\d{5}$/.test(form.postalCode))return;
+    setPointLoading(true);setPickupPointsVisible(true);setServicePointId(null);
+    try{
+      const response=await fetch("/api/shipping/carriers/points",{
+        method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({postalCode:form.postalCode,items:shippingCartItems.map((x:any)=>({id:x.id,quantity:x.quantity}))}),
+      });
+      if(!response.ok)throw new Error("Puntos no disponibles");
+      const data=await response.json();
+      setServicePoints((data.points||[]).slice(0,15));
+    }catch{setServicePoints([]);}
+    finally{setPointLoading(false);}
+  };
 
 
   useEffect(() => {
@@ -463,7 +485,8 @@ export function Checkout() {
     serviceBooking: hasServices,
     serviceOnly: onlyServices,
     shippingDistance: hasPhysicalItems && !pickupSelected ? shippingInfo : null,
-    shippingChoice: pickupSelected && localPickupAllowed ? { method: "local_pickup" } : selectedCourier ? { method:"sendcloud",optionCode:selectedCourier.code } : { method:"delivery" },
+    shippingChoice: pickupSelected && localPickupAllowed ? { method: "local_pickup" } : selectedCourier ? { method:"sendcloud",optionCode:selectedCourier.code,
+      ...(servicePointId ? {servicePointId}: {}) } : { method:"delivery" },
     requestedDate: cjOnly || pickupSelected || selectedCourier ? null : form.requestedDate || null,
     requestedTimeSlot: cjOnly || pickupSelected || selectedCourier ? null : form.requestedTimeSlot || null,
     deliveryInstructions: hasPhysicalItems ? form.deliveryInstructions || null : null,
@@ -583,6 +606,20 @@ export function Checkout() {
                   <input type="radio" name="courier-choice" checked={!courierSelected}
                     onChange={()=>setCourierSelected("")} /> Reparto habitual de la tienda
                 </label>
+                <button type="button" onClick={loadPickupPoints} disabled={pointLoading}
+                  className="text-sm font-semibold text-emerald-800 underline">
+                  {pointLoading ? "Buscando puntos..." : "Elegir punto de recogida del transportista"}
+                </button>
+                {pickupPointsVisible && servicePoints.length>0 && <div className="max-h-48 space-y-2 overflow-auto">
+                  <label className="flex gap-2 text-sm"><input type="radio" name="service-point"
+                    checked={servicePointId===null} onChange={()=>setServicePointId(null)}/> A domicilio (sin punto)</label>
+                  {servicePoints.map(point=><label key={point.id} className="flex gap-2 rounded-xl border bg-white p-2 text-xs">
+                    <input type="radio" name="service-point" checked={servicePointId===point.id}
+                      onChange={()=>setServicePointId(point.id)}/>
+                    {point.name} · {point.carrier} · {point.street}, {point.city}
+                  </label>)}
+                </div>}
+                {servicePointId && <p className="text-xs font-semibold text-emerald-800">Calculando tarifas para el punto seleccionado...</p>}
                 {courierOptions.map(option=><label key={option.code} className="flex cursor-pointer justify-between gap-3 rounded-lg border bg-white p-3 text-sm">
                   <span><input type="radio" name="courier-choice" checked={courierSelected===option.code}
                     onChange={()=>setCourierSelected(option.code)}/> <strong>{option.carrier}</strong> · {option.name}</span>
