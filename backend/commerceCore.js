@@ -9,6 +9,7 @@ const DEFAULT_COLLECTIONS = [
   ["jardineria","jardineria","Jardinería"],
   ["sustratos","tierra-y-sustratos","Tierra y sustratos"],
   ["decoracion","decoracion","Decoración"],
+  ["creaciones-3d","creaciones-3d","Creaciones 3D"],
   ["dulce","dulce","Dulce"],
   ["moda","moda","Moda"],
   ["servicios","servicios","Servicios"],
