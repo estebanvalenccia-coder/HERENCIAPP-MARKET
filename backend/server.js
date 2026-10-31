@@ -12013,6 +12013,30 @@ supportV2Export = supportV2.exportCustomerTickets;
 
 app.listen(port, () => {
   console.log(`Backend Herencia escuchando en puerto ${port}`);
+  // One-time read-only carrier health checks: log availability only, never
+  // provider tokens, addresses, or full upstream errors. No labels created.
+  if (process.env.SENDCLOUD_PUBLIC_KEY && process.env.SENDCLOUD_SECRET_KEY) {
+    setTimeout(async () => {
+      try {
+        const result = await createSendcloudClient({
+          publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
+        }).verify();
+        console.info("[shipping.sendcloud.probe]", JSON.stringify({
+          connected:result.connected===true, methodsCount:result.methodsCount, readOnly:true,
+        }));
+      } catch {
+        console.warn("[shipping.sendcloud.probe] connection_unavailable");
+      }
+    },8000);
+  }
+  if (process.env.PACKLINK_API_KEY) {
+    setTimeout(async () => {
+      try {
+        const result=await createPacklinkClient({apiKey:process.env.PACKLINK_API_KEY}).verify();
+        console.info("[shipping.packlink.probe]",JSON.stringify({connected:result.connected===true,readOnly:true}));
+      } catch {console.warn("[shipping.packlink.probe] connection_unavailable");}
+    },10000);
+  }
   // Explicit, one-off READ-ONLY diagnostic for a real order with a failed quote.
   // Enabled only via private Railway variable; does not create or confirm orders.
   const diagnosticId=String(process.env.PRINTFUL_QUOTE_DIAG_ORDER_ID||"").trim();
