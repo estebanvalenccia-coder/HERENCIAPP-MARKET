@@ -10,6 +10,8 @@ export function AdminShippingCarriers() {
   const [instructions,setInstructions] = useState(DEFAULT_LOCAL_PICKUP.instructions);
   const [saving,setSaving] = useState(false);
   const [originPostalCode,setOriginPostalCode] = useState("");
+  const [sendcloudOrigin,setSendcloudOrigin] = useState("");
+  const [sendcloudCheckoutEnabled,setSendcloudCheckoutEnabled] = useState(false);
   const [configStatus,setConfigStatus] = useState<"checking"|"ready"|"missing">("checking");
   const [diagnostic,setDiagnostic] = useState("");
   const [postalCode,setPostalCode] = useState("28001");
@@ -25,6 +27,8 @@ export function AdminShippingCarriers() {
       const settings = JSON.parse(backendStorage.getItem("shippingSettings") || "{}");
       const pickup = localPickupSettings(settings);
       setOriginPostalCode(String(settings?.packlink?.originPostalCode || ""));
+      setSendcloudOrigin(String(settings?.sendcloud?.originPostalCode || ""));
+      setSendcloudCheckoutEnabled(settings?.sendcloud?.checkoutEnabled === true);
       setEnabled(pickup.enabled);
       setLabel(pickup.label);
       setInstructions(pickup.instructions);
@@ -80,7 +84,11 @@ export function AdminShippingCarriers() {
     try {
       const previous = JSON.parse(backendStorage.getItem("shippingSettings") || "{}");
       if (originPostalCode && !/^\d{5}$/.test(originPostalCode.trim())) throw new Error("Código postal de origen inválido");
-      const next = { ...previous, packlink: {
+      if (sendcloudCheckoutEnabled && !/^\d{5}$/.test(sendcloudOrigin.trim())) throw new Error("Indica un código postal de origen válido para Sendcloud");
+      const next = { ...previous, sendcloud: {
+        ...(previous?.sendcloud||{}), originPostalCode:sendcloudOrigin.trim(),
+        checkoutEnabled:sendcloudCheckoutEnabled,
+      }, packlink: {
         ...(previous?.packlink || {}), originPostalCode: originPostalCode.trim(),
         checkoutEnabled: false, autoPurchaseEnabled: false,
       }, localPickup: {
@@ -188,6 +196,21 @@ export function AdminShippingCarriers() {
         <p className="text-sm text-muted-foreground">Mientras tanto, los envíos de transportistas conservan la tarifa actual de la tienda. No se muestran importes simulados.</p>
         <a href="https://support-pro.packlink.com/hc/es-es/articles/213431749--C%C3%B3mo-puedo-generar-una-Clave-API-en-Packlink-PRO" target="_blank" rel="noopener noreferrer"
           className="inline-block text-sm font-bold text-emerald-800 underline">Cómo generar la clave API en Packlink PRO</a>
+      </section>
+      <section className="space-y-4 rounded-3xl border border-[#e2e6de] bg-white p-5 shadow-sm">
+        <h3 className="text-lg font-bold">Sendcloud · Opciones de envío en el checkout</h3>
+        <p className="text-sm text-muted-foreground">Solo para una creación 3D propia por pedido, con peso y medidas registrados en el producto. No incluye plantas ni compra automática de etiquetas.</p>
+        <label className="block space-y-2 text-sm font-semibold">Código postal del remitente
+          <input className="w-full rounded-xl border p-3 font-normal" maxLength={5} inputMode="numeric"
+            value={sendcloudOrigin} onChange={e=>setSendcloudOrigin(e.target.value)} placeholder="08032"/>
+        </label>
+        <label className="flex items-center gap-3 text-sm font-semibold">
+          <input type="checkbox" checked={sendcloudCheckoutEnabled}
+            onChange={e=>setSendcloudCheckoutEnabled(e.target.checked)} className="h-5 w-5 accent-emerald-700" />
+          {sendcloudCheckoutEnabled ? "ON · Mostrar tarifas Sendcloud al comprador" : "OFF · No mostrar tarifas Sendcloud"}
+        </label>
+        <p className="text-xs text-amber-800">Activa ON únicamente cuando la prueba de tarifas reales funcione y tengas peso y dimensiones reales configurados en los productos. Pulsa «Guardar cambios» arriba para aplicar. Las etiquetas se gestionan en Sendcloud.</p>
+        <button type="button" onClick={save} disabled={saving} className="rounded-full bg-[#315b42] px-5 py-3 font-bold text-white disabled:opacity-50">{saving?"Guardando...":"Guardar cambios"}</button>
       </section>
       <AdminSendcloudPanel />
     </div>
