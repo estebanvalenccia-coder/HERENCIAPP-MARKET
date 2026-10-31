@@ -10,7 +10,7 @@ test("only own single 3D product with verified packaging may use Sendcloud",()=>
  for(const p of [{...product,collection:"plantas"},{...product,metadata:{...product.metadata,provider:"CJ"}}]){
   assert.equal(verified3DParcel({items:[{id:"3d1",quantity:1}],catalog:[p],settings}),null);
  }
- assert.equal(verified3DParcel({items:[{id:"3d1",quantity:2}],catalog:[product],settings}),null);
+ assert.equal(verified3DParcel({items:[{id:"3d1",quantity:2}],catalog:[product],settings}).parcel.length,62);
  assert.equal(verified3DParcel({items:[{id:"3d1",quantity:1}],catalog:[product],settings:{}}),null);
 });
 test("live Neon Commerce 3D category is eligible after real measurements, but potted plants are never eligible",()=>{
@@ -25,6 +25,16 @@ test("live Neon Commerce 3D category is eligible after real measurements, but po
  assert.equal(is3DShippingProduct({...neonProduct,type:"plant"}),false);
  assert.equal(is3DShippingProduct({...neonProduct,metadata:{...neonProduct.metadata,containsLivePlant:true}}),false);
  assert.equal(is3DShippingProduct({...neonProduct,category:"plantas-interior"}),false);
+});
+test("A whole cart of non-living owned goods can share a conservative packed box",()=>{
+ const item={id:"g",category:"herramientas",type:"decor",name:"Regadera",metadata:{weight:"200 g",dimensions:"10 × 8 × 8 cm"}};
+ const q=verified3DParcel({items:[{id:"3d1",quantity:1},{id:"g",quantity:2}],catalog:[product,item],settings});
+ assert.equal(q.parcel.length,52);
+ assert.equal(q.parcel.width,22);
+ assert.equal(q.parcel.weight,1.1);
+ assert.equal(verified3DParcel({items:[{id:"3d1",quantity:1},{id:"p",quantity:1}],catalog:[product,
+  {id:"p",type:"plant",category:"plantas-interior",metadata:{weight:"1 kg",dimensions:"20 x 20 x 20"}}],settings}),null);
+ assert.equal(verified3DParcel({items:[{id:"g",quantity:15}],catalog:[item],settings}),null);
 });
 test("never use unverified or non-EUR quotes",()=>{
  const quotes=[{code:"a",price:3.5,currency:"EUR"},{code:"b",price:null,currency:null},{code:"c",price:1,currency:"USD"}];
