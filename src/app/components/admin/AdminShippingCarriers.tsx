@@ -78,7 +78,7 @@ export function AdminShippingCarriers() {
     setSaving(true);
     try {
       const previous = JSON.parse(backendStorage.getItem("shippingSettings") || "{}");
-      if (originPostalCode && !/^\\d{5}$/.test(originPostalCode.trim())) throw new Error("Código postal de origen inválido");
+      if (originPostalCode && !/^\d{5}$/.test(originPostalCode.trim())) throw new Error("Código postal de origen inválido");
       const next = { ...previous, packlink: {
         ...(previous?.packlink || {}), originPostalCode: originPostalCode.trim(),
         checkoutEnabled: false, autoPurchaseEnabled: false,
@@ -158,7 +158,7 @@ export function AdminShippingCarriers() {
             <input value={height} onChange={e=>setHeight(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-lg border p-2" />
           </label>
         </div>
-        <button type="button" disabled={busy || configStatus !== "ready" || !/^\\d{5}$/.test(originPostalCode)}
+        <button type="button" disabled={busy || configStatus !== "ready" || !/^\d{5}$/.test(originPostalCode)}
           onClick={requestRates} className="rounded-full bg-[#315b42] px-5 py-3 font-bold text-white disabled:opacity-40">
           {busy ? "Consultando…" : "Consultar precios reales"}
         </button>
