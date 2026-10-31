@@ -27,7 +27,7 @@ function deliveryDetails(row) {
   const dropship=/dropship|cj.*fulfill|proveedor externo/.test(method)||metadata.isDropshipping===true;
   const own=/local_delivery|own_delivery|reparto propio|entrega propia|herencia delivery/.test(method)||metadata.isLocalDelivery===true;
   if(own){
-    return " Es una entrega gestionada directamente por Herencia en Barcelona; no necesita transportista externo ni código de seguimiento. El estado se actualizará cuando el equipo registre la preparación y la entrega.";
+    return " Es una entrega gestionada directamente por Tropical Plants desde Horta, Barcelona; no necesita transportista externo ni código de seguimiento. El estado se actualizará cuando el equipo registre la preparación y la entrega.";
   }
   if(!dropship)return "";
   const carrier=String(row.carrier||row.shipping_carrier||shipment.carrier||shipping.carrier||metadata.carrier||"").trim();
