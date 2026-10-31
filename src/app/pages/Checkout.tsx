@@ -393,7 +393,7 @@ export function Checkout() {
   const fullCouponDiscount = Boolean(coupon && subtotal > 0 && discount >= subtotal - 0.001);
   // Existing home delivery calculation remains unchanged.
   const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
-  const checkoutShipping = pickupSelected && localPickupAllowed ? 0 : selectedManual ? selectedManual.price : selectedCourier ? selectedCourier.price : shipping;
+  const checkoutShipping = fullCouponDiscount || (pickupSelected && localPickupAllowed) ? 0 : selectedManual ? selectedManual.price : selectedCourier ? selectedCourier.price : shipping;
   const total = Math.max(0, subtotal - discount + checkoutShipping);
 
   // A checkout can also be entered directly, without the cart page button.
