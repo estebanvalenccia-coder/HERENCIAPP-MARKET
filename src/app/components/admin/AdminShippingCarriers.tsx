@@ -177,6 +177,7 @@ export function AdminShippingCarriers() {
         {points.length>0 && <div className="space-y-2"><h4 className="font-bold">Puntos de recogida</h4>
           {points.map((p:any)=><p key={p.id} className="rounded-xl border p-2 text-sm">{p.name} · {p.address} · {p.city} ({p.zip})</p>)}
         </div>}
+        <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">Packlink PRO no admite plantas naturales, flores ni terrarios. Utiliza esta conexión únicamente para creaciones 3D y artículos permitidos.</p>
         <p className="text-xs text-amber-700">Modo pruebas: estos precios NO se aplican todavía al checkout ni contratan etiquetas.</p>
         <p className="text-sm text-muted-foreground">
           Al generar tu clave API, guárdala como secreto del backend en Railway (PACKLINK_API_KEY).
