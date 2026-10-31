@@ -55,7 +55,14 @@ export function Creaciones3D() {
   const [query,setQuery]=useState("");
   const [favorites,setFavorites]=useState<string[]>([]);
   const [pageSettings,setPageSettings]=useState<ThreeDPageSettings>(readThreeDPageSettings);
-  useEffect(()=>{const refresh=()=>setPageSettings(readThreeDPageSettings());window.addEventListener("storage",refresh);window.addEventListener("backend-storage",refresh);return()=>{window.removeEventListener("storage",refresh);window.removeEventListener("backend-storage",refresh);};},[]);
+  useEffect(()=>{
+    let active=true;
+    const refresh=()=>setPageSettings(readThreeDPageSettings());
+    void backendApi.preload().then(()=>{if(active)refresh();});
+    window.addEventListener("storage",refresh);
+    window.addEventListener("backend-storage",refresh);
+    return()=>{active=false;window.removeEventListener("storage",refresh);window.removeEventListener("backend-storage",refresh);};
+  },[]);
   useEffect(()=>{
     let active=true;
     async function load(){
@@ -72,7 +79,13 @@ export function Creaciones3D() {
     return()=>{active=false;window.removeEventListener("commerce-products-changed",onChange);};
   },[]);
   useEffect(()=>{try{setFavorites(JSON.parse(backendStorage.getItem("wishlist")||"[]").map(String));}catch{setFavorites([]);}},[]);
-  const designs=useMemo(()=>items.filter(p=>!p.deletedAt && p.active!==false && p.status!=="archived" && isLegacy3D(p)), [items]);
+  const designs=useMemo(()=>items.filter(p=>!p.deletedAt && p.active!==false && p.status!=="archived" && isLegacy3D(p) && pageSettings.categoryVisibility[legacyCategory(p)]!==false), [items,pageSettings.categoryVisibility]);
+  const categoryCards=useMemo(()=>categories.filter(c=>c.id!=="todos" && pageSettings.categoryVisibility[c.id]!==false).sort((a,b)=>{
+    const order=pageSettings.categoryOrder;
+    const ai=order.indexOf(a.id),bi=order.indexOf(b.id);
+    return (ai===-1?999:ai)-(bi===-1?999:bi);
+  }),[pageSettings.categoryVisibility,pageSettings.categoryOrder]);
+  useEffect(()=>{if(filter!=="todos"&&pageSettings.categoryVisibility[filter]===false)setFilter("todos");},[filter,pageSettings.categoryVisibility]);
   const filtered=useMemo(()=>designs.filter(p=>(filter==="todos"||legacyCategory(p)===filter)&&[p.name,p.description,p.category,...(Array.isArray(p.tags)?p.tags:[])].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase())),[designs,filter,query]);
   
   async function toggleFavorite(id:any){
@@ -122,10 +135,10 @@ export function Creaciones3D() {
     </section>
     {pageSettings.showCategories && <section className="mx-auto max-w-7xl px-6 py-12 lg:px-12">
       <div className="mb-7 flex flex-wrap items-end justify-between gap-5"><div><h2 className="text-3xl font-black uppercase">Categorías</h2><p className="mt-2 text-sm text-neutral-600">Encuentra inspiración en nuestras colecciones.</p></div><Link to="/productos?coleccion=creaciones-3d" className="inline-flex items-center gap-2 text-sm font-semibold">Ver catálogo completo <ArrowRight size={16}/></Link></div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">{categories.filter(c=>c.id!=="todos"&&c.id!=="cortadores-moldes-3d").map((c,i)=><button type="button" onClick={()=>{setFilter(c.id);document.getElementById("disenos")?.scrollIntoView({behavior:"smooth"});}} key={c.id} className={`group relative flex min-h-[205px] flex-col justify-end overflow-hidden rounded-[2.6rem] p-4 text-left transition hover:-translate-y-1 ${filter===c.id?"ring-4 ring-[#ff805f]":""}`} style={{background:["#545b3b","#b77351","#d5ab93","#574132","#827061","#ee857c"][i%6]}}>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">{categoryCards.map((c,i)=><button type="button" onClick={()=>{setFilter(c.id);document.getElementById("disenos")?.scrollIntoView({behavior:"smooth"});}} key={c.id} className={`group relative flex min-h-[205px] flex-col justify-end overflow-hidden rounded-[2.6rem] p-4 text-left transition hover:-translate-y-1 ${filter===c.id?"ring-4 ring-[#ff805f]":""}`} style={{background:["#545b3b","#b77351","#d5ab93","#574132","#827061","#ee857c"][i%6]}}>
         {pageSettings.categoryImages[c.id] ? <img src={pageSettings.categoryImages[c.id]} alt={c.title} className="absolute inset-0 h-full w-full object-cover"/> : designs.filter(p=>legacyCategory(p)===c.id&&imageOf(p)).slice(0,1).map(p=><img key={p.id} src={imageOf(p)} alt="" className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-110"/>)}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-white/10"/>
-        <span className="relative text-4xl text-white/80">{c.icon}</span><span className="relative mt-7 flex items-end justify-between gap-2 text-sm font-bold text-white">{c.title}<span className="rounded-full bg-white p-2 text-black"><ArrowRight size={15}/></span></span></button>)}</div>
+        <span className="relative text-4xl text-white/80">{c.icon}</span><span className="relative mt-7 flex items-end justify-between gap-2 text-sm font-bold text-white">{pageSettings.categoryTitles[c.id]||c.title}<span className="rounded-full bg-white p-2 text-black"><ArrowRight size={15}/></span></span></button>)}</div>
     </section>}
     {pageSettings.showFeatured && <section id="disenos" className="mx-auto max-w-7xl scroll-mt-28 px-6 pb-20 lg:px-12">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-3xl font-black uppercase">Diseños destacados</h2><p className="mt-2 text-sm text-neutral-600">{filtered.length} diseños disponibles</p></div><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar diseños 3D..." className="w-full rounded-full border border-[#d8d0c6] bg-white px-5 py-3 text-sm outline-none sm:w-72"/></div>
