@@ -332,7 +332,7 @@ export function Layout() {
                     <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
                 )}
-                <MarketNavLink href="/creaciones-3d" label="Creaciones 3D" active={location.pathname === "/creaciones-3d"} />
+                {!["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus["creaciones-3d"]) && !storefrontNavigation.some((item) => String(item.href).split("?")[0] === "/creaciones-3d") && <MarketNavLink href="/creaciones-3d" label="Creaciones 3D" active={location.pathname === "/creaciones-3d"} />}
                 {additionalNavigation.length > 0 && (
                   <MarketNavigationMenu
                     item={{ label: "Más", href: "/productos", children: additionalNavigation }}
@@ -433,6 +433,7 @@ export function Layout() {
                   <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} mobile />
                 )
               )}
+              {!["draft", "archived", "inactive", "disabled", "hidden"].includes(collectionStatus["creaciones-3d"]) && !storefrontNavigation.some((item) => String(item.href).split("?")[0] === "/creaciones-3d") && <MarketNavLink href="/creaciones-3d" label="Creaciones 3D" active={location.pathname === "/creaciones-3d"} mobile />}
               <StorefrontComponentBoundary id="header.herenciaIA" controls={market.componentControls} now={scheduleNow} enabled={herenciaEnabled && site.navigation.herencia.visible !== false}>
                 <MarketNavLink
                   href={site.navigation.herencia.href || "/tropical-ia"}
