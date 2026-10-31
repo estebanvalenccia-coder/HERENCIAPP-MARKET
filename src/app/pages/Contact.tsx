@@ -1,5 +1,6 @@
 import { CustomerSupportV2 } from "../components/CustomerSupportV2";
 import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
 import {
@@ -13,8 +14,11 @@ import { getMarketExperience } from "../lib/marketExperience";
 
 export function Contact() {
   const [site, setSite] = useState<SiteContent>(defaultSiteContent);
+  const [params] = useSearchParams();
+  const personalized3D = params.get("asunto") === "diseno-3d";
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  useEffect(() => {if (personalized3D) setMessage(current => current || "Hola, quiero solicitar un diseño 3D personalizado. Mi idea es: ");}, [personalized3D]);
 
   useEffect(() => {
     const load = () => setSite(parseSiteContent(backendStorage.getItem("siteContent")));
@@ -40,7 +44,8 @@ export function Contact() {
     ]
       .filter(Boolean)
       .join("\n");
-    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    if (!whatsapp) { window.location.href = `mailto:${site.footer.email || ""}?subject=${encodeURIComponent("Solicitud de diseño 3D - Tropical Plants")}&body=${encodeURIComponent(text)}`; return; }
+    window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`;
   };
 
   return (
@@ -50,6 +55,7 @@ export function Contact() {
           <p className="text-xs font-black uppercase tracking-[0.25em] text-[#718076]">
             CONTACTO
           </p>
+          {personalized3D && <p className="mt-4 rounded-xl bg-[#e9eee5] px-4 py-3 text-sm font-semibold">Solicitud de diseño 3D personalizado · completa el formulario para contactar con nosotros.</p>}
           <h1 className="mt-4 text-5xl font-medium sm:text-6xl">
             {site.contactPage.title}
           </h1>
