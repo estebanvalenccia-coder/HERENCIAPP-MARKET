@@ -4,7 +4,7 @@ import { ArrowRight, Box, Heart, Layers3, Package, Palette, Printer, ShieldCheck
 import { toast } from "sonner";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { needsExplicitVariantSelection } from "../lib/printfulVariantSelection.js";
-import { primaryCollectionOf, productBelongsToCollection } from "../lib/commerceCatalog";
+import { productBelongsToCollection } from "../lib/commerceCatalog";
 
 const categories = [
   { id:"todos", title:"Todos los diseños", icon:"✦" },
@@ -16,6 +16,32 @@ const categories = [
   { id:"personalizados-3d", title:"Personalizados", icon:"♡" },
   { id:"cortadores-moldes-3d", title:"Cortadores y moldes", icon:"✳" },
 ];
+const HERO_ART = "https://cdn.shopify.com/s/files/1/1105/9209/8695/files/herencia-market-creaciones-3d-escaparate.webp?v=1793281597";
+function isLegacy3D(p:any) {
+  const collection=String(p.collection||"").toLowerCase();
+  const category=String(p.category||"").toLowerCase();
+  const joined=(Array.isArray(p.collections)?p.collections:[]).map(String).join(" ").toLowerCase();
+  const title=String(p.name||"").toLowerCase();
+  const tags=(Array.isArray(p.tags)?p.tags:[p.tags]).join(" ").toLowerCase();
+  if (productBelongsToCollection(p,"creaciones-3d")) return true;
+  if (/3d|impresi[oó]n 3d|impreso en 3d/.test([collection,category,joined,tags].join(" ")))return true;
+  // Only confidently identifiable handmade printed objects: avoid moving ordinary plants.
+  if (/cortador(?:es)? de (?:galletas|masa)|tortillero|pataconera|jarr[oó]n naranja escult[oó]rico/i.test(title))return true;
+  return false;
+}
+function legacyCategory(p:any) {
+  const cat=String(p.category||"");
+  if(cat==="macetas-3d")return cat;
+  const title=String(p.name||"").toLowerCase();
+  if(/maceta|planter/.test(title))return "macetas-3d";
+  if(/jarr[oó]n|florero|l[aá]mpara|decoraci[oó]n/.test(title))return "jarrones-3d";
+  if(/cortador|molde|galletas/.test(title))return "cortadores-moldes-3d";
+  if(/tortillero|pataconera|cocina/.test(title))return "cocina-hogar-3d";
+  if(/personaliz|nombre|placa/.test(title))return "personalizados-3d";
+  if(/organizador|porta|soporte/.test(title))return "organizacion-3d";
+  if(/figura|escultura/.test(title))return "figuras-3d";
+  return cat;
+}
 const formatPrice=(value:unknown)=>new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR"}).format(Number(value||0));
 function imageOf(product:any) {
   const gallery=Array.isArray(product?.images)?product.images:[];
@@ -43,9 +69,9 @@ export function Creaciones3D() {
     return()=>{active=false;window.removeEventListener("commerce-products-changed",onChange);};
   },[]);
   useEffect(()=>{try{setFavorites(JSON.parse(backendStorage.getItem("wishlist")||"[]").map(String));}catch{setFavorites([]);}},[]);
-  const designs=useMemo(()=>items.filter(p=>!p.deletedAt && p.active!==false && p.status!=="archived" && productBelongsToCollection(p,"creaciones-3d")), [items]);
-  const filtered=useMemo(()=>designs.filter(p=>(filter==="todos"||p.category===filter)&&[p.name,p.description,p.category,...(Array.isArray(p.tags)?p.tags:[])].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase())),[designs,filter,query]);
-  const showcase=designs.filter(p=>imageOf(p)).slice(0,3);
+  const designs=useMemo(()=>items.filter(p=>!p.deletedAt && p.active!==false && p.status!=="archived" && isLegacy3D(p)), [items]);
+  const filtered=useMemo(()=>designs.filter(p=>(filter==="todos"||legacyCategory(p)===filter)&&[p.name,p.description,p.category,...(Array.isArray(p.tags)?p.tags:[])].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase())),[designs,filter,query]);
+  
   async function toggleFavorite(id:any){
     const value=String(id);
     const next=favorites.includes(value)?favorites.filter(x=>x!==value):[...favorites,value];
@@ -75,33 +101,28 @@ export function Creaciones3D() {
     toast.success("Añadido al carrito");
   }
   return <div className="min-h-screen bg-[#fcfaf6] text-[#191919]">
-    <section className="relative isolate overflow-hidden bg-[#101010] text-white">
-      <div className="pointer-events-none absolute inset-0 opacity-80" style={{background:"radial-gradient(ellipse at 76% 40%, #ad593f 0%, #513021 27%, transparent 56%), linear-gradient(120deg,#0a0a0a,#242020)"}}/>
-      <div className="relative mx-auto grid min-h-[540px] max-w-7xl items-center gap-8 px-6 py-20 lg:grid-cols-[.95fr_1.05fr] lg:px-12">
-        <div className="z-10">
-          <p className="mb-5 text-xs font-semibold tracking-[.46em] text-[#efc4aa]">DISEÑOS 3D QUE INSPIRAN</p>
-          <h1 className="text-[clamp(3.6rem,7vw,7rem)] font-black uppercase leading-[.88] tracking-[-.06em]">DISEÑA<br/><span className="text-[#ff805f]">TU MUNDO</span><br/>EN 3D</h1>
-          <p className="mt-6 max-w-lg text-lg text-white/80">Objetos únicos, funcionales y con estilo. Crea espacios que reflejen tu personalidad.</p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <a href="#disenos" className="inline-flex items-center gap-3 rounded-full bg-[#ff805f] px-7 py-4 font-bold text-black transition hover:bg-[#ffa58b]">Explorar diseños <ArrowRight size={18}/></a>
-            <Link to="/contacto" className="inline-flex items-center gap-3 rounded-full border border-white/70 px-7 py-4 font-semibold text-white hover:bg-white/10">Personaliza el tuyo <Box size={18}/></Link>
-          </div>
+    <section className="relative isolate overflow-hidden bg-[#0d0c0b] text-white">
+      <div className="absolute inset-0 bg-cover bg-center opacity-80" style={{backgroundImage:`linear-gradient(90deg, #090909 0%, #0c0b0b 26%, rgba(10,10,10,.42) 59%, rgba(14,12,11,.2) 100%), url("${HERO_ART}")`}} />
+      <div className="pointer-events-none absolute right-[10%] top-[9%] h-[380px] w-[380px] rounded-full border-[5px] border-[#ffa06a] shadow-[0_0_40px_#fd7957,0_0_110px_#ab492d] opacity-80"/>
+      <div className="pointer-events-none absolute left-[24%] top-[18%] h-48 w-[47%] -rotate-12 rounded-[100%] border-[22px] border-[#e4aa84]/25 blur-[3px]"/>
+      <div className="relative mx-auto flex min-h-[490px] max-w-7xl items-center px-6 pb-20 pt-10 lg:min-h-[530px] lg:px-12">
+        <div className="relative z-10 max-w-[560px]">
+          <p className="mb-3 text-[11px] font-semibold tracking-[.43em] text-[#f6cfb4]">DISEÑOS 3D QUE INSPIRAN</p>
+          <h1 className="font-sans text-[clamp(3.4rem,6.5vw,6.2rem)] font-black uppercase leading-[.95] tracking-[-.065em]">DISEÑA<br/><span className="text-[#ff805f]">TU MUNDO</span><br/>EN 3D</h1>
+          <p className="mt-5 max-w-[420px] text-base text-white/90">Objetos únicos, funcionales y con estilo.<br/>Crea espacios que reflejen tu personalidad.</p>
+          <div className="mt-6 flex flex-wrap gap-3"><a href="#disenos" className="inline-flex items-center gap-3 rounded-full bg-[#ff805f] px-6 py-3.5 text-sm font-bold text-black hover:bg-[#ffa58b]">Explorar diseños <ArrowRight size={18}/></a><Link to="/contacto" className="inline-flex items-center gap-3 rounded-full border border-white/80 px-6 py-3.5 text-sm font-semibold text-white hover:bg-white/10">Personaliza el tuyo <Box size={18}/></Link></div>
         </div>
-        <div className="relative flex min-h-[320px] items-end justify-center gap-3">
-          <div className="absolute right-1/4 top-0 h-64 w-64 rounded-full border-[5px] border-[#ff936c] shadow-[0_0_80px_#f87547] lg:h-80 lg:w-80"/>
-          {showcase.length?showcase.map((p,i)=><Link key={p.id} to={`/producto/${p.id}`} className={`relative overflow-hidden rounded-[2rem] border border-white/20 bg-white/10 shadow-2xl ${i===1?"-translate-y-12":""}`} style={{width:i===1?"38%":"29%",aspectRatio:"3/4"}}><img src={imageOf(p)} alt={p.name} className="h-full w-full object-cover"/><span className="absolute bottom-0 block w-full bg-black/60 p-2 text-xs font-semibold">{p.name}</span></Link>):<div className="flex h-72 w-full items-center justify-center rounded-[2rem] border border-white/20 bg-white/5 text-center"><div><Printer size={66} className="mx-auto mb-3 text-[#ff805f]"/><p>Próximamente, nuestros diseños 3D</p></div></div>}
-        </div>
-        <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs text-white/80 lg:col-span-2">
-          <span className="flex items-center gap-2"><Truck size={19}/> Envíos disponibles</span>
-          <span className="flex items-center gap-2"><Layers3 size={19}/> Impresión por capas</span>
-          <span className="flex items-center gap-2"><ShieldCheck size={19}/> Pago seguro</span>
-          <span className="flex items-center gap-2"><Sparkles size={19}/> Diseños originales</span>
-        </div>
+        <p className="absolute bottom-28 right-10 hidden rotate-[-9deg] font-serif text-2xl italic leading-tight text-white lg:block">Imagina<br/>Diseña<br/>Imprime<br/>Disfruta</p>
+        <div className="absolute bottom-5 left-6 flex flex-wrap gap-x-7 gap-y-2 text-[11px] text-white/90 lg:left-12"><span className="flex items-center gap-2"><Truck size={18}/> Envío disponible</span><span className="flex items-center gap-2"><Layers3 size={18}/> Materiales de calidad</span><span className="flex items-center gap-2"><ShieldCheck size={18}/> Pago seguro</span></div>
       </div>
+      <svg className="absolute bottom-[-1px] left-0 h-10 w-full" viewBox="0 0 1440 52" preserveAspectRatio="none"><path fill="#fcfaf6" d="M0 34 C180 75 220 2 440 34 S720 50 870 25 S1240 20 1440 8 V52 H0Z"/></svg>
     </section>
     <section className="mx-auto max-w-7xl px-6 py-12 lg:px-12">
       <div className="mb-7 flex flex-wrap items-end justify-between gap-5"><div><h2 className="text-3xl font-black uppercase">Categorías</h2><p className="mt-2 text-sm text-neutral-600">Encuentra inspiración en nuestras colecciones.</p></div><Link to="/productos?coleccion=creaciones-3d" className="inline-flex items-center gap-2 text-sm font-semibold">Ver catálogo completo <ArrowRight size={16}/></Link></div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">{categories.map((c,i)=><button type="button" onClick={()=>{setFilter(c.id);document.getElementById("disenos")?.scrollIntoView({behavior:"smooth"});}} key={c.id} className={`group flex min-h-36 flex-col justify-between rounded-[1.7rem] p-4 text-left transition hover:-translate-y-1 ${filter===c.id?"bg-[#ff805f] text-black ring-2 ring-black":"bg-[#eae3dc] text-[#26211d]"}`}><span className="text-4xl">{c.icon}</span><span className="text-sm font-bold">{c.title} ↗</span></button>)}</div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">{categories.filter(c=>c.id!=="todos"&&c.id!=="cortadores-moldes-3d").map((c,i)=><button type="button" onClick={()=>{setFilter(c.id);document.getElementById("disenos")?.scrollIntoView({behavior:"smooth"});}} key={c.id} className={`group relative flex min-h-[205px] flex-col justify-end overflow-hidden rounded-[2.6rem] p-4 text-left transition hover:-translate-y-1 ${filter===c.id?"ring-4 ring-[#ff805f]":""}`} style={{background:["#545b3b","#b77351","#d5ab93","#574132","#827061","#ee857c"][i%6]}}>
+        {designs.filter(p=>legacyCategory(p)===c.id&&imageOf(p)).slice(0,1).map(p=><img key={p.id} src={imageOf(p)} alt="" className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-110"/>)}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-white/10"/>
+        <span className="relative text-4xl text-white/80">{c.icon}</span><span className="relative mt-7 flex items-end justify-between gap-2 text-sm font-bold text-white">{c.title}<span className="rounded-full bg-white p-2 text-black"><ArrowRight size={15}/></span></span></button>)}</div>
     </section>
     <section id="disenos" className="mx-auto max-w-7xl scroll-mt-28 px-6 pb-20 lg:px-12">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-5"><div><h2 className="text-3xl font-black uppercase">Diseños destacados</h2><p className="mt-2 text-sm text-neutral-600">{filtered.length} diseños disponibles</p></div><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar diseños 3D..." className="w-full rounded-full border border-[#d8d0c6] bg-white px-5 py-3 text-sm outline-none sm:w-72"/></div>
