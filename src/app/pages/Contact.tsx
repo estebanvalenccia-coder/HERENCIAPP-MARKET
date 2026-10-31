@@ -1,6 +1,7 @@
 import { CustomerSupportV2 } from "../components/CustomerSupportV2";
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { toast } from "sonner";
 import { Instagram, MapPin, MessageCircle, Phone, Send } from "lucide-react";
 import { backendStorage } from "../lib/backendStorage";
 import {
@@ -44,7 +45,7 @@ export function Contact() {
     ]
       .filter(Boolean)
       .join("\n");
-    if (!whatsapp) { window.location.href = `mailto:${site.footer.email || ""}?subject=${encodeURIComponent("Solicitud de diseño 3D - Tropical Plants")}&body=${encodeURIComponent(text)}`; return; }
+    if (!whatsapp) { toast.error("El número de WhatsApp no está configurado. Contacta con atención al cliente en el formulario de arriba."); return; }
     window.location.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(text)}`;
   };
 
