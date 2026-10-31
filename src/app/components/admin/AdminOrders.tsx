@@ -45,6 +45,7 @@ function getPhone(order: Order) {
 }
 
 function getAddress(order: Order) {
+  if (order.metadata?.shippingChoice?.method === "local_pickup") return String(order.metadata.shippingChoice.label || "Recogida acordada en Horta, Barcelona");
   const address = order.metadata?.shippingAddress || {};
   if (order.metadata?.source === "HERENCIA_SALES_HANDOFF") return "Consulta comercial · entrega por definir";
   return [
@@ -262,7 +263,7 @@ export function AdminOrders() {
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.metadata?.shippingChoice?.method === "local_pickup" ? "Recogida Horta · GRATIS" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
                       {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">Tropical Sales</span>}
                       {order.metadata?.source === "colombia_checkout" && <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-900 font-black">🇨🇴 COLOMBIA · COP</span>}
                     </div>
@@ -285,7 +286,8 @@ export function AdminOrders() {
                         <p className="font-semibold">{isSalesHandoff(order) ? "Conversación para atender" : "Detalle para preparar"}</p>
                         {order.items.map((item, i) => <div key={i} className="flex justify-between border-b border-border/50 pb-2"><span>{item.name} x{item.quantity}</span><span>{formatOrderMoney(order, Number((item.price || 0) * (item.quantity || 1)))}</span></div>)}
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
-                        <p><strong>Dirección completa:</strong> {getAddress(order)}</p>
+                        <p><strong>{order.metadata?.shippingChoice?.method === "local_pickup" ? "Punto de encuentro:" : "Dirección completa:"}</strong> {getAddress(order)}</p>
+                        {order.metadata?.shippingChoice?.method === "local_pickup" && <p><strong>Organizar recogida:</strong> {order.metadata.shippingChoice.instructions || "Acordar lugar y hora con el comprador por teléfono o correo."}</p>}
                         {order.metadata?.shippingAddress?.references && <p><strong>Referencias:</strong> {order.metadata.shippingAddress.references}</p>}
                         {order.metadata?.deliveryInstructions && <p><strong>Comentarios de entrega:</strong> {order.metadata.deliveryInstructions}</p>}
                         {order.metadata?.recipientName && <p><strong>Destinatario:</strong> {order.metadata.recipientName} · {order.metadata.recipientPhone || order.metadata.phone || "Sin teléfono"}</p>}
