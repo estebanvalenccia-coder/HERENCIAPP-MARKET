@@ -12,6 +12,12 @@ export function AdminShippingCarriers() {
   const [originPostalCode,setOriginPostalCode] = useState("");
   const [sendcloudOrigin,setSendcloudOrigin] = useState("");
   const [sendcloudCheckoutEnabled,setSendcloudCheckoutEnabled] = useState(false);
+  const [manualDeliveryEnabled,setManualDeliveryEnabled] = useState(false);
+  const [confirmedPlantCarrier,setConfirmedPlantCarrier] = useState(false);
+  const [manualCarrierName,setManualCarrierName] = useState("");
+  const [goodsRate,setGoodsRate] = useState("");
+  const [plantRate,setPlantRate] = useState("");
+  const [mixedRate,setMixedRate] = useState("");
   const [configStatus,setConfigStatus] = useState<"checking"|"ready"|"missing">("checking");
   const [diagnostic,setDiagnostic] = useState("");
   const [postalCode,setPostalCode] = useState("28001");
@@ -29,6 +35,13 @@ export function AdminShippingCarriers() {
       setOriginPostalCode(String(settings?.packlink?.originPostalCode || ""));
       setSendcloudOrigin(String(settings?.sendcloud?.originPostalCode || ""));
       setSendcloudCheckoutEnabled(settings?.sendcloud?.checkoutEnabled === true);
+      setManualDeliveryEnabled(settings?.manualDelivery?.enabled === true);
+      setConfirmedPlantCarrier(settings?.manualDelivery?.acceptsLivePlants === true);
+      setManualCarrierName(String(settings?.manualDelivery?.carrierName || ""));
+      const oldRates=settings?.manualDelivery?.rates || {};
+      setGoodsRate(oldRates.goods === undefined ? "" : String(oldRates.goods));
+      setPlantRate(oldRates.plants === undefined ? "" : String(oldRates.plants));
+      setMixedRate(oldRates.mixed === undefined ? "" : String(oldRates.mixed));
       setEnabled(pickup.enabled);
       setLabel(pickup.label);
       setInstructions(pickup.instructions);
@@ -85,7 +98,20 @@ export function AdminShippingCarriers() {
       const previous = JSON.parse(backendStorage.getItem("shippingSettings") || "{}");
       if (originPostalCode && !/^\d{5}$/.test(originPostalCode.trim())) throw new Error("Código postal de origen inválido");
       if (sendcloudCheckoutEnabled && !/^\d{5}$/.test(sendcloudOrigin.trim())) throw new Error("Indica un código postal de origen válido para Sendcloud");
-      const next = { ...previous, sendcloud: {
+      if (manualDeliveryEnabled) {
+        if (manualCarrierName.trim().length<2) throw new Error("Indica el nombre real del transportista");
+        for(const [name,value] of [["artículos",goodsRate],["plantas",plantRate],["mixtos",mixedRate]]) {
+          if(value.trim()==="" || !Number.isFinite(Number(value)) || Number(value)<0 || Number(value)>250)
+            throw new Error("Indica una tarifa válida para envíos de "+name);
+        }
+      }
+      const next = { ...previous, manualDelivery: {
+        ...(previous?.manualDelivery || {}),
+        enabled:manualDeliveryEnabled,
+        acceptsLivePlants:confirmedPlantCarrier,
+        carrierName:manualCarrierName.trim().slice(0,100),
+        rates: {goods:Number(goodsRate||0),plants:Number(plantRate||0),mixed:Number(mixedRate||0)},
+      }, sendcloud: {
         ...(previous?.sendcloud||{}), originPostalCode:sendcloudOrigin.trim(),
         checkoutEnabled:sendcloudCheckoutEnabled,
       }, packlink: {
@@ -98,7 +124,7 @@ export function AdminShippingCarriers() {
       const result = await backendStorage.setItem("shippingSettings", JSON.stringify(next));
       if (!result?.ok || !result.synced) throw new Error(result?.error || "Sin conexión con el servidor. Los cambios no se han guardado en la tienda.");
       window.dispatchEvent(new Event("backend-storage"));
-      toast.success("Preferencias de recogida guardadas");
+      toast.success("Métodos y tarifas de envío guardados");
     } catch (error: any) {
       toast.error(error?.message || "No se pudieron guardar los cambios");
     } finally { setSaving(false); }
@@ -199,7 +225,7 @@ export function AdminShippingCarriers() {
       </section>
       <section className="space-y-4 rounded-3xl border border-[#e2e6de] bg-white p-5 shadow-sm">
         <h3 className="text-lg font-bold">Sendcloud · Opciones de envío en el checkout</h3>
-        <p className="text-sm text-muted-foreground">Solo para una creación 3D propia por pedido, con peso y medidas registrados en el producto. No incluye plantas ni compra automática de etiquetas.</p>
+        <p className="text-sm text-muted-foreground">Para creaciones 3D y demás artículos admitidos, con peso y medidas del paquete. Permite varios artículos en una caja cuando caben. No incluye plantas vivas ni compra automática de etiquetas.</p>
         <label className="block space-y-2 text-sm font-semibold">Código postal del remitente
           <input className="w-full rounded-xl border p-3 font-normal" maxLength={5} inputMode="numeric"
             value={sendcloudOrigin} onChange={e=>setSendcloudOrigin(e.target.value)} placeholder="08032"/>
@@ -211,6 +237,45 @@ export function AdminShippingCarriers() {
         </label>
         <p className="text-xs text-amber-800">Activa ON únicamente cuando la prueba de tarifas reales funcione y tengas peso y dimensiones reales configurados en los productos. Pulsa «Guardar cambios» arriba para aplicar. Las etiquetas se gestionan en Sendcloud.</p>
         <button type="button" onClick={save} disabled={saving} className="rounded-full bg-[#315b42] px-5 py-3 font-bold text-white disabled:opacity-50">{saving?"Guardando...":"Guardar cambios"}</button>
+      </section>
+      <section className="space-y-4 rounded-3xl border border-[#e2e6de] bg-white p-5 shadow-sm">
+        <h3 className="text-lg font-bold">Envíos de toda la tienda: artículos, plantas y pedidos mixtos</h3>
+        <p className="text-sm text-muted-foreground">Configura un transporte gestionado por la tienda. El cliente elige este método y Stripe cobra la tarifa de su carrito. Tú contratas después el servicio con el transportista acordado. No se genera etiqueta automáticamente.</p>
+        <label className="flex items-center gap-3 text-sm font-bold">
+          <input type="checkbox" checked={manualDeliveryEnabled}
+            onChange={e=>setManualDeliveryEnabled(e.target.checked)} className="h-5 w-5 accent-emerald-700"/>
+          {manualDeliveryEnabled?"ON · Envíos gestionados por la tienda":"OFF · Envíos gestionados por la tienda"}
+        </label>
+        <label className="block space-y-1 text-sm font-semibold">Transportista confirmado para este método
+          <input value={manualCarrierName} onChange={e=>setManualCarrierName(e.target.value)}
+            maxLength={100} placeholder="Ej.: servicio que hayas contratado y confirmado"
+            className="w-full rounded-xl border p-3 font-normal"/>
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
+          <input type="checkbox" checked={confirmedPlantCarrier}
+            onChange={e=>setConfirmedPlantCarrier(e.target.checked)}
+            className="mt-1 h-5 w-5 accent-emerald-700"/>
+          <span><strong>Este transportista ha confirmado que acepta plantas vivas.</strong>
+          <span className="block text-xs">Marca esta casilla únicamente si has verificado con él las condiciones reales del servicio. Sendcloud y Packlink PRO no quedan automáticamente autorizados para transportar plantas.</span></span>
+        </label>
+        <p className="text-sm font-bold">Tarifas de entrega en España peninsular (€ por pedido)</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ["Solo artículos",goodsRate,setGoodsRate],
+            ["Solo plantas",plantRate,setPlantRate],
+            ["Plantas + artículos",mixedRate,setMixedRate],
+          ].map(([name,value,setter])=><label key={String(name)} className="space-y-1 text-sm font-semibold">
+            {String(name)}
+            <input type="number" min="0" max="250" step="0.01" inputMode="decimal"
+              value={value as string} onChange={e=>(setter as (v:string)=>void)(e.target.value)}
+              className="w-full rounded-xl border p-3 font-normal" placeholder="Precio real"/>
+          </label>)}
+        </div>
+        <p className="text-xs text-amber-800">Las tarifas las defines tú según tu transportista y embalajes. Los envíos con plantas solo aparecerán si marcas su admisión confirmada. Canarias, Baleares, Ceuta y Melilla necesitan tarifas y reglas independientes. El envío mixto puede requerir dos cajas: no se promete una sola etiqueta.</p>
+        <button type="button" onClick={save} disabled={saving}
+          className="rounded-full bg-[#315b42] px-5 py-3 font-bold text-white disabled:opacity-50">
+          {saving?"Guardando...":"Guardar métodos y tarifas"}
+        </button>
       </section>
       <AdminSendcloudPanel />
     </div>
