@@ -4,6 +4,26 @@
  * The caller MUST reload product data from the DB and must not trust cart fields.
  */
 const finite = x => Number.isFinite(x) && x > 0;
+/**
+ * Use the category actually hydrated by Neon Commerce Core. Products that
+ * include live plants remain excluded even when catalogued with 3D pots.
+ */
+export function is3DShippingProduct(product) {
+  if (!product || product.type === "plant" || product.type === "service") return false;
+  const category=String(product.category||"").toLowerCase();
+  const collection=String(product.collection||"").toLowerCase();
+  const collections=Array.isArray(product.collections)?product.collections.map(x=>String(x).toLowerCase()):[];
+  const is3D=/^(?:macetas|jarrones|decoracion|figuras|organizacion|cocina-hogar|creaciones)-3d$/.test(category) ||
+    collection==="creaciones-3d" || collections.includes("creaciones-3d");
+  if (!is3D) return false;
+  if (product.metadata?.containsLivePlant===true || product.metadata?.isLivePlant===true ||
+    product.metadata?.plantIncluded===true || product.containsLivePlant===true) return false;
+  // Safety-first: false negatives for decorative items bearing plant names are
+  // preferable to exposing live plants to Sendcloud services.
+  const name=String(product.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if (/\b(planta|plantas|planta viva|cactus|suculenta|orquidea|arbol|flores? naturales?)\b/.test(name)) return false;
+  return true;
+}
 export function verified3DParcel({items,catalog,settings}) {
   const config=settings?.sendcloud || {};
   if (config.checkoutEnabled !== true) return null;
@@ -12,7 +32,7 @@ export function verified3DParcel({items,catalog,settings}) {
   if (!Array.isArray(items)||items.length!==1||Number(items[0]?.quantity)!==1) return null;
   const product=(catalog||[]).find(x=>String(x.id)===String(items[0].id));
   if (!product||product.active===false||product.deletedAt) return null;
-  if (String(product.collection||"").toLowerCase()!=="creaciones-3d") return null;
+  if (!is3DShippingProduct(product)) return null;
   if (product.metadata?.provider||product.supplier||product.supplierType||product.fulfillmentProvider||
       product.metadata?.supplier || product.metadata?.fulfillmentProvider) return null;
   const raw=String(product.metadata?.dimensions||"").replace(/,/g,".");
