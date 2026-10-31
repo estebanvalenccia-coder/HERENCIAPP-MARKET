@@ -45,9 +45,9 @@ test("customer lookup always uses server-verified own account email, not user-pr
   assert.doesNotMatch(a,/preparación/);
 });
 
-test("Barcelona own delivery never invents a courier or tracking number",()=>{
+test("Horta Barcelona own delivery never invents a courier or tracking number",()=>{
   const reply=summarizeOwnOrders([{status:"out_for_delivery",metadata:{deliveryMethod:"local_delivery",isLocalDelivery:true}}]);
-  assert.match(reply,/directamente por Herencia en Barcelona/i);
+  assert.match(reply,/directamente por Tropical Plants desde Horta, Barcelona/i);
   assert.match(reply,/no necesita transportista externo/i);
   assert.doesNotMatch(reply,/Transportista registrado|Código de seguimiento registrado/);
 });
