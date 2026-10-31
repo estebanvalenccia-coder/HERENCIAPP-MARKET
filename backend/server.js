@@ -1639,13 +1639,14 @@ app.post("/api/admin/shipping/sendcloud/test", requireAdmin, async (_req, res) =
     res.status(503).json({error:error.message || "Error al conectar con Sendcloud"});
   }
 });
-app.post("/api/admin/shipping/sendcloud/methods", requireAdmin, async (_req, res) => {
+app.post("/api/admin/shipping/sendcloud/quotes", requireAdmin, async (req, res) => {
   try {
-    const methods = await createSendcloudClient({
+    const {fromZip,toZip,parcel} = req.body || {};
+    const quotes = await createSendcloudClient({
       publicKey:process.env.SENDCLOUD_PUBLIC_KEY, secretKey:process.env.SENDCLOUD_SECRET_KEY,
-    }).methods();
-    res.json({ok:true, methods, notice:"Métodos informativos, no tarifas definitivas del checkout."});
-  } catch(error) {res.status(422).json({error:error.message || "No se pudieron cargar los transportistas"});}
+    }).quotes({fromZip,toZip,parcel});
+    res.json({ok:true,quotes,notice:"Consulta real de API v3. Ningún envío reservado ni etiqueta creada."});
+  } catch(error) {res.status(422).json({error:error.message || "No se pudieron consultar tarifas"});}
 });
 app.post("/api/admin/shipping/sendcloud/points", requireAdmin, async (req, res) => {
   try {
@@ -12022,7 +12023,7 @@ app.listen(port, () => {
           publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
         }).verify();
         console.info("[shipping.sendcloud.probe]", JSON.stringify({
-          connected:result.connected===true, methodsCount:result.methodsCount, readOnly:true,
+          connected:result.connected===true, organizationVerified:result.organizationVerified===true, readOnly:true,
         }));
       } catch {
         console.warn("[shipping.sendcloud.probe] connection_unavailable");
