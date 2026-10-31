@@ -96,7 +96,7 @@ export function createSendcloudClient({publicKey, secretKey, fetchImpl = fetch} 
       if (!result?.data?.id) throw new Error("Sendcloud no devolvió una organización válida");
       return {connected:true, organizationVerified:true};
     },
-    async quotes({fromZip,toZip,parcel}) {
+    async quotes({fromZip,toZip,parcel,toServicePointId}) {
       const from=validateZip(fromZip), to=validateZip(toZip);
       if (!parcel || typeof parcel !== "object") throw new Error("Indica dimensiones y peso reales");
       const dims=["length","width","height"].map(key=>{
@@ -106,12 +106,16 @@ export function createSendcloudClient({publicKey, secretKey, fetchImpl = fetch} 
       });
       const weight=Number(parcel.weight ?? parcel.weightKg);
       if (!Number.isFinite(weight)||weight<0.01||weight>40) throw new Error("Peso del paquete inválido");
+      const servicePoint=toServicePointId === undefined || toServicePointId === null ? null : Number(toServicePointId);
+      if(servicePoint!==null && (!Number.isSafeInteger(servicePoint)||servicePoint<=0))
+        throw new Error("Punto de recogida inválido");
       const result=await call("/api/v3/shipping-options",{body:{
         from_country_code:"ES",to_country_code:"ES",
         from_postal_code:from,to_postal_code:to,
         parcels:[{dimensions:{length:dims[0],width:dims[1],height:dims[2],unit:"cm"},
           weight:{value:String(weight),unit:"kg"}}],
         calculate_quotes:true,
+        ...(servicePoint === null ? {} : {to_service_point:{id:servicePoint}}),
       }});
       return normalizeShippingOptions(result);
     },
