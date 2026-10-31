@@ -55,6 +55,7 @@ import { verifyLocalPickup } from "./localPickupPolicy.js";
 import { createPacklinkClient } from "./packlinkProClient.js";
 import { createSendcloudClient } from "./sendcloudClient.js";
 import { verified3DParcel, offeredShippingOption } from "./sendcloudCheckoutPolicy.js";
+import { merchantShippingQuote } from "./catalogShippingRules.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
@@ -1651,13 +1652,22 @@ app.post("/api/shipping/carriers/quotes", async (req, res) => {
     const settings=parseStoredJson(await readStorageValue("shippingSettings"),{});
     const catalog=await loadAuthoritativeProducts();
     const items=Array.isArray(req.body?.items)?req.body.items.slice(0,15):[];
+    const manual=merchantShippingQuote({settings,lines:items,catalog,toZip:req.body?.postalCode});
     const verified=verified3DParcel({items,catalog,settings});
-    if (!verified) return res.json({ok:true,eligible:false,quotes:[]});
+    if (!verified) return res.json({ok:true,eligible:Boolean(manual),quotes:[],
+      manualOptions:manual?[manual]:[]});
     const client=createSendcloudClient({
       publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
     });
-    const quotes=await sendcloudQuoteForPoint(client,verified,req.body?.postalCode,req.body?.servicePointId);
-    res.json({ok:true,eligible:true,quotes:quotes.filter(x=>x.price!==null),readOnly:true});
+    let quotes=[];
+    try {
+      quotes=await sendcloudQuoteForPoint(client,verified,req.body?.postalCode,req.body?.servicePointId);
+    }catch(error) {
+      if (!manual) throw error;
+      // Manual plant/combined delivery must remain available when Sendcloud is down.
+    }
+    res.json({ok:true,eligible:true,quotes:quotes.filter(x=>x.price!==null),
+      manualOptions:manual?[manual]:[],readOnly:true});
   }catch(error){res.status(422).json({error:error.message||"Tarifas no disponibles"});}
 });
 
@@ -3907,6 +3917,13 @@ async function validateCommerceOrderPayload(order = {}) {
     ? verifyLocalPickup({shippingSettings,shippingChoice:order?.metadata?.shippingChoice,lines:normalizedItems,catalog:products})
     : null;
   const selectedSendcloud = source==="frontend_checkout" && order?.metadata?.shippingChoice?.method==="sendcloud";
+  const selectedManual = source==="frontend_checkout" && order?.metadata?.shippingChoice?.method==="manual_shipping";
+  const confirmedManual = selectedManual ? merchantShippingQuote({
+    settings:shippingSettings,lines:normalizedItems,catalog:products,
+    toZip:order?.metadata?.shippingAddress?.postalCode,
+  }) : null;
+  if(selectedManual && (!confirmedManual || confirmedManual.service!==order.metadata.shippingChoice.service))
+    throw new Error("El envío seleccionado no está permitido para este pedido");
   const verifiedCourierParcel=selectedSendcloud?verified3DParcel({
     items:normalizedItems,catalog:products,settings:shippingSettings,
   }):null;
@@ -3939,6 +3956,10 @@ async function validateCommerceOrderPayload(order = {}) {
       shipping = 0;
       shippingQuote = { price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
         destination: verifiedLocalPickup.label, pricing: { model: "local_pickup" } };
+    } else if (selectedManual) {
+      shipping=confirmedManual.price;
+      shippingQuote={price:shipping,distanceKm:0,distanceText:confirmedManual.label+" · "+confirmedManual.carrier,
+        destination:shippingAddress.postalCode,pricing:{model:"merchant_shipping",service:confirmedManual.service}};
     } else if (selectedSendcloud) {
       const client=createSendcloudClient({
         publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
@@ -3977,7 +3998,7 @@ async function validateCommerceOrderPayload(order = {}) {
   // A verified coupon covering the entire merchandise subtotal also covers delivery.
   if (couponCode && subtotal > 0 && discount >= subtotal - 0.001) shipping = 0;
 
-  if (hasPhysicalItems && !directCjShipping && !verifiedLocalPickup && !selectedSendcloud) await assertDeliveryAvailability({
+  if (hasPhysicalItems && !directCjShipping && !verifiedLocalPickup && !selectedSendcloud && !selectedManual) await assertDeliveryAvailability({
     deliveryMethod,
     metadata: order.metadata || {},
     suite,
@@ -10437,6 +10458,13 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
     const suite = parseStoredJson(await readStorageValue("businessSuiteSettings"), {});
     const shippingSettings = parseShippingSettings(await readStorageValue("shippingSettings"));
     const selectedSendcloud = metadata?.shippingChoice?.method === "sendcloud";
+    const selectedManual = metadata?.shippingChoice?.method === "manual_shipping";
+    const verifiedManual = selectedManual ? merchantShippingQuote({
+      settings:shippingSettings,lines:authoritativeItems,catalog,
+      toZip:metadata?.shippingAddress?.postalCode,
+    }) : null;
+    if (selectedManual && (!verifiedManual || verifiedManual.service !== metadata.shippingChoice.service))
+      return res.status(409).json({error:"Este método de envío no está disponible para el carrito o destino"});
     const verifiedCourierParcel = selectedSendcloud ? verified3DParcel({
       items:authoritativeItems,catalog,settings:shippingSettings,
     }) : null;
@@ -10455,6 +10483,12 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
         authoritativeShipping = 0;
         shippingQuote = {price: 0, distanceKm: 0, distanceText: verifiedLocalPickup.label,
           destination: verifiedLocalPickup.label, pricing: {model: "local_pickup"}};
+      } else if (selectedManual) {
+        authoritativeShipping=verifiedManual.price;
+        shippingQuote={price:verifiedManual.price,distanceKm:0,
+          distanceText:verifiedManual.label+" · "+verifiedManual.carrier,
+          destination:shippingAddress.postalCode,
+          pricing:{model:"merchant_shipping",service:verifiedManual.service}};
       } else if (selectedSendcloud) {
         const client=createSendcloudClient({
           publicKey:process.env.SENDCLOUD_PUBLIC_KEY,
@@ -10498,7 +10532,7 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
 
     // Apply the same shipping policy as checkout, including advanced distance rules.
     // Only a server-verified full-discount coupon can make delivery free.
-    if (!serviceOnly && !directCjShipping && !verifiedLocalPickup && !selectedSendcloud && shippingQuote) {
+    if (!serviceOnly && !directCjShipping && !verifiedLocalPickup && !selectedSendcloud && !selectedManual && shippingQuote) {
       if (shippingSettings.advancedEnabled) {
         authoritativeShipping = shippingQuoteForCart({
           settings: shippingSettings,
@@ -10550,6 +10584,8 @@ app.post("/api/stripe/create-payment-intent", async (req, res) => {
       inventoryReservation: stockReservation,
       shippingChoice: verifiedLocalPickup
         ? {method:"local_pickup",label:verifiedLocalPickup.label,instructions:verifiedLocalPickup.instructions}
+        : selectedManual ? {method:"manual_shipping",service:verifiedManual.service,
+          carrier:verifiedManual.carrier,label:verifiedManual.label,requiresMerchantBooking:true}
         : selectedSendcloud ? {method:"sendcloud",optionCode:metadata.shippingChoice.optionCode,
           ...(metadata.shippingChoice.servicePointId ? {servicePointId:metadata.shippingChoice.servicePointId}:{}),carrier:shippingQuote.distanceText}
         : {method:"delivery"},

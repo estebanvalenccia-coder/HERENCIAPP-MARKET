@@ -1,7 +1,9 @@
+import { isCarrierEligibleProduct } from "./catalogShippingRules.js";
 /**
- * Conservative Sendcloud checkout eligibility. Only a single merchant-made 3D
- * item with explicit parcel dimensions can be quoted. Never plants or suppliers.
- * The caller MUST reload product data from the DB and must not trust cart fields.
+ * Computes a conservative one-box quote for own permitted merchandise.
+ * Live plants, external fulfillment, perishables and restricted goods are
+ * excluded. Missing size/weight => no quote, never an invented price.
+ * Dimensions for multiple goods assume a line of individually packed items.
  */
 const finite = x => Number.isFinite(x) && x > 0;
 /**
@@ -26,27 +28,44 @@ export function is3DShippingProduct(product) {
 }
 export function verified3DParcel({items,catalog,settings}) {
   const config=settings?.sendcloud || {};
-  if (config.checkoutEnabled !== true) return null;
-  const originZip=String(config.originPostalCode||"");
-  if (!/^\d{5}$/.test(originZip)) return null;
-  if (!Array.isArray(items)||items.length!==1||Number(items[0]?.quantity)!==1) return null;
-  const product=(catalog||[]).find(x=>String(x.id)===String(items[0].id));
-  if (!product||product.active===false||product.deletedAt) return null;
-  if (!is3DShippingProduct(product)) return null;
-  if (product.metadata?.provider||product.supplier||product.supplierType||product.fulfillmentProvider||
-      product.metadata?.supplier || product.metadata?.fulfillmentProvider) return null;
-  const raw=String(product.metadata?.dimensions||"").replace(/,/g,".");
-  const parts=raw.match(/\d+(?:\.\d+)?/g)||[];
-  if(parts.length!==3) return null;
-  const numbers=parts.map(Number);
-  if(!numbers.every(x=>finite(x)&&x<=120))return null;
-  const weightRaw=String(product.metadata?.weight||"").trim().replace(",",".");
-  const weightMatch=weightRaw.match(/^(\d+(?:\.\d+)?)\s*(kg|g)$/i);
-  if(!weightMatch)return null;
-  const kilograms=Number(weightMatch[1])*(weightMatch[2].toLowerCase()==="g"?.001:1);
-  if(!finite(kilograms)||kilograms>40)return null;
-  return {fromZip:originZip,parcel:{length:Math.ceil(numbers[0]),width:Math.ceil(numbers[1]),
-    height:Math.ceil(numbers[2]),weight:Number(kilograms.toFixed(3))}};
+  if(config.checkoutEnabled!==true)return null;
+  const fromZip=String(config.originPostalCode||"");
+  if(!/^\d{5}$/.test(fromZip)||!Array.isArray(items)||items.length<1||items.length>12)return null;
+  const byId=new Map((catalog||[]).map(p=>[String(p.id),p]));
+  let totalWeight=0,totalLength=0,maxWidth=0,maxHeight=0,units=0;
+  for(const line of items) {
+    const qty=Number(line.quantity);
+    if(!Number.isSafeInteger(qty)||qty<1||qty>10)return null;
+    units+=qty;
+    const product=byId.get(String(line.id));
+    if(!product||product.active===false||product.deletedAt||!isCarrierEligibleProduct(product))return null;
+    const raw=String(product.metadata?.dimensions||product.dimensions||"").replace(/,/g,".");
+    const parts=raw.match(/\d+(?:\.\d+)?/g)||[];
+    if(parts.length!==3)return null;
+    const dims=parts.map(Number);
+    if(!dims.every(n=>Number.isFinite(n)&&n>=1&&n<=120))return null;
+    const rawWeight=String(product.metadata?.weight||product.weight||"").trim().replace(",",".");
+    const match=rawWeight.match(/^(\d+(?:\.\d+)?)\s*(kg|g)$/i);
+    if(!match)return null;
+    const weight=Number(match[1])*(match[2].toLowerCase()==="g"?0.001:1);
+    if(!Number.isFinite(weight)||weight<0.01)return null;
+    totalLength+=dims[0]*qty;
+    maxWidth=Math.max(maxWidth,dims[1]);
+    maxHeight=Math.max(maxHeight,dims[2]);
+    totalWeight+=weight*qty;
+  }
+  if(units>12)return null;
+  // Additional packaging allowance for grouped parcels; merchants must
+  // validate real box dimensions before enabling shipping for a product.
+  const padding=units>1?2:0;
+  const parcel={
+    length:Math.ceil(totalLength+padding),
+    width:Math.ceil(maxWidth+padding),
+    height:Math.ceil(maxHeight+padding),
+    weight:Number((totalWeight+(units>1?0.2:0)).toFixed(3)),
+  };
+  if([parcel.length,parcel.width,parcel.height].some(n=>n>120)||parcel.weight>40)return null;
+  return {fromZip,parcel,units,packaging:"single_box"};
 }
 export function offeredShippingOption(quotes,choice){
   if(!choice||choice.method!=="sendcloud"||typeof choice.optionCode!=="string") return null;

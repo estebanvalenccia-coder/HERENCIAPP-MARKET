@@ -263,7 +263,7 @@ export function AdminOrders() {
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <h3 className="font-semibold text-foreground text-lg">Pedido #{order.id.slice(0, 8)}</h3>
                       <span className={`flex items-center gap-1 px-3 py-1 rounded-full border text-xs font-medium ${status.color}`}><StatusIcon className="w-3 h-3" />{status.label}</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.metadata?.shippingChoice?.method === "local_pickup" ? "Recogida Horta · GRATIS" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{isSalesHandoff(order) ? "Consulta" : order.metadata?.shippingChoice?.method === "local_pickup" ? "Recogida Horta · GRATIS" : order.metadata?.shippingChoice?.method === "manual_shipping" ? "Envío gestionado · preparar etiqueta" : order.metadata?.shippingChoice?.method === "sendcloud" ? "Sendcloud · preparar etiqueta" : order.deliveryMethod === "mostrador" ? "Mostrador TPV" : "Envío"}</span>
                       {isSalesHandoff(order) && <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black">Tropical Sales</span>}
                       {order.metadata?.source === "colombia_checkout" && <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-900 font-black">🇨🇴 COLOMBIA · COP</span>}
                     </div>
@@ -288,6 +288,17 @@ export function AdminOrders() {
                         <p><strong>Notas:</strong> {order.metadata?.notes || "Sin notas"}</p>
                         <p><strong>{order.metadata?.shippingChoice?.method === "local_pickup" ? "Punto de encuentro:" : "Dirección completa:"}</strong> {getAddress(order)}</p>
                         {order.metadata?.shippingChoice?.method === "local_pickup" && <p><strong>Organizar recogida:</strong> {order.metadata.shippingChoice.instructions || "Acordar lugar y hora con el comprador por teléfono o correo."}</p>}
+                        {order.metadata?.shippingChoice?.method === "manual_shipping" && (
+                          <p className="rounded-xl bg-amber-50 p-3 text-amber-900">
+                            <strong>Envío por contratar:</strong> {order.metadata.shippingChoice.label || "Entrega de artículos"} · {order.metadata.shippingChoice.carrier || "Transportista autorizado"}.
+                            El transporte ya está incluido en el total del pedido, pero la etiqueta NO se crea automáticamente. Contratar con el transportista indicado y adjuntar seguimiento.
+                          </p>
+                        )}
+                        {order.metadata?.shippingChoice?.method === "sendcloud" && (
+                          <p className="rounded-xl bg-emerald-50 p-3 text-emerald-900">
+                            <strong>Sendcloud:</strong> tarifa confirmada en checkout; generar la etiqueta en Sendcloud y registrar el seguimiento. No se ha comprado una etiqueta automáticamente.
+                          </p>
+                        )}
                         {order.metadata?.shippingAddress?.references && <p><strong>Referencias:</strong> {order.metadata.shippingAddress.references}</p>}
                         {order.metadata?.deliveryInstructions && <p><strong>Comentarios de entrega:</strong> {order.metadata.deliveryInstructions}</p>}
                         {order.metadata?.recipientName && <p><strong>Destinatario:</strong> {order.metadata.recipientName} · {order.metadata.recipientPhone || order.metadata.phone || "Sin teléfono"}</p>}
