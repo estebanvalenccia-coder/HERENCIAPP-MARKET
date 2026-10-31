@@ -22,8 +22,11 @@ try {
 
   await page.evaluate(() => {
     window.__adminSelected = null;
+    window.__adminPreviewReady = false;
     window.addEventListener("message", (event) => {
-      if (event.origin === window.location.origin && event.data?.type === "herencia:preview:select") {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "herencia:preview:ready") window.__adminPreviewReady = true;
+      if (event.data?.type === "herencia:preview:select") {
         window.__adminSelected = event.data.componentId;
       }
     });
@@ -41,12 +44,15 @@ try {
 
   const frame = page.frameLocator("#admin-e2e-preview");
   await frame.locator('[data-storefront-component="home.hero"] h1').waitFor({ timeout: 30_000 });
+  // The preview editor listens only after its effect runs. A rendered heading
+  // alone does not guarantee the postMessage listener is registered.
+  await page.waitForFunction(() => window.__adminPreviewReady === true, { timeout: 15_000 });
   await page.evaluate(() => {
     document.querySelector("#admin-e2e-preview").contentWindow.postMessage({
       type: "herencia:editor:sync",
       siteRaw: JSON.stringify({ marketExperience: { home: {
         referenceHero: false,
-        title: "VISTA PRIVADA HERENCIA PRUEBA",
+        title: "VISTA PRIVADA TROPICAL PLANTS PRUEBA",
         referenceCategories: true,
         categoryGridLimit: 0,
         categories: [
@@ -56,16 +62,16 @@ try {
       } } }),
     }, window.location.origin);
   });
-  await frame.locator('[data-storefront-component="home.hero"] h1').getByText("VISTA PRIVADA HERENCIA PRUEBA").waitFor({ timeout: 15_000 });
+  await frame.locator('[data-storefront-component="home.hero"] h1').getByText("VISTA PRIVADA TROPICAL PLANTS PRUEBA").waitFor({ timeout: 15_000 });
   await frame.locator('[data-storefront-component="home.categoryStrip"]').getByText("CATEGORIA DE ADMIN").waitFor({ timeout: 15_000 });
   assert.equal(await frame.locator('[data-storefront-component="home.categoryStrip"]').getByText("CATEGORIA DESACTIVADA").count(), 0,
     "An OFF category in Administration must not reappear as a fallback preset.");
-  const categoryDestination = await frame.locator('[data-storefront-component="home.categoryStrip"] a').first().getAttribute("href");
+  const categoryDestination = await frame.locator('[data-storefront-component="home.categoryStrip"] a').filter({hasText:"CATEGORIA DE ADMIN"}).first().getAttribute("href");
   assert.equal(categoryDestination, "/productos?coleccion=plantas",
     "Category cards must keep the administrator's real destination.");
 
 
-  assert.notEqual((await page.locator('[data-storefront-component="home.hero"] h1').textContent())?.trim(), "VISTA PRIVADA HERENCIA PRUEBA",
+  assert.notEqual((await page.locator('[data-storefront-component="home.hero"] h1').textContent())?.trim(), "VISTA PRIVADA TROPICAL PLANTS PRUEBA",
     "A draft preview must never overwrite the public page.");
 
   await frame.locator('[data-storefront-component="home.hero"] h1').click({ timeout: 10_000 });
