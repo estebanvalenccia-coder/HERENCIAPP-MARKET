@@ -1,6 +1,6 @@
 # Tropical Plants — Packlink PRO and customer-selected delivery
 
-**Status (2026-10-31):** safe integration scaffold; local Horta pickup implemented on feature branch. Packlink PRO carrier rates, parcel-shop search, shipment labels, and tracking are **NOT active**. Never advertise €3 shipping until a live eligible service is quoted.
+**Status (2026-10-31):** safe integration scaffold; local Horta pickup implemented on feature branch. Packlink PRO **admin-only read-only diagnostic routes** for authentication, live carrier quotes and parcel-shop search are implemented on the feature branch but are not deployed or account-verified. Shipment labels, tracking and live checkout carrier selection are **NOT active**. Never advertise €3 shipping until a live eligible service is quoted.
 
 ## Current installation
 
@@ -18,8 +18,8 @@
 3. Generate key: Configuración → Packlink PRO clave de API.
 4. Store key **only** as encrypted Railway service variable `PACKLINK_API_KEY`. Do not paste into `VITE_*` frontend variables, GitHub, order metadata or the chat.
 5. Contact Packlink PRO support to confirm API access for a **custom React/Node ecommerce** (not just supported Shopify/WooCommerce modules), quote endpoint, authentication, accessible prices, parcel-shop selection endpoint, label creation, webhook/tracking, and account permissions.
-6. Establish eligible products and confirmed transit services; live plants may be prohibited and must be filtered. Start with 3D merchant-fulfilled parcels.
-7. In staging, implement a server-side adapter using provider-confirmed documentation. The frontend calls only our same-origin backend.
+6. Packlink explicitly prohibits plants, flowers, and terrariums (living or dry): exclude this entire category. Use it for allowed 3D merchant-fulfilled parcels only.
+7. The read-only adapter and admin simulator use the published Packlink module DTO shapes. Verify with the real account (especially `source`) before using it for buyer quotes; all API calls remain on the backend. Routes: GET `/api/admin/shipping/packlink/status` and POST `/test`, `/quote`, `/points` (admin-session required). Use a real sender postal code in admin, then test dimensions and destination.
 8. Before checkout, send basket SKUs/quantities and destination; backend retrieves authoritative dimensions and weights, quotes eligible services and returns short-lived quote IDs/expiry, authenticated provider point IDs, taxes and consumer-visible totals.
 9. Reserve/validate the selected quote server-side when preparing the Stripe payment. If price expires or parcel is ineligible, block and request new selection; never trust client-sent price.
 10. On Stripe webhook paid, enqueue an idempotent draft/label operation. Depending on provider commercial flow, paying a label may be manual or separately authorized; do not automatically charge Packlink until approved. Persist tracking and label link in Neon, notify buyer; handle refunds, retries and duplicates.
@@ -34,3 +34,5 @@ Its official WooCommerce/PrestaShop integrations import orders as drafts and let
 ## Rollback
 
 Disable local pickup from Envíos / Recogida. No change to existing home delivery pricing when pickup OFF. This branch can be reverted independently and must not be merged until checkout/Stripe regression tests pass.
+
+Packlink prohibited plants reference: https://support.packlink.com/hc/es-es/articles/208328585-Art%C3%ADculos-prohibidos-y-restringidos
