@@ -27,7 +27,7 @@ export function AdminShippingCarriers() {
         instructions: instructions.trim().slice(0,400) || DEFAULT_LOCAL_PICKUP.instructions,
       }};
       const result = await backendStorage.setItem("shippingSettings", JSON.stringify(next));
-      if (result?.ok === false) throw new Error(result.error || "No se pudo guardar");
+      if (!result?.ok || !result.synced) throw new Error(result?.error || "Sin conexión con el servidor. Los cambios no se han guardado en la tienda.");
       window.dispatchEvent(new Event("backend-storage"));
       toast.success("Preferencias de recogida guardadas");
     } catch (error: any) {
