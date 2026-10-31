@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { AdminSendcloudPanel } from "./AdminSendcloudPanel";
 import { backendStorage } from "../../lib/backendStorage";
 import { DEFAULT_LOCAL_PICKUP, localPickupSettings } from "../../../../backend/localPickupPolicy.js";
 
@@ -188,6 +189,7 @@ export function AdminShippingCarriers() {
         <a href="https://support-pro.packlink.com/hc/es-es/articles/213431749--C%C3%B3mo-puedo-generar-una-Clave-API-en-Packlink-PRO" target="_blank" rel="noopener noreferrer"
           className="inline-block text-sm font-bold text-emerald-800 underline">Cómo generar la clave API en Packlink PRO</a>
       </section>
+      <AdminSendcloudPanel />
     </div>
   );
 }
