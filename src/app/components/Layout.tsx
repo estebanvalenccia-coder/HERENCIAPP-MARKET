@@ -332,6 +332,7 @@ export function Layout() {
                     <MarketNavLink key={`${item.href}-${index}`} href={item.href} label={item.label} active={isPathActive(location.pathname, item.href)} />
                   )
                 )}
+                <MarketNavLink href="/creaciones-3d" label="Creaciones 3D" active={location.pathname === "/creaciones-3d"} />
                 {additionalNavigation.length > 0 && (
                   <MarketNavigationMenu
                     item={{ label: "Más", href: "/productos", children: additionalNavigation }}
