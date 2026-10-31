@@ -125,8 +125,10 @@ function GalleryImage({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />;
 }
 
-export function AdminAddProduct({ onBack }: { onBack: () => void }) {
-  const [formData, setFormData] = useState<FormState>(initialForm);
+export function AdminAddProduct({ onBack, initialCollection }: { onBack: () => void; initialCollection?: string }) {
+  const [formData, setFormData] = useState<FormState>(() => initialCollection === "creaciones-3d"
+    ? {...initialForm, collection:"creaciones-3d", category:"macetas-3d"}
+    : {...initialForm});
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [imageUrlError, setImageUrlError] = useState("");
