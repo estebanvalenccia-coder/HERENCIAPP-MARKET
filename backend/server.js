@@ -12106,6 +12106,25 @@ app.listen(port, () => {
         console.info("[shipping.sendcloud.probe]", JSON.stringify({
           connected:result.connected===true, organizationVerified:result.organizationVerified===true, readOnly:true,
         }));
+        // One sanitized sample tariff query. Quotes do not create labels, orders
+        // or payment obligations, and no customer address is used.
+        try {
+          const options=await createSendcloudClient({
+            publicKey:process.env.SENDCLOUD_PUBLIC_KEY,secretKey:process.env.SENDCLOUD_SECRET_KEY,
+          }).quotes({
+            fromZip:"08032",toZip:"28001",
+            parcel:{length:20,width:15,height:10,weight:0.5},
+          });
+          console.info("[shipping.sendcloud.rates-probe]",JSON.stringify({
+            ok:true,services:options.length,
+            priced:options.filter(x=>Number.isFinite(x.price)&&x.currency==="EUR").length,readOnly:true,
+          }));
+        } catch(error) {
+          const reason=/HTTP (\\d{3})/.exec(String(error?.message||""));
+          console.warn("[shipping.sendcloud.rates-probe]",JSON.stringify({
+            ok:false,httpStatus:reason?Number(reason[1]):null,readOnly:true,
+          }));
+        }
       } catch {
         console.warn("[shipping.sendcloud.probe] connection_unavailable");
       }
