@@ -259,8 +259,8 @@ export type MarketExperienceContent = {
 };
 
 export const defaultMarketExperience: MarketExperienceContent = {
-  locationLabel: "Barcelona",
-  announcement: "Envíos en Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada",
+  locationLabel: "Horta, Barcelona",
+  announcement: "Envíos desde Horta, Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada",
   navigation: [
     { label: "Inicio", href: "/" },
     { label: "Plantas", href: "/productos?coleccion=plantas", children: [
@@ -596,8 +596,12 @@ export function getMarketExperience(site: SiteContent): MarketExperienceContent 
   return {
     ...defaultMarketExperience,
     ...incoming,
-    locationLabel: String(incoming.locationLabel || defaultMarketExperience.locationLabel),
-    announcement: String(incoming.announcement || defaultMarketExperience.announcement),
+    locationLabel: String(incoming.locationLabel || "").trim() === "Barcelona"
+      ? defaultMarketExperience.locationLabel
+      : String(incoming.locationLabel || defaultMarketExperience.locationLabel),
+    announcement: String(incoming.announcement || "").trim() === "Envíos en Barcelona · Productos y servicios para un hogar con más vida · Asesoría personalizada"
+      ? defaultMarketExperience.announcement
+      : String(incoming.announcement || defaultMarketExperience.announcement),
     navigation: mergeNavigation(defaultMarketExperience.navigation, incoming.navigation),
     componentControls: incoming.componentControls && typeof incoming.componentControls === "object" && !Array.isArray(incoming.componentControls) ? incoming.componentControls : {},
     layout: { ...defaultMarketExperience.layout, ...(incoming.layout || {}) },
