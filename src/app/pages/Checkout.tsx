@@ -325,8 +325,10 @@ export function Checkout() {
 
   const subtotal = cartItems.reduce((sum: number, item: any) => sum + lineTotal(item), 0);
   const fullCouponDiscount = Boolean(coupon && subtotal > 0 && discount >= subtotal - 0.001);
-  const shipping = hasPhysicalItems && !fullCouponDiscount && !(pickupSelected && localPickupAllowed) ? shippingCost : 0;
-  const total = Math.max(0, subtotal - discount + shipping);
+  // Existing home delivery calculation remains unchanged.
+  const shipping = hasPhysicalItems && !fullCouponDiscount ? shippingCost : 0;
+  const checkoutShipping = pickupSelected && localPickupAllowed ? 0 : shipping;
+  const total = Math.max(0, subtotal - discount + checkoutShipping);
 
   // A checkout can also be entered directly, without the cart page button.
   const checkoutTracked = useRef(false);
@@ -473,7 +475,7 @@ export function Checkout() {
         deliveryMethod,
         status: paymentMethod === "transferencia" ? "pending_transfer_review" : "pending_store_confirmation",
         subtotal,
-        shipping,
+        shipping: checkoutShipping,
         total,
         items: cartItems,
         metadata: orderMetadata,
@@ -719,7 +721,7 @@ export function Checkout() {
               customerEmail={form.email}
               deliveryMethod={deliveryMethod}
               subtotal={subtotal}
-              shipping={shipping}
+              shipping={checkoutShipping}
               items={cartItems}
               metadata={{
                 ...orderMetadata,
