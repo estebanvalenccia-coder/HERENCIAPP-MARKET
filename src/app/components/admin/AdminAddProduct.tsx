@@ -215,7 +215,7 @@ Fondo marfil/blanco crema cálido, jamás blanco clínico. Pared mate con textur
   const service = isServiceCollection(formData.collection);
   const food = formData.collection === "dulce";
   const fashion = formData.collection === "moda";
-  const physicalGeneral = ["jardineria", "sustratos", "decoracion"].includes(formData.collection);
+  const physicalGeneral = ["jardineria", "sustratos", "decoracion", "creaciones-3d"].includes(formData.collection);
 
   const normalPrice = Number(formData.price || 0);
   const cost = Number(formData.cost || 0);
@@ -897,7 +897,7 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
                   type="button"
                   onClick={() => changeCollection(item.id)}
                   className={`rounded-2xl border p-4 text-left transition ${
-                    formData.collection === item.id && !(item.id === "decoracion" && formData.category === "macetas-3d") && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
+                    formData.collection === item.id && !(item.id === "creaciones-3d" && formData.category === "macetas-3d") && !(item.id === "jardineria" && formData.category === "huerto-urbano") && !(item.id === "servicios" && formData.category === "servicio-huerto-urbano")
                       ? "border-primary bg-primary/10 ring-2 ring-primary/15"
                       : "border-border bg-background hover:bg-muted/50"
                   }`}
@@ -916,9 +916,9 @@ El collage completo debe sentirse como una ficha editorial premium de vivero/eco
               ))}
               <button
                 type="button"
-                onClick={() => { changeCollection("decoracion"); patch({ category: "macetas-3d" }); }}
+                onClick={() => { changeCollection("creaciones-3d"); patch({ category: "macetas-3d" }); }}
                 className={`rounded-2xl border p-4 text-left transition ${
-                  formData.collection === "decoracion" && formData.category === "macetas-3d"
+                  formData.collection === "creaciones-3d" && formData.category === "macetas-3d"
                     ? "border-primary bg-primary/10 ring-2 ring-primary/15"
                     : "border-border bg-background hover:bg-muted/50"
                 }`}
