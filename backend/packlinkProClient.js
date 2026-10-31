@@ -7,7 +7,7 @@
 const API_ROOT = "https://api.packlink.com/v1/";
 const zip = (value) => {
   const text = String(value || "").trim();
-  if (!/^\\d{5}$/.test(text)) throw new Error("Código postal español inválido");
+  if (!/^\d{5}$/.test(text)) throw new Error("Código postal español inválido");
   return text;
 };
 const decimal = (value, title, min, max) => {
