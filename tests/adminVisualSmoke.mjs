@@ -66,7 +66,7 @@ try {
   await frame.locator('[data-storefront-component="home.categoryStrip"]').getByText("CATEGORIA DE ADMIN").waitFor({ timeout: 15_000 });
   assert.equal(await frame.locator('[data-storefront-component="home.categoryStrip"]').getByText("CATEGORIA DESACTIVADA").count(), 0,
     "An OFF category in Administration must not reappear as a fallback preset.");
-  const categoryDestination = await frame.locator('[data-storefront-component="home.categoryStrip"] a').first().getAttribute("href");
+  const categoryDestination = await frame.locator('[data-storefront-component="home.categoryStrip"] a').filter({hasText:"CATEGORIA DE ADMIN"}).first().getAttribute("href");
   assert.equal(categoryDestination, "/productos?coleccion=plantas",
     "Category cards must keep the administrator's real destination.");
 
