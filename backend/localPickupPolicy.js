@@ -10,7 +10,7 @@ export const DEFAULT_LOCAL_PICKUP = Object.freeze({
 });
 
 export function localPickupSettings(shippingSettings = {}) {
-  const saved = shippingSettings?.localPickup || {};
+  const saved = shippingSettings?.localPickup && typeof shippingSettings.localPickup === "object" && !Array.isArray(shippingSettings.localPickup) ? shippingSettings.localPickup : {};
   return {
     enabled: saved.enabled === true,
     label: String(saved.label || DEFAULT_LOCAL_PICKUP.label).slice(0, 120),
