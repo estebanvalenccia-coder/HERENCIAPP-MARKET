@@ -156,9 +156,10 @@ function makeEditVariant(): EditVariant {
 }
 
 export function AdminProducts({
-  onAddNew, focusProductId, onFocusHandled,
+  onAddNew, focusProductId, onFocusHandled, initialCollectionFilter = "todos",
 }: {
   onAddNew: () => void;
+  initialCollectionFilter?: string;
   focusProductId?: string | null;
   onFocusHandled?: () => void;
 }) {
@@ -175,7 +176,7 @@ export function AdminProducts({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [showTrash, setShowTrash] = useState(false);
-  const [collectionFilter, setCollectionFilter] = useState("todos");
+  const [collectionFilter, setCollectionFilter] = useState(initialCollectionFilter);
   const [search, setSearch] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
