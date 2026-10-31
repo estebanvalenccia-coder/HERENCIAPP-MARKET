@@ -16,7 +16,7 @@ const PUBLIC_GET_PATHS=new Set([
 ]);
 const PUBLIC_STORAGE_KEYS=new Set([
  "siteContent","marketExperience","adminProducts","herenciaSettings","customTheme",
- "menuIcons","shippingSettings","heroBanner","ctaBanner","marketingContent",
+ "menuIcons","shippingSettings","heroBanner","ctaBanner","creaciones3dPage","marketingContent",
  "communityContent","storefrontPosts","internationalDeliverySettings",
 ]);
 export function previewApiPolicy(method,pathname,env=process.env){
