@@ -483,7 +483,7 @@ function int(value, fallback = 0) {
   return Math.max(0, Math.floor(num(value, fallback)));
 }
 const COMMERCE_COLLECTION_IDS = new Set([
-  "plantas", "semillas", "jardineria", "sustratos", "decoracion", "dulce", "moda", "servicios"
+  "plantas", "semillas", "jardineria", "sustratos", "decoracion", "creaciones-3d", "dulce", "moda", "servicios"
 ]);
 const COMMERCE_COLLECTION_ALIASES = new Map([
   ["planta", "plantas"], ["plantas", "plantas"], ["flores", "plantas"],
@@ -493,6 +493,8 @@ const COMMERCE_COLLECTION_ALIASES = new Map([
   ["jardineria", "jardineria"],
   ["sustrato", "sustratos"], ["sustratos", "sustratos"], ["tierra-y-sustratos", "sustratos"],
   ["decoracion", "decoracion"],
+  ["creaciones-3d", "creaciones-3d"],
+  ["macetas-3d", "creaciones-3d"],
   ["dulce", "dulce"],
   ["moda", "moda"],
   ["servicio", "servicios"], ["servicios", "servicios"],
@@ -528,7 +530,7 @@ export async function ensureNeonCommerceDefaults() {
   const rows = [
     ["plantas","plantas","Plantas",10],["semillas","semillas","Semillas",20],
     ["jardineria","jardineria","Jardinería",30],["sustratos","tierra-y-sustratos","Tierra y sustratos",40],
-    ["decoracion","decoracion","Decoración",50],["dulce","dulce","Dulce",60],
+    ["decoracion","decoracion","Decoración",50],["creaciones-3d","creaciones-3d","Creaciones 3D",55],["dulce","dulce","Dulce",60],
     ["moda","moda","Moda",70],["servicios","servicios","Servicios",80]
   ];
   for (const [id,slug,name,sort] of rows) {
