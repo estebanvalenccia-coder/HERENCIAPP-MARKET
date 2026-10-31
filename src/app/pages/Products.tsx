@@ -56,6 +56,7 @@ const LEGACY_CATEGORY_COLLECTIONS: Record<string, string> = {
   semillas: "semillas",
   sustratos: "sustratos",
   decoracion: "decoracion",
+  "macetas-3d": "creaciones-3d",
 };
 
 function readCatalogFilters(search: string) {
@@ -149,7 +150,7 @@ export function Products() {
           : [];
 
         setDisplayProducts(rows);
-        if (collections.length) setCollectionOptions(collections);
+        if (collections.length) setCollectionOptions([...COMMERCE_COLLECTIONS.filter((item) => !collections.some((row: any) => String(row.id) === item.id)).map((item) => ({ id: item.id, name: item.name, status: "active" })), ...collections]);
         backendStorage.setCachedItem("adminProducts", JSON.stringify(rows));
       } catch {
         if (cancelled) return;
