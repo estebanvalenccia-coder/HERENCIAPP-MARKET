@@ -19,6 +19,7 @@ function euroCandidate(raw) {
   // Only return unambiguous, explicit EUR total amounts. Unknown quote
   // structures remain unpriced rather than showing an invented price.
   const variants = [
+    ...(Array.isArray(raw?.quotes) ? raw.quotes.map(x=>x?.price?.total) : []),
     raw?.quote?.total_price, raw?.quote?.price,
     raw?.quotes?.total_price, raw?.quotes?.total,
     raw?.price?.total_price, raw?.total_price,
