@@ -6,6 +6,7 @@ import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
 import { localPickupSettings } from "../../../backend/localPickupPolicy.js";
+import { is3DShippingProduct } from "../../../backend/sendcloudCheckoutPolicy.js";
 import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
 import { firstUnselectedPrintfulItem } from "../lib/printfulVariantSelection.js";
 
@@ -146,7 +147,7 @@ export function Checkout() {
   const courierEligible = shippingPolicy?.sendcloud?.checkoutEnabled === true &&
     hasPhysicalItems && !hasServices && !hasCjItems && !shippingCatalogPending &&
     shippingCartItems.length === 1 && Number(shippingCartItems[0]?.quantity) === 1 &&
-    String(shippingCartItems[0]?.collection || "") === "creaciones-3d";
+    is3DShippingProduct(shippingCartItems[0]);
   const selectedCourier = courierOptions.find(o=>o.code===courierSelected) || null;
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
