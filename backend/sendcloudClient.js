@@ -91,6 +91,24 @@ export function createSendcloudClient({publicKey, secretKey, fetchImpl = fetch} 
     catch { throw new Error("Sendcloud devolvió datos inválidos"); }
   }
   return {
+    async integrationId() {
+      const result=await call("/api/v3/integrations");
+      if(!Array.isArray(result?.data))throw new Error("No se pudieron leer integraciones Sendcloud");
+      const choices=result.data.filter(x=>x?.type==="api" &&
+        ["tropical","tropical plants"].includes(String(x.shop_name||"").trim().toLowerCase()) &&
+        Number.isSafeInteger(Number(x.id)) && Number(x.id)>0);
+      if(choices.length!==1)throw new Error("No se pudo identificar la integración Tropical de Sendcloud");
+      return Number(choices[0].id);
+    },
+    async upsertOrder(orderPayload) {
+      if(!orderPayload || typeof orderPayload!=="object" || Array.isArray(orderPayload))
+        throw new Error("Pedido de Sendcloud inválido");
+      const result=await call("/api/v3/orders",{body:[orderPayload]});
+      const ids=Array.isArray(result?.data)?result.data:[];
+      if(!ids.some(x=>String(x.order_id)===String(orderPayload.order_id)))
+        throw new Error("Sendcloud no confirmó la importación del pedido");
+      return {accepted:true,orderId:String(orderPayload.order_id)};
+    },
     async verify() {
       const result = await call("/api/v3/organization");
       if (!result?.data?.id) throw new Error("Sendcloud no devolvió una organización válida");
