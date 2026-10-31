@@ -53,6 +53,7 @@ import { calculateShippingQuote } from "./fixMapsShipping.js";
 import { parseShippingSettings, validateShippingSettings, shippingQuoteForCart } from "./shippingPolicy.js";
 import { verifyLocalPickup } from "./localPickupPolicy.js";
 import { createPacklinkClient } from "./packlinkProClient.js";
+import { createSendcloudClient } from "./sendcloudClient.js";
 import { createRateLimiter, requireTrustedBrowserRequest, securityHeaders } from "./security.js";
 import { DELIVERY_SLOTS, deliveryRules, validateDeliverySchedule } from "./deliveryCapacity.js";
 import {
@@ -1613,6 +1614,46 @@ app.get("/api/ready", async (_req, res) => {
       requestId: _req.requestId,
     });
   }
+});
+
+// Sendcloud staging diagnostics: server-side credential verification only.
+// No public checkout quotes, shipment purchases, or webhook handlers.
+app.get("/api/admin/shipping/sendcloud/status", requireAdmin, (_req, res) => {
+  res.json({
+    configured: Boolean(process.env.SENDCLOUD_PUBLIC_KEY && process.env.SENDCLOUD_SECRET_KEY),
+    missing: [
+      ...(!process.env.SENDCLOUD_PUBLIC_KEY ? ["SENDCLOUD_PUBLIC_KEY"] : []),
+      ...(!process.env.SENDCLOUD_SECRET_KEY ? ["SENDCLOUD_SECRET_KEY"] : []),
+    ],
+    checkoutEnabled: false, labelsEnabled: false, webhookEnabled: false,
+  });
+});
+app.post("/api/admin/shipping/sendcloud/test", requireAdmin, async (_req, res) => {
+  try {
+    const result = await createSendcloudClient({
+      publicKey: process.env.SENDCLOUD_PUBLIC_KEY,
+      secretKey: process.env.SENDCLOUD_SECRET_KEY,
+    }).verify();
+    res.json(result);
+  } catch (error) {
+    res.status(503).json({error:error.message || "Error al conectar con Sendcloud"});
+  }
+});
+app.post("/api/admin/shipping/sendcloud/methods", requireAdmin, async (_req, res) => {
+  try {
+    const methods = await createSendcloudClient({
+      publicKey:process.env.SENDCLOUD_PUBLIC_KEY, secretKey:process.env.SENDCLOUD_SECRET_KEY,
+    }).methods();
+    res.json({ok:true, methods, notice:"Métodos informativos, no tarifas definitivas del checkout."});
+  } catch(error) {res.status(422).json({error:error.message || "No se pudieron cargar los transportistas"});}
+});
+app.post("/api/admin/shipping/sendcloud/points", requireAdmin, async (req, res) => {
+  try {
+    const points = await createSendcloudClient({
+      publicKey:process.env.SENDCLOUD_PUBLIC_KEY, secretKey:process.env.SENDCLOUD_SECRET_KEY,
+    }).points({postalCode:req.body?.postalCode});
+    res.json({ok:true, points});
+  } catch(error) {res.status(422).json({error:error.message || "No se pudieron cargar los puntos"});}
 });
 
 // Packlink PRO diagnostics: admin-only, read-only. No shipment is purchased here.
