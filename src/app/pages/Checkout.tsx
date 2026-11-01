@@ -132,6 +132,7 @@ export function Checkout() {
     requiresMerchantBooking:boolean}>>([]);
   const [manualSelected,setManualSelected] = useState("");
   const [courierLoading,setCourierLoading] = useState(false);
+  const [courierError,setCourierError] = useState("");
   const [pointLoading,setPointLoading] = useState(false);
   const [servicePoints,setServicePoints] = useState<Array<{id:number,name:string,carrier:string,street:string,city:string,postalCode:string}>>([]);
   const [servicePointId,setServicePointId] = useState<number|null>(null);
@@ -186,6 +187,8 @@ export function Checkout() {
     setCourierOptions([]);
     setManualSelected("");
     setManualOptions([]);
+    setCourierError("");
+    setCourierLoading(false);
     if(!shippingMethodsEligible || !/^\d{5}$/.test(form.postalCode.trim()))return;
     let active=true;
     const timer=window.setTimeout(async()=>{
@@ -204,7 +207,13 @@ export function Checkout() {
           setManualOptions((data.manualOptions||[]).filter((q:any)=>
             q.method==="manual_shipping" && typeof q.price==="number" && Number.isFinite(q.price) && q.currency==="EUR"));
         }
-      }catch{if(active)setCourierOptions([]);}
+      }catch(error){
+        if(active){
+          setCourierOptions([]);
+          setManualOptions([]);
+          setCourierError(error instanceof Error ? error.message : "No se pudieron consultar las tarifas de envío");
+        }
+      }
       finally{if(active)setCourierLoading(false);}
     },600);
     return ()=>{active=false;window.clearTimeout(timer);};
@@ -647,9 +656,20 @@ export function Checkout() {
                   </span>
                   <strong>{option.price.toFixed(2)} €</strong>
                 </label>)}
-                {courierLoading && <p className="text-xs text-muted-foreground">Consultando métodos y tarifas...</p>}
+                {courierLoading && <p role="status" className="text-xs text-muted-foreground">Consultando métodos y tarifas...</p>}
+                {!/^\d{5}$/.test(form.postalCode.trim()) && <p className="text-xs text-muted-foreground">Introduce un código postal español de 5 dígitos para consultar los transportistas.</p>}
+                {courierError && <p role="alert" className="text-xs text-red-700">No se pudieron consultar las tarifas verificadas: {courierError}. Puedes comprobar el reparto habitual o intentarlo de nuevo.</p>}
+                {!courierLoading && !courierError && /^\d{5}$/.test(form.postalCode.trim()) && courierOptions.length === 0 && manualOptions.length === 0 && (
+                  <p role="status" className="text-xs text-amber-800">No hay empresas de transporte disponibles para este carrito y código postal. Comprueba el reparto habitual o la recogida local, si está habilitada.</p>
+                )}
                 <p className="text-xs text-amber-800">Los transportistas se ofrecen según el contenido del carrito, los datos del paquete y las condiciones de admisión. El envío de plantas usa un servicio confirmado por la tienda, no Packlink PRO.</p>
               </fieldset>
+            )}
+
+            {hasPhysicalItems && !hasCjItems && !hasServices && !shippingCatalogPending && !shippingMethodsEligible && !(pickupSelected && localPickupAllowed) && (
+              <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Todavía no hay transportistas externos habilitados para los artículos de este pedido. El envío a domicilio se calcula por el sistema de reparto habitual de la tienda. Si tienes disponible la recogida gratuita en Horta, también puedes elegirla arriba.
+              </p>
             )}
 
             {hasPhysicalItems && (
