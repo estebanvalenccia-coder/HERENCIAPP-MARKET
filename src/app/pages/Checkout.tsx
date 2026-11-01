@@ -256,6 +256,22 @@ export function Checkout() {
     }
   }, []);
 
+  // Read the authoritative public shipping configuration even when the browser
+  // storage cache has not finished loading (or contains an older copy).
+  useEffect(() => {
+    let active = true;
+    void backendApi.getSettings().then(({ settings }) => {
+      if (!active || !settings?.shippingSettings) return;
+      const latest = settings.shippingSettings;
+      setShippingPolicy(parseShippingSettings(latest));
+      const price = Number(latest.cost);
+      if (Number.isFinite(price) && price >= 0) setShippingCost(price);
+    }).catch(() => {
+      // The server still validates the shipping choice and final payment total.
+    });
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     if (pickupSelected && localPickupAllowed) {
       setShippingCost(0);
