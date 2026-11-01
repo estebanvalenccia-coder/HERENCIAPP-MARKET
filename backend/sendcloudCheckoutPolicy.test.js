@@ -41,3 +41,15 @@ test("never use unverified or non-EUR quotes",()=>{
  assert.equal(offeredShippingOption(quotes,{method:"sendcloud",optionCode:"a"}).price,3.5);
  for(const id of ["b","c","d"])assert.equal(offeredShippingOption(quotes,{method:"sendcloud",optionCode:id}),null);
 });
+
+test("shipping quotes use measured outer packaging and total parcel weight before product display dimensions",()=>{
+ const p={...product,metadata:{
+  dimensions:"10 x 10 x 10 cm",weight:"150 g",
+  shippingDimensions:"35 × 25 × 20 cm",shippingWeight:"1.2 kg",
+ }};
+ const result=verified3DParcel({items:[{id:"3d1",quantity:1}],catalog:[p],settings});
+ assert.deepEqual([result.parcel.length,result.parcel.width,result.parcel.height],[35,25,20]);
+ assert.equal(result.parcel.weight,1.2);
+ assert.equal(verified3DParcel({items:[{id:"3d1",quantity:1}],
+  catalog:[{...p,metadata:{...p.metadata,shippingWeight:"0 kg"}}],settings}),null);
+});
