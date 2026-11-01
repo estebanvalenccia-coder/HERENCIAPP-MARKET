@@ -39,12 +39,12 @@ export function verified3DParcel({items,catalog,settings}) {
     units+=qty;
     const product=byId.get(String(line.id));
     if(!product||product.active===false||product.deletedAt||!isCarrierEligibleProduct(product))return null;
-    const raw=String(product.metadata?.dimensions||product.dimensions||"").replace(/,/g,".");
+    const raw=String(product.metadata?.shippingDimensions||product.shippingDimensions||product.metadata?.dimensions||product.dimensions||"").replace(/,/g,".");
     const parts=raw.match(/\d+(?:\.\d+)?/g)||[];
     if(parts.length!==3)return null;
     const dims=parts.map(Number);
     if(!dims.every(n=>Number.isFinite(n)&&n>=1&&n<=120))return null;
-    const rawWeight=String(product.metadata?.weight||product.weight||"").trim().replace(",",".");
+    const rawWeight=String(product.metadata?.shippingWeight||product.shippingWeight||product.metadata?.weight||product.weight||"").trim().replace(",",".");
     const match=rawWeight.match(/^(\d+(?:\.\d+)?)\s*(kg|g)$/i);
     if(!match)return null;
     const weight=Number(match[1])*(match[2].toLowerCase()==="g"?0.001:1);
