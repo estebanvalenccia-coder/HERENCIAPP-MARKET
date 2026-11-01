@@ -259,3 +259,30 @@ test("CJ will not charge with DE units if exact VID stock is unverified or DE→
   origin,vid,zip:"08032",destination:"ES",
   methods:origin==="DE"?[{name:"Expensive",totalPostageUsd:100,shippingUsd:100}]:[]})}),/no confirmó existencias verificadas/);
 });
+
+test("checkout uses live catalog classification for a stale plant cart and preserves price", async () => {
+  const { isLivePlant, isCarrierEligibleProduct } = await import("./catalogShippingRules.js");
+  const cart = [{ id:"plant123", name:"Maceta", type:"decor", category:"macetas-3d", quantity:1, price:12 }];
+  const catalog = [{ id:"plant123", name:"Planta de Ají con maceta", type:"plant", category:"plantas-interior",
+    price:18, metadata:{ shippingWeight:"1 kg", shippingDimensions:"20 × 15 × 10 cm" } }];
+  const [item] = enrichCartWithCatalog(cart, catalog);
+  assert.equal(item.price,12);
+  assert.equal(item.quantity,1);
+  assert.equal(item.type,"plant");
+  assert.equal(isLivePlant(item),true);
+  assert.equal(isCarrierEligibleProduct(item),false);
+});
+
+test("checkout recognizes current 3D catalog product and preserves selected variant", async () => {
+  const { isCarrierEligibleProduct } = await import("./catalogShippingRules.js");
+  const cart=[{ id:"pot123", type:"plant", category:"plantas-interior", price:13,
+    quantity:1, selectedVariant:"White", metadata:{containsLivePlant:true} }];
+  const catalog=[{ id:"pot123", type:"decor", category:"macetas-3d", name:"Maceta blanca minimalista",
+    metadata:{shippingWeight:"1 kg",shippingDimensions:"20 × 15 × 10 cm"} }];
+  const [item]=enrichCartWithCatalog(cart,catalog);
+  assert.equal(item.price,13);
+  assert.equal(item.selectedVariant,"White");
+  assert.equal(item.type,"decor");
+  assert.equal(item.category,"macetas-3d");
+  assert.equal(isCarrierEligibleProduct(item),true);
+});
