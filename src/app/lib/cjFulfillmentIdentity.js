@@ -60,6 +60,17 @@ export function enrichCartWithCatalog(cart, catalog) {
     .map(product => [String(product?.id ?? ""), product]));
   return (Array.isArray(cart) ? cart : []).map(item => {
     const product = products.get(String(item?.id ?? ""));
-    return product ? { ...item, metadata: product.metadata ?? {} } : item;
+    if (!product) return item;
+    // Product classification comes from the current catalog, not a stale cart.
+    // Preserve the buyer's unit price, quantity, chosen variant and customization:
+    // final amounts and shipment eligibility are verified again on the server.
+    const currentClassification = Object.fromEntries([
+      "name", "category", "type", "collection", "collections",
+      "supplier", "supplierType", "supplierSource", "provider",
+      "fulfillmentProvider", "containsLivePlant", "requiresRefrigeration",
+      "shippingProhibited",
+    ].filter(field => Object.prototype.hasOwnProperty.call(product, field))
+      .map(field => [field, product[field]]));
+    return { ...item, ...currentClassification, metadata: product.metadata ?? {} };
   });
 }

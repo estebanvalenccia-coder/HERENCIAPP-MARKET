@@ -6,7 +6,7 @@ import { StripeCheckout } from "../components/StripeCheckout";
 import { backendApi, backendStorage } from "../lib/backendStorage";
 import { parseShippingSettings, shippingQuoteForCart } from "../../../backend/shippingPolicy.js";
 import { localPickupSettings } from "../../../backend/localPickupPolicy.js";
-import { isCarrierEligibleProduct } from "../../../backend/catalogShippingRules.js";
+import { isCarrierEligibleProduct, isLivePlant, isSupplierFulfilled } from "../../../backend/catalogShippingRules.js";
 import { enrichCartWithCatalog, isCjSupplierItem, validateCjCartComposition } from "../lib/cjFulfillmentIdentity.js";
 import { firstUnselectedPrintfulItem } from "../lib/printfulVariantSelection.js";
 
@@ -149,8 +149,14 @@ export function Checkout() {
     if (!localPickupAllowed && pickupSelected) setPickupSelected(false);
   }, [localPickupAllowed, pickupSelected]);
 
+  const catalogIds = new Set((shippingCatalog || []).map(product => String(product.id)));
+  const unknownCartItems = shippingCatalog === null ? [] :
+    shippingCartItems.filter(item => !catalogIds.has(String(item.id)));
+  const blockedCarrierItems = shippingCartItems.filter(item => !isCarrierEligibleProduct(item));
+  const plantCarrierItems = blockedCarrierItems.filter(isLivePlant);
+  const supplierCarrierItems = blockedCarrierItems.filter(isSupplierFulfilled);
   const ownedCart = hasPhysicalItems && !hasServices && !hasCjItems && !shippingCatalogPending &&
-    !mixedCjCart && shippingCartItems.length>0;
+    unknownCartItems.length === 0 && !mixedCjCart && shippingCartItems.length>0;
   const courierEligible = ownedCart && shippingPolicy?.sendcloud?.checkoutEnabled === true &&
     shippingCartItems.every(isCarrierEligibleProduct);
   const manualEligible = ownedCart && shippingPolicy?.manualDelivery?.enabled === true;
@@ -684,7 +690,21 @@ export function Checkout() {
 
             {hasPhysicalItems && !hasCjItems && !hasServices && !shippingCatalogPending && !shippingMethodsEligible && !(pickupSelected && localPickupAllowed) && (
               <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                Todavía no hay transportistas externos habilitados para los artículos de este pedido. El envío a domicilio se calcula por el sistema de reparto habitual de la tienda. Si tienes disponible la recogida gratuita en Horta, también puedes elegirla arriba.
+                {plantCarrierItems.length > 0 ? (
+                  <>Este pedido contiene una planta viva ({plantCarrierItems.map(item => item.name).filter(Boolean).join(", ") || "planta"}). Sendcloud no está habilitado para transportar plantas: hace falta confirmar un servicio que las admita. Puedes utilizar el reparto habitual de la tienda o la recogida en Horta cuando esté disponible.</>
+                ) : supplierCarrierItems.length > 0 || hasCjItems ? (
+                  <>Este pedido contiene artículos enviados por un proveedor externo. Su transporte se gestiona por separado, no mediante Sendcloud ni Packlink PRO.</>
+                ) : unknownCartItems.length > 0 ? (
+                  <>No podemos verificar los datos actuales de uno de los artículos del carrito. Vuelve al catálogo y añádelo de nuevo para consultar transportistas.</>
+                ) : hasServices ? (
+                  <>Los servicios y los productos físicos no pueden compartir este tipo de transporte. Consulta las opciones de entrega habituales.</>
+                ) : blockedCarrierItems.length > 0 ? (
+                  <>Un artículo del pedido tiene restricciones de transporte y no admite Sendcloud. Se mantiene el reparto habitual de la tienda cuando está disponible.</>
+                ) : !shippingPolicy?.sendcloud?.checkoutEnabled ? (
+                  <>Sendcloud no está activado en esta tienda para este pedido. Se mantiene el reparto habitual y la recogida gratuita en Horta cuando esté disponible.</>
+                ) : (
+                  <>No hay transportistas externos habilitados para esta combinación de artículos. Se mantiene el reparto habitual de la tienda y la recogida en Horta cuando esté disponible.</>
+                )}
               </p>
             )}
 
