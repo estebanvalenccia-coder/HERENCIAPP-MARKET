@@ -14,6 +14,9 @@ type Product = {
 type ParcelDraft = { length: string; width: string; height: string; weight: string };
 const empty: ParcelDraft = { length: "", width: "", height: "", weight: "" };
 const idOf = (p: Product) => String(p.id);
+const is3DCreation = (p: Product) => /-3d$/.test(String(p.category || "").toLowerCase()) ||
+  [p.collection, ...(Array.isArray(p.collections) ? p.collections : [])]
+    .some(value => String(value || "").toLowerCase() === "creaciones-3d");
 
 function initialDraft(product: Product): ParcelDraft {
   const metadata = product.metadata || {};
@@ -50,6 +53,7 @@ export function AdminParcelDimensions() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [only3D, setOnly3D] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -75,9 +79,11 @@ export function AdminParcelDimensions() {
   };
   const ready = (p: Product) => !validateParcel(drafts[idOf(p)] || empty);
   const readyCount = products.filter(ready).length;
+  const creations3D = products.filter(is3DCreation);
   const filtered = useMemo(() => products.filter(p =>
+    (!only3D || is3DCreation(p)) &&
     [p.name, p.category].join(" ").toLowerCase().includes(search.toLowerCase().trim())
-  ), [products, search]);
+  ).sort((a, b) => Number(ready(a)) - Number(ready(b))), [products, search, only3D, drafts]);
 
   const save = async (product: Product) => {
     const id = idOf(product);
@@ -137,6 +143,12 @@ export function AdminParcelDimensions() {
           className="w-full rounded-xl border p-3 font-normal"
           placeholder="Maceta, jarrón, creación 3D…" />
       </label>
+      <label className="flex items-center gap-2 text-sm font-semibold">
+        <input type="checkbox" checked={only3D} onChange={e => setOnly3D(e.target.checked)}
+          className="h-4 w-4 accent-emerald-700" />
+        Solo Creaciones 3D aptas para paquetería ({creations3D.length})
+      </label>
+      <p className="text-xs text-muted-foreground">Se muestran primero los productos pendientes de medidas. Las creaciones que incluyan plantas vivas se excluyen de este transportista.</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {!loading && !error && filtered.length === 0 &&
         <p className="text-sm text-muted-foreground">No hay artículos admitidos que coincidan con la búsqueda.</p>}
