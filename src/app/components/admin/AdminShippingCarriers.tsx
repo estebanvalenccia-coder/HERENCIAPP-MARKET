@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AdminSendcloudPanel } from "./AdminSendcloudPanel";
+import { AdminParcelDimensions } from "./AdminParcelDimensions";
 import { backendStorage } from "../../lib/backendStorage";
 import { DEFAULT_LOCAL_PICKUP, localPickupSettings } from "../../../../backend/localPickupPolicy.js";
 
@@ -277,6 +278,7 @@ export function AdminShippingCarriers() {
           {saving?"Guardando...":"Guardar métodos y tarifas"}
         </button>
       </section>
+      <AdminParcelDimensions />
       <AdminSendcloudPanel />
     </div>
   );
