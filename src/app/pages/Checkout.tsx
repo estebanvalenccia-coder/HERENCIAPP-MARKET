@@ -685,18 +685,15 @@ export function Checkout() {
                 {!/^\d{5}$/.test(form.postalCode.trim()) && <p className="text-xs text-muted-foreground">Introduce un código postal español de 5 dígitos para consultar los transportistas.</p>}
                 {courierError && <p role="alert" className="text-xs text-red-700">No se pudieron consultar las tarifas verificadas: {courierError}. Puedes comprobar el reparto habitual o intentarlo de nuevo.</p>}
                 {!courierLoading && !courierError && /^\d{5}$/.test(form.postalCode.trim()) && courierOptions.length === 0 && manualOptions.length === 0 && (
-                  <p role="status" className="text-xs text-amber-800">{plantCarrierItems.length > 0
-                      ? "No hay transportistas confirmados para plantas vivas en este destino. Consulta el reparto habitual de la tienda o la recogida local."
-                      : "No hay empresas de transporte disponibles para este carrito y código postal. Comprueba el reparto habitual o la recogida local, si está habilitada."}</p>
+                  <p role="status" className="text-xs text-muted-foreground">No hay opciones de transporte adicionales para este pedido y destino.</p>
                 )}
-                <p className="text-xs text-amber-800">Los transportistas se ofrecen según el contenido del carrito, los datos del paquete y sus condiciones de admisión. Para plantas vivas solo aparecen servicios confirmados por la tienda; no se reservan con Sendcloud ni Packlink PRO.</p>
               </fieldset>
             )}
 
             {hasPhysicalItems && !hasCjItems && !hasServices && !shippingCatalogPending && !shippingMethodsEligible && !(pickupSelected && localPickupAllowed) && (
               <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 {plantCarrierItems.length > 0 ? (
-                  <>Este pedido contiene una planta viva ({plantCarrierItems.map(item => item.name).filter(Boolean).join(", ") || "planta"}). Sendcloud no está habilitado para transportar plantas: hace falta confirmar un servicio que las admita. Puedes utilizar el reparto habitual de la tienda o la recogida en Horta cuando esté disponible.</>
+                  <>Consulta las opciones de entrega disponibles para este pedido. Puedes elegir el reparto habitual de la tienda o la recogida local cuando estén disponibles.</>
                 ) : supplierCarrierItems.length > 0 || hasCjItems ? (
                   <>Este pedido contiene artículos enviados por un proveedor externo. Su transporte se gestiona por separado, no mediante Sendcloud ni Packlink PRO.</>
                 ) : unknownCartItems.length > 0 ? (
