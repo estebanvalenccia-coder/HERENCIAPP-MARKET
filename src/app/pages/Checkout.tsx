@@ -160,7 +160,10 @@ export function Checkout() {
   const courierEligible = ownedCart && shippingPolicy?.sendcloud?.checkoutEnabled === true &&
     shippingCartItems.every(isCarrierEligibleProduct);
   const manualEligible = ownedCart && shippingPolicy?.manualDelivery?.enabled === true;
-  const shippingMethodsEligible = courierEligible || manualEligible;
+  // Show the shipping selector for merchant-owned live plants too. The API and
+  // payment validators still restrict plants to merchant-confirmed carriers.
+  const shippingMethodsEligible = courierEligible || manualEligible ||
+    (ownedCart && plantCarrierItems.length > 0);
   const selectedCourier = courierOptions.find(o=>o.code===courierSelected) || null;
   const selectedManual = manualOptions.find(o=>o.service===manualSelected) || null;
   const [shippingLoading, setShippingLoading] = useState(false);
@@ -682,9 +685,11 @@ export function Checkout() {
                 {!/^\d{5}$/.test(form.postalCode.trim()) && <p className="text-xs text-muted-foreground">Introduce un código postal español de 5 dígitos para consultar los transportistas.</p>}
                 {courierError && <p role="alert" className="text-xs text-red-700">No se pudieron consultar las tarifas verificadas: {courierError}. Puedes comprobar el reparto habitual o intentarlo de nuevo.</p>}
                 {!courierLoading && !courierError && /^\d{5}$/.test(form.postalCode.trim()) && courierOptions.length === 0 && manualOptions.length === 0 && (
-                  <p role="status" className="text-xs text-amber-800">No hay empresas de transporte disponibles para este carrito y código postal. Comprueba el reparto habitual o la recogida local, si está habilitada.</p>
+                  <p role="status" className="text-xs text-amber-800">{plantCarrierItems.length > 0
+                      ? "No hay transportistas confirmados para plantas vivas en este destino. Consulta el reparto habitual de la tienda o la recogida local."
+                      : "No hay empresas de transporte disponibles para este carrito y código postal. Comprueba el reparto habitual o la recogida local, si está habilitada."}</p>
                 )}
-                <p className="text-xs text-amber-800">Los transportistas se ofrecen según el contenido del carrito, los datos del paquete y las condiciones de admisión. El envío de plantas usa un servicio confirmado por la tienda, no Packlink PRO.</p>
+                <p className="text-xs text-amber-800">Los transportistas se ofrecen según el contenido del carrito, los datos del paquete y sus condiciones de admisión. Para plantas vivas solo aparecen servicios confirmados por la tienda; no se reservan con Sendcloud ni Packlink PRO.</p>
               </fieldset>
             )}
 
