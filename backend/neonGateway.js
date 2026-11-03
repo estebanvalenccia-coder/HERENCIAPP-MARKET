@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import {
   neonReady, readNeonStorageValue, readNeonStorageValues, upsertNeonStorageValue, deleteNeonStorageValue,
-  listNeonOrders, getNeonOrder, patchNeonOrder, mutateNeonStorageValue,
+  listNeonOrders, getNeonOrder, patchNeonOrder, archiveOldNeonOrders, setNeonOrderArchived, mutateNeonStorageValue,
   recordNeonAnalyticsEvent, getNeonAnalyticsSummary,
   listNeonCommerceCollections, listNeonCommerceProducts, getNeonCommerceProduct,
   bootstrapNeonCommerceFromLegacy, saveNeonCommerceProduct, bindVerifiedCjDraftVariant, saveVerifiedCjVariantRetailPrice, completeVerifiedCjVariantPriceRequest, saveNeonCommerceCollection, setNeonCommerceCollectionProducts, archiveNeonCommerceProduct, approveNeonSupplierFileCosts
@@ -1422,8 +1422,26 @@ const server=http.createServer(async(req,res)=>{try{
 
   if(path==="/api/orders"&&req.method==="GET"){
     if(!(await adminSession(req)))return json(res,401,{error:"Acceso de administrador requerido"});
+    // Archive only resolved orders older than 30 days; never purge financial records.
+    await archiveOldNeonOrders(30);
     const orders=(await listNeonOrders({limit:2000})).map(normalizeOrderRow);
     return json(res,200,{orders,source:"neon"});
+  }
+
+  const orderArchiveMatch=path.match(/^\\/api\\/orders\\/([^/]+)\\/archive$/);
+  if(orderArchiveMatch&&req.method==="PATCH"){
+    const actor=await siteEditorActor(req);
+    if(!actor)return json(res,401,{error:"Acceso de administrador requerido"});
+    const body=await bodyJson(req);
+    if(typeof body?.archived!=="boolean")return json(res,400,{error:"Indica archived: true o false"});
+    const orderId=decodeURIComponent(orderArchiveMatch[1]);
+    const previous=await getNeonOrder(orderId);
+    if(!previous)return json(res,404,{error:"Pedido no encontrado"});
+    if(body.archived&&!["completed","delivered","cancelled","refunded"].includes(previous.status))
+      return json(res,409,{error:"Completa o cancela el pedido antes de archivarlo"});
+    const updated=await setNeonOrderArchived(orderId,body.archived,actor);
+    if(!updated)return json(res,409,{error:"El pedido cambió de estado. Vuelve a cargar los pedidos."});
+    return json(res,200,{order:normalizeOrderRow(updated),source:"neon"});
   }
 
   const orderStatusMatch=path.match(/^\/api\/orders\/([^/]+)\/status$/);
