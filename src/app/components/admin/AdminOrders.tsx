@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Package, Eye, Truck, CheckCircle, Clock, Search, Filter, Download, Phone, MapPin, Mail, CreditCard, RotateCcw } from "lucide-react";
+import { Package, Eye, Truck, CheckCircle, Clock, Search, Filter, Download, Phone, MapPin, Mail, CreditCard, RotateCcw, Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { backendApi } from "../../lib/backendStorage";
 
@@ -38,6 +38,12 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 
 function getStatus(order: Order) {
   return statusConfig[order.status] || statusConfig.pending;
+}
+
+const archivableStatuses = new Set(["completed", "delivered", "cancelled", "refunded"]);
+
+function isArchived(order: Order) {
+  return Boolean(order.metadata?.adminArchivedAt);
 }
 
 function getPhone(order: Order) {
@@ -83,10 +89,11 @@ function isOnlineStripeOrder(order: Order) {
 
 export function AdminOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [filter, setFilter] = useState<string>("all");
+  const [filter, setFilter] = useState<string>("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [refundingOrder, setRefundingOrder] = useState<string | null>(null);
+  const [archivingOrder, setArchivingOrder] = useState<string | null>(null);
 
   const loadOrders = () => {
     backendApi.listOrders()
@@ -146,6 +153,29 @@ export function AdminOrders() {
     }
   };
 
+  const setOrderArchived = async (order: Order, archived: boolean) => {
+    if (archived && !archivableStatuses.has(order.status)) {
+      toast.error("Primero marca el pedido como entregado, completado, cancelado o reembolsado");
+      return;
+    }
+    if (archived && !window.confirm(
+      `¿Archivar el pedido #${order.id.slice(0, 8)}? Se ocultará de la lista activa, pero conservará sus datos y podrás restaurarlo.`
+    )) return;
+
+    try {
+      setArchivingOrder(order.id);
+      const result = await backendApi.setOrderArchived(order.id, archived);
+      setOrders((current) => current.map((item) =>
+        item.id === order.id ? { ...item, metadata: result.order?.metadata || item.metadata } : item
+      ));
+      toast.success(archived ? "Pedido archivado. Puedes verlo en Archivados." : "Pedido restaurado");
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo cambiar el archivado del pedido");
+    } finally {
+      setArchivingOrder(null);
+    }
+  };
+
   const refundOrder = async (order: Order) => {
     if (!isOnlineStripeOrder(order)) {
       return toast.error("El reembolso automático solo está disponible para pedidos online");
@@ -182,7 +212,10 @@ export function AdminOrders() {
   };
 
   const filteredOrders = orders.filter((order) => {
-    const matchesFilter = filter === "all" || order.status === filter;
+    const matchesFilter = filter === "all"
+      || (filter === "archived" ? isArchived(order)
+        : filter === "active" ? !isArchived(order)
+        : !isArchived(order) && order.status === filter);
     const q = searchQuery.toLowerCase();
     const matchesSearch = !q ||
       order.id.toLowerCase().includes(q) ||
@@ -192,11 +225,13 @@ export function AdminOrders() {
     return matchesFilter && matchesSearch;
   });
 
+  const activeOrders = orders.filter((order) => !isArchived(order));
   const orderStats = {
-    total: orders.length,
-    pending: orders.filter((o) => ["pending", "payment_pending", "pending_bizum_review", "pending_manual_review", "pending_transfer_review", "pending_store_confirmation"].includes(o.status)).length,
-    paid: orders.filter((o) => ["paid", "confirmed", "preparing", "ready"].includes(o.status)).length,
-    completed: orders.filter((o) => ["completed", "delivered"].includes(o.status)).length,
+    total: activeOrders.length,
+    archived: orders.length - activeOrders.length,
+    pending: activeOrders.filter((o) => ["pending", "payment_pending", "pending_bizum_review", "pending_manual_review", "pending_transfer_review", "pending_store_confirmation"].includes(o.status)).length,
+    paid: activeOrders.filter((o) => ["paid", "confirmed", "preparing", "ready"].includes(o.status)).length,
+    completed: activeOrders.filter((o) => ["completed", "delivered"].includes(o.status)).length,
   };
 
   return (
@@ -205,6 +240,7 @@ export function AdminOrders() {
         <div>
           <h2 className="text-2xl font-bold text-foreground">Pedidos reales</h2>
           <p className="text-muted-foreground">Aquí aparecen las compras reales para preparar y entregar. Las solicitudes de FLORES están en Diseñador IA de Ramos.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Los pedidos entregados, completados, cancelados o reembolsados se archivan automáticamente después de 30 días. No se eliminan del historial.</p>
         </div>
         <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">
           <Download className="w-4 h-4" />
@@ -228,7 +264,9 @@ export function AdminOrders() {
           <div className="flex items-center gap-2">
             <Filter className="w-5 h-5 text-muted-foreground" />
             <select value={filter} onChange={(e) => setFilter(e.target.value)} className="px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary">
-              <option value="all">Todos</option>
+              <option value="active">Activos ({orderStats.total})</option>
+              <option value="archived">Archivados ({orderStats.archived})</option>
+              <option value="all">Todos (incluidos archivados)</option>
               <option value="payment_pending">Pago pendiente</option>
               <option value="pending_bizum_review">Revisar Bizum</option>
               <option value="pending_manual_review">Revisión manual</option>
@@ -336,6 +374,15 @@ export function AdminOrders() {
                           {refundingOrder === order.id ? "Reembolsando..." : "Reembolsar"}
                         </button>
                       )}
+                      <button
+                        onClick={() => void setOrderArchived(order, !isArchived(order))}
+                        disabled={archivingOrder === order.id || (!isArchived(order) && !archivableStatuses.has(order.status))}
+                        title={isArchived(order) ? "Restaurar a la lista activa" : archivableStatuses.has(order.status) ? "Archivar sin borrar el pedido" : "Solo se archivan pedidos resueltos"}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isArchived(order) ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                        {archivingOrder === order.id ? "Guardando..." : isArchived(order) ? "Restaurar" : "Archivar"}
+                      </button>
                       <button onClick={() => setExpandedOrder(expanded ? null : order.id)} className="p-2 bg-muted hover:bg-accent rounded-lg transition-colors"><Eye className="w-4 h-4" /></button>
                     </div>
                   </div>
