@@ -350,7 +350,7 @@ export function AdminOrders() {
 
                   <div className="flex flex-col items-start lg:items-end gap-3">
                     <div className="text-right"><p className="text-sm text-muted-foreground mb-1">Total</p><p className="text-2xl font-bold text-primary">{formatOrderMoney(order, Number(order.total || 0))}</p></div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <select value={order.status} onChange={(e) => updateOrderStatus(order.id, e.target.value)} className="px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                         <option value="pending_bizum_review">Revisar Bizum</option>
                         <option value="pending_transfer_review">Revisar transferencia</option>
