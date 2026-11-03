@@ -1428,7 +1428,7 @@ const server=http.createServer(async(req,res)=>{try{
     return json(res,200,{orders,source:"neon"});
   }
 
-  const orderArchiveMatch=path.match(/^\\/api\\/orders\\/([^/]+)\\/archive$/);
+  const orderArchiveMatch=path.match(/^\/api\/orders\/([^/]+)\/archive$/);
   if(orderArchiveMatch&&req.method==="PATCH"){
     const actor=await siteEditorActor(req);
     if(!actor)return json(res,401,{error:"Acceso de administrador requerido"});
