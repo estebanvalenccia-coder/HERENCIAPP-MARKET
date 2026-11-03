@@ -404,6 +404,48 @@ export async function patchNeonOrder(id, patch = {}) {
   return result.rows?.[0] || null;
 }
 
+// Hide resolved historical orders from the operational queue without removing
+// their financial, shipping or customer audit records.
+export async function archiveOldNeonOrders(days = 30) {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const result = await neonPool.query(
+    `update orders
+       set metadata = coalesce(metadata, '{}'::jsonb) ||
+           jsonb_build_object('adminArchivedAt', now()::text, 'adminArchiveMode', 'automatic'),
+           updated_at = now()
+     where status in ('completed', 'delivered', 'cancelled', 'refunded')
+       and created_at < now() - ($1::int * interval '1 day')
+       and coalesce(metadata->>'adminArchivedAt', '') = ''
+       and coalesce(metadata->>'adminKeepVisible', 'false') <> 'true'`,
+    [Math.max(1, Math.trunc(Number(days) || 30))]
+  );
+  return result.rowCount || 0;
+}
+
+export async function setNeonOrderArchived(id, archived, actor = "administrador") {
+  if (!neonPool) throw new Error("Neon no está configurado");
+  const result = await neonPool.query(
+    `update orders
+       set metadata = case when $2::boolean then
+             coalesce(metadata, '{}'::jsonb) ||
+               jsonb_build_object('adminArchivedAt', now()::text,
+                                  'adminArchiveMode', 'manual',
+                                  'adminArchivedBy', $3::text,
+                                  'adminKeepVisible', false)
+           else
+             (coalesce(metadata, '{}'::jsonb) -
+                'adminArchivedAt' - 'adminArchiveMode' - 'adminArchivedBy') ||
+               jsonb_build_object('adminKeepVisible', true)
+           end,
+           updated_at = now()
+     where id::text = $1
+       and (not $2::boolean or status in ('completed', 'delivered', 'cancelled', 'refunded'))
+     returning *`,
+    [String(id), Boolean(archived), String(actor).slice(0, 80)]
+  );
+  return result.rows?.[0] || null;
+}
+
 export async function deleteNeonOrder(id) {
   if (!neonPool) throw new Error("Neon no está configurado");
   await neonPool.query("delete from orders where id::text = $1", [String(id)]);
