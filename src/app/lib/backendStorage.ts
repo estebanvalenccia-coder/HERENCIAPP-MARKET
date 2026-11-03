@@ -1826,6 +1826,14 @@ export const backendApi = {
     });
   },
 
+  async setOrderArchived(orderId: string, archived: boolean) {
+    return request<{ order: any }>(`/api/orders/${encodeURIComponent(orderId)}/archive`, {
+      method: "PATCH",
+      body: JSON.stringify({ archived }),
+    });
+  },
+
+
   async refundOnlineOrder(orderId: string, reason?: string) {
     return request<{
       ok: boolean;
