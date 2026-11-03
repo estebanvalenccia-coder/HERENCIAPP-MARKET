@@ -414,7 +414,7 @@ export async function archiveOldNeonOrders(days = 30) {
            jsonb_build_object('adminArchivedAt', now()::text, 'adminArchiveMode', 'automatic'),
            updated_at = now()
      where status in ('completed', 'delivered', 'cancelled', 'refunded')
-       and created_at < now() - ($1::int * interval '1 day')
+       and greatest(created_at, updated_at) < now() - ($1::int * interval '1 day')
        and coalesce(metadata->>'adminArchivedAt', '') = ''
        and coalesce(metadata->>'adminKeepVisible', 'false') <> 'true'`,
     [Math.max(1, Math.trunc(Number(days) || 30))]
