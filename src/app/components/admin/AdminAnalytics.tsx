@@ -46,9 +46,12 @@ export function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [summary, setSummary] = useState<AnalyticsSummary>(emptySummary);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErrorMessage("");
     try {
       const response = await fetch(`/api/admin/analytics?days=${days}`, {
         credentials: "include",
@@ -57,13 +60,17 @@ export function AdminAnalytics() {
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
       if (!response.ok) throw new Error(data?.error || "No se pudo cargar la analítica");
+      setLastUpdated(new Date());
       setSummary({
         ...emptySummary,
         ...data,
         totals: { ...emptySummary.totals, ...(data.totals || {}) },
       });
     } catch (error: any) {
-      toast.error(error?.message || "No se pudo cargar la analítica de visitas");
+      const message = error?.message || "No se pudo cargar la analítica de visitas";
+      setErrorMessage(message);
+      setSummary(emptySummary);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -71,6 +78,12 @@ export function AdminAnalytics() {
 
   useEffect(() => {
     void load();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 30000);
+    const onReturn = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onReturn);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onReturn); };
   }, [load]);
 
   const maxDaily = useMemo(
@@ -115,6 +128,13 @@ export function AdminAnalytics() {
           </div>
         </div>
 
+        <div className="px-5 pt-3 text-xs text-muted-foreground">
+          {lastUpdated ? `Última sincronización correcta: ${lastUpdated.toLocaleString("es-ES")}` : "Todavía no hay sincronización correcta"}
+          {" · "}actualización automática cada 30 segundos
+        </div>
+        {errorMessage && <div role="alert" className="mx-5 mt-3 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          Datos no disponibles: {errorMessage}. Las cifras se han ocultado para evitar mostrar información antigua.
+        </div>}
         <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={Users} label="Visitantes únicos" value={summary.totals.visitors} helper={`Últimos ${days} días`} />
           <MetricCard icon={Eye} label="Páginas vistas" value={summary.totals.pageviews} helper="Navegación total medida" />
